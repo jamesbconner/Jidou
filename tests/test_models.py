@@ -20,6 +20,6 @@ def test_watchlist_entry_repr() -> None:
 
 def test_watchlist_status_values() -> None:
     """Test that WatchlistStatus has expected values."""
-    expected = {"planned", "watching", "completed", "dropped"}
+    expected = {"planned", "watching", "completed", "on_hold", "dropped"}
     actual = {status.value for status in WatchlistStatus}
     assert actual == expected

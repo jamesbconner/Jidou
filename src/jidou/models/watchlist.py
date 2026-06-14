@@ -15,6 +15,7 @@ class WatchlistStatus(StrEnum):
     PLANNED = "planned"
     WATCHING = "watching"
     COMPLETED = "completed"
+    ON_HOLD = "on_hold"
     DROPPED = "dropped"
 
 

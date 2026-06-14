@@ -1,6 +1,6 @@
 """Application configuration via pydantic-settings."""
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3100"],
     )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _parse_origins(cls, value: str | list[str]) -> list[str]:
+        """Allow comma-separated string or JSON array for CORS origins."""
+        if isinstance(value, str):
+            return [o.strip() for o in value.split(",") if o.strip()]
+        return value
 
     # Celery
     celery_broker_url: str | None = None
