@@ -91,9 +91,9 @@ def check() -> None:
             step()
         except SystemExit as exc:
             failures += 1
-            click.echo(f"\n{step.__name__}() failed (exit code {exc.code})")  # noqa: UP031
+            click.echo(f"\n{step.__name__}() failed (exit code {exc.code})")
     if failures:
-        click.echo(f"\n{failures}/{len(steps)} step(s) failed")  # noqa: UP031
+        click.echo(f"\n{failures}/{len(steps)} step(s) failed")
         sys.exit(failures)
 
 
