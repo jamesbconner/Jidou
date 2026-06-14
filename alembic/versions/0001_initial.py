@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-06-14 20:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -33,12 +34,8 @@ def upgrade() -> None:
         sa.Column("release_date", sa.String(length=20), nullable=True),
         sa.Column("original_language", sa.String(length=10), nullable=True),
         sa.Column("cached", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column(
-            "created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False
-        ),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_shows_tmdb_id"), "shows", ["tmdb_id"], unique=True)
@@ -50,8 +47,11 @@ def upgrade() -> None:
         sa.Column(
             "status",
             sa.Enum(
-                "planned", "watching", "completed",
-                "on_hold", "dropped",
+                "planned",
+                "watching",
+                "completed",
+                "on_hold",
+                "dropped",
                 name="watchliststatus",
                 create_constraint=True,
             ),
@@ -60,15 +60,9 @@ def upgrade() -> None:
         ),
         sa.Column("notes", sa.String(length=1000), nullable=True),
         sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column(
-            "created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False
-        ),
-        sa.ForeignKeyConstraint(
-            ["show_id"], ["shows.id"], ondelete="CASCADE"
-        ),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.ForeignKeyConstraint(["show_id"], ["shows.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     # ### end Alembic commands ###

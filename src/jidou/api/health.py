@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sqlalchemy import text
 
 from jidou.config import settings
@@ -16,15 +16,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
 
-@router.get("/")
+@router.get("/health")
 async def health_check() -> dict[str, Any]:
     """Check the health of all dependent services.
 
     Returns:
-        Dictionary with overall status and per-service health details.
-
-    Raises:
-        HTTPException: 503 when core dependencies are unhealthy.
+        Dictionary with overall status ("healthy" or "degraded") and
+        per-service health details. Always returns HTTP 200.
     """
     services: dict[str, dict[str, Any]] = {}
     overall_healthy = True
@@ -58,11 +56,11 @@ async def health_check() -> dict[str, Any]:
     }
 
     if not overall_healthy:
-        raise HTTPException(status_code=503, detail={
+        return {
             "status": "degraded",
             "timestamp": datetime.now(UTC).isoformat(),
             "services": services,
-        })
+        }
 
     return {
         "status": "healthy",
