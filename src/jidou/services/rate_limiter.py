@@ -32,6 +32,10 @@ class RateLimiter:
     async def acquire(self) -> AsyncGenerator[None]:
         """Acquire permission to make an API call.
 
+        Holds the lock for the duration of the caller's request so that
+        concurrent calls cannot start while a previous request is still
+        in flight.
+
         Yields:
             None after ensuring the rate limit is respected.
         """
@@ -43,7 +47,10 @@ class RateLimiter:
                 logger.debug("Rate limiter: waiting %.2fs", wait_time)
                 await asyncio.sleep(wait_time)
             self._last_call = time.monotonic()
-        yield
+            try:
+                yield
+            finally:
+                pass  # lock released automatically; caller's request finishes here
 
 
 # Module-level rate limiter instance

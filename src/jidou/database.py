@@ -39,7 +39,7 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
 async def init_db() -> None:
     """Create all tables (development only; use Alembic in production)."""
     async with engine.begin() as conn:
-        from jidou.models.base import Base
+        from jidou.models import Base  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
 
