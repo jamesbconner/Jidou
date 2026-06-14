@@ -9,7 +9,9 @@
       "Bash(Get-ChildItem -Path \"D:\\\\Documents\\\\Code\\\\Sync2NAS\" -Recurse -Force)",
       "Bash(Select-Object FullName, Length)",
       "Bash(Format-Table -AutoSize -Wrap)",
-      "Bash(Out-String -Width 300)"
+      "Bash(Out-String -Width 300)",
+      "Bash(git checkout *)",
+      "Bash(git add *)"
     ]
   }
 }
