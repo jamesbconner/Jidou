@@ -1,9 +1,83 @@
 """Entry point for the Jidou application."""
 
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from jidou.api import health, shows
+from jidou.config import settings
+from jidou.database import close_db, init_db
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Manage application startup and shutdown events.
+
+    Args:
+        app: The FastAPI application instance.
+
+    Yields:
+        None while the application is running.
+    """
+    # Startup
+    logger.info("Starting %s...", settings.app_name)
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception:
+        logger.warning("Failed to initialize database (may already exist)")
+
+    yield
+
+    # Shutdown
+    await close_db()
+    logger.info("Database connections closed")
+
+
+def create_app() -> FastAPI:
+    """Factory function to create and configure the FastAPI application.
+
+    Returns:
+        Configured FastAPI application instance.
+    """
+    app = FastAPI(
+        title=settings.app_name,
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register routers
+    app.include_router(health.router, prefix="/api")
+    app.include_router(shows.router, prefix="/api")
+
+    return app
+
+
+# App instance for Uvicorn
+app = create_app()
+
 
 def main() -> None:
-    """Run the Jidou application."""
-    print("Hello from Jidou!")
+    """Run the Jidou application via CLI."""
+    import uvicorn
+
+    logger.info("Starting %s on port 8192", settings.app_name)
+    uvicorn.run("jidou.main:app", host="0.0.0.0", port=8192, reload=settings.debug)
 
 
 if __name__ == "__main__":
