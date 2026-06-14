@@ -1,0 +1,164 @@
+# Jidou - Docker Compose Configuration
+#
+# Services:
+#   jidou-api       - FastAPI + Uvicorn (port 8192)
+#   jidou-frontend  - React SPA via Nginx (port 3100)
+#   jidou-worker    - Celery worker for background tasks
+#   postgres        - PostgreSQL 16
+#   redis           - Redis 7 (broker + cache + rate limiter)
+
+# ============================================================
+# Development Profile (default)
+# ============================================================
+
+services:
+  # ----------------------------------------------------------
+  # Database
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: jidou-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jidou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jidou_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-jidou}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jidou}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Redis (broker + cache + rate limiter)
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: jidou-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # FastAPI API Server
+  # ----------------------------------------------------------
+  jidou-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: jidou-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8192}:8192"
+    environment:
+      # Database — dynamic from env vars (falls back to .env.example defaults)
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-jidou}:${POSTGRES_PASSWORD:-jidou_dev_password}@postgres:5432/${POSTGRES_DB:-jidou}}
+      # Redis
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # TMDB API
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      # LLM (optional)
+      - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # Application
+      - DEBUG=${DEBUG:-true}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
+      # Server
+      - HOST=0.0.0.0
+      - PORT=8192
+    volumes:
+      # Mount source code for hot reload in development
+      - ./src:/app/src
+    command: >
+      uvicorn jidou.main:app
+      --host 0.0.0.0
+      --port 8192
+      --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8192/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - default
+      - backend
+
+  # ----------------------------------------------------------
+  # Celery Worker
+  # ----------------------------------------------------------
+  jidou-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: jidou-worker
+    restart: unless-stopped
+    environment:
+      # Database — dynamic from env vars
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-jidou}:${POSTGRES_PASSWORD:-jidou_dev_password}@postgres:5432/${POSTGRES_DB:-jidou}}
+      # Redis
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # TMDB API
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      # LLM (optional)
+      - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # Application
+      - DEBUG=${DEBUG:-true}
+    volumes:
+      # Mount source code for hot reload in development
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - default
+      - backend
+
+  # ----------------------------------------------------------
+  # React Frontend (served via Nginx)
+  # ----------------------------------------------------------
+  jidou-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jidou-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3100}:80"
+    depends_on:
+      jidou-api:
+        condition: service_healthy
+    profiles:
+      - default
+      - frontend
+
+# ============================================================
+# Volumes
+# ============================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

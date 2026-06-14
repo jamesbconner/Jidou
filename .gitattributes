@@ -1,0 +1,11 @@
+# Normalize line endings to LF for source files
+* text=auto eol=lf
+
+# Documentation
+*.md text eol=lf
+
+# Data and binaries
+*.csv text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
