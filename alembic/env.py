@@ -1,13 +1,12 @@
 """Alembic environment configuration for async migrations."""
 
+import asyncio
 import logging
 from logging.config import fileConfig
 
-from sqlalchemy import pool
-from sqlalchemy.engine import Engine
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from alembic import context
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from jidou.models.base import Base
 
@@ -51,7 +50,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection):  # noqa: ANN001
+def do_run_migrations(connection) -> None:
     """Run migrations against the given connection.
 
     Args:
@@ -81,8 +80,6 @@ def run_migrations_online() -> None:
             await connection.run_sync(do_run_migrations)
 
         await connectable.dispose()
-
-    import asyncio
 
     asyncio.run(run_async())
 

@@ -122,6 +122,10 @@ addopts = ["--strict-config", "--strict-markers", "-v"]
 asyncio_mode = "auto"
 filterwarnings = [
     "error",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+    "ignore:websockets.*is deprecated:DeprecationWarning",
+    "ignore:unclosed:ResourceWarning",
+    "ignore:loop is closed:ResourceWarning",
 ]
 
 [tool.coverage.run]
