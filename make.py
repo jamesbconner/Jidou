@@ -45,6 +45,7 @@ def run(cmd: str, check: bool = False) -> subprocess.CompletedProcess:
 # Code quality
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 def cli() -> None:
     """Jidou development task runner."""
@@ -101,6 +102,7 @@ def check() -> None:
 # Docker
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 @click.option("--profile", default="default", help="Docker Compose profile to use")
 def docker_up(profile: str) -> None:
@@ -125,6 +127,7 @@ def docker_build() -> None:
 # Database
 # ---------------------------------------------------------------------------
 
+
 @cli.command()
 def migrate() -> None:
     """Run Alembic migrations."""
@@ -141,6 +144,7 @@ def seed() -> None:
 # ---------------------------------------------------------------------------
 # Frontend
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 def generate_types() -> None:
@@ -159,6 +163,7 @@ def build_frontend() -> None:
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
+
 
 @cli.command()
 def health() -> None:
