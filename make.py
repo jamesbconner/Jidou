@@ -65,6 +65,12 @@ def format() -> None:
 
 
 @cli.command()
+def format_check() -> None:
+    """Check ruff formatting (read-only)."""
+    run("uv run ruff format --check src/ tests/", check=True)
+
+
+@cli.command()
 def types() -> None:
     """Run mypy type checker."""
     run("uv run mypy src/", check=True)
@@ -86,7 +92,7 @@ def test() -> None:
 def check() -> None:
     """Run all checks (lint, format, types, security, test)."""
     failures = 0
-    steps = [lint, format, types, security, test]
+    steps = [lint, format_check, types, security, test]
     for step in steps:
         try:
             step()
@@ -118,9 +124,10 @@ def docker_down(profile: str) -> None:
 
 
 @cli.command()
-def docker_build() -> None:
+@click.option("--profile", default="default", help="Docker Compose profile to use")
+def docker_build(profile: str) -> None:
     """Rebuild Docker images."""
-    run("docker compose build --no-cache", check=True)
+    run(f"docker compose --profile {profile} build --no-cache", check=True)
 
 
 # ---------------------------------------------------------------------------

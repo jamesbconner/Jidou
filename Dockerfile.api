@@ -13,6 +13,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy project metadata for dependency resolution
 COPY pyproject.toml uv.lock ./
 
+# Copy application source so uv can install the local package
+COPY src/ ./src/
+
 # Install dependencies (creates .venv)
 RUN uv sync --frozen --no-dev
 
@@ -32,7 +35,7 @@ COPY --from=builder /app/.venv /app/.venv
 # Ensure venv binaries are on PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy application source
+# Copy application source (may be overridden by docker-compose mount in dev)
 COPY src/ ./src/
 
 # Run as non-root user for security

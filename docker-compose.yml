@@ -62,10 +62,10 @@ services:
     ports:
       - "${API_PORT:-8192}:8192"
     environment:
-      # Database
-      - DATABASE_URL=postgresql+asyncpg://jidou:jidou_dev_password@postgres:5432/jidou
+      # Database — dynamic from env vars (falls back to .env.example defaults)
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-jidou}:${POSTGRES_PASSWORD:-jidou_dev_password}@postgres:5432/${POSTGRES_DB:-jidou}}
       # Redis
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       # TMDB API
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
@@ -75,13 +75,18 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       # Application
       - DEBUG=${DEBUG:-true}
-      - ALLOWED_ORIGINS=http://localhost:3100
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
       # Server
       - HOST=0.0.0.0
       - PORT=8192
     volumes:
       # Mount source code for hot reload in development
       - ./src:/app/src
+    command: >
+      uvicorn jidou.main:app
+      --host 0.0.0.0
+      --port 8192
+      --reload
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,10 +111,10 @@ services:
     container_name: jidou-worker
     restart: unless-stopped
     environment:
-      # Database
-      - DATABASE_URL=postgresql+asyncpg://jidou:jidou_dev_password@postgres:5432/jidou
+      # Database — dynamic from env vars
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-jidou}:${POSTGRES_PASSWORD:-jidou_dev_password}@postgres:5432/${POSTGRES_DB:-jidou}}
       # Redis
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       # TMDB API
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
@@ -143,7 +148,8 @@ services:
     ports:
       - "${FRONTEND_PORT:-3100}:80"
     depends_on:
-      - jidou-api
+      jidou-api:
+        condition: service_healthy
     profiles:
       - default
       - frontend
