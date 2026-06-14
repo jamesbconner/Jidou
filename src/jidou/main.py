@@ -30,8 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await init_db()
         logger.info("Database initialized successfully")
     except Exception as exc:
-        logger.error("Database initialization failed: %s", exc)
-        raise
+        logger.warning("Database initialization skipped (DB unavailable): %s", exc)
 
     yield
 

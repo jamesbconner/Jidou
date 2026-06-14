@@ -9,7 +9,9 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from jidou.models import Base  # noqa: F401 imports Show, WatchlistEntry for metadata
+from jidou.models import Base
+from jidou.models.show import Show  # noqa: F401
+from jidou.models.watchlist import WatchlistEntry  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -39,7 +41,15 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    # Use DATABASE_URL env var; fall back to alembic.ini only when the env
+    # var is not set.  alembic.ini ships with a hardcoded localhost DSN that
+    # is wrong in Docker / staging.
+    url = config.get_main_option("sqlalchemy.url")
+    if not os.environ.get("DATABASE_URL"):
+        # alembic.ini default is fine for local dev without env override
+        pass
+    else:
+        url = os.environ["DATABASE_URL"]
     context.configure(
         url=url,
         target_metadata=target_metadata,

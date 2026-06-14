@@ -39,7 +39,12 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
 async def init_db() -> None:
     """Create all tables (development only; use Alembic in production)."""
     async with engine.begin() as conn:
-        from jidou.models import Base  # noqa: F401
+        # Import models so mapped classes are registered with Base.metadata
+        # before create_all runs.  Without these imports Base.metadata is
+        # empty and `create_all` / Alembic autogenerate never see the tables.
+        from jidou.models import Base
+        from jidou.models.show import Show  # noqa: F401
+        from jidou.models.watchlist import WatchlistEntry  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
 
