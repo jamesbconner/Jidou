@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 tmdb = TMDBService()
 
 
-@shared_task
+@shared_task  # type: ignore
 def fetch_trending_shows_task() -> int:
     """Fetch trending shows from TMDB and cache them locally.
 
@@ -32,4 +32,4 @@ def fetch_trending_shows_task() -> int:
 async def _fetch_trending() -> int:
     """Async helper for the trending shows fetch."""
     result = await tmdb.get_trending(media_type="multi", time_window="day")
-    return result.get("total_results", 0)
+    return result.get("total_results", 0)  # type: ignore

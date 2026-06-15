@@ -2,7 +2,7 @@
 
 import logging
 
-from celery import Celery  # type: ignore[import-untyped]
+from celery import Celery
 
 from jidou.config import settings
 

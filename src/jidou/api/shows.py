@@ -42,7 +42,7 @@ async def search_shows(query: str, media_type: str = "multi") -> dict[str, Any]:
 
 
 @router.get("/{tmdb_id}")
-async def get_show_details(tmdb_id: int, media_type: str = "movie") -> dict[str, Any]:
+async def get_show_details(tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
     """Get detailed information for a specific show.
 
     Args:
