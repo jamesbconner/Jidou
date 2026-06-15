@@ -73,4 +73,7 @@ def downgrade() -> None:
     op.drop_table("watchlist")
     op.drop_index(op.f("ix_shows_tmdb_id"), table_name="shows")
     op.drop_table("shows")
+    # Drop the shared PostgreSQL enum so that a re-run of `upgrade` does
+    # not fail with "type 'watchliststatus' already exists".
+    op.execute(sa.text("DROP TYPE IF EXISTS watchliststatus"))
     # ### end Alembic commands ###

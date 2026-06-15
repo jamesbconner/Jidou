@@ -86,7 +86,16 @@ class TMDBService:
 
         Returns:
             Dictionary containing trending shows.
+
+        Raises:
+            ValueError: If media_type or time_window are invalid.
         """
+        if media_type not in {"movie", "tv", "multi"}:
+            raise ValueError(
+                f"Invalid media_type: {media_type!r}. Must be 'movie', 'tv', or 'multi'."
+            )
+        if time_window not in {"day", "week"}:
+            raise ValueError(f"Invalid time_window: {time_window!r}. Must be 'day' or 'week'.")
         return await self._request(f"/trending/{media_type}/{time_window}")
 
     async def search(self, query: str, media_type: str = "multi") -> dict[str, Any]:
