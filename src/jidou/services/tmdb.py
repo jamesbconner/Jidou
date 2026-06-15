@@ -119,7 +119,12 @@ class TMDBService:
 
         Returns:
             Dictionary containing show details.
+
+        Raises:
+            ValueError: If media_type is invalid.
         """
+        if media_type not in {"movie", "tv"}:
+            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
         return await self._request(f"/{media_type}/{tmdb_id}")
 
     async def get_recommendations(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
@@ -131,5 +136,10 @@ class TMDBService:
 
         Returns:
             Dictionary containing recommended shows.
+
+        Raises:
+            ValueError: If media_type is invalid.
         """
+        if media_type not in {"movie", "tv"}:
+            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
         return await self._request(f"/{media_type}/{tmdb_id}/recommendations")

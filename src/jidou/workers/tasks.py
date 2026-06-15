@@ -32,4 +32,4 @@ def fetch_trending_shows_task() -> int:
 async def _fetch_trending() -> int:
     """Async helper for the trending shows fetch."""
     result = await tmdb.get_trending(media_type="tv", time_window="day")
-    return len(result.get("results", []))  # type: ignore
+    return len(result.get("results", []))
