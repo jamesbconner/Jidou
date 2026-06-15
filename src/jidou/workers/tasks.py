@@ -14,8 +14,6 @@ from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
-tmdb = TMDBService()
-
 
 @shared_task  # type: ignore
 def fetch_trending_shows_task() -> int:
@@ -46,8 +44,13 @@ async def _fetch_trending() -> int:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # Create a task-local TMDBService so its internal asyncio.Lock
+    # instances (cache, rate_limiter) are bound to this event loop
+    # instead of whatever loop was active at module import time.
+    local_tmdb = TMDBService()
+
     try:
-        result = await tmdb.get_trending(media_type="tv", time_window="day")
+        result = await local_tmdb.get_trending(media_type="tv", time_window="day")
         trending_items = result.get("results", [])
 
         upserted = 0
