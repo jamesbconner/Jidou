@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import datetime
 
 from celery import shared_task
 from sqlalchemy import insert
@@ -72,19 +73,20 @@ async def _fetch_trending() -> int:
                     original_language=item.get("original_language"),
                     cached=True,
                 )
-                stmt = ins.on_conflict_do_update(
+                stmt = ins.on_conflict_do_update(  # type: ignore[attr-defined]
                     index_elements=["tmdb_id"],
                     set_={
-                        "title": ins.excluded.title,
-                        "overview": ins.excluded.overview,
-                        "media_type": ins.excluded.media_type,
-                        "poster_path": ins.excluded.poster_path,
-                        "backdrop_path": ins.excluded.backdrop_path,
-                        "vote_average": ins.excluded.vote_average,
-                        "vote_count": ins.excluded.vote_count,
-                        "release_date": ins.excluded.release_date,
-                        "original_language": ins.excluded.original_language,
-                        "cached": ins.excluded.cached,
+                        "title": ins.excluded.title,  # type: ignore[attr-defined]
+                        "overview": ins.excluded.overview,  # type: ignore[attr-defined]
+                        "media_type": ins.excluded.media_type,  # type: ignore[attr-defined]
+                        "poster_path": ins.excluded.poster_path,  # type: ignore[attr-defined]
+                        "backdrop_path": ins.excluded.backdrop_path,  # type: ignore[attr-defined]
+                        "vote_average": ins.excluded.vote_average,  # type: ignore[attr-defined]
+                        "vote_count": ins.excluded.vote_count,  # type: ignore[attr-defined]
+                        "release_date": ins.excluded.release_date,  # type: ignore[attr-defined]
+                        "original_language": ins.excluded.original_language,  # type: ignore[attr-defined]
+                        "cached": ins.excluded.cached,  # type: ignore[attr-defined]
+                        "updated_at": datetime.utcnow,
                     },
                 )
 
