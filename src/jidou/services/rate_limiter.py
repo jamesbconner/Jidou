@@ -46,11 +46,13 @@ class RateLimiter:
                 wait_time = self._interval - elapsed
                 logger.debug("Rate limiter: waiting %.2fs", wait_time)
                 await asyncio.sleep(wait_time)
-            self._last_call = time.monotonic()
             try:
                 yield
             finally:
-                pass  # lock released automatically; caller's request finishes here
+                # Update after the request completes so the interval is
+                # measured from when the previous request finished, not
+                # when it started.
+                self._last_call = time.monotonic()
 
 
 # Module-level rate limiter instance

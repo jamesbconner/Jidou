@@ -1,10 +1,16 @@
 """Database engine and session management for async SQLAlchemy."""
 
+import logging
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
+from jidou.models.show import Show  # noqa: F401
+from jidou.models.watchlist import WatchlistEntry  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 # Engine created once at startup
 engine = create_async_engine(
@@ -37,16 +43,19 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Create all tables (development only; use Alembic in production)."""
-    async with engine.begin() as conn:
-        # Import models so mapped classes are registered with Base.metadata
-        # before create_all runs.  Without these imports Base.metadata is
-        # empty and `create_all` / Alembic autogenerate never see the tables.
-        from jidou.models import Base
-        from jidou.models.show import Show  # noqa: F401
-        from jidou.models.watchlist import WatchlistEntry  # noqa: F401
+    """Verify database connectivity at startup.
 
-        await conn.run_sync(Base.metadata.create_all)
+    In production, Alembic manages the schema via migration scripts.
+    This function checks that the database is reachable and logs a
+    warning if the connection cannot be established — allowing the
+    app to start in CI / test environments without a live database.
+    """
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection verified")
+    except Exception as exc:
+        logger.warning("Database unavailable at startup: %s", exc)
 
 
 async def close_db() -> None:
