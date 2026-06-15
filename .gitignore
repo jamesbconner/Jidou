@@ -62,3 +62,32 @@ dmypy.json
 
 # OS
 Thumbs.db
+
+# -----------------------------------------------------------
+# Claude Code local settings
+# -----------------------------------------------------------
+.claude/scheduled_tasks.lock
+pr_body.md
+.claude/settings.local.json
+
+# -----------------------------------------------------------
+# Docker
+# -----------------------------------------------------------
+# Docker compose project directories
+docker-data/
+
+# -----------------------------------------------------------
+# Frontend (React/Node)
+# -----------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# npm debug logs
+npm-debug.log*
+
+# -----------------------------------------------------------
+# IDE / Editor (additional)
+# -----------------------------------------------------------
+# Cursor / Bugbot artifacts
+.cursor/

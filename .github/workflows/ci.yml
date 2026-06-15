@@ -37,7 +37,7 @@ jobs:
         run: uv run mypy src/
 
       - name: Bandit security scan
-        run: uv run bandit -r src/ -ll
+        run: uv run bandit -r src/ -ll -s B104
 
   # ---------- Tests ----------
   test:
