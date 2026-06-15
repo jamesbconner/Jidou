@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from celery import shared_task
-from sqlalchemy import select
+from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
@@ -56,39 +56,39 @@ async def _fetch_trending() -> int:
                 if tmdb_id is None:
                     continue
 
-                # Check if show already exists
-                stmt = select(Show).where(Show.tmdb_id == tmdb_id)
-                existing = (await session.execute(stmt)).scalar_one_or_none()
+                # Use ON CONFLICT DO UPDATE (true upsert) to avoid
+                # select-then-insert race conditions when multiple
+                # workers run concurrently.
+                ins = insert(Show).values(
+                    tmdb_id=tmdb_id,
+                    title=item.get("name") or item.get("title", ""),
+                    overview=item.get("overview"),
+                    media_type="tv",
+                    poster_path=item.get("poster_path"),
+                    backdrop_path=item.get("backdrop_path"),
+                    vote_average=item.get("vote_average"),
+                    vote_count=item.get("vote_count") or 0,
+                    release_date=item.get("first_air_date"),
+                    original_language=item.get("original_language"),
+                    cached=True,
+                )
+                stmt = ins.on_conflict_do_update(
+                    index_elements=["tmdb_id"],
+                    set_={
+                        "title": ins.excluded.title,
+                        "overview": ins.excluded.overview,
+                        "media_type": ins.excluded.media_type,
+                        "poster_path": ins.excluded.poster_path,
+                        "backdrop_path": ins.excluded.backdrop_path,
+                        "vote_average": ins.excluded.vote_average,
+                        "vote_count": ins.excluded.vote_count,
+                        "release_date": ins.excluded.release_date,
+                        "original_language": ins.excluded.original_language,
+                        "cached": ins.excluded.cached,
+                    },
+                )
 
-                if existing is not None:
-                    # Update existing show
-                    existing.title = item.get("name") or item.get("title", "")
-                    existing.overview = item.get("overview")
-                    existing.media_type = "tv"
-                    existing.poster_path = item.get("poster_path")
-                    existing.backdrop_path = item.get("backdrop_path")
-                    existing.vote_average = item.get("vote_average")
-                    existing.vote_count = item.get("vote_count", 0)
-                    existing.release_date = item.get("first_air_date")
-                    existing.original_language = item.get("original_language")
-                    existing.cached = True
-                else:
-                    # Insert new show
-                    new_show = Show(
-                        tmdb_id=tmdb_id,
-                        title=item.get("name") or item.get("title", ""),
-                        overview=item.get("overview"),
-                        media_type="tv",
-                        poster_path=item.get("poster_path"),
-                        backdrop_path=item.get("backdrop_path"),
-                        vote_average=item.get("vote_average"),
-                        vote_count=item.get("vote_count", 0),
-                        release_date=item.get("first_air_date"),
-                        original_language=item.get("original_language"),
-                        cached=True,
-                    )
-                    session.add(new_show)
-
+                await session.execute(stmt)
                 upserted += 1
 
             await session.commit()

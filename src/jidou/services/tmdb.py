@@ -107,7 +107,14 @@ class TMDBService:
 
         Returns:
             Dictionary containing search results.
+
+        Raises:
+            ValueError: If media_type is invalid.
         """
+        if media_type not in {"movie", "tv", "multi"}:
+            raise ValueError(
+                f"Invalid media_type: {media_type!r}. Must be 'movie', 'tv', or 'multi'."
+            )
         return await self._request(f"/search/{media_type}", params={"query": query})
 
     async def get_details(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
