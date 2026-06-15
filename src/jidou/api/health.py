@@ -6,6 +6,7 @@ from typing import Any
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from jidou.config import settings
@@ -17,12 +18,12 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-async def health_check() -> dict[str, Any]:
+async def health_check() -> JSONResponse:
     """Check the health of all dependent services.
 
-    Returns:
-        Dictionary with overall status ("healthy" or "degraded") and
-        per-service health details. Always returns HTTP 200.
+    Returns HTTP 200 when all dependencies are healthy, HTTP 503 when
+    one or more are unreachable. Docker and orchestration probes can
+    inspect the HTTP status to determine container health.
     """
     services: dict[str, dict[str, Any]] = {}
     overall_healthy = True
@@ -43,10 +44,14 @@ async def health_check() -> dict[str, Any]:
         try:
             await redis_client.ping()
             services["redis"] = {"status": "healthy"}
+        except Exception as exc:
+            logger.error("Redis health check failed: %s", exc)
+            services["redis"] = {"status": "unhealthy", "error": str(exc)}
+            overall_healthy = False
         finally:
             await redis_client.close()
     except Exception as exc:
-        logger.error("Redis health check failed: %s", exc)
+        logger.error("Redis client creation failed: %s", exc)
         services["redis"] = {"status": "unhealthy", "error": str(exc)}
         overall_healthy = False
 
@@ -55,15 +60,13 @@ async def health_check() -> dict[str, Any]:
         "status": "configured" if settings.tmdb_api_key else "not-configured",
     }
 
-    if not overall_healthy:
-        return {
-            "status": "degraded",
-            "timestamp": datetime.now(UTC).isoformat(),
-            "services": services,
-        }
-
-    return {
-        "status": "healthy",
+    body = {
+        "status": "healthy" if overall_healthy else "degraded",
         "timestamp": datetime.now(UTC).isoformat(),
         "services": services,
     }
+
+    return JSONResponse(
+        content=body,
+        status_code=200 if overall_healthy else 503,
+    )

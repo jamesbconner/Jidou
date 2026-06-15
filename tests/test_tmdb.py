@@ -17,7 +17,7 @@ class TestTMDBService:
     """Test suite for TMDBService."""
 
     @pytest.mark.asyncio
-    async def test_tmdb_service_init(self, tmdb_service) -> None:
+    async def test_tmdb_service_init(self, tmdb_service: TMDBService) -> None:
         """Test service initializes with correct API key."""
         assert tmdb_service.api_key == "test-key"
         assert tmdb_service.base_url.endswith("/3")
@@ -33,7 +33,7 @@ class TestTMDBService:
             await service.get_trending()
 
     @pytest.mark.asyncio
-    async def test_get_trending_calls_request(self, tmdb_service) -> None:
+    async def test_get_trending_calls_request(self, tmdb_service: TMDBService) -> None:
         """Test that get_trending delegates to _request."""
         mock_response = {"results": [], "total_results": 0}
         with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
@@ -44,7 +44,7 @@ class TestTMDBService:
             mock_request.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_calls_request(self, tmdb_service) -> None:
+    async def test_search_calls_request(self, tmdb_service: TMDBService) -> None:
         """Test that search delegates to _request."""
         mock_response = {"results": [], "total_results": 0}
         with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
