@@ -5,8 +5,9 @@ import logging
 
 from celery import shared_task
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from jidou.database import async_session_factory
+from jidou.config import settings
 from jidou.models.show import Show
 from jidou.services.tmdb import TMDBService
 
@@ -33,52 +34,65 @@ def fetch_trending_shows_task() -> int:
 
 
 async def _fetch_trending() -> int:
-    """Fetch trending TV shows from TMDB and upsert them into the database."""
-    result = await tmdb.get_trending(media_type="tv", time_window="day")
-    trending_items = result.get("results", [])
+    """Fetch trending TV shows from TMDB and upsert them into the database.
 
-    upserted = 0
-    async with async_session_factory() as session:
-        for item in trending_items:
-            tmdb_id = item.get("id")
-            if tmdb_id is None:
-                continue
+    Creates its own engine/session so it is independent of the
+    FastAPI process's module-level engine and safe to call inside
+    asyncio.run() without stale-pool errors.
+    """
+    # Build a task-local engine so the connection pool is tied to the
+    # event loop created by asyncio.run() in the caller.
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-            # Check if show already exists
-            stmt = select(Show).where(Show.tmdb_id == tmdb_id)
-            existing = (await session.execute(stmt)).scalar_one_or_none()
+    try:
+        result = await tmdb.get_trending(media_type="tv", time_window="day")
+        trending_items = result.get("results", [])
 
-            if existing is not None:
-                # Update existing show
-                existing.title = item.get("name") or item.get("title", "")
-                existing.overview = item.get("overview")
-                existing.media_type = "tv"
-                existing.poster_path = item.get("poster_path")
-                existing.backdrop_path = item.get("backdrop_path")
-                existing.vote_average = item.get("vote_average")
-                existing.vote_count = item.get("vote_count", 0)
-                existing.release_date = item.get("first_air_date")
-                existing.original_language = item.get("original_language")
-                existing.cached = True
-            else:
-                # Insert new show
-                new_show = Show(
-                    tmdb_id=tmdb_id,
-                    title=item.get("name") or item.get("title", ""),
-                    overview=item.get("overview"),
-                    media_type="tv",
-                    poster_path=item.get("poster_path"),
-                    backdrop_path=item.get("backdrop_path"),
-                    vote_average=item.get("vote_average"),
-                    vote_count=item.get("vote_count", 0),
-                    release_date=item.get("first_air_date"),
-                    original_language=item.get("original_language"),
-                    cached=True,
-                )
-                session.add(new_show)
+        upserted = 0
+        async with session_factory() as session:
+            for item in trending_items:
+                tmdb_id = item.get("id")
+                if tmdb_id is None:
+                    continue
 
-            upserted += 1
+                # Check if show already exists
+                stmt = select(Show).where(Show.tmdb_id == tmdb_id)
+                existing = (await session.execute(stmt)).scalar_one_or_none()
 
-        await session.commit()
+                if existing is not None:
+                    # Update existing show
+                    existing.title = item.get("name") or item.get("title", "")
+                    existing.overview = item.get("overview")
+                    existing.media_type = "tv"
+                    existing.poster_path = item.get("poster_path")
+                    existing.backdrop_path = item.get("backdrop_path")
+                    existing.vote_average = item.get("vote_average")
+                    existing.vote_count = item.get("vote_count", 0)
+                    existing.release_date = item.get("first_air_date")
+                    existing.original_language = item.get("original_language")
+                    existing.cached = True
+                else:
+                    # Insert new show
+                    new_show = Show(
+                        tmdb_id=tmdb_id,
+                        title=item.get("name") or item.get("title", ""),
+                        overview=item.get("overview"),
+                        media_type="tv",
+                        poster_path=item.get("poster_path"),
+                        backdrop_path=item.get("backdrop_path"),
+                        vote_average=item.get("vote_average"),
+                        vote_count=item.get("vote_count", 0),
+                        release_date=item.get("first_air_date"),
+                        original_language=item.get("original_language"),
+                        cached=True,
+                    )
+                    session.add(new_show)
 
-    return upserted
+                upserted += 1
+
+            await session.commit()
+
+        return upserted
+    finally:
+        await engine.dispose()

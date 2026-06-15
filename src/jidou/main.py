@@ -4,8 +4,9 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from jidou.api import health, shows
 from jidou.config import settings
@@ -65,6 +66,16 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, prefix="/api")
     app.include_router(shows.router, prefix="/api")
+
+    # Exception handlers for client errors
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        """Convert ValueError from service layer to 400 Bad Request."""
+        logger.warning("Client error: %s", exc)
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
 
     return app
 

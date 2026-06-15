@@ -12,13 +12,13 @@ tmdb = TMDBService()
 
 @router.get("/trending")
 async def get_trending(
-    media_type: str = "multi",
+    media_type: str = "tv",
     time_window: str = "day",
 ) -> dict[str, Any]:
     """Retrieve trending shows from TMDB.
 
     Args:
-        media_type: Filter by media type ("movie", "tv", or "multi").
+        media_type: Filter by media type ("movie" or "tv").
         time_window: Time window for trending ("day" or "week").
 
     Returns:
