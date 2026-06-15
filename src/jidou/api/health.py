@@ -40,7 +40,7 @@ async def health_check() -> JSONResponse:
 
     # Check Redis
     try:
-        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
+        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
         try:
             await redis_client.ping()
             services["redis"] = {"status": "healthy"}

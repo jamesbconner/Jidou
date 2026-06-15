@@ -120,6 +120,16 @@ disallow_untyped_defs = true
 module = "celery.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "redis.*"
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "redis.asyncio"
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-config", "--strict-markers", "-v"]
