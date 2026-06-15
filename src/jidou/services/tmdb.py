@@ -110,7 +110,7 @@ class TMDBService:
         """
         return await self._request(f"/search/{media_type}", params={"query": query})
 
-    async def get_details(self, tmdb_id: int, media_type: str = "movie") -> dict[str, Any]:
+    async def get_details(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get detailed information for a specific show.
 
         Args:
@@ -122,7 +122,7 @@ class TMDBService:
         """
         return await self._request(f"/{media_type}/{tmdb_id}")
 
-    async def get_recommendations(self, tmdb_id: int, media_type: str = "movie") -> dict[str, Any]:
+    async def get_recommendations(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get recommendations for a show.
 
         Args:

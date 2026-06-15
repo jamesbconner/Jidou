@@ -15,7 +15,7 @@ class Show(TimestampMixin, Base):
     tmdb_id: Mapped[int] = mapped_column(unique=True, index=True)
     title: Mapped[str] = mapped_column(String(500))
     overview: Mapped[str | None] = mapped_column(Text)
-    media_type: Mapped[str] = mapped_column(String(20))  # "movie" or "tv"
+    media_type: Mapped[str] = mapped_column(String(20))  # "tv" or "movie"
     poster_path: Mapped[str | None] = mapped_column(String(500))
     backdrop_path: Mapped[str | None] = mapped_column(String(500))
     vote_average: Mapped[float | None] = mapped_column(Float)
