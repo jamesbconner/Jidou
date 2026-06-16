@@ -36,9 +36,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("celery_task_id"),
     )
-    op.create_index(op.f("ix_background_tasks_celery_task_id"), "background_tasks", ["celery_task_id"], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_background_tasks_celery_task_id"), table_name="background_tasks")
     op.drop_table("background_tasks")
