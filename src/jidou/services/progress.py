@@ -53,7 +53,7 @@ async def update_task_status(
         result_summary: Arbitrary result dict.
 
     Returns:
-        The updated BackgroundTask, or None if not found.
+        The updated BackgroundTask, or None if not found or cancelled.
     """
     stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
@@ -61,6 +61,17 @@ async def update_task_status(
     if task is None:
         logger.warning("BackgroundTask not found for celery_task_id=%s", celery_task_id)
         return None
+
+    # Guard: refuse to update a cancelled task (unless we're reporting failure
+    # after the worker itself detected the cancellation).
+    if (
+        task.status == TaskStatus.CANCELLED.value
+        and status != TaskStatus.CANCELLED
+    ):
+        logger.info(
+            "Refusing to update cancelled task %s to %s", celery_task_id, status
+        )
+        return task
 
     if status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
         from datetime import UTC, datetime
@@ -77,7 +88,7 @@ async def update_task_status(
     if result_summary is not None:
         task.result_summary = result_summary
 
-    await session.flush()
+    await session.commit()
     return task
 
 
@@ -94,6 +105,10 @@ async def create_task_record(
     and the worker are idempotent — the API creates a placeholder immediately,
     and the worker refreshes it when execution begins.
 
+    The upsert preserves the existing ``status`` value so that if the API has
+    already advanced the task to ``RUNNING``, the worker's upsert will not
+    reset it back to ``PENDING``.
+
     Args:
         session: Active database session.
         celery_task_id: The Celery task identifier.
@@ -109,21 +124,23 @@ async def create_task_record(
     stmt = insert(BackgroundTask).values(
         celery_task_id=celery_task_id,
         task_type=task_type,
-        status=TaskStatus.PENDING,
+        status=TaskStatus.PENDING.value,
         progress_total=progress_total,
         dry_run=dry_run,
     )
+    # On conflict, keep the existing status so that RUNNING is not overwritten
+    # by PENDING when the worker upserts after the API already started the task.
     stmt = stmt.on_conflict_do_update(  # type: ignore[attr-defined]
         index_elements=["celery_task_id"],
         set_={
             "task_type": task_type,
-            "status": TaskStatus.PENDING,
+            "status": BackgroundTask.status,  # keep existing status
             "progress_total": progress_total,
             "dry_run": dry_run,
         },
     )
     await session.execute(stmt)
-    await session.flush()
+    await session.commit()
 
     # Fetch the row to return
     result = await session.execute(

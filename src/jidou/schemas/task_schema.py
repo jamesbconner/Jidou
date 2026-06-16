@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from jidou.models.task import TaskStatus
 
@@ -24,6 +24,19 @@ class TaskRead(BaseModel):
     created_at: datetime
     completed_at: datetime | None
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def _validate_status(cls, value: str) -> TaskStatus:
+        """Convert raw DB string to TaskStatus enum.
+
+        Handles the case where the database contains a status value
+        that is not a recognized enum member (e.g., stale data).
+        """
+        try:
+            return TaskStatus(value)
+        except ValueError:
+            return TaskStatus.PENDING
+
 
 class TaskProgress(BaseModel):
     """Slim progress snapshot for WebSocket messages."""
@@ -35,6 +48,15 @@ class TaskProgress(BaseModel):
     progress_current: int
     progress_total: int
     progress_message: str | None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _validate_status(cls, value: str) -> TaskStatus:
+        """Convert raw DB string to TaskStatus enum."""
+        try:
+            return TaskStatus(value)
+        except ValueError:
+            return TaskStatus.PENDING
 
 
 class TaskList(BaseModel):
@@ -50,6 +72,15 @@ class TaskList(BaseModel):
     progress_message: str | None
     created_at: datetime
     completed_at: datetime | None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _validate_status(cls, value: str) -> TaskStatus:
+        """Convert raw DB string to TaskStatus enum."""
+        try:
+            return TaskStatus(value)
+        except ValueError:
+            return TaskStatus.PENDING
 
 
 class TaskTrigger(BaseModel):

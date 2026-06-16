@@ -29,27 +29,11 @@ celery_app.conf.update(
     task_time_limit=3600,  # Hard timeout: 1 hour
     task_soft_time_limit=3000,  # Soft timeout: 50 minutes
     task_default_queue="jidou",
-    task_routes={
-        "jidou.workers.download_tasks.*": {"queue": "jidou.download"},
-        "jidou.workers.scan_tasks.*": {"queue": "jidou.scan"},
-        "jidou.workers.match_tasks.*": {"queue": "jidou.match"},
-        "jidou.workers.sync_tasks.*": {"queue": "jidou.sync"},
-    },
     worker_max_tasks_per_child=100,
-)
-
-# Auto-discover tasks — explicit include because modules are named
-# *_tasks.py instead of the conventional tasks.py
-celery_app.autodiscover_tasks(
-    ["jidou.workers"],
-    related_name=None,
-    force=True,
-)
-celery_app.conf.update(
     include=[
         "jidou.workers.download_tasks",
         "jidou.workers.scan_tasks",
         "jidou.workers.match_tasks",
         "jidou.workers.sync_tasks",
-    ]
+    ],
 )
