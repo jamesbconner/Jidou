@@ -69,6 +69,20 @@ async def cancel_task(
     task.progress_message = "Cancelled by user"
     await db_session.commit()
 
+    # Notify WebSocket clients about the cancellation
+    from jidou.services.progress import emit_progress
+
+    await emit_progress(
+        {
+            "celery_task_id": task.celery_task_id,
+            "type": "status",
+            "data": {
+                "status": TaskStatus.CANCELLED.value,
+                "message": "Cancelled by user",
+            },
+        }
+    )
+
     return task
 
 

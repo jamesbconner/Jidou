@@ -105,13 +105,13 @@ inclusion: always
   - Implement shared capabilities (database access, SFTP, external APIs, LLM providers) as reusable service classes.
   - Keep services focused and stateless where possible; configuration is passed in at construction time or via a context object.
 
-- **Context Objects:**  
+- **Context Objects:**
   Use a context object to hold:
-  - Configuration  
-  - Environment paths  
-  - Logger  
-  - Shared service instances  
-  - Operational flags such as dry run or verbosity  
+  - Configuration
+  - Environment paths
+  - Logger
+  - Shared service instances
+  - Operational flags such as dry run or verbosity
   Pass context explicitly rather than using global state.
 
 - **Orchestration:**

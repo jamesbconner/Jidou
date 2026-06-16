@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
-from jidou.services.progress import create_task_record, emit_progress, update_task_status
+from jidou.services.progress import (
+    TaskCancelledError,
+    check_task_cancelled,
+    create_task_record,
+    emit_progress,
+    update_task_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +55,7 @@ async def _sync_all(
             )
 
             # Phase 1: Scan
+            await check_task_cancelled(session, celery_task_id)
             await emit_progress(
                 {
                     "celery_task_id": celery_task_id,
@@ -70,6 +77,7 @@ async def _sync_all(
             await asyncio.sleep(0.1)  # Simulate work
 
             # Phase 2: Download
+            await check_task_cancelled(session, celery_task_id)
             await emit_progress(
                 {
                     "celery_task_id": celery_task_id,
@@ -91,6 +99,7 @@ async def _sync_all(
             await asyncio.sleep(0.1)  # Simulate work
 
             # Phase 3: Match
+            await check_task_cancelled(session, celery_task_id)
             await emit_progress(
                 {
                     "celery_task_id": celery_task_id,
@@ -126,6 +135,16 @@ async def _sync_all(
 
         return celery_task_id
 
+    except TaskCancelledError:
+        logger.info("Sync task cancelled")
+        async with session_factory() as session:
+            await update_task_status(
+                session,
+                celery_task_id,
+                TaskStatus.CANCELLED,
+                progress_message="Task cancelled",
+            )
+        raise
     except Exception as exc:
         logger.exception("Sync task failed")
         async with session_factory() as session:

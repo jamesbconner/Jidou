@@ -21,25 +21,32 @@ class PubSubSubscriber:
         """Initialize the subscriber."""
         self._redis: aioredis.Redis | None = None
         self._pubsub: aioredis.client.PubSub | None = None
+        self._listen_task: asyncio.Task[None] | None = None
         self._running = False
 
-    async def start(self) -> asyncio.Task[None]:
+    async def start(self) -> None:
         """Start the subscriber loop.
 
-        Returns:
-            The background ``asyncio.Task`` running the listen loop so the
-            application lifespan can continue starting up.
+        The listen task is stored internally so ``stop()`` can cancel it
+        cleanly on shutdown.
         """
         self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         self._pubsub = self._redis.pubsub()
         await self._pubsub.subscribe(REDIS_CHANNEL)
         self._running = True
+        self._listen_task = asyncio.create_task(self._listen(), name="pubsub-listen")
         logger.info("PubSub subscriber started on channel %s", REDIS_CHANNEL)
-        return asyncio.create_task(self._listen())
 
     async def stop(self) -> None:
-        """Stop the subscriber loop."""
+        """Stop the subscriber loop and cancel the background listen task."""
         self._running = False
+        if self._listen_task is not None:
+            self._listen_task.cancel()
+            try:
+                await self._listen_task
+            except asyncio.CancelledError:
+                pass
+            self._listen_task = None
         if self._pubsub is not None:
             await self._pubsub.unsubscribe(REDIS_CHANNEL)
         if self._redis is not None:

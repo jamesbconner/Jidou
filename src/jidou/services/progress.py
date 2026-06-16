@@ -92,6 +92,39 @@ async def update_task_status(
     return task
 
 
+async def check_task_cancelled(
+    session: AsyncSession,
+    celery_task_id: str,
+) -> None:
+    """Raise if the task has been cancelled.
+
+    Call this check at each iteration of a long-running worker loop so the
+    worker can stop early when the user cancels.
+
+    Args:
+        session: Active database session.
+        celery_task_id: Celery task identifier.
+
+    Raises:
+        TaskCancelledError: When the task status is ``CANCELLED``.
+    """
+    stmt = select(BackgroundTask).where(
+        BackgroundTask.celery_task_id == celery_task_id
+    )
+    result = await session.execute(stmt)
+    task = result.scalar_one_or_none()
+
+    if task is None:
+        return
+
+    if task.status == TaskStatus.CANCELLED.value:
+        raise TaskCancelledError(f"Task {celery_task_id} was cancelled")
+
+
+class TaskCancelledError(Exception):
+    """Raised when a running task detects that it has been cancelled."""
+
+
 async def create_task_record(
     session: AsyncSession,
     celery_task_id: str,

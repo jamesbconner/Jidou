@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
-from jidou.services.progress import create_task_record, emit_progress, update_task_status
+from jidou.services.progress import (
+    TaskCancelledError,
+    check_task_cancelled,
+    create_task_record,
+    emit_progress,
+    update_task_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +66,9 @@ async def _scan_remote(
             )
 
             for i in range(1, total_dirs + 1):
+                # Check whether the task was cancelled
+                await check_task_cancelled(session, celery_task_id)
+
                 await emit_progress(
                     {
                         "celery_task_id": celery_task_id,
@@ -95,6 +104,16 @@ async def _scan_remote(
 
         return celery_task_id
 
+    except TaskCancelledError:
+        logger.info("Scan task cancelled")
+        async with session_factory() as session:
+            await update_task_status(
+                session,
+                celery_task_id,
+                TaskStatus.CANCELLED,
+                progress_message="Task cancelled",
+            )
+        raise
     except Exception as exc:
         logger.exception("Scan task failed")
         async with session_factory() as session:
