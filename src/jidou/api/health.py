@@ -49,7 +49,7 @@ async def health_check() -> JSONResponse:
             services["redis"] = {"status": "unhealthy", "error": str(exc)}
             overall_healthy = False
         finally:
-            await redis_client.close()
+            await redis_client.aclose()
     except Exception as exc:
         logger.error("Redis client creation failed: %s", exc)
         services["redis"] = {"status": "unhealthy", "error": str(exc)}

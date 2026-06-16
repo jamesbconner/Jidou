@@ -29,7 +29,7 @@ async def emit_progress(message: dict[str, object]) -> None:
     except Exception as exc:
         logger.warning("Failed to emit progress: %s", exc)
     finally:
-        await redis_client.close()
+        await redis_client.aclose()
 
 
 async def update_task_status(
@@ -88,7 +88,11 @@ async def create_task_record(
     progress_total: int = 0,
     dry_run: bool = False,
 ) -> BackgroundTask:
-    """Create a new BackgroundTask row.
+    """Create or refresh a BackgroundTask row.
+
+    Uses upsert on ``celery_task_id`` so that calls from both the API trigger
+    and the worker are idempotent — the API creates a placeholder immediately,
+    and the worker refreshes it when execution begins.
 
     Args:
         session: Active database session.
@@ -98,15 +102,31 @@ async def create_task_record(
         dry_run: Whether this is a dry-run.
 
     Returns:
-        The newly created BackgroundTask.
+        The BackgroundTask row.
     """
-    task = BackgroundTask(
+    from sqlalchemy import insert
+
+    stmt = insert(BackgroundTask).values(
         celery_task_id=celery_task_id,
         task_type=task_type,
         status=TaskStatus.PENDING,
         progress_total=progress_total,
         dry_run=dry_run,
     )
-    session.add(task)
+    stmt = stmt.on_conflict_do_update(  # type: ignore[attr-defined]
+        index_elements=["celery_task_id"],
+        set_={
+            "task_type": task_type,
+            "status": TaskStatus.PENDING,
+            "progress_total": progress_total,
+            "dry_run": dry_run,
+        },
+    )
+    await session.execute(stmt)
     await session.flush()
-    return task
+
+    # Fetch the row to return
+    result = await session.execute(
+        select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+    )
+    return result.scalar_one()

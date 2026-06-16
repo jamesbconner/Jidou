@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from jidou.api import health, shows
 from jidou.api.routes import tasks
-from jidou.api.websocket import router as ws_router
+from jidou.api.websocket import ws_router
 from jidou.config import settings
 from jidou.database import close_db, init_db
 from jidou.services.pubsub_subscriber import pubsub_subscriber

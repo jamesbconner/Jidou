@@ -1,5 +1,6 @@
 """Redis PubSub subscriber that bridges task progress to WebSocket clients."""
 
+import asyncio
 import json
 import logging
 
@@ -22,14 +23,19 @@ class PubSubSubscriber:
         self._pubsub: aioredis.client.PubSub | None = None
         self._running = False
 
-    async def start(self) -> None:
-        """Start the subscriber loop."""
+    async def start(self) -> asyncio.Task[None]:
+        """Start the subscriber loop.
+
+        Returns:
+            The background ``asyncio.Task`` running the listen loop so the
+            application lifespan can continue starting up.
+        """
         self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         self._pubsub = self._redis.pubsub()
         await self._pubsub.subscribe(REDIS_CHANNEL)
         self._running = True
         logger.info("PubSub subscriber started on channel %s", REDIS_CHANNEL)
-        await self._listen()
+        return asyncio.create_task(self._listen())
 
     async def stop(self) -> None:
         """Stop the subscriber loop."""
@@ -37,7 +43,7 @@ class PubSubSubscriber:
         if self._pubsub is not None:
             await self._pubsub.unsubscribe(REDIS_CHANNEL)
         if self._redis is not None:
-            await self._redis.close()
+            await self._redis.aclose()
         logger.info("PubSub subscriber stopped")
 
     async def _listen(self) -> None:

@@ -38,5 +38,18 @@ celery_app.conf.update(
     worker_max_tasks_per_child=100,
 )
 
-# Auto-discover tasks
-celery_app.autodiscover_tasks(["jidou.workers"])
+# Auto-discover tasks — explicit include because modules are named
+# *_tasks.py instead of the conventional tasks.py
+celery_app.autodiscover_tasks(
+    ["jidou.workers"],
+    related_name=None,
+    force=True,
+)
+celery_app.conf.update(
+    include=[
+        "jidou.workers.download_tasks",
+        "jidou.workers.scan_tasks",
+        "jidou.workers.match_tasks",
+        "jidou.workers.sync_tasks",
+    ]
+)

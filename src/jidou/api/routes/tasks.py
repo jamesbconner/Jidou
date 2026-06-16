@@ -105,14 +105,15 @@ async def trigger_task(
     else:
         raise HTTPException(status_code=400, detail="Task dispatch not implemented")
 
-    # Create a placeholder record (updated by the task itself)
-    new_task = BackgroundTask(
-        celery_task_id=result.id,
-        task_type=payload.task_type,
-        status=TaskStatus.PENDING.value,
+    # Create a placeholder record; the worker will upsert when it starts.
+    from jidou.services.progress import create_task_record
+
+    new_task = await create_task_record(
+        db_session,
+        result.id,
+        payload.task_type,
         dry_run=payload.dry_run,
     )
-    db_session.add(new_task)
     await db_session.commit()
 
     return new_task

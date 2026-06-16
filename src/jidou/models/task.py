@@ -1,7 +1,7 @@
 """Background task model for tracking Celery task progress."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from jidou.models.base import Base, TimestampMixin
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Status of a background task."""
 
     PENDING = "pending"
