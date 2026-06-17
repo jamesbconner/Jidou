@@ -137,6 +137,12 @@ async def rematch_file(
         match_files_task.apply_async(args=[file.show_id, False])
     except Exception as exc:
         logger.exception("Failed to dispatch match task for file %d", file_id)
+        # Roll the file back to ERROR so it is not left as PENDING with no
+        # queued job — the caller can retry once the broker is available.
+        file.status = FileStatus.ERROR
+        file.error_message = "Failed to dispatch matching task to broker"
+        await db_session.flush()
+        await db_session.commit()
         raise HTTPException(
             status_code=503,
             detail="Failed to dispatch matching task to broker",

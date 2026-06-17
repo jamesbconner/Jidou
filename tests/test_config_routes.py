@@ -30,6 +30,34 @@ def test_get_config_redacts_db_password() -> None:
         assert "***" in db_url
 
 
+def test_get_config_redacts_redis_password() -> None:
+    """GET /api/config must redact any password embedded in redis_url."""
+    with patch("jidou.api.routes.config.settings") as mock_settings:
+        mock_settings.app_name = "Jidou"
+        mock_settings.debug = False
+        mock_settings.database_url = "postgresql+asyncpg://user:secret@localhost/db"
+        mock_settings.redis_url = "redis://:redis_secret@localhost:6379/0"
+        mock_settings.tmdb_api_key = None
+        mock_settings.tmdb_base_url = "https://api.themoviedb.org/3"
+        mock_settings.tmdb_rate_limit_per_second = 0.5
+        mock_settings.tmdb_cache_ttl = 86400
+        mock_settings.allowed_origins = []
+        mock_settings.sftp_host = None
+        mock_settings.sftp_port = 22
+        mock_settings.sftp_username = None
+        mock_settings.sftp_remote_base_path = "/"
+        mock_settings.llm_provider = "none"
+        mock_settings.llm_model = ""
+        mock_settings.llm_base_url = ""
+        mock_settings.llm_cache_ttl = 3600
+        response = TestClient(app).get("/api/config")
+    assert response.status_code == 200
+    body = response.json()
+    redis_url = body.get("redis_url", "")
+    assert "redis_secret" not in redis_url
+    assert "***" in redis_url
+
+
 # ---------------------------------------------------------------------------
 # POST /api/config/test/tmdb
 # ---------------------------------------------------------------------------

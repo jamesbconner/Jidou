@@ -27,7 +27,7 @@ async def get_config() -> dict[str, Any]:
         "app_name": settings.app_name,
         "debug": settings.debug,
         "database_url": _redact(settings.database_url),
-        "redis_url": settings.redis_url or None,
+        "redis_url": _redact(settings.redis_url) if settings.redis_url else None,
         "tmdb_api_key_set": bool(settings.tmdb_api_key),
         "tmdb_base_url": settings.tmdb_base_url,
         "tmdb_rate_limit_per_second": settings.tmdb_rate_limit_per_second,

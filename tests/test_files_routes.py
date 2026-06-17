@@ -172,6 +172,8 @@ def test_rematch_file_returns_503_when_broker_unavailable() -> None:
         with patch.dict(sys.modules, {"jidou.workers.match_tasks": None}):  # type: ignore[dict-item]
             response = TestClient(app).post("/api/files/1/match", json={"method": "auto"})
         assert response.status_code == 503
+        # Bug 4 regression: file must be ERROR, not stuck as PENDING
+        assert f.status == FileStatus.ERROR
     finally:
         app.dependency_overrides.clear()
 
