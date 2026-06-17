@@ -5,7 +5,6 @@ import logging
 
 import redis.asyncio as aioredis
 from sqlalchemy import insert, select
-from sqlalchemy.sql.dml import excluded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -137,13 +136,9 @@ async def create_task_record(
 ) -> BackgroundTask:
     """Create or refresh a BackgroundTask row.
 
-    Uses upsert on ``celery_task_id`` so that calls from both the API trigger
-    and the worker are idempotent — the API creates a placeholder immediately,
-    and the worker refreshes it when execution begins.
-
-    The upsert preserves the existing ``status`` value so that if the API has
-    already advanced the task to ``RUNNING``, the worker's upsert will not
-    reset it back to ``PENDING``.
+    Idempotent: the API creates a placeholder immediately, and the worker
+    refreshes it when execution begins.  The existing ``status`` is preserved
+    so that a task already advanced to ``RUNNING`` is not reset to ``PENDING``.
 
     Args:
         session: Active database session.
@@ -155,35 +150,28 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    from sqlalchemy import case
+    stmt = select(BackgroundTask).where(
+        BackgroundTask.celery_task_id == celery_task_id
+    )
+    result = await session.execute(stmt)
+    task = result.scalar_one_or_none()
 
-    ins_stmt = insert(BackgroundTask).values(
-        celery_task_id=celery_task_id,
-        task_type=task_type,
-        status=TaskStatus.PENDING.value,
-        progress_total=progress_total,
-        dry_run=dry_run,
-    )
-    # On conflict, keep the existing status so that RUNNING is not overwritten
-    # by PENDING when the worker upserts after the API already started the task.
-    # Also preserve progress_total when the worker has already set a non-zero value.
-    stmt = ins_stmt.on_conflict_do_update(  # type: ignore[attr-defined]
-        index_elements=["celery_task_id"],
-        set_={
-            "task_type": task_type,
-            "status": BackgroundTask.status,  # keep existing status
-            "progress_total": case(
-                (BackgroundTask.progress_total > 0, BackgroundTask.progress_total),
-                else_=excluded(BackgroundTask.progress_total),
-            ),
-            "dry_run": dry_run,
-        },
-    )
-    await session.execute(stmt)
+    if task is None:
+        task = BackgroundTask(
+            celery_task_id=celery_task_id,
+            task_type=task_type,
+            status=TaskStatus.PENDING.value,
+            progress_total=progress_total,
+            dry_run=dry_run,
+        )
+        session.add(task)
+    else:
+        task.task_type = task_type
+        # Preserve progress_total when the worker has already set a non-zero value.
+        if task.progress_total <= 0:
+            task.progress_total = progress_total
+        task.dry_run = dry_run
+
     await session.commit()
-
-    # Fetch the row to return
-    result = await session.execute(
-        select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
-    )
-    return result.scalar_one()
+    await session.refresh(task)
+    return task

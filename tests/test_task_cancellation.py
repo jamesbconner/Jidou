@@ -89,6 +89,7 @@ async def test_check_task_cancelled_raises_when_cancelled():
     )
 
     mock_session = AsyncMock()
+    mock_session.expire_all = MagicMock()
     mock_task = MagicMock(spec=BackgroundTask)
     mock_task.status = TaskStatus.CANCELLED.value
 
@@ -112,6 +113,7 @@ async def test_check_task_cancelled_passes_when_running():
     from jidou.services.progress import check_task_cancelled
 
     mock_session = AsyncMock()
+    mock_session.expire_all = MagicMock()
     mock_task = MagicMock(spec=BackgroundTask)
     mock_task.status = TaskStatus.RUNNING.value
 
@@ -134,6 +136,7 @@ async def test_check_task_cancelled_passes_when_no_task():
     from jidou.services.progress import check_task_cancelled
 
     mock_session = AsyncMock()
+    mock_session.expire_all = MagicMock()
 
     async def mock_execute_none(stmt):
         class Result:
