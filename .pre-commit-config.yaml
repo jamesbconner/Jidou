@@ -26,5 +26,6 @@ repos:
     rev: 1.7.9
     hooks:
       - id: bandit
-        args: ["-r", "src/", "-ll", "--format", "screen"]
+        args: ["-ll", "--format", "screen"]
         additional_dependencies: [".[toml]"]
+        exclude: ^(tests|alembic|make\.py)/

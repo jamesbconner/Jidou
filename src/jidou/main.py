@@ -9,8 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from jidou.api import health, shows
+from jidou.api.routes import tasks
+from jidou.api.websocket import ws_router
 from jidou.config import settings
 from jidou.database import close_db, init_db
+from jidou.services.pubsub_subscriber import pubsub_subscriber
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +37,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         except Exception as exc:
             logger.warning("Database initialization skipped (DB unavailable): %s", exc)
 
+    # Start Redis PubSub subscriber for WebSocket progress
+    try:
+        await pubsub_subscriber.start()
+    except Exception as exc:
+        logger.warning("PubSub subscriber failed to start: %s", exc)
+
     yield
 
     # Shutdown
+    await pubsub_subscriber.stop()
     await close_db()
     logger.info("Database connections closed")
 
@@ -66,6 +76,8 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, prefix="/api")
     app.include_router(shows.router, prefix="/api")
+    app.include_router(tasks.router, prefix="/api")
+    app.include_router(ws_router)
 
     # Exception handlers for client errors
     @app.exception_handler(ValueError)

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Jidou project"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 authors = [
     { name = "Jidou Team" },
 ]
@@ -120,16 +120,26 @@ disallow_untyped_defs = true
 module = "celery.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "redis.*"
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "redis.asyncio"
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-config", "--strict-markers", "-v"]
 asyncio_mode = "auto"
 filterwarnings = [
     "error",
-    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
     "ignore:websockets.*is deprecated:DeprecationWarning",
     "ignore:unclosed:ResourceWarning",
     "ignore:loop is closed:ResourceWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 
 [tool.coverage.run]

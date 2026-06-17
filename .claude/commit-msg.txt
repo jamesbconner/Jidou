@@ -1,0 +1,15 @@
+feat: add real-time task infrastructure with Celery tasks and WebSockets
+
+- Add BackgroundTask model for tracking Celery tasks in the database
+- Add tasks API routes (list, get, cancel, trigger)
+- Add WebSocket endpoint for real-time task progress
+- Add Redis PubSub subscriber bridging Redis → WebSocket
+- Add progress emission helper for workers
+- Add four Celery task types: download, scan, match, sync
+- Harden Celery configuration with timeouts and retry settings
+- Add Pydantic schemas for task validation
+- Add tests for WebSocket task progress
+- Fix mypy type errors across all new files
+- Clean up unused pyproject.toml mypy overrides
+
+Co-Authored-By: Claude <noreply@anthropic.com>

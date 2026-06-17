@@ -100,6 +100,7 @@ services:
     profiles:
       - default
       - backend
+      - frontend
 
   # ----------------------------------------------------------
   # Celery Worker
@@ -135,6 +136,7 @@ services:
     profiles:
       - default
       - backend
+      - frontend
 
   # ----------------------------------------------------------
   # React Frontend (served via Nginx)

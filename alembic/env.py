@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from jidou.models import Base
 from jidou.models.show import Show  # noqa: F401
+from jidou.models.task import BackgroundTask  # noqa: F401
 from jidou.models.watchlist import WatchlistEntry  # noqa: F401
 
 # this is the Alembic Config object, which provides

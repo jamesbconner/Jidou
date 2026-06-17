@@ -39,7 +39,7 @@ RUN useradd --create-home --shell /bin/bash appuser && \
 USER appuser
 
 # Run Celery worker with 4 concurrent tasks
-CMD ["celery", "-A", "jidou.workers.celery_app", "worker", \
+CMD ["celery", "-A", "jidou.workers.celery_app:celery_app", "worker", \
      "--loglevel=info", \
      "--concurrency=4", \
-     "--prefetch-multiplier=1"]
+     "--prefetch-multiplier", "1"]

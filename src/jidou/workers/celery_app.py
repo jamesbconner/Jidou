@@ -25,7 +25,16 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    task_time_limit=3600,  # Hard timeout: 1 hour
+    task_soft_time_limit=3000,  # Soft timeout: 50 minutes
+    task_default_queue="jidou",
+    worker_max_tasks_per_child=100,
+    include=[
+        "jidou.workers.tasks",
+        "jidou.workers.download_tasks",
+        "jidou.workers.scan_tasks",
+        "jidou.workers.match_tasks",
+        "jidou.workers.sync_tasks",
+    ],
 )
-
-# Auto-discover tasks
-celery_app.autodiscover_tasks(["jidou.workers"])

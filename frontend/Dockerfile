@@ -8,10 +8,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files first for better caching
-COPY package.json package-lock.json ./
+COPY package.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (tolerant of missing lockfile during development)
+RUN npm install --ignore-scripts
 
 # Copy source code
 COPY . .

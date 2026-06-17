@@ -2,10 +2,9 @@
 
 import asyncio
 import logging
-from datetime import datetime
 
 from celery import shared_task
-from sqlalchemy import insert
+from sqlalchemy import func, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
@@ -89,7 +88,7 @@ async def _fetch_trending() -> int:
                         "release_date": ins.excluded.release_date,  # type: ignore[attr-defined]
                         "original_language": ins.excluded.original_language,  # type: ignore[attr-defined]
                         "cached": ins.excluded.cached,  # type: ignore[attr-defined]
-                        "updated_at": datetime.utcnow,
+                        "updated_at": func.now(),
                     },
                 )
 
