@@ -40,6 +40,22 @@ class Settings(BaseSettings):
             return [o.strip() for o in value.split(",") if o.strip()]
         return value
 
+    # SFTP
+    sftp_host: str | None = None
+    sftp_port: int = 22
+    sftp_username: str | None = None
+    sftp_password: str | None = None
+    sftp_key_path: str | None = None
+    sftp_remote_base_path: str = "/"
+
+    # LLM
+    llm_provider: str = "none"
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_cache_ttl: int = Field(default=3600, ge=60)
+    llm_timeout: float = Field(default=30.0, ge=1.0)
+
     # Celery
     celery_broker_url: str | None = None
     celery_result_backend: str | None = None
