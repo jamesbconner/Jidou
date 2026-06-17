@@ -53,35 +53,42 @@ class PubSubSubscriber:
         logger.info("PubSub subscriber stopped")
 
     async def _listen(self) -> None:
-        """Blockingly listen for messages while running."""
+        """Blockingly listen for messages while running.
+
+        The outer loop ensures that an unexpected exception does not kill the
+        subscriber permanently — after logging the error we reconnect and
+        continue listening.
+        """
         if self._pubsub is None:
             logger.error("PubSub not initialized")
             return
-        try:
-            while self._running:
-                message = await self._pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=1.0,
-                )
-                if message is None:
-                    continue
-                if message["type"] != "message":
-                    continue
+        while self._running:
+            try:
+                while self._running:
+                    message = await self._pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=1.0,
+                    )
+                    if message is None:
+                        continue
+                    if message["type"] != "message":
+                        continue
 
-                try:
-                    data = json.loads(message["data"])
-                except json.JSONDecodeError:
-                    logger.warning("Invalid JSON in PubSub message: %s", message["data"])
-                    continue
+                    try:
+                        data = json.loads(message["data"])
+                    except json.JSONDecodeError:
+                        logger.warning("Invalid JSON in PubSub message: %s", message["data"])
+                        continue
 
-                celery_task_id = data.get("celery_task_id")
-                if celery_task_id is None:
-                    logger.warning("PubSub message missing celery_task_id")
-                    continue
+                    celery_task_id = data.get("celery_task_id")
+                    if celery_task_id is None:
+                        logger.warning("PubSub message missing celery_task_id")
+                        continue
 
-                await manager.broadcast_to_task(celery_task_id, data)
-        except Exception:
-            logger.exception("PubSub subscriber loop failed")
+                    await manager.broadcast_to_task(celery_task_id, data)
+            except Exception:
+                logger.exception("PubSub subscriber loop failed — retrying in 5 seconds")
+                await asyncio.sleep(5)
 
 
 # Module-level instance for lifespan injection

@@ -65,8 +65,11 @@ async def cancel_task(
     # Revoke the Celery task
     celery_app.control.revoke(task.celery_task_id, terminate=True)
 
+    from datetime import UTC, datetime
+
     task.status = TaskStatus.CANCELLED.value
     task.progress_message = "Cancelled by user"
+    task.completed_at = datetime.now(UTC)
     await db_session.commit()
 
     # Notify WebSocket clients about the cancellation

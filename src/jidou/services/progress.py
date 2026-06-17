@@ -55,6 +55,11 @@ async def update_task_status(
     Returns:
         The updated BackgroundTask, or None if not found or cancelled.
     """
+    # Expire to force a fresh read — the cancel endpoint updates the row via
+    # a different connection and the identity map would otherwise return stale
+    # data still marked "running".
+    await session.expire_all()
+
     stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
@@ -103,6 +108,10 @@ async def check_task_cancelled(
     Raises:
         TaskCancelledError: When the task status is ``CANCELLED``.
     """
+    # Expire to force a fresh read — the cancel endpoint updates the row via
+    # a different connection.
+    await session.expire_all()
+
     stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
@@ -145,7 +154,7 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    from sqlalchemy import insert
+    from sqlalchemy import case, excluded, insert
 
     stmt = insert(BackgroundTask).values(
         celery_task_id=celery_task_id,
@@ -156,12 +165,16 @@ async def create_task_record(
     )
     # On conflict, keep the existing status so that RUNNING is not overwritten
     # by PENDING when the worker upserts after the API already started the task.
+    # Also preserve progress_total when the worker has already set a non-zero value.
     stmt = stmt.on_conflict_do_update(  # type: ignore[attr-defined]
         index_elements=["celery_task_id"],
         set_={
             "task_type": task_type,
             "status": BackgroundTask.status,  # keep existing status
-            "progress_total": progress_total,
+            "progress_total": case(
+                (BackgroundTask.progress_total > 0, BackgroundTask.progress_total),
+                else_=excluded(BackgroundTask.progress_total),
+            ),
             "dry_run": dry_run,
         },
     )

@@ -133,6 +133,20 @@ async def _sync_all(
                 },
             )
 
+            # Notify WebSocket clients that the task finished successfully
+            await emit_progress(
+                {
+                    "celery_task_id": celery_task_id,
+                    "type": "complete",
+                    "data": {
+                        "summary": {
+                            "phases_completed": 3,
+                            "dry_run": dry_run,
+                        },
+                    },
+                }
+            )
+
         return celery_task_id
 
     except TaskCancelledError:
@@ -144,6 +158,13 @@ async def _sync_all(
                 TaskStatus.CANCELLED,
                 progress_message="Task cancelled",
             )
+            await emit_progress(
+                {
+                    "celery_task_id": celery_task_id,
+                    "type": "error",
+                    "data": {"error": "Task cancelled"},
+                }
+            )
         raise
     except Exception as exc:
         logger.exception("Sync task failed")
@@ -153,6 +174,13 @@ async def _sync_all(
                 celery_task_id,
                 TaskStatus.FAILED,
                 progress_message=str(exc),
+            )
+            await emit_progress(
+                {
+                    "celery_task_id": celery_task_id,
+                    "type": "error",
+                    "data": {"error": str(exc)},
+                }
             )
         raise
     finally:
