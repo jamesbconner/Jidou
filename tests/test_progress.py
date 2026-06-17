@@ -38,22 +38,23 @@ def _make_mock_session(task: BackgroundTask | None) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_update_task_status_cancelled_guard() -> None:
-    """A CANCELLED task must not be overwritten by a RUNNING update."""
-    task = MagicMock(spec=BackgroundTask)
-    task.status = TaskStatus.CANCELLED.value
+async def test_update_task_status_terminal_guard_blocks_regression() -> None:
+    """No terminal task (CANCELLED/COMPLETED/FAILED) may revert to a non-terminal state."""
+    for terminal_status in (TaskStatus.CANCELLED, TaskStatus.COMPLETED, TaskStatus.FAILED):
+        task = MagicMock(spec=BackgroundTask)
+        task.status = terminal_status.value
 
-    session = _make_mock_session(task)
-    result = await update_task_status(session, "tid", TaskStatus.RUNNING)
+        session = _make_mock_session(task)
+        result = await update_task_status(session, "tid", TaskStatus.RUNNING)
 
-    assert result is task
-    assert task.status == TaskStatus.CANCELLED.value
-    session.commit.assert_not_called()
+        assert result is task
+        assert task.status == terminal_status.value
+        session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_update_task_status_cancelled_allows_self_update() -> None:
-    """Updating a CANCELLED task to CANCELLED must succeed (worker cleanup path)."""
+async def test_update_task_status_terminal_allows_terminal_transition() -> None:
+    """Terminal→terminal transitions must be allowed (worker cleanup path)."""
     task = MagicMock(spec=BackgroundTask)
     task.status = TaskStatus.CANCELLED.value
 
