@@ -4,7 +4,7 @@ import json
 import logging
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import excluded, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -58,7 +58,7 @@ async def update_task_status(
     # Expire to force a fresh read — the cancel endpoint updates the row via
     # a different connection and the identity map would otherwise return stale
     # data still marked "running".
-    await session.expire_all()
+    session.expire_all()
 
     stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
@@ -110,7 +110,7 @@ async def check_task_cancelled(
     """
     # Expire to force a fresh read — the cancel endpoint updates the row via
     # a different connection.
-    await session.expire_all()
+    session.expire_all()
 
     stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
@@ -154,7 +154,7 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    from sqlalchemy import case, insert
+    from sqlalchemy import case
 
     ins_stmt = insert(BackgroundTask).values(
         celery_task_id=celery_task_id,
@@ -173,7 +173,7 @@ async def create_task_record(
             "status": BackgroundTask.status,  # keep existing status
             "progress_total": case(
                 (BackgroundTask.progress_total > 0, BackgroundTask.progress_total),
-                else_=ins_stmt.excluded(BackgroundTask.progress_total),
+                else_=excluded(BackgroundTask.progress_total),
             ),
             "dry_run": dry_run,
         },
