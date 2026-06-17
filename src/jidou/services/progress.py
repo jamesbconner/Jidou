@@ -4,7 +4,8 @@ import json
 import logging
 
 import redis.asyncio as aioredis
-from sqlalchemy import excluded, insert, select  # type: ignore[attr-defined]
+from sqlalchemy import insert, select
+from sqlalchemy.sql.dml import excluded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
