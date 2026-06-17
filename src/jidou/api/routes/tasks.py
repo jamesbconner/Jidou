@@ -1,6 +1,7 @@
 """API routes for background task management."""
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
 from jidou.models.task import BackgroundTask, TaskStatus
-from jidou.schemas.task_schema import TaskTrigger
+from jidou.schemas.task_schema import TaskList, TaskRead, TaskTrigger
 from jidou.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["tasks"])
 
 
-@router.get("/tasks", response_model=None)
+@router.get("/tasks", response_model=list[TaskList])
 async def list_tasks(
     limit: int = 20,
     offset: int = 0,
@@ -33,7 +34,7 @@ async def list_tasks(
     return list(result.scalars().all())
 
 
-@router.get("/tasks/{task_id}", response_model=None)
+@router.get("/tasks/{task_id}", response_model=TaskRead)
 async def get_task(
     task_id: int,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -47,7 +48,7 @@ async def get_task(
     return task
 
 
-@router.post("/tasks/{task_id}/cancel", response_model=None)
+@router.post("/tasks/{task_id}/cancel", response_model=TaskRead)
 async def cancel_task(
     task_id: int,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -89,7 +90,7 @@ async def cancel_task(
     return task
 
 
-@router.post("/tasks/trigger", response_model=None)
+@router.post("/tasks/trigger", response_model=TaskRead)
 async def trigger_task(
     payload: TaskTrigger,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -105,32 +106,35 @@ async def trigger_task(
         )
 
     # Delayed import to avoid circular reference with Celery
+    from jidou.services.progress import create_task_record
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.scan_tasks import scan_remote_task
     from jidou.workers.sync_tasks import sync_all_task
 
-    # Dispatch based on task type
-    if payload.task_type == "download":
-        result = download_files_task.delay(payload.show_id, payload.dry_run)
-    elif payload.task_type == "scan":
-        result = scan_remote_task.delay(payload.dry_run)
-    elif payload.task_type == "match":
-        result = match_files_task.delay(payload.show_id, payload.dry_run)
-    elif payload.task_type == "sync":
-        result = sync_all_task.delay(payload.dry_run)
-    else:
-        raise HTTPException(status_code=400, detail="Task dispatch not implemented")
-
-    # Create a placeholder record; the worker will upsert when it starts.
-    from jidou.services.progress import create_task_record
-
+    # Pre-generate task ID so the DB row exists before the worker can start.
+    # Workers call create_task_record too (idempotent upsert), so they will
+    # find the row already present and skip the INSERT.
+    task_id = str(uuid.uuid4())
     new_task = await create_task_record(
         db_session,
-        result.id,
+        task_id,
         payload.task_type,
         dry_run=payload.dry_run,
     )
-    await db_session.commit()
+
+    # Dispatch with the pre-generated ID — eliminates the race condition.
+    if payload.task_type == "download":
+        download_files_task.apply_async(
+            args=[payload.show_id, payload.dry_run], task_id=task_id
+        )
+    elif payload.task_type == "scan":
+        scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
+    elif payload.task_type == "match":
+        match_files_task.apply_async(
+            args=[payload.show_id, payload.dry_run], task_id=task_id
+        )
+    elif payload.task_type == "sync":
+        sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
 
     return new_task

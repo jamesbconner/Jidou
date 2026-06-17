@@ -7,6 +7,14 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from jidou.models.task import TaskStatus
 
 
+def _coerce_task_status(value: object) -> TaskStatus:
+    """Convert a raw DB string to TaskStatus, defaulting to PENDING on unknown values."""
+    try:
+        return TaskStatus(str(value))
+    except ValueError:
+        return TaskStatus.PENDING
+
+
 class TaskRead(BaseModel):
     """Full task state for GET /tasks/{id}."""
 
@@ -26,16 +34,9 @@ class TaskRead(BaseModel):
 
     @field_validator("status", mode="before")
     @classmethod
-    def _validate_status(cls, value: str) -> TaskStatus:
-        """Convert raw DB string to TaskStatus enum.
-
-        Handles the case where the database contains a status value
-        that is not a recognized enum member (e.g., stale data).
-        """
-        try:
-            return TaskStatus(value)
-        except ValueError:
-            return TaskStatus.PENDING
+    def _validate_status(cls, value: object) -> TaskStatus:
+        """Convert raw DB string to TaskStatus enum."""
+        return _coerce_task_status(value)
 
 
 class TaskProgress(BaseModel):
@@ -51,12 +52,9 @@ class TaskProgress(BaseModel):
 
     @field_validator("status", mode="before")
     @classmethod
-    def _validate_status(cls, value: str) -> TaskStatus:
+    def _validate_status(cls, value: object) -> TaskStatus:
         """Convert raw DB string to TaskStatus enum."""
-        try:
-            return TaskStatus(value)
-        except ValueError:
-            return TaskStatus.PENDING
+        return _coerce_task_status(value)
 
 
 class TaskList(BaseModel):
@@ -75,12 +73,9 @@ class TaskList(BaseModel):
 
     @field_validator("status", mode="before")
     @classmethod
-    def _validate_status(cls, value: str) -> TaskStatus:
+    def _validate_status(cls, value: object) -> TaskStatus:
         """Convert raw DB string to TaskStatus enum."""
-        try:
-            return TaskStatus(value)
-        except ValueError:
-            return TaskStatus.PENDING
+        return _coerce_task_status(value)
 
 
 class TaskTrigger(BaseModel):

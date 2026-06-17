@@ -31,6 +31,7 @@ celery_app.conf.update(
     task_default_queue="jidou",
     worker_max_tasks_per_child=100,
     include=[
+        "jidou.workers.tasks",
         "jidou.workers.download_tasks",
         "jidou.workers.scan_tasks",
         "jidou.workers.match_tasks",

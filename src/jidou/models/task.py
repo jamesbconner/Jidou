@@ -36,7 +36,7 @@ class BackgroundTask(TimestampMixin, Base):
     progress_message: Mapped[str | None] = mapped_column(Text)
     result_summary: Mapped[dict[str, object] | None] = mapped_column(JSON)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     def __repr__(self) -> str:
         """Return a concise representation of the BackgroundTask."""

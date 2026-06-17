@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
@@ -13,6 +14,7 @@ from jidou.services.progress import (
     check_task_cancelled,
     create_task_record,
     emit_progress,
+    mark_task_timed_out,
     update_task_status,
 )
 
@@ -35,7 +37,11 @@ def download_files_task(  # type: ignore[no-untyped-def]
     Returns:
         The celery task ID.
     """
-    return asyncio.run(_download_files(self.request.id, show_id, dry_run))
+    try:
+        return asyncio.run(_download_files(self.request.id, show_id, dry_run))
+    except SoftTimeLimitExceeded:
+        asyncio.run(mark_task_timed_out(self.request.id))
+        raise
 
 
 async def _download_files(

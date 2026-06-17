@@ -30,9 +30,9 @@ def upgrade() -> None:
         sa.Column("progress_message", sa.Text(), nullable=True),
         sa.Column("result_summary", sa.JSON(), nullable=True),
         sa.Column("dry_run", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("celery_task_id"),
     )

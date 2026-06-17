@@ -4,7 +4,7 @@ import json
 import logging
 
 import redis.asyncio as aioredis
-from sqlalchemy import insert, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -171,7 +171,47 @@ async def create_task_record(
         if task.progress_total <= 0:
             task.progress_total = progress_total
         task.dry_run = dry_run
+        # A re-queued task (worker hard-killed) arrives with status=RUNNING.
+        # Reset so the restarted worker goes through PENDING→RUNNING again.
+        if task.status == TaskStatus.RUNNING.value:
+            task.status = TaskStatus.PENDING.value
+            task.progress_current = 0
+            task.progress_message = "Restarting after worker failure"
 
     await session.commit()
     await session.refresh(task)
     return task
+
+
+async def mark_task_timed_out(celery_task_id: str) -> None:
+    """Mark a task FAILED after a Celery soft time limit fires.
+
+    Called from the synchronous task wrapper (outside the main async coroutine)
+    so it manages its own engine and session lifecycle.
+
+    Args:
+        celery_task_id: The Celery task identifier.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await update_task_status(
+                session,
+                celery_task_id,
+                TaskStatus.FAILED,
+                progress_message="Task exceeded soft time limit",
+            )
+            await emit_progress(
+                {
+                    "celery_task_id": celery_task_id,
+                    "type": "error",
+                    "data": {"error": "Soft time limit exceeded"},
+                }
+            )
+    except Exception:
+        logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
+    finally:
+        await engine.dispose()

@@ -2,6 +2,9 @@
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+
 from jidou.workers.celery_app import celery_app
 from jidou.workers.tasks import fetch_trending_shows_task
 
@@ -35,3 +38,50 @@ def test_fetch_trending_shows_task() -> None:
         # asyncio.run() wraps the async call; verify the helper was invoked
         mock_fetch.assert_called_once()
         assert result == 42
+
+
+def test_download_task_soft_timeout_calls_mark_timed_out() -> None:
+    """SoftTimeLimitExceeded in download_files_task must call mark_task_timed_out."""
+    from jidou.workers.download_tasks import download_files_task
+
+    mark_calls: list[str] = []
+
+    async def fake_mark(celery_task_id: str) -> None:
+        mark_calls.append(celery_task_id)
+
+    with (
+        patch(
+            "jidou.workers.download_tasks._download_files",
+            new_callable=AsyncMock,
+            side_effect=SoftTimeLimitExceeded(),
+        ),
+        patch("jidou.workers.download_tasks.mark_task_timed_out", side_effect=fake_mark),
+    ):
+        with pytest.raises(SoftTimeLimitExceeded):
+            # Celery bind=True tasks auto-inject self; do not pass mock as first arg.
+            download_files_task(show_id=1, dry_run=False)
+
+    assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"
+
+
+def test_scan_task_soft_timeout_calls_mark_timed_out() -> None:
+    """SoftTimeLimitExceeded in scan_remote_task must call mark_task_timed_out."""
+    from jidou.workers.scan_tasks import scan_remote_task
+
+    mark_calls: list[str] = []
+
+    async def fake_mark(celery_task_id: str) -> None:
+        mark_calls.append(celery_task_id)
+
+    with (
+        patch(
+            "jidou.workers.scan_tasks._scan_remote",
+            new_callable=AsyncMock,
+            side_effect=SoftTimeLimitExceeded(),
+        ),
+        patch("jidou.workers.scan_tasks.mark_task_timed_out", side_effect=fake_mark),
+    ):
+        with pytest.raises(SoftTimeLimitExceeded):
+            scan_remote_task(dry_run=False)
+
+    assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"

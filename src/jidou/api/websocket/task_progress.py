@@ -38,14 +38,16 @@ class ConnectionManager:
 
     async def broadcast_to_task(self, celery_task_id: str, message: ProgressMessage) -> None:
         """Send a JSON message to all WS clients watching a task."""
-        task_conns = connections.get(celery_task_id, [])
+        # Snapshot the list so concurrent disconnect() calls cannot shift
+        # indices mid-iteration and cause skipped clients.
+        task_conns = list(connections.get(celery_task_id, []))
         payload = json.dumps(message)
         disconnected: list[WebSocket] = []
 
         for ws in task_conns:
             try:
                 await ws.send_text(payload)
-            except RuntimeError:
+            except (RuntimeError, OSError):
                 disconnected.append(ws)
 
         for ws in disconnected:
@@ -85,4 +87,6 @@ async def task_progress_websocket(
             # Keep the connection alive; we don't expect client messages here.
             _ = await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
         await manager.disconnect(celery_task_id, websocket)
