@@ -54,6 +54,10 @@ class RateLimiter:
             self._redis = aioredis.from_url(self._redis_url)
         return self._redis
 
+    # Extra headroom so the Redis key outlives any in-flight HTTP request.
+    # TMDB calls have a 10s timeout; 15s gives a safe margin.
+    _HOLD_BUFFER_MS: int = 15_000
+
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[None]:
         """Acquire permission to make one API call.
@@ -61,6 +65,11 @@ class RateLimiter:
         Serialises callers via the asyncio lock so that only one caller can
         wait on the slot at a time.  The lock is held for the duration of the
         caller's critical section to prevent bursts.
+
+        For Redis mode the key TTL is set to ``window + _HOLD_BUFFER_MS`` so
+        it cannot expire while the request is still in flight.  After the
+        request completes the key is reset to ``window_ms`` so the next caller
+        waits the correct minimum gap from *call completion* (not call start).
 
         Yields:
             None after the rate-limit window has been respected.
@@ -73,7 +82,12 @@ class RateLimiter:
             try:
                 yield
             finally:
-                if self._redis_url is None:
+                if self._redis_url is not None:
+                    # Reset TTL to just the window gap measured from now so
+                    # the next caller waits the correct inter-call interval.
+                    r = self._get_redis()
+                    await r.set(self._redis_key, "1", px=int(self._window * 1000))
+                else:
                     self._last_call = time.monotonic()
 
     async def _wait_local(self) -> None:
@@ -88,20 +102,28 @@ class RateLimiter:
     async def _wait_redis(self) -> None:
         """Enforce rate limit via a Redis key with millisecond TTL.
 
-        Uses SET … NX PX to atomically acquire the slot.  If the slot is
-        taken, reads the remaining TTL and sleeps until it expires.
+        Uses SET … NX PX to atomically acquire the slot.  The key TTL is
+        ``window_ms + _HOLD_BUFFER_MS`` so it survives the full HTTP request.
+        After the request completes :meth:`acquire` resets the key to
+        ``window_ms`` so subsequent callers observe the correct gap.
+
+        Waiters sleep at most ``window_ms`` per iteration so they wake up
+        promptly after the owner resets the TTL on completion.
         """
         r = self._get_redis()
         window_ms = int(self._window * 1000)
+        hold_ms = window_ms + self._HOLD_BUFFER_MS
         while True:
-            ok = await r.set(self._redis_key, "1", px=window_ms, nx=True)
+            ok = await r.set(self._redis_key, "1", px=hold_ms, nx=True)
             if ok:
                 return
             pttl: int = await r.pttl(self._redis_key)
             if pttl < 0:
                 # Key vanished between SET and PTTL — retry immediately.
                 continue
-            wait_s = pttl / 1000.0
+            # Cap sleep to window_ms: the owner resets the key to window_ms on
+            # completion, so we don't need to sleep the full hold_ms.
+            wait_s = min(pttl, window_ms) / 1000.0
             if wait_s > 1.0:
                 logger.warning(
                     "Rate limiter [redis] high pressure on %s — waiting %.2fs",

@@ -77,12 +77,26 @@ class TMDBService:
 
         if not is_owner:
             logger.debug("In-flight dedup: waiting for concurrent request for %s", endpoint)
-            await event.wait()
-            refreshed = await cache.get(cache_key)
-            if refreshed is not None:
-                return refreshed  # type: ignore[no-any-return]
-            logger.warning("In-flight dedup: owner request failed for %s; retrying", endpoint)
-            # Fall through — let this caller attempt its own request.
+            while True:
+                await event.wait()
+                refreshed = await cache.get(cache_key)
+                if refreshed is not None:
+                    return refreshed  # type: ignore[no-any-return]
+                # Owner's request failed.  Elect one waiter as new owner so the
+                # remaining waiters don't all make independent HTTP calls.
+                async with self._flight_lock:
+                    if cache_key in self._in_flight:
+                        # Another waiter won the election — wait on their attempt.
+                        event = self._in_flight[cache_key]
+                        continue
+                    event = asyncio.Event()
+                    self._in_flight[cache_key] = event
+                    is_owner = True
+                    break
+            logger.warning(
+                "In-flight dedup: owner request failed for %s; this coroutine retrying",
+                endpoint,
+            )
 
         # --- Rate-limited HTTP request ---
         try:

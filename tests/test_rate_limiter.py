@@ -61,7 +61,7 @@ async def test_rate_limiter_sequential_calls_complete() -> None:
 
 @pytest.mark.asyncio
 async def test_rate_limiter_redis_acquires_slot() -> None:
-    """Redis path must acquire the slot when SET NX succeeds."""
+    """Redis path must acquire the slot (NX) then release it (reset TTL) on exit."""
     limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
     mock_redis = AsyncMock()
     mock_redis.set = AsyncMock(return_value=True)
@@ -70,9 +70,29 @@ async def test_rate_limiter_redis_acquires_slot() -> None:
         async with limiter.acquire():
             pass
 
-    mock_redis.set.assert_called_once()
-    call_kwargs = mock_redis.set.call_args
-    assert call_kwargs.kwargs.get("nx") is True
+    # Two SET calls: acquire (NX) + release (reset window TTL without NX).
+    assert mock_redis.set.call_count == 2
+    acquire_call = mock_redis.set.call_args_list[0]
+    assert acquire_call.kwargs.get("nx") is True
+    release_call = mock_redis.set.call_args_list[1]
+    assert "nx" not in release_call.kwargs
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_redis_releases_with_window_ttl() -> None:
+    """Release call must set the key with window_ms TTL (no NX) after yield."""
+    limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
+    mock_redis = AsyncMock()
+    mock_redis.set = AsyncMock(return_value=True)
+    window_ms = int(1.0 / 0.5 * 1000)  # 2000 ms
+
+    with patch("redis.asyncio.from_url", return_value=mock_redis):
+        async with limiter.acquire():
+            pass
+
+    release_call = mock_redis.set.call_args_list[1]
+    assert release_call.kwargs.get("px") == window_ms
+    assert "nx" not in release_call.kwargs
 
 
 @pytest.mark.asyncio
@@ -80,8 +100,8 @@ async def test_rate_limiter_redis_waits_when_slot_occupied() -> None:
     """Redis path must sleep until TTL expires when SET NX fails."""
     limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
     mock_redis = AsyncMock()
-    # First attempt: slot occupied; second: acquired.
-    mock_redis.set = AsyncMock(side_effect=[None, True])
+    # [acquire fails, acquire succeeds, release succeeds]
+    mock_redis.set = AsyncMock(side_effect=[None, True, True])
     mock_redis.pttl = AsyncMock(return_value=50)  # 50 ms remaining
 
     with (
@@ -99,8 +119,8 @@ async def test_rate_limiter_redis_retries_on_expired_pttl() -> None:
     """Redis path must retry immediately when PTTL returns -1 (key just expired)."""
     limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
     mock_redis = AsyncMock()
-    # First SET fails; PTTL returns -1 (expired); second SET succeeds.
-    mock_redis.set = AsyncMock(side_effect=[None, True])
+    # [acquire fails, acquire succeeds, release succeeds]
+    mock_redis.set = AsyncMock(side_effect=[None, True, True])
     mock_redis.pttl = AsyncMock(return_value=-1)
 
     with (
@@ -121,7 +141,8 @@ async def test_rate_limiter_redis_warning_on_long_wait(caplog: pytest.LogCapture
 
     limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
     mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock(side_effect=[None, True])
+    # [acquire fails, acquire succeeds, release succeeds]
+    mock_redis.set = AsyncMock(side_effect=[None, True, True])
     mock_redis.pttl = AsyncMock(return_value=1500)  # 1.5 s remaining
 
     with (

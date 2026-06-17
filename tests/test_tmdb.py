@@ -225,3 +225,64 @@ class TestTMDBService:
 
         assert all(r == mock_response_data for r in results)
         assert http_calls == 1, f"Expected 1 HTTP call, got {http_calls}"
+
+    @pytest.mark.asyncio
+    async def test_inflight_dedup_owner_failure_elects_single_retry_owner(
+        self,
+        tmdb_service: TMDBService,
+    ) -> None:
+        """When the owner's request fails, exactly one waiter retries; others wait.
+
+        Without the election fix all waiters would make independent HTTP calls
+        on owner failure (a thundering-herd bug).  With the fix only the elected
+        waiter makes the retry and the others read from the cache it populates.
+        """
+        from contextlib import asynccontextmanager
+        from unittest.mock import MagicMock
+
+        import jidou.services.tmdb as tmdb_module
+
+        mock_response_data: dict = {"results": [{"id": 99}]}
+        http_calls = 0
+
+        async def failing_then_succeeding_get(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)  # let waiters queue
+            if http_calls == 1:
+                raise RuntimeError("simulated network error")
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = mock_response_data
+            resp.status_code = 200
+            resp.elapsed.total_seconds.return_value = 0.02
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = failing_then_succeeding_get
+
+        @asynccontextmanager  # type: ignore[arg-type]
+        async def noop_acquire() -> AsyncGenerator[None]:
+            yield
+
+        with (
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
+        ):
+            # Use media_type="movie" to get a distinct cache key from the
+            # success-path dedup test which uses the default "multi" endpoint.
+            results = await asyncio.gather(
+                tmdb_service.get_trending(media_type="movie"),
+                tmdb_service.get_trending(media_type="movie"),
+                tmdb_service.get_trending(media_type="movie"),
+                return_exceptions=True,
+            )
+
+        # Only 2 HTTP calls total: 1 owner (fails) + 1 elected retry owner (succeeds).
+        # The third coroutine reads from cache populated by the retry owner.
+        assert http_calls == 2, f"Expected 2 HTTP calls, got {http_calls}"
+        successful = [r for r in results if isinstance(r, dict)]
+        assert len(successful) >= 1
+        assert all(r == mock_response_data for r in successful)
