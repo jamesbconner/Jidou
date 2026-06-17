@@ -136,3 +136,31 @@ def test_health_returns_healthy_false_when_db_fails() -> None:
         assert body["services"]["database"]["ok"] is False
     finally:
         app.dependency_overrides.clear()
+
+
+def test_health_redis_not_configured_does_not_make_unhealthy() -> None:
+    """GET /api/admin/health must not report unhealthy just because REDIS_URL is unset."""
+    from jidou.database import get_session
+
+    async def _ok_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one.return_value = 1
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _ok_session
+    try:
+        with patch("jidou.api.routes.admin.settings") as mock_settings:
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            response = TestClient(app).get("/api/admin/health")
+        assert response.status_code == 200
+        body = response.json()
+        # Redis not configured is not a failure
+        assert body["services"]["redis"]["ok"] is True
+        assert body["services"]["redis"]["configured"] is False
+        # Overall health should not be dragged down by unconfigured optional Redis
+        assert body["healthy"] is True
+    finally:
+        app.dependency_overrides.clear()

@@ -116,7 +116,9 @@ async def system_health(
                 "error": str(exc),
             }
     else:
-        results["redis"] = {"ok": False, "error": "REDIS_URL not configured"}
+        # Redis is optional — mark as not configured, not failed.
+        # An unconfigured optional service must not drag overall health to false.
+        results["redis"] = {"ok": True, "configured": False}
 
     # TMDB (config check only — no network call to avoid rate limit)
     results["tmdb"] = {

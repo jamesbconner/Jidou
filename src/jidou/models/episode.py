@@ -19,9 +19,7 @@ class Episode(TimestampMixin, Base):
     __tablename__ = "episodes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    show_id: Mapped[int] = mapped_column(
-        ForeignKey("shows.id", ondelete="CASCADE"), index=True
-    )
+    show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), index=True)
     tmdb_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     season_number: Mapped[int] = mapped_column(Integer)
     episode_number: Mapped[int] = mapped_column(Integer)

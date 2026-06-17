@@ -42,9 +42,7 @@ def _session_override(
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = single
-        result.scalars.return_value.all.return_value = many or (
-            [single] if single else []
-        )
+        result.scalars.return_value.all.return_value = many or ([single] if single else [])
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         yield session
@@ -138,10 +136,22 @@ def test_rematch_file_returns_404_when_file_missing() -> None:
 
     app.dependency_overrides[get_session] = _session_override(single=None)
     try:
-        response = TestClient(app).post(
-            "/api/files/9999/match", json={"method": "auto"}
-        )
+        response = TestClient(app).post("/api/files/9999/match", json={"method": "auto"})
         assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_file_returns_422_when_no_show_assigned() -> None:
+    """POST /api/files/{id}/match returns 422 when the file has no show."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"method": "auto"})
+        assert response.status_code == 422
+        assert "no associated show" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 
@@ -153,15 +163,14 @@ def test_rematch_file_returns_503_when_broker_unavailable() -> None:
 
     from jidou.database import get_session
 
-    f = _make_file(id=1)
+    # show_id must be set so the 422 guard does not trigger
+    f = _make_file(id=1, show_id=5)
     app.dependency_overrides[get_session] = _session_override(single=f)
     try:
         # Setting the module to None in sys.modules makes `from module import X`
         # raise ImportError, simulating a missing/broken Celery broker.
         with patch.dict(sys.modules, {"jidou.workers.match_tasks": None}):  # type: ignore[dict-item]
-            response = TestClient(app).post(
-                "/api/files/1/match", json={"method": "auto"}
-            )
+            response = TestClient(app).post("/api/files/1/match", json={"method": "auto"})
         assert response.status_code == 503
     finally:
         app.dependency_overrides.clear()
@@ -173,7 +182,8 @@ def test_rematch_file_resets_status_to_pending() -> None:
 
     from jidou.database import get_session
 
-    f = _make_file(id=1, status=FileStatus.ERROR)
+    # show_id must be set so the 422 guard does not trigger
+    f = _make_file(id=1, status=FileStatus.ERROR, show_id=5)
 
     async def _session_with_capture() -> AsyncMock:
         session = AsyncMock()
@@ -187,17 +197,48 @@ def test_rematch_file_resets_status_to_pending() -> None:
     try:
         mock_task = MagicMock()
         mock_task.apply_async = MagicMock()
-        with patch(
-            "jidou.api.routes.files.DownloadedFile"
-        ):
-            pass
         with patch.dict(
             "sys.modules",
             {"jidou.workers.match_tasks": MagicMock(match_files_task=mock_task)},
         ):
             TestClient(app).post("/api/files/1/match", json={"method": "heuristic"})
         assert f.status == FileStatus.PENDING
+        # Verify dispatch used the correct show-level args (Bug 1 regression)
+        mock_task.apply_async.assert_called_once_with(args=[5, False])
     finally:
         app.dependency_overrides.clear()
 
 
+def test_rematch_file_commits_before_dispatch() -> None:
+    """Commit must happen before Celery dispatch so the worker reads updated state."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=7)
+    call_order: list[str] = []
+
+    async def _ordered_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
+        session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
+        yield session
+
+    def _recording_apply_async(**_kwargs: object) -> None:
+        call_order.append("dispatch")
+
+    app.dependency_overrides[get_session] = _ordered_session
+    try:
+        mock_task = MagicMock()
+        mock_task.apply_async = MagicMock(side_effect=_recording_apply_async)
+        with patch.dict(
+            "sys.modules",
+            {"jidou.workers.match_tasks": MagicMock(match_files_task=mock_task)},
+        ):
+            TestClient(app).post("/api/files/1/match", json={"method": "auto"})
+        assert call_order == ["flush", "commit", "dispatch"], "commit must precede Celery dispatch"
+    finally:
+        app.dependency_overrides.clear()

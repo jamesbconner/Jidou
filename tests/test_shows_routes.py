@@ -76,9 +76,7 @@ def _session_override(
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = single
-        result.scalars.return_value.all.return_value = many or (
-            [single] if single else []
-        )
+        result.scalars.return_value.all.return_value = many or ([single] if single else [])
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.delete = AsyncMock()

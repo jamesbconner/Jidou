@@ -91,13 +91,15 @@ async def rematch_file(
 ) -> DownloadedFile:
     """Re-trigger episode matching for a downloaded file.
 
-    Resets the file status to ``pending`` and dispatches a Celery match task.
-    The match worker will update status and populate ``show_id``, ``episode_id``,
-    and ``matched_by`` when it completes.
+    Resets the file status to ``pending`` and dispatches a Celery match task
+    for the file's associated show.  The match worker will update status and
+    populate ``episode_id`` and ``matched_by`` when it completes.
 
     Args:
         file_id: Database primary key.
-        payload: Matching strategy (``"auto"``, ``"llm"``, or ``"heuristic"``).
+        payload: Matching strategy hint (``"auto"``, ``"llm"``, or
+            ``"heuristic"``).  Stored for observability; the current worker
+            uses show-level matching.
         db_session: DB session (injected).
 
     Returns:
@@ -106,6 +108,8 @@ async def rematch_file(
 
     Raises:
         HTTPException: 404 if the file is not found.
+        HTTPException: 422 if the file has no associated show (cannot match
+            without a show assignment).
         HTTPException: 503 if the Celery broker is unavailable.
     """
     stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
@@ -113,18 +117,24 @@ async def rematch_file(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Reset to pending before dispatching so the worker can update forward.
+    if file.show_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="File has no associated show; assign a show before re-matching",
+        )
+
+    # Reset to pending, then commit so the worker reads the updated state from
+    # its own DB connection before it begins processing.
     file.status = FileStatus.PENDING
     file.matched_by = None
     file.error_message = None
     await db_session.flush()
+    await db_session.commit()
 
     try:
         from jidou.workers.match_tasks import match_files_task
 
-        match_files_task.apply_async(
-            kwargs={"file_id": file_id, "method": payload.method},
-        )
+        match_files_task.apply_async(args=[file.show_id, False])
     except Exception as exc:
         logger.exception("Failed to dispatch match task for file %d", file_id)
         raise HTTPException(
@@ -132,5 +142,10 @@ async def rematch_file(
             detail="Failed to dispatch matching task to broker",
         ) from exc
 
-    logger.info("Re-queued matching for file id=%d method=%s", file_id, payload.method)
+    logger.info(
+        "Re-queued matching for file id=%d show_id=%d method=%s",
+        file_id,
+        file.show_id,
+        payload.method,
+    )
     return file
