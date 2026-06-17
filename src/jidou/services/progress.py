@@ -64,13 +64,8 @@ async def update_task_status(
 
     # Guard: refuse to update a cancelled task (unless we're reporting failure
     # after the worker itself detected the cancellation).
-    if (
-        task.status == TaskStatus.CANCELLED.value
-        and status != TaskStatus.CANCELLED
-    ):
-        logger.info(
-            "Refusing to update cancelled task %s to %s", celery_task_id, status
-        )
+    if task.status == TaskStatus.CANCELLED.value and status != TaskStatus.CANCELLED:
+        logger.info("Refusing to update cancelled task %s to %s", celery_task_id, status)
         return task
 
     if status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
@@ -108,9 +103,7 @@ async def check_task_cancelled(
     Raises:
         TaskCancelledError: When the task status is ``CANCELLED``.
     """
-    stmt = select(BackgroundTask).where(
-        BackgroundTask.celery_task_id == celery_task_id
-    )
+    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
 

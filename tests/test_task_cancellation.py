@@ -146,5 +146,3 @@ async def test_check_task_cancelled_passes_when_no_task():
 
     # Should not raise
     await check_task_cancelled(mock_session, "nonexistent-id")
-
-
