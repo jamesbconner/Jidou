@@ -103,7 +103,7 @@ async def trigger_task(
         )
 
     # Delayed import to avoid circular reference with Celery
-    from jidou.services.progress import create_task_record
+    from jidou.services.progress import create_task_record, update_task_status
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.scan_tasks import scan_remote_task
@@ -121,13 +121,27 @@ async def trigger_task(
     )
 
     # Dispatch with the pre-generated ID — eliminates the race condition.
-    if payload.task_type == "download":
-        download_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
-    elif payload.task_type == "scan":
-        scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
-    elif payload.task_type == "match":
-        match_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
-    elif payload.task_type == "sync":
-        sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
+    # If the broker is unreachable, mark the row FAILED immediately so it does
+    # not stay PENDING with no Celery job to ever advance it.
+    try:
+        if payload.task_type == "download":
+            download_files_task.apply_async(
+                args=[payload.show_id, payload.dry_run], task_id=task_id
+            )
+        elif payload.task_type == "scan":
+            scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
+        elif payload.task_type == "match":
+            match_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
+        elif payload.task_type == "sync":
+            sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
+    except Exception as exc:
+        logger.exception("Broker dispatch failed for task %s", task_id)
+        await update_task_status(
+            db_session,
+            task_id,
+            TaskStatus.FAILED,
+            progress_message=f"Broker dispatch failed: {exc}",
+        )
+        raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
 
     return new_task

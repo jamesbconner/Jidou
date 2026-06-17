@@ -235,3 +235,36 @@ def test_trigger_task_match_requires_show_id() -> None:
     client = TestClient(app)
     response = client.post("/api/tasks/trigger", json={"task_type": "match"})
     assert response.status_code == 422
+
+
+def test_trigger_task_broker_failure_marks_task_failed() -> None:
+    """A broker dispatch failure must mark the row FAILED and return 503."""
+    from jidou.database import get_session
+    from jidou.models.task import TaskStatus
+
+    mock_task = _make_task(celery_task_id="orphan-id", status=TaskStatus.PENDING.value)
+    updated: list[str] = []
+
+    async def fake_create(session, task_id, task_type, **kwargs):  # type: ignore[no-untyped-def]
+        return mock_task
+
+    async def fake_update(session, task_id, status, **kwargs):  # type: ignore[no-untyped-def]
+        updated.append(status.value)
+
+    mock_scan = MagicMock()
+    mock_scan.apply_async.side_effect = ConnectionError("broker unreachable")
+
+    app.dependency_overrides[get_session] = _session_override(mock_task)
+    try:
+        with (
+            patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+            patch("jidou.services.progress.update_task_status", side_effect=fake_update),
+            patch("jidou.workers.scan_tasks.scan_remote_task", mock_scan),
+        ):
+            client = TestClient(app)
+            response = client.post("/api/tasks/trigger", json={"task_type": "scan"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert updated == [TaskStatus.FAILED.value]
