@@ -100,6 +100,15 @@ class TMDBService:
 
         # --- Rate-limited HTTP request ---
         try:
+            # One final cache check before acquiring the rate-limit slot.
+            # Covers two races:
+            # (a) elected-retry owner: a sibling may have populated the cache
+            #     between when this coroutine won the election and now.
+            # (b) cross-process: another worker may have completed an identical
+            #     request between the initial cache miss and this point.
+            pre_request_cached = await cache.get(cache_key)
+            if pre_request_cached is not None:
+                return pre_request_cached  # type: ignore[no-any-return]
             async with rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(url, params=request_params)
                 response.raise_for_status()

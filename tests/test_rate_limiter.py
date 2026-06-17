@@ -154,3 +154,53 @@ async def test_rate_limiter_redis_warning_on_long_wait(caplog: pytest.LogCapture
             pass
 
     assert any("high pressure" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_redis_single_client_per_acquire() -> None:
+    """Exactly one Redis client must be created per acquire() call.
+
+    A single client serves both the NX acquisition in _wait_redis and the
+    TTL-reset SET in the finally block.  Multiple clients per call would leak
+    connection pools over the lifetime of the process.
+    """
+    limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
+    mock_redis = AsyncMock()
+    mock_redis.set = AsyncMock(return_value=True)
+
+    with patch("redis.asyncio.from_url", return_value=mock_redis) as mock_from_url:
+        async with limiter.acquire():
+            pass
+
+    mock_from_url.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_redis_client_closed_after_yield() -> None:
+    """Redis client must be closed via aclose() after each acquire."""
+    limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
+    mock_redis = AsyncMock()
+    mock_redis.set = AsyncMock(return_value=True)
+
+    with patch("redis.asyncio.from_url", return_value=mock_redis):
+        async with limiter.acquire():
+            pass
+
+    mock_redis.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_redis_client_closed_on_exception() -> None:
+    """Redis client must be closed even when the guarded call raises."""
+    limiter = RateLimiter(rate=0.5, redis_url="redis://localhost:6379", key="test")
+    mock_redis = AsyncMock()
+    mock_redis.set = AsyncMock(return_value=True)
+
+    with (
+        patch("redis.asyncio.from_url", return_value=mock_redis),
+        pytest.raises(RuntimeError),
+    ):
+        async with limiter.acquire():
+            raise RuntimeError("test error")
+
+    mock_redis.aclose.assert_called_once()

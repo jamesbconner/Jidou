@@ -69,28 +69,37 @@ class RateLimiter:
         wait on the slot at a time.  The lock is held for the duration of the
         caller's critical section to prevent bursts.
 
-        For Redis mode the key TTL is set to ``window + _HOLD_BUFFER_MS`` so
-        it cannot expire while the request is still in flight.  After the
-        request completes the key is reset to ``window_ms`` so the next caller
-        waits the correct minimum gap from *call completion* (not call start).
+        For Redis mode a **single** client is created for the entire acquire/
+        release cycle so both the NX acquisition and the post-yield TTL reset
+        share the same connection pool.  The client is closed in a ``finally``
+        block whether the guarded call succeeds or fails, preventing connection-
+        pool leaks over the lifetime of the process.  The key TTL is set to
+        ``window_ms + _HOLD_BUFFER_MS`` so it cannot expire while the HTTP
+        request is still in flight.  After the request completes the key is
+        reset to ``window_ms`` so the next caller waits the correct minimum
+        gap from *call completion* (not call start).
 
         Yields:
             None after the rate-limit window has been respected.
         """
         async with self._lock:
             if self._redis_url is not None:
-                await self._wait_redis()
+                r = self._get_redis()
+                try:
+                    await self._wait_redis(r)
+                    try:
+                        yield
+                    finally:
+                        # Reset TTL to just the window gap measured from now so
+                        # the next caller waits the correct inter-call interval.
+                        await r.set(self._redis_key, "1", px=int(self._window * 1000))
+                finally:
+                    await r.aclose()
             else:
                 await self._wait_local()
-            try:
-                yield
-            finally:
-                if self._redis_url is not None:
-                    # Reset TTL to just the window gap measured from now so
-                    # the next caller waits the correct inter-call interval.
-                    r = self._get_redis()
-                    await r.set(self._redis_key, "1", px=int(self._window * 1000))
-                else:
+                try:
+                    yield
+                finally:
                     self._last_call = time.monotonic()
 
     async def _wait_local(self) -> None:
@@ -102,7 +111,7 @@ class RateLimiter:
             logger.debug("Rate limiter [local]: waiting %.3fs", wait_time)
             await asyncio.sleep(wait_time)
 
-    async def _wait_redis(self) -> None:
+    async def _wait_redis(self, r: Any) -> None:
         """Enforce rate limit via a Redis key with millisecond TTL.
 
         Uses SET … NX PX to atomically acquire the slot.  The key TTL is
@@ -112,8 +121,10 @@ class RateLimiter:
 
         Waiters sleep at most ``window_ms`` per iteration so they wake up
         promptly after the owner resets the TTL on completion.
+
+        Args:
+            r: An open Redis async client to use for all Redis commands.
         """
-        r = self._get_redis()
         window_ms = int(self._window * 1000)
         hold_ms = window_ms + self._HOLD_BUFFER_MS
         while True:
