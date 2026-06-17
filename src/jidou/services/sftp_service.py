@@ -221,11 +221,28 @@ class SFTPService:
 
         Returns:
             List of :class:`DownloadResult` objects, one per input path.
+
+        Raises:
+            ValueError: If two or more paths in *remote_paths* share the same
+                filename, which would silently overwrite a local file.
         """
         base = Path(local_base)
         results: list[DownloadResult] = []
         total = len(remote_paths)
         batch_start = time.monotonic()
+
+        # Fail fast on basename collisions — two files with the same name from
+        # different remote directories would silently overwrite each other.
+        basenames = [Path(p).name for p in remote_paths]
+        seen: set[str] = set()
+        dupes: set[str] = set()
+        for n in basenames:
+            (dupes if n in seen else seen).add(n)
+        duplicates = sorted(dupes)
+        if duplicates:
+            raise ValueError(
+                f"Duplicate filenames in remote_paths would overwrite local files: {duplicates}"
+            )
 
         for idx, remote_path in enumerate(remote_paths, start=1):
             filename = Path(remote_path).name

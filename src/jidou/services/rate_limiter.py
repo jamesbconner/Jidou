@@ -43,16 +43,19 @@ class RateLimiter:
         # In-memory fallback state (also used when redis_url is None)
         self._last_call: float = 0.0
         self._lock = asyncio.Lock()
-        # Lazy Redis client — created on first use
-        self._redis: Any = None
 
     def _get_redis(self) -> Any:
-        """Return (and lazily create) the Redis async client."""
-        if self._redis is None:
-            import redis.asyncio as aioredis
+        """Create a Redis async client bound to the current event loop.
 
-            self._redis = aioredis.from_url(self._redis_url)
-        return self._redis
+        A new client is created on every call rather than caching one, so the
+        client is always bound to the running event loop.  This is required for
+        Celery workers that use ``asyncio.run()`` per task — a cached client
+        stays bound to the previous loop and raises ``RuntimeError`` on any
+        subsequent task in the same worker process.
+        """
+        import redis.asyncio as aioredis
+
+        return aioredis.from_url(self._redis_url)
 
     # Extra headroom so the Redis key outlives any in-flight HTTP request.
     # TMDB calls have a 10s timeout; 15s gives a safe margin.
@@ -143,6 +146,9 @@ class RateLimiter:
 # Workers have their own copy that coordinates with peers via Redis.
 rate_limiter = RateLimiter(
     rate=settings.tmdb_rate_limit_per_second,
-    redis_url=settings.redis_url,
+    # Use `or None` so an empty REDIS_URL env var falls back to in-memory mode.
+    # settings.redis_url always has a non-empty default, so without this guard
+    # the in-memory path would never be reachable.
+    redis_url=settings.redis_url or None,
     key="tmdb",
 )

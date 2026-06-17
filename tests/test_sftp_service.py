@@ -301,3 +301,19 @@ class TestDownloadFiles:
 
         mock_connect.assert_not_called()
         assert results == []
+
+    @pytest.mark.asyncio
+    async def test_duplicate_basenames_raises_before_connecting(
+        self, sftp_service: SFTPService, tmp_path: Path
+    ) -> None:
+        """Duplicate basenames must raise ValueError before any SSH connection is made."""
+        with (
+            patch("asyncssh.connect") as mock_connect,
+            pytest.raises(ValueError, match="Duplicate filenames"),
+        ):
+            await sftp_service.download_files(
+                ["/shows/s01/extra.mkv", "/shows/s02/extra.mkv"],
+                tmp_path,
+            )
+
+        mock_connect.assert_not_called()
