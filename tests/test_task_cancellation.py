@@ -82,11 +82,11 @@ async def test_pubsub_stop_cancels_listen_task():
 @pytest.mark.asyncio
 async def test_check_task_cancelled_raises_when_cancelled():
     """Test that check_task_cancelled raises when task is cancelled."""
+    from jidou.models.task import BackgroundTask, TaskStatus
     from jidou.services.progress import (
         TaskCancelledError,
         check_task_cancelled,
     )
-    from jidou.models.task import BackgroundTask, TaskStatus
 
     mock_session = AsyncMock()
     mock_task = MagicMock(spec=BackgroundTask)
@@ -108,8 +108,8 @@ async def test_check_task_cancelled_raises_when_cancelled():
 @pytest.mark.asyncio
 async def test_check_task_cancelled_passes_when_running():
     """Test that check_task_cancelled does not raise when task is running."""
-    from jidou.services.progress import check_task_cancelled
     from jidou.models.task import BackgroundTask, TaskStatus
+    from jidou.services.progress import check_task_cancelled
 
     mock_session = AsyncMock()
     mock_task = MagicMock(spec=BackgroundTask)
