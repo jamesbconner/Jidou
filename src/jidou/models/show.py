@@ -23,6 +23,9 @@ class Show(TimestampMixin, Base):
     release_date: Mapped[str | None] = mapped_column(String(20))
     original_language: Mapped[str | None] = mapped_column(String(10))
     cached: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Paths set by the user to link this show to files on disk / SFTP
+    remote_path: Mapped[str | None] = mapped_column(String(1000))
+    local_path: Mapped[str | None] = mapped_column(String(1000))
 
     def __repr__(self) -> str:
         """Return a concise representation of the Show."""

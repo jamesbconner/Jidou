@@ -8,8 +8,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from jidou.api import health, shows
-from jidou.api.routes import tasks
+from jidou.api import health
+from jidou.api.routes import admin, config, files, shows, tasks
 from jidou.api.websocket import ws_router
 from jidou.config import settings
 from jidou.database import close_db, init_db
@@ -76,7 +76,10 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, prefix="/api")
     app.include_router(shows.router, prefix="/api")
+    app.include_router(files.router, prefix="/api")
     app.include_router(tasks.router, prefix="/api")
+    app.include_router(config.router, prefix="/api")
+    app.include_router(admin.router, prefix="/api")
     app.include_router(ws_router)
 
     # Exception handlers for client errors
