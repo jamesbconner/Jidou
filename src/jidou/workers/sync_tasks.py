@@ -133,8 +133,8 @@ async def _sync_all(
             )
             await asyncio.sleep(0.1)  # Simulate work
 
-            # Mark complete
-            await update_task_status(
+            # Mark complete — gate the WebSocket event on the DB update landing.
+            completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
@@ -145,20 +145,19 @@ async def _sync_all(
                     "dry_run": dry_run,
                 },
             )
-
-            # Notify WebSocket clients that the task finished successfully
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "complete",
-                    "data": {
-                        "summary": {
-                            "phases_completed": 3,
-                            "dry_run": dry_run,
+            if completed is not None and completed.status == TaskStatus.COMPLETED.value:
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "complete",
+                        "data": {
+                            "summary": {
+                                "phases_completed": 3,
+                                "dry_run": dry_run,
+                            },
                         },
-                    },
-                }
-            )
+                    }
+                )
 
         return celery_task_id
 

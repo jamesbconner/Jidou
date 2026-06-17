@@ -67,17 +67,22 @@ async def update_task_status(
         logger.warning("BackgroundTask not found for celery_task_id=%s", celery_task_id)
         return None
 
-    # Guard: once a task reaches a terminal state it must not regress to a
-    # non-terminal state.  A redelivered Celery message could otherwise drive
-    # COMPLETED/FAILED back to RUNNING.  Terminal→terminal transitions (e.g.
-    # CANCELLED→CANCELLED for worker cleanup) are still allowed.
+    # Guard: once a task reaches a terminal state it must not change to ANY
+    # other state, including other terminal states (e.g. CANCELLED→COMPLETED).
+    # Only idempotent self-transitions (CANCELLED→CANCELLED) are permitted so
+    # that worker cleanup paths remain safe.
     _terminal_values = {
         TaskStatus.CANCELLED.value,
         TaskStatus.COMPLETED.value,
         TaskStatus.FAILED.value,
     }
-    if task.status in _terminal_values and status.value not in _terminal_values:
-        logger.info("Refusing to update terminal task %s to %s", celery_task_id, status)
+    if task.status in _terminal_values and task.status != status.value:
+        logger.info(
+            "Refusing to update terminal task %s from %s to %s",
+            celery_task_id,
+            task.status,
+            status,
+        )
         return task
 
     if status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):

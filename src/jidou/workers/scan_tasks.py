@@ -105,8 +105,8 @@ async def _scan_remote(
                 # Simulate work
                 await asyncio.sleep(0.1)
 
-            # Mark complete
-            await update_task_status(
+            # Mark complete — gate the WebSocket event on the DB update landing.
+            completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
@@ -114,17 +114,16 @@ async def _scan_remote(
                 progress_message="Scan complete",
                 result_summary={"directories_scanned": total_dirs, "dry_run": dry_run},
             )
-
-            # Notify WebSocket clients that the task finished successfully
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "complete",
-                    "data": {
-                        "summary": {"directories_scanned": total_dirs, "dry_run": dry_run},
-                    },
-                }
-            )
+            if completed is not None and completed.status == TaskStatus.COMPLETED.value:
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "complete",
+                        "data": {
+                            "summary": {"directories_scanned": total_dirs, "dry_run": dry_run},
+                        },
+                    }
+                )
 
         return celery_task_id
 

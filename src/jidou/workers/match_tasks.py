@@ -108,8 +108,8 @@ async def _match_files(
                 # Simulate work
                 await asyncio.sleep(0.1)
 
-            # Mark complete
-            await update_task_status(
+            # Mark complete — gate the WebSocket event on the DB update landing.
+            completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
@@ -117,17 +117,16 @@ async def _match_files(
                 progress_message="Matching complete",
                 result_summary={"files_matched": total_files, "dry_run": dry_run},
             )
-
-            # Notify WebSocket clients that the task finished successfully
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "complete",
-                    "data": {
-                        "summary": {"files_matched": total_files, "dry_run": dry_run},
-                    },
-                }
-            )
+            if completed is not None and completed.status == TaskStatus.COMPLETED.value:
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "complete",
+                        "data": {
+                            "summary": {"files_matched": total_files, "dry_run": dry_run},
+                        },
+                    }
+                )
 
         return celery_task_id
 

@@ -121,8 +121,10 @@ async def _download_files(
                 # Simulate work
                 await asyncio.sleep(0.1)
 
-            # Mark complete
-            await update_task_status(
+            # Mark complete — gate the WebSocket event on the DB update landing.
+            # If the row was concurrently cancelled, update_task_status returns
+            # it unchanged (status still CANCELLED) and we must not emit "complete".
+            completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
@@ -130,17 +132,16 @@ async def _download_files(
                 progress_message="Download complete",
                 result_summary={"files_downloaded": total_files, "dry_run": dry_run},
             )
-
-            # Notify WebSocket clients that the task finished successfully
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "complete",
-                    "data": {
-                        "summary": {"files_downloaded": total_files, "dry_run": dry_run},
-                    },
-                }
-            )
+            if completed is not None and completed.status == TaskStatus.COMPLETED.value:
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "complete",
+                        "data": {
+                            "summary": {"files_downloaded": total_files, "dry_run": dry_run},
+                        },
+                    }
+                )
 
         return celery_task_id
 

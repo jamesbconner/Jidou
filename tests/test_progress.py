@@ -39,7 +39,8 @@ def _make_mock_session(task: BackgroundTask | None) -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_update_task_status_terminal_guard_blocks_regression() -> None:
-    """No terminal task (CANCELLED/COMPLETED/FAILED) may revert to a non-terminal state."""
+    """No terminal task may transition to a non-terminal or different terminal state."""
+    # Terminal → non-terminal must be blocked.
     for terminal_status in (TaskStatus.CANCELLED, TaskStatus.COMPLETED, TaskStatus.FAILED):
         task = MagicMock(spec=BackgroundTask)
         task.status = terminal_status.value
@@ -53,8 +54,23 @@ async def test_update_task_status_terminal_guard_blocks_regression() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_task_status_terminal_allows_terminal_transition() -> None:
-    """Terminal→terminal transitions must be allowed (worker cleanup path)."""
+async def test_update_task_status_blocks_cross_terminal_transitions() -> None:
+    """CANCELLED must not become COMPLETED or FAILED (race between cancel and worker finish)."""
+    task = MagicMock(spec=BackgroundTask)
+    task.status = TaskStatus.CANCELLED.value
+
+    for new_status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+        session = _make_mock_session(task)
+        result = await update_task_status(session, "tid", new_status)
+
+        assert result is task
+        assert task.status == TaskStatus.CANCELLED.value
+        session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_terminal_allows_self_transition() -> None:
+    """Idempotent self-transitions (CANCELLED→CANCELLED) must be allowed for worker cleanup."""
     task = MagicMock(spec=BackgroundTask)
     task.status = TaskStatus.CANCELLED.value
 
