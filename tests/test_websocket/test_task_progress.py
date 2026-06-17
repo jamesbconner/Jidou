@@ -150,6 +150,7 @@ async def test_disconnect_always_called_on_non_disconnect_exception() -> None:
         pytest.MonkeyPatch.context() as mp,
     ):
         import jidou.api.websocket.task_progress as ws_module
+
         mp.setattr(ws_module, "manager", manager_mock)
         await task_progress_websocket(ws, "task-err")
 

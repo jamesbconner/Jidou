@@ -150,9 +150,7 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    stmt = select(BackgroundTask).where(
-        BackgroundTask.celery_task_id == celery_task_id
-    )
+    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
 

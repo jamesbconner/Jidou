@@ -79,11 +79,8 @@ async def cancel_task(
     await emit_progress(
         {
             "celery_task_id": task.celery_task_id,
-            "type": "status",
-            "data": {
-                "status": TaskStatus.CANCELLED.value,
-                "message": "Cancelled by user",
-            },
+            "type": "cancelled",
+            "data": {},
         }
     )
 
@@ -125,15 +122,11 @@ async def trigger_task(
 
     # Dispatch with the pre-generated ID — eliminates the race condition.
     if payload.task_type == "download":
-        download_files_task.apply_async(
-            args=[payload.show_id, payload.dry_run], task_id=task_id
-        )
+        download_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
     elif payload.task_type == "scan":
         scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
     elif payload.task_type == "match":
-        match_files_task.apply_async(
-            args=[payload.show_id, payload.dry_run], task_id=task_id
-        )
+        match_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
     elif payload.task_type == "sync":
         sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
 
