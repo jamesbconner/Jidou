@@ -139,7 +139,7 @@ filterwarnings = [
     "ignore:websockets.*is deprecated:DeprecationWarning",
     "ignore:unclosed:ResourceWarning",
     "ignore:loop is closed:ResourceWarning",
-    "ignore:.*httpx.*:StarletteDeprecationWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 
 [tool.coverage.run]
