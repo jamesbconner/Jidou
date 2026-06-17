@@ -56,10 +56,10 @@ def test_download_task_soft_timeout_calls_mark_timed_out() -> None:
             side_effect=SoftTimeLimitExceeded(),
         ),
         patch("jidou.workers.download_tasks.mark_task_timed_out", side_effect=fake_mark),
+        pytest.raises(SoftTimeLimitExceeded),
     ):
-        with pytest.raises(SoftTimeLimitExceeded):
-            # Celery bind=True tasks auto-inject self; do not pass mock as first arg.
-            download_files_task(show_id=1, dry_run=False)
+        # Celery bind=True tasks auto-inject self; do not pass mock as first arg.
+        download_files_task(show_id=1, dry_run=False)
 
     assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"
 
@@ -80,8 +80,8 @@ def test_scan_task_soft_timeout_calls_mark_timed_out() -> None:
             side_effect=SoftTimeLimitExceeded(),
         ),
         patch("jidou.workers.scan_tasks.mark_task_timed_out", side_effect=fake_mark),
+        pytest.raises(SoftTimeLimitExceeded),
     ):
-        with pytest.raises(SoftTimeLimitExceeded):
-            scan_remote_task(dry_run=False)
+        scan_remote_task(dry_run=False)
 
     assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"

@@ -166,6 +166,15 @@ async def create_task_record(
         )
         session.add(task)
     else:
+        # Never re-open a terminal task: the API may have cancelled it before
+        # the worker started, or a previous run completed/failed.
+        terminal = {
+            TaskStatus.CANCELLED.value,
+            TaskStatus.COMPLETED.value,
+            TaskStatus.FAILED.value,
+        }
+        if task.status in terminal:
+            return task
         task.task_type = task_type
         # Preserve progress_total when the worker has already set a non-zero value.
         if task.progress_total <= 0:

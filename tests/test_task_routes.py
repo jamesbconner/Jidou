@@ -78,9 +78,7 @@ async def test_trigger_task_creates_row_before_dispatch() -> None:
         patch("jidou.workers.scan_tasks.scan_remote_task", mock_celery_task),
     ):
         client = TestClient(app)
-        response = client.post(
-            "/api/tasks/trigger", json={"task_type": "scan", "dry_run": False}
-        )
+        client.post("/api/tasks/trigger", json={"task_type": "scan", "dry_run": False})
 
     assert creation_order == ["db_row", "celery_dispatch"], (
         "DB row must be created before Celery dispatch"
@@ -132,7 +130,6 @@ def test_cancel_already_completed_returns_400() -> None:
 
 def _session_override(task_or_list: "BackgroundTask | list[BackgroundTask] | None"):  # type: ignore[return]
     """Return a FastAPI dependency override that yields a mock session."""
-    from jidou.database import get_session
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
@@ -194,7 +191,6 @@ def test_get_task_found_returns_200() -> None:
 def test_cancel_running_task_succeeds() -> None:
     """POST /api/tasks/{task_id}/cancel must set status to CANCELLED."""
     from jidou.database import get_session
-    from jidou.services.progress import emit_progress
 
     task = _make_task(id=7, celery_task_id="run-123", status=TaskStatus.RUNNING.value)
     app.dependency_overrides[get_session] = _session_override(task)
@@ -214,8 +210,6 @@ def test_cancel_running_task_succeeds() -> None:
 
 def test_trigger_task_sync_dispatches() -> None:
     """POST /api/tasks/trigger with task_type=sync must dispatch sync_all_task."""
-    from jidou.workers.sync_tasks import sync_all_task
-
     mock_task = _make_task(celery_task_id="sync-id")
     dispatched: list[str] = []
 
@@ -231,7 +225,7 @@ def test_trigger_task_sync_dispatches() -> None:
         patch("jidou.workers.sync_tasks.sync_all_task", mock_sync),
     ):
         client = TestClient(app)
-        response = client.post("/api/tasks/trigger", json={"task_type": "sync"})
+        client.post("/api/tasks/trigger", json={"task_type": "sync"})
 
     assert dispatched == ["create", "dispatch"]
 

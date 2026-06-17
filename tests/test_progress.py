@@ -170,17 +170,23 @@ async def test_create_task_record_inserts_when_absent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_task_record_upsert_preserves_status() -> None:
-    """An existing non-RUNNING task must keep its status on upsert."""
-    existing = MagicMock(spec=BackgroundTask)
-    existing.status = TaskStatus.COMPLETED.value
-    existing.progress_total = 5
-    existing.dry_run = False
+async def test_create_task_record_terminal_task_is_not_modified() -> None:
+    """Terminal tasks (CANCELLED/COMPLETED/FAILED) must be returned untouched."""
+    for terminal_status in (
+        TaskStatus.CANCELLED,
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+    ):
+        existing = MagicMock(spec=BackgroundTask)
+        existing.status = terminal_status.value
+        existing.progress_total = 5
+        existing.dry_run = False
 
-    session = _make_mock_session(existing)
-    await create_task_record(session, "existing-id", "download", dry_run=False)
+        session = _make_mock_session(existing)
+        result = await create_task_record(session, "existing-id", "download", dry_run=True)
 
-    assert existing.status == TaskStatus.COMPLETED.value
+        assert result.status == terminal_status.value
+        session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio

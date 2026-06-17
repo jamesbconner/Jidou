@@ -1,6 +1,5 @@
 """Tests for WebSocket task progress endpoint and ConnectionManager."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -133,9 +132,8 @@ async def test_disconnect_nonexistent_ws_is_safe() -> None:
 async def test_disconnect_always_called_on_non_disconnect_exception() -> None:
     """The WebSocket handler must clean up on exceptions other than WebSocketDisconnect."""
     from fastapi import WebSocket
-    from fastapi.websockets import WebSocketState
 
-    from jidou.api.websocket.task_progress import ConnectionManager, connections, task_progress_websocket
+    from jidou.api.websocket.task_progress import connections, task_progress_websocket
 
     manager_mock = MagicMock()
     manager_mock.connect = AsyncMock()
@@ -147,11 +145,13 @@ async def test_disconnect_always_called_on_non_disconnect_exception() -> None:
 
     connections.clear()
 
-    with pytest.raises(RuntimeError):
-        with pytest.MonkeyPatch.context() as mp:
-            import jidou.api.websocket.task_progress as ws_module
-            mp.setattr(ws_module, "manager", manager_mock)
-            await task_progress_websocket(ws, "task-err")
+    with (
+        pytest.raises(RuntimeError),
+        pytest.MonkeyPatch.context() as mp,
+    ):
+        import jidou.api.websocket.task_progress as ws_module
+        mp.setattr(ws_module, "manager", manager_mock)
+        await task_progress_websocket(ws, "task-err")
 
     manager_mock.disconnect.assert_called_once_with("task-err", ws)
     connections.clear()
