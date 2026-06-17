@@ -59,13 +59,16 @@ class PubSubSubscriber:
         subscriber permanently — after logging the error we reconnect and
         continue listening.
         """
-        if self._pubsub is None:
-            logger.error("PubSub not initialized")
-            return
         while self._running:
+            pubsub = None
             try:
+                if self._redis is None or self._pubsub is None:
+                    logger.error("PubSub not initialized")
+                    return
+
+                pubsub = self._pubsub
                 while self._running:
-                    message = await self._pubsub.get_message(
+                    message = await pubsub.get_message(
                         ignore_subscribe_messages=True,
                         timeout=1.0,
                     )
@@ -86,9 +89,18 @@ class PubSubSubscriber:
                         continue
 
                     await manager.broadcast_to_task(celery_task_id, data)
+            except asyncio.CancelledError:
+                logger.info("PubSub subscriber loop cancelled")
+                raise
             except Exception:
                 logger.exception("PubSub subscriber loop failed — retrying in 5 seconds")
                 await asyncio.sleep(5)
+                # Re-subscribe on the next iteration in start()
+                if self._redis is not None and self._pubsub is not None:
+                    try:
+                        await self._pubsub.subscribe(REDIS_CHANNEL)
+                    except Exception:
+                        logger.exception("Failed to re-subscribe to Redis channel")
 
 
 # Module-level instance for lifespan injection

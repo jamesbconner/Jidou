@@ -154,9 +154,9 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    from sqlalchemy import case, excluded, insert
+    from sqlalchemy import case, insert
 
-    stmt = insert(BackgroundTask).values(
+    ins_stmt = insert(BackgroundTask).values(
         celery_task_id=celery_task_id,
         task_type=task_type,
         status=TaskStatus.PENDING.value,
@@ -166,14 +166,14 @@ async def create_task_record(
     # On conflict, keep the existing status so that RUNNING is not overwritten
     # by PENDING when the worker upserts after the API already started the task.
     # Also preserve progress_total when the worker has already set a non-zero value.
-    stmt = stmt.on_conflict_do_update(  # type: ignore[attr-defined]
+    stmt = ins_stmt.on_conflict_do_update(  # type: ignore[attr-defined]
         index_elements=["celery_task_id"],
         set_={
             "task_type": task_type,
             "status": BackgroundTask.status,  # keep existing status
             "progress_total": case(
                 (BackgroundTask.progress_total > 0, BackgroundTask.progress_total),
-                else_=excluded(BackgroundTask.progress_total),
+                else_=ins_stmt.excluded(BackgroundTask.progress_total),
             ),
             "dry_run": dry_run,
         },

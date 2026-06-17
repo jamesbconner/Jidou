@@ -143,11 +143,11 @@ async def _download_files(
             await emit_progress(
                 {
                     "celery_task_id": celery_task_id,
-                    "type": "error",
-                    "data": {"error": "Task cancelled"},
+                    "type": "cancelled",
+                    "data": {},
                 }
             )
-        raise
+        return celery_task_id
     except Exception as exc:
         logger.exception("Download task failed")
         async with session_factory() as session:
