@@ -1,6 +1,7 @@
 """Redis PubSub subscriber that bridges task progress to WebSocket clients."""
 
 import asyncio
+import contextlib
 import json
 import logging
 
@@ -42,10 +43,8 @@ class PubSubSubscriber:
         self._running = False
         if self._listen_task is not None:
             self._listen_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._listen_task
-            except asyncio.CancelledError:
-                pass
             self._listen_task = None
         if self._pubsub is not None:
             await self._pubsub.unsubscribe(REDIS_CHANNEL)
