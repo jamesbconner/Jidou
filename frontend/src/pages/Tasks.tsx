@@ -17,13 +17,13 @@ export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('scan')
   const [dryRun, setDryRun] = useState(false)
 
-  // Only filter running tasks at this level; full details fetched by LiveTask
-  const runningTasks = useMemo(() => tasks.filter((t) => t.status === 'running'), [tasks])
+  // Mount listeners for both pending and running tasks to capture updates from the start
+  const activeTasks = useMemo(() => tasks.filter((t) => t.status === 'pending' || t.status === 'running'), [tasks])
 
   return (
     <div className="space-y-6">
-      {/* Mount a listener for every running task */}
-      {runningTasks.map((t) => (
+      {/* Mount WebSocket listeners for all active tasks (pending and running) */}
+      {activeTasks.map((t) => (
         <LiveTask key={t.id} taskId={t.id} />
       ))}
 
