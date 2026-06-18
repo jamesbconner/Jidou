@@ -205,6 +205,8 @@ def test_rematch_file_resets_status_to_pending() -> None:
         ):
             TestClient(app).post("/api/files/1/match", json={"method": "heuristic"})
         assert f.status == FileStatus.PENDING
+        # Bug: episode_id must be cleared so the worker assigns a fresh match
+        assert f.episode_id is None
         # Verify dispatch used the correct show-level args (Bug 1 regression)
         mock_task.apply_async.assert_called_once_with(args=[5, False])
     finally:

@@ -125,7 +125,10 @@ async def rematch_file(
 
     # Reset to pending, then commit so the worker reads the updated state from
     # its own DB connection before it begins processing.
+    # Clear episode_id so the worker assigns a fresh match rather than
+    # returning a stale result that contradicts pending status.
     file.status = FileStatus.PENDING
+    file.episode_id = None
     file.matched_by = None
     file.error_message = None
     await db_session.flush()
