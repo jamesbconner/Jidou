@@ -1,8 +1,16 @@
+import { useMemo } from 'react'
 import { api } from '@/api/client'
-import { useTasks, useCancelTask } from '@/hooks/useTasks'
+import { useTasks, useTask, useCancelTask } from '@/hooks/useTasks'
+import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { useQuery } from '@tanstack/react-query'
 import type { AdminStats } from '@/types/api'
+
+function LiveTask({ taskId }: { taskId: number }) {
+  const { data: task } = useTask(taskId)
+  useTaskProgress(task?.celery_task_id ?? null)
+  return null
+}
 
 export default function Dashboard() {
   const { data: tasks = [] } = useTasks()
@@ -12,12 +20,18 @@ export default function Dashboard() {
   })
   const cancelTask = useCancelTask()
 
-  const activeTasks = tasks.filter(
-    (t) => t.status === 'pending' || t.status === 'running',
+  const activeTasks = useMemo(
+    () => tasks.filter((t) => t.status === 'pending' || t.status === 'running'),
+    [tasks],
   )
 
   return (
     <div className="space-y-8">
+      {/* Mount WebSocket listeners for active tasks */}
+      {activeTasks.map((t) => (
+        <LiveTask key={t.id} taskId={t.id} />
+      ))}
+
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* Stats row */}

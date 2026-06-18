@@ -11,7 +11,8 @@ export const taskKeys = {
 export function useTasks() {
   return useQuery({
     queryKey: taskKeys.list(),
-    queryFn: () => api.get<TaskList[]>('/tasks'),
+    // Fetch up to 100 tasks to avoid silent truncation; backend defaults to 20
+    queryFn: () => api.get<TaskList[]>('/tasks?limit=100'),
     refetchInterval: 5000,
   })
 }
