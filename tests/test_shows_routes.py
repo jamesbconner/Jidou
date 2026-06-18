@@ -289,6 +289,28 @@ def test_update_paths_returns_404_for_missing_show() -> None:
         app.dependency_overrides.clear()
 
 
+def test_update_paths_does_not_clear_omitted_field() -> None:
+    """PUT /api/shows/{id}/paths must not null a path the client did not send.
+
+    Regression: both ShowPaths fields default to None.  A body containing only
+    remote_path must leave local_path at its stored value, not overwrite it.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path="/media/existing")
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        TestClient(app).put(
+            "/api/shows/1/paths",
+            json={"remote_path": "/remote/new"},
+        )
+        # remote_path was sent → updated; local_path was absent → untouched
+        assert show.remote_path == "/remote/new"
+        assert show.local_path == "/media/existing"
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # DELETE /api/shows/{show_id}
 # ---------------------------------------------------------------------------

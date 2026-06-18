@@ -215,14 +215,18 @@ async def update_show_paths(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    show.remote_path = payload.remote_path
-    show.local_path = payload.local_path
+    # Only overwrite fields the client explicitly provided.  Both fields default
+    # to None in ShowPaths, so an absent key must not clear the stored value.
+    if "remote_path" in payload.model_fields_set:
+        show.remote_path = payload.remote_path
+    if "local_path" in payload.model_fields_set:
+        show.local_path = payload.local_path
     await db_session.flush()
     logger.info(
         "Updated paths for show id=%d: remote=%r local=%r",
         show_id,
-        payload.remote_path,
-        payload.local_path,
+        show.remote_path,
+        show.local_path,
     )
     return show
 
