@@ -67,8 +67,8 @@ Thumbs.db
 # Claude Code local settings
 # -----------------------------------------------------------
 .claude/scheduled_tasks.lock
-pr_body.md
 .claude/settings.local.json
+.claude/
 
 # -----------------------------------------------------------
 # Docker
