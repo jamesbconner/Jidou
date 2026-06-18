@@ -388,3 +388,26 @@ def test_search_shows_proxies_tmdb() -> None:
         response = TestClient(app).get("/api/shows/search?query=stuff")
     assert response.status_code == 200
     assert response.json()["results"][0]["title"] == "Stuff"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/shows/tmdb/{tmdb_id}  (TMDB detail proxy)
+# ---------------------------------------------------------------------------
+
+
+def test_get_tmdb_details_proxies_tmdb_service() -> None:
+    """GET /api/shows/tmdb/{id} returns raw TMDB detail for the given TMDB ID.
+
+    Regression: the old GET /shows/{tmdb_id} proxy was removed when the router
+    switched to DB primary keys. This new endpoint preserves that capability
+    under an unambiguous path so clients can still fetch TMDB metadata without
+    first storing the show in the database.
+    """
+    detail_payload = {"id": 12345, "name": "Some Show", "overview": "Great show."}
+    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+        mock_tmdb.get_details = AsyncMock(return_value=detail_payload)
+        response = TestClient(app).get("/api/shows/tmdb/12345?media_type=tv")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == 12345
+    assert body["name"] == "Some Show"

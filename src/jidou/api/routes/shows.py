@@ -69,6 +69,30 @@ async def search_shows(
     return await tmdb.search(query=query, media_type=media_type)
 
 
+@router.get("/tmdb/{tmdb_id}")
+async def get_tmdb_details(
+    tmdb_id: int,
+    media_type: str = "tv",
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> dict[str, Any]:
+    """Return full TMDB metadata for a show by its TMDB ID.
+
+    This endpoint replaces the old ``GET /shows/{tmdb_id}`` proxy which was
+    removed when the router was rewritten to use database primary keys for
+    ``/{show_id}``.  Use this path when you need TMDB detail data and only
+    have the TMDB ID, not the internal database ID.
+
+    Args:
+        tmdb_id: The TMDB identifier for the show or movie.
+        media_type: ``"tv"`` or ``"movie"``.
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Raw TMDB detail response dictionary.
+    """
+    return await tmdb.get_details(tmdb_id=tmdb_id, media_type=media_type)
+
+
 # ---------------------------------------------------------------------------
 # Database CRUD
 # ---------------------------------------------------------------------------
