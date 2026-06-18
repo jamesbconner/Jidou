@@ -2,34 +2,18 @@
 # Jidou Frontend - React SPA via Nginx
 # ============================================================
 
-# --- Build stage: compile React SPA ---
-FROM node:20-alpine AS builder
-
+# Build stage
+FROM node:20-alpine AS build
 WORKDIR /app
-
-# Copy package files first for better caching
-COPY package.json ./
-
-# Install dependencies (tolerant of missing lockfile during development)
-RUN npm install --ignore-scripts
-
-# Copy source code
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
 COPY . .
-
-# Build for production
 RUN npm run build
 
-# --- Production stage: serve via Nginx ---
-FROM nginx:alpine AS production
-
-# Remove default nginx config and replace with ours
-RUN rm /etc/nginx/conf.d/default.conf
-
-# Copy nginx configuration
+# Production stage
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built SPA from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expose port 80 (mapped to 3100 in docker-compose)
 EXPOSE 80
