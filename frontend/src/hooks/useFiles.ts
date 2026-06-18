@@ -30,7 +30,8 @@ export function useRematchFile() {
       api.post<FileRead>(`/files/${id}/match`, payload),
     onSuccess: (data) => {
       qc.setQueryData(fileKeys.detail(data.id), data)
-      qc.invalidateQueries({ queryKey: fileKeys.list() })
+      // Invalidate all file queries (both list and detail, all status filters)
+      qc.invalidateQueries({ queryKey: fileKeys.all })
     },
   })
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useShow, useShowEpisodes, useUpdateShowPaths } from '@/hooks/useShows'
 import { useTriggerTask } from '@/hooks/useTasks'
@@ -14,13 +14,14 @@ export default function ShowDetail() {
 
   const [remotePath, setRemotePath] = useState('')
   const [localPath, setLocalPath] = useState('')
-  const [pathsInit, setPathsInit] = useState(false)
 
-  if (show && !pathsInit) {
-    setRemotePath(show.remote_path ?? '')
-    setLocalPath(show.local_path ?? '')
-    setPathsInit(true)
-  }
+  // Sync form state when show data loads or ID changes
+  useEffect(() => {
+    if (show) {
+      setRemotePath(show.remote_path ?? '')
+      setLocalPath(show.local_path ?? '')
+    }
+  }, [show, showId])
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>
   if (!show) return <p className="text-red-500">Show not found.</p>

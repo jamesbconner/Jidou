@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { useTasks, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
+import { useState, useMemo } from 'react'
+import { useTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import type { TaskType } from '@/types/api'
 
-function LiveTask({ celeryTaskId }: { celeryTaskId: string }) {
-  useTaskProgress(celeryTaskId)
+function LiveTask({ taskId }: { taskId: number }) {
+  const { data: task } = useTask(taskId)
+  useTaskProgress(task?.celery_task_id ?? null)
   return null
 }
 
@@ -16,15 +17,14 @@ export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('scan')
   const [dryRun, setDryRun] = useState(false)
 
-  const runningTasks = tasks.filter((t) => t.status === 'running')
+  // Only filter running tasks at this level; full details fetched by LiveTask
+  const runningTasks = useMemo(() => tasks.filter((t) => t.status === 'running'), [tasks])
 
   return (
     <div className="space-y-6">
       {/* Mount a listener for every running task */}
       {runningTasks.map((t) => (
-        'celery_task_id' in t ? (
-          <LiveTask key={t.id} celeryTaskId={(t as { celery_task_id: string }).celery_task_id} />
-        ) : null
+        <LiveTask key={t.id} taskId={t.id} />
       ))}
 
       <h1 className="text-2xl font-bold">Tasks</h1>
