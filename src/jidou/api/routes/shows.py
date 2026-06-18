@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -119,7 +120,23 @@ async def create_show(
 
     show = Show(**payload.model_dump(), cached=False)
     db_session.add(show)
-    await db_session.flush()
+    try:
+        await db_session.flush()
+    except IntegrityError:
+        # Concurrent request inserted the same tmdb_id between our select and
+        # flush.  Roll back and return the row the other request created.
+        await db_session.rollback()
+        stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
+        existing = (await db_session.execute(stmt)).scalar_one_or_none()
+        if existing is not None:
+            logger.debug(
+                "Show tmdb_id=%d inserted concurrently, returning existing (id=%d)",
+                payload.tmdb_id,
+                existing.id,
+            )
+            return existing
+        raise
+
     logger.info("Added show tmdb_id=%d title=%r (id=%d)", show.tmdb_id, show.title, show.id)
     return show
 
