@@ -83,7 +83,9 @@ class ScanOrchestrator:
             files_found += len(remote_files)
 
             for rf in remote_files:
-                file_stmt = select(DownloadedFile).where(DownloadedFile.remote_path == rf.path)
+                file_stmt = select(DownloadedFile).where(
+                    (DownloadedFile.remote_path == rf.path) & (DownloadedFile.show_id == show.id)
+                )
                 existing = (await self.session.execute(file_stmt)).scalar_one_or_none()
 
                 if existing is not None:

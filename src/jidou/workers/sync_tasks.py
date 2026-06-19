@@ -57,7 +57,7 @@ async def _sync_all(
     try:
         async with session_factory() as session:
             task = await create_task_record(
-                session, celery_task_id, "sync", progress_total=3, dry_run=dry_run
+                session, celery_task_id, "sync", progress_total=4, dry_run=dry_run
             )
             # Redelivered Celery messages must not rerun finished work.
             if task.status in {

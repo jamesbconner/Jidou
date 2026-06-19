@@ -4,9 +4,10 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator, DownloadResult
 from jidou.orchestrators.match_orchestrator import MatchOrchestrator, MatchResult
@@ -79,8 +80,16 @@ class SyncOrchestrator:
             if show_id is not None:
                 show_stmt = select(Show).where(Show.id == show_id)
                 show = (await self.session.execute(show_stmt)).scalar_one_or_none()
-                if show is not None and not show.cached:
-                    tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                if show is not None:
+                    has_episodes_stmt = select(exists(select(Episode).where(Episode.show_id == show.id)))
+                    has_episodes = (await self.session.execute(has_episodes_stmt)).scalar()
+                    should_sync = not show.cached or not has_episodes
+                    if should_sync:
+                        tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                    else:
+                        tmdb_result = TMDBSyncResult(
+                            shows_synced=0, episodes_upserted=0, episodes_skipped=0
+                        )
                 else:
                     tmdb_result = TMDBSyncResult(
                         shows_synced=0, episodes_upserted=0, episodes_skipped=0
