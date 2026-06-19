@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
+from jidou.orchestrators.match_orchestrator import MatchOrchestrator
+from jidou.services.llm_service import LLMService
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -66,56 +68,59 @@ async def _match_files(
             }:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
-            await update_task_status(
-                session, celery_task_id, TaskStatus.RUNNING, progress_message="Matching files..."
+            llm = LLMService(
+                provider=settings.llm_provider,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                model=settings.llm_model,
+                cache_ttl=settings.llm_cache_ttl,
+                timeout=settings.llm_timeout,
             )
 
-            # TODO: Implement file matching logic
-            # For now, simulate progress
-            total_files = 8  # Placeholder
             await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.RUNNING,
-                progress_total=total_files,
-                progress_message="Matching files to episodes...",
+                progress_message="Starting file matching...",
             )
 
-            for i in range(1, total_files + 1):
-                # Check whether the task was cancelled
+            async def on_progress(current: int, total: int, message: str) -> None:
                 await check_task_cancelled(session, celery_task_id)
-
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "progress",
-                        "data": {
-                            "current": i,
-                            "total": total_files,
-                            "message": f"Matching file {i}/{total_files}",
-                        },
-                    }
-                )
-
                 await update_task_status(
                     session,
                     celery_task_id,
                     TaskStatus.RUNNING,
-                    progress_current=i,
-                    progress_message=f"Matched {i}/{total_files} files",
+                    progress_current=current,
+                    progress_total=total,
+                    progress_message=message,
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "progress",
+                        "data": {"current": current, "total": total, "message": message},
+                    }
                 )
 
-                # Simulate work
-                await asyncio.sleep(0.1)
+            result = await MatchOrchestrator(session, llm).run(
+                show_id=show_id, dry_run=dry_run, on_progress=on_progress
+            )
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=total_files,
-                progress_message="Matching complete",
-                result_summary={"files_matched": total_files, "dry_run": dry_run},
+                progress_current=result.files_matched,
+                progress_total=result.files_matched + result.files_unmatched + result.files_failed,
+                progress_message=f"Match complete: {result.files_matched} matched",
+                result_summary={
+                    "files_matched": result.files_matched,
+                    "matched_by_heuristic": result.matched_by_heuristic,
+                    "matched_by_llm": result.matched_by_llm,
+                    "files_unmatched": result.files_unmatched,
+                    "dry_run": dry_run,
+                },
             )
             if completed is not None and completed.status == TaskStatus.COMPLETED.value:
                 await emit_progress(
@@ -123,7 +128,10 @@ async def _match_files(
                         "celery_task_id": celery_task_id,
                         "type": "complete",
                         "data": {
-                            "summary": {"files_matched": total_files, "dry_run": dry_run},
+                            "summary": {
+                                "files_matched": result.files_matched,
+                                "dry_run": dry_run,
+                            }
                         },
                     }
                 )

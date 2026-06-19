@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
+from jidou.orchestrators.download_orchestrator import DownloadOrchestrator
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -17,6 +18,7 @@ from jidou.services.progress import (
     mark_task_timed_out,
     update_task_status,
 )
+from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
 
@@ -66,60 +68,41 @@ async def _download_files(
             }:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
+            sftp = SFTPService(
+                host=settings.sftp_host or "",
+                port=settings.sftp_port,
+                username=settings.sftp_username,
+                password=settings.sftp_password,
+                key_path=settings.sftp_key_path,
+                remote_base_path=settings.sftp_remote_base_path,
+                known_hosts=None,
+            )
+
             await update_task_status(
                 session, celery_task_id, TaskStatus.RUNNING, progress_message="Starting download..."
             )
 
-            # TODO: Implement SFTP download logic
-            # For now, simulate progress
-            total_files = 10  # Placeholder
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.RUNNING,
-                progress_total=total_files,
-                progress_message="Downloading files...",
-            )
-
-            for i in range(1, total_files + 1):
-                # Check whether the task was cancelled
+            async def on_progress(current: int, total: int, message: str) -> None:
                 await check_task_cancelled(session, celery_task_id)
-
-                if dry_run:
-                    await emit_progress(
-                        {
-                            "celery_task_id": celery_task_id,
-                            "type": "progress",
-                            "data": {
-                                "current": i,
-                                "total": total_files,
-                                "message": f"[DRY RUN] Would download file {i}/{total_files}",
-                            },
-                        }
-                    )
-                else:
-                    await emit_progress(
-                        {
-                            "celery_task_id": celery_task_id,
-                            "type": "progress",
-                            "data": {
-                                "current": i,
-                                "total": total_files,
-                                "message": f"Downloading file {i}/{total_files}",
-                            },
-                        }
-                    )
-
                 await update_task_status(
                     session,
                     celery_task_id,
                     TaskStatus.RUNNING,
-                    progress_current=i,
-                    progress_message=f"Downloaded {i}/{total_files} files",
+                    progress_current=current,
+                    progress_total=total,
+                    progress_message=message,
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "progress",
+                        "data": {"current": current, "total": total, "message": message},
+                    }
                 )
 
-                # Simulate work
-                await asyncio.sleep(0.1)
+            result = await DownloadOrchestrator(session, sftp).run(
+                show_id=show_id, dry_run=dry_run, on_progress=on_progress
+            )
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             # If the row was concurrently cancelled, update_task_status returns
@@ -128,9 +111,15 @@ async def _download_files(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=total_files,
-                progress_message="Download complete",
-                result_summary={"files_downloaded": total_files, "dry_run": dry_run},
+                progress_current=result.files_downloaded,
+                progress_total=result.files_downloaded + result.files_failed + result.files_skipped,
+                progress_message=f"Download complete: {result.files_downloaded} files",
+                result_summary={
+                    "files_downloaded": result.files_downloaded,
+                    "bytes_downloaded": result.bytes_downloaded,
+                    "files_failed": result.files_failed,
+                    "dry_run": dry_run,
+                },
             )
             if completed is not None and completed.status == TaskStatus.COMPLETED.value:
                 await emit_progress(
@@ -138,7 +127,10 @@ async def _download_files(
                         "celery_task_id": celery_task_id,
                         "type": "complete",
                         "data": {
-                            "summary": {"files_downloaded": total_files, "dry_run": dry_run},
+                            "summary": {
+                                "files_downloaded": result.files_downloaded,
+                                "dry_run": dry_run,
+                            }
                         },
                     }
                 )
