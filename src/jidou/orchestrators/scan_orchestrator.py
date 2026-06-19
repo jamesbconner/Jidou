@@ -44,9 +44,9 @@ class ScanOrchestrator:
     ) -> ScanResult:
         """Scan remote directories and create DownloadedFile rows for new files.
 
-        Resets files in ERROR status back to PENDING so they can be retried.
-        Files already in PENDING, DOWNLOADING, DOWNLOADED, ROUTING, or ROUTED
-        status are skipped.
+        Files already tracked (PENDING, DOWNLOADING, DOWNLOADED, ROUTING,
+        ROUTED, or ERROR) are skipped. Each phase handles retries for its own
+        failures; scan only creates new DownloadedFile records.
 
         Args:
             show_id: Limit to one show. None scans all shows with remote_path set.
@@ -89,13 +89,7 @@ class ScanOrchestrator:
                 existing = (await self.session.execute(file_stmt)).scalar_one_or_none()
 
                 if existing is not None:
-                    if existing.status == FileStatus.ERROR:
-                        if not dry_run:
-                            existing.status = FileStatus.PENDING
-                            existing.error_message = None
-                        files_created += 1
-                    else:
-                        files_skipped += 1
+                    files_skipped += 1
                     continue
 
                 if dry_run:

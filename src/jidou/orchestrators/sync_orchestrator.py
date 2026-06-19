@@ -81,7 +81,8 @@ class SyncOrchestrator:
                 show_stmt = select(Show).where(Show.id == show_id)
                 show = (await self.session.execute(show_stmt)).scalar_one_or_none()
                 if show is not None:
-                    has_episodes_stmt = select(exists(select(Episode).where(Episode.show_id == show.id)))
+                    ep_exists = exists(select(Episode).where(Episode.show_id == show.id))
+                    has_episodes_stmt = select(ep_exists)
                     has_episodes = (await self.session.execute(has_episodes_stmt)).scalar()
                     should_sync = not show.cached or not has_episodes
                     if should_sync:

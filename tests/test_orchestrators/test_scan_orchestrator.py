@@ -76,8 +76,8 @@ async def test_run_skips_existing_non_error_files():
     session.add.assert_not_called()
 
 
-async def test_run_resets_error_files_to_pending():
-    """Files in ERROR status should be reset to PENDING and counted as created."""
+async def test_run_skips_error_files():
+    """Files in ERROR status should be skipped; phases handle their own retries."""
     show = _make_show()
     rf = _make_remote_file()
 
@@ -92,9 +92,10 @@ async def test_run_resets_error_files_to_pending():
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
 
-    assert result.files_created == 1
-    assert existing.status == FileStatus.PENDING
-    assert existing.error_message is None
+    assert result.files_skipped == 1
+    assert result.files_created == 0
+    assert existing.status == FileStatus.ERROR
+    assert existing.error_message == "previous error"
     session.add.assert_not_called()
 
 
