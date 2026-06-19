@@ -61,6 +61,7 @@ def _make_session(rows=None, episodes=None):
 
 # --- Static method tests ---
 
+
 def test_heuristic_match_s01e02():
     assert MatchOrchestrator._heuristic_match("Show.S01E02.mkv") == (1, 2)
 
@@ -78,6 +79,7 @@ def test_heuristic_match_no_pattern():
 
 
 # --- run() tests ---
+
 
 async def test_run_matches_by_heuristic():
     """File with S01E02 pattern is matched to the correct episode via heuristic."""

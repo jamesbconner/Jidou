@@ -48,9 +48,7 @@ def _make_show(tmdb_id=12345, title="Test Show", cached=False, show_id=1):
 
 def _make_tmdb(seasons=None, episodes=None):
     tmdb = AsyncMock()
-    tmdb.get_show_seasons = AsyncMock(
-        return_value={"seasons": seasons or [{"season_number": 1}]}
-    )
+    tmdb.get_show_seasons = AsyncMock(return_value={"seasons": seasons or [{"season_number": 1}]})
     tmdb.get_season_details = AsyncMock(
         return_value={
             "episodes": episodes

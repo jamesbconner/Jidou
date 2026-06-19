@@ -54,10 +54,7 @@ class TMDBOrchestrator:
             TMDBSyncResult with counts.
         """
         show_data = await self.tmdb.get_show_seasons(show.tmdb_id)
-        seasons = [
-            s for s in show_data.get("seasons", [])
-            if s.get("season_number", 0) > 0
-        ]
+        seasons = [s for s in show_data.get("seasons", []) if s.get("season_number", 0) > 0]
 
         total = len(seasons)
         episodes_upserted = 0

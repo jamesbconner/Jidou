@@ -98,8 +98,7 @@ class MatchOrchestrator:
             return None
 
         ep_list = "\n".join(
-            f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
-            for ep in episodes[:500]
+            f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in episodes[:500]
         )
         prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
 
@@ -179,9 +178,7 @@ class MatchOrchestrator:
                     logger.info("[DRY RUN] Would match %s via heuristic", file.original_filename)
                     files_matched += 1
                 elif self.llm and self.llm.is_available():
-                    logger.info(
-                        "[DRY RUN] Would attempt LLM match for %s", file.original_filename
-                    )
+                    logger.info("[DRY RUN] Would attempt LLM match for %s", file.original_filename)
                     files_matched += 1
                 else:
                     logger.info(

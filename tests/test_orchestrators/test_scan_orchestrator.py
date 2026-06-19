@@ -125,9 +125,7 @@ async def test_run_continues_on_sftp_error():
 
     session = _make_session(shows=[show1, show2])
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(
-        side_effect=[Exception("connection error"), [rf]]
-    )
+    sftp.list_remote_files = AsyncMock(side_effect=[Exception("connection error"), [rf]])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
