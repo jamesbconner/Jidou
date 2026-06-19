@@ -105,7 +105,7 @@ class TMDBOrchestrator:
                     episodes_upserted += 1
 
         await self.session.flush()
-        if episodes_upserted > 0:
+        if episodes_upserted + episodes_skipped > 0:
             show.cached = True
         await self.session.commit()
 
