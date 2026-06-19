@@ -111,6 +111,7 @@ class DownloadOrchestrator:
                 file.status = FileStatus.DOWNLOADED
                 file.local_path = str(local_path)
                 file.file_size = result.size
+                file.error_message = None
                 files_downloaded += 1
                 bytes_downloaded += result.size
             except Exception as exc:
