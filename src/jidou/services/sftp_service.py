@@ -142,6 +142,8 @@ class SFTPService:
                     continue
                 if not fnmatch.fnmatch(name, pattern):
                     continue
+                if entry.attrs.is_dir():
+                    continue
                 size: int = getattr(entry.attrs, "size", 0) or 0
                 files.append(
                     RemoteFile(

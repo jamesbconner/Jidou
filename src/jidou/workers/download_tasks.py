@@ -107,12 +107,13 @@ async def _download_files(
             # Mark complete — gate the WebSocket event on the DB update landing.
             # If the row was concurrently cancelled, update_task_status returns
             # it unchanged (status still CANCELLED) and we must not emit "complete".
+            total_processed = result.files_downloaded + result.files_failed + result.files_skipped
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=result.files_downloaded,
-                progress_total=result.files_downloaded + result.files_failed + result.files_skipped,
+                progress_current=total_processed,
+                progress_total=total_processed,
                 progress_message=f"Download complete: {result.files_downloaded} files",
                 result_summary={
                     "files_downloaded": result.files_downloaded,

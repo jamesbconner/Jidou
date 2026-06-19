@@ -107,12 +107,13 @@ async def _match_files(
             )
 
             # Mark complete — gate the WebSocket event on the DB update landing.
+            total_processed = result.files_matched + result.files_unmatched + result.files_failed
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=result.files_matched,
-                progress_total=result.files_matched + result.files_unmatched + result.files_failed,
+                progress_current=total_processed,
+                progress_total=total_processed,
                 progress_message=f"Match complete: {result.files_matched} matched",
                 result_summary={
                     "files_matched": result.files_matched,

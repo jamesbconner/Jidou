@@ -88,25 +88,25 @@ class SyncOrchestrator:
             else:
                 tmdb_result = await tmdb_orch.sync_all_shows()
 
-        # Phase 2: Scan
+        # Phase 2: Scan — pass on_progress for mid-phase cancellation detection
         if on_phase:
             await on_phase(2, 4, "Scanning remote files")
         scan_result = await ScanOrchestrator(self.session, self.sftp).run(
-            show_id=show_id, dry_run=dry_run
+            show_id=show_id, dry_run=dry_run, on_progress=on_phase
         )
 
-        # Phase 3: Download
+        # Phase 3: Download — pass on_progress for mid-phase cancellation detection
         if on_phase:
             await on_phase(3, 4, "Downloading new files")
         dl_result = await DownloadOrchestrator(self.session, self.sftp).run(
-            show_id=show_id, dry_run=dry_run
+            show_id=show_id, dry_run=dry_run, on_progress=on_phase
         )
 
-        # Phase 4: Match
+        # Phase 4: Match — pass on_progress for mid-phase cancellation detection
         if on_phase:
             await on_phase(4, 4, "Matching files to episodes")
         match_result = await MatchOrchestrator(self.session, self.llm).run(
-            show_id=show_id, dry_run=dry_run
+            show_id=show_id, dry_run=dry_run, on_progress=on_phase
         )
 
         return SyncResult(
