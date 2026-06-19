@@ -83,6 +83,12 @@ class ScanOrchestrator:
             files_found += len(remote_files)
 
             for rf in remote_files:
+                # TODO: Add unique constraint or row locking to prevent concurrent
+                # scans from creating duplicate DownloadedFile rows. Currently two
+                # overlapping scans can both check for existence, find nothing, and
+                # both insert, creating duplicates with same (show_id, remote_path).
+                # Solution: Add UNIQUE(show_id, remote_path) constraint or use
+                # SELECT ... FOR UPDATE before the insert.
                 file_stmt = select(DownloadedFile).where(
                     (DownloadedFile.remote_path == rf.path) & (DownloadedFile.show_id == show.id)
                 )

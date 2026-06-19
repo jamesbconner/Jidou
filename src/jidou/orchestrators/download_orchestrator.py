@@ -61,6 +61,10 @@ class DownloadOrchestrator:
         Returns:
             DownloadResult with counts.
         """
+        # TODO: Add row-level locking or unique constraint to prevent concurrent
+        # download tasks from processing the same file. Currently two overlapping
+        # downloads can pick the same PENDING file and race on status updates.
+        # Solution: Use SELECT ... FOR UPDATE or add UNIQUE(show_id, remote_path).
         stmt = (
             select(DownloadedFile, Show)
             .join(Show, DownloadedFile.show_id == Show.id)
