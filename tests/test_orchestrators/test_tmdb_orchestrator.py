@@ -10,6 +10,7 @@ def _make_session(existing_episode=None):
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
+    session.rollback = AsyncMock()
     session.add = MagicMock()
 
     ep_result = MagicMock()
@@ -23,6 +24,7 @@ def _make_session_with_shows(shows, existing_episode=None):
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
+    session.rollback = AsyncMock()
     session.add = MagicMock()
 
     show_result = MagicMock()

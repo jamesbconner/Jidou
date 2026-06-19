@@ -153,5 +153,6 @@ class TMDBOrchestrator:
                 combined.episodes_skipped += result.episodes_skipped
             except Exception:
                 logger.exception("Failed to sync TMDB data for show id=%d", show.id)
+                await self.session.rollback()
 
         return combined

@@ -142,10 +142,7 @@ class MatchOrchestrator:
         stmt = (
             select(DownloadedFile, Show)
             .join(Show, DownloadedFile.show_id == Show.id)
-            .where(
-                (DownloadedFile.status == FileStatus.DOWNLOADED)
-                | (DownloadedFile.status == FileStatus.PENDING)
-            )
+            .where(DownloadedFile.status == FileStatus.DOWNLOADED)
         )
         if show_id is not None:
             stmt = stmt.where(DownloadedFile.show_id == show_id)

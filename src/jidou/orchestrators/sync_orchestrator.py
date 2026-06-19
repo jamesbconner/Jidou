@@ -86,7 +86,14 @@ class SyncOrchestrator:
                     has_episodes = (await self.session.execute(has_episodes_stmt)).scalar()
                     should_sync = not show.cached or not has_episodes
                     if should_sync:
-                        tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                        try:
+                            tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                        except Exception:
+                            logger.exception("Failed to sync TMDB for show id=%d", show.id)
+                            await self.session.rollback()
+                            tmdb_result = TMDBSyncResult(
+                                shows_synced=0, episodes_upserted=0, episodes_skipped=0
+                            )
                     else:
                         tmdb_result = TMDBSyncResult(
                             shows_synced=0, episodes_upserted=0, episodes_skipped=0
