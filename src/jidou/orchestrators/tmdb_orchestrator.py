@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
@@ -125,7 +125,10 @@ class TMDBOrchestrator:
         self,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     ) -> TMDBSyncResult:
-        """Sync episodes for all shows where cached=False.
+        """Sync episodes for all shows where cached=False or episodes don't exist.
+
+        Ensures shows without episode data get synced even if cached flag was set by
+        other code (e.g., trending task) that doesn't populate episodes.
 
         Args:
             on_progress: Optional async callback(current, total, message).
@@ -133,7 +136,8 @@ class TMDBOrchestrator:
         Returns:
             Aggregated TMDBSyncResult across all shows.
         """
-        stmt = select(Show).where(Show.cached == False)  # noqa: E712
+        no_episodes = ~exists(select(Episode).where(Episode.show_id == Show.id))
+        stmt = select(Show).where((Show.cached == False) | no_episodes)  # noqa: E712
         shows = list((await self.session.execute(stmt)).scalars().all())
 
         total = len(shows)

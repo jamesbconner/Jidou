@@ -99,7 +99,7 @@ class MatchOrchestrator:
 
         ep_list = "\n".join(
             f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
-            for ep in episodes[:100]
+            for ep in episodes[:500]
         )
         prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
 
