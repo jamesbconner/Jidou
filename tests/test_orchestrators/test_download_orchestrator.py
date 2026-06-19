@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from jidou.models.downloaded_file import FileStatus
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator
 from jidou.services.sftp_service import DownloadResult as SFTPDownloadResult

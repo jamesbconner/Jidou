@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Ordered list of regex patterns for episode detection.
 # Each must capture group 1 = season number, group 2 = episode number.
+# The NxN pattern uses word boundaries and caps season at 2 digits / episode at 3
+# digits to avoid false positives from resolution strings like "1920x1080".
 _EP_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})"),  # S01E02 / s01e02
-    re.compile(r"(\d{1,2})[xX](\d{1,3})"),  # 1x02 / 1X02
+    re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)"),  # 1x02 but NOT 1920x1080
 ]
 
 _LLM_SYSTEM = (
@@ -170,13 +172,19 @@ class MatchOrchestrator:
 
             if dry_run:
                 se = self._heuristic_match(file.original_filename)
-                method = (
-                    "heuristic"
-                    if se
-                    else ("llm" if self.llm and self.llm.is_available() else "none")
-                )
-                logger.info("[DRY RUN] Would match %s via %s", file.original_filename, method)
-                files_matched += 1
+                if se is not None:
+                    logger.info("[DRY RUN] Would match %s via heuristic", file.original_filename)
+                    files_matched += 1
+                elif self.llm and self.llm.is_available():
+                    logger.info(
+                        "[DRY RUN] Would attempt LLM match for %s", file.original_filename
+                    )
+                    files_matched += 1
+                else:
+                    logger.info(
+                        "[DRY RUN] No match strategy available for %s", file.original_filename
+                    )
+                    files_unmatched += 1
                 continue
 
             file.status = FileStatus.ROUTING

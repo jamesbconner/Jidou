@@ -68,21 +68,25 @@ class SyncOrchestrator:
         Returns:
             SyncResult with results from each phase.
         """
-        # Phase 1: TMDB episode cache
+        # Phase 1: TMDB episode cache — skipped entirely in dry_run to avoid
+        # mutating episode/show state while the rest of the pipeline stays read-only.
         if on_phase:
             await on_phase(1, 4, "Syncing TMDB episode data")
-        tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
-        if show_id is not None:
-            show_stmt = select(Show).where(Show.id == show_id)
-            show = (await self.session.execute(show_stmt)).scalar_one_or_none()
-            if show is not None and not show.cached:
-                tmdb_result = await tmdb_orch.sync_show_episodes(show)
-            else:
-                tmdb_result = TMDBSyncResult(
-                    shows_synced=0, episodes_upserted=0, episodes_skipped=0
-                )
+        if dry_run:
+            tmdb_result = TMDBSyncResult(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
         else:
-            tmdb_result = await tmdb_orch.sync_all_shows()
+            tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
+            if show_id is not None:
+                show_stmt = select(Show).where(Show.id == show_id)
+                show = (await self.session.execute(show_stmt)).scalar_one_or_none()
+                if show is not None and not show.cached:
+                    tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                else:
+                    tmdb_result = TMDBSyncResult(
+                        shows_synced=0, episodes_upserted=0, episodes_skipped=0
+                    )
+            else:
+                tmdb_result = await tmdb_orch.sync_all_shows()
 
         # Phase 2: Scan
         if on_phase:

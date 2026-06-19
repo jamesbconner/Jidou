@@ -2,9 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator, TMDBSyncResult
+from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 
 
 def _make_session(existing_episode=None):

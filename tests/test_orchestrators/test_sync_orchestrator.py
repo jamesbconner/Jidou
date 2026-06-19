@@ -68,15 +68,15 @@ async def test_run_returns_all_phase_results():
     match_res = _make_match_result()
 
     with (
-        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as MockTMDB,
-        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as MockScan,
-        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as MockDL,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as MockMatch,
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
     ):
-        MockTMDB.return_value.sync_all_shows = AsyncMock(return_value=tmdb_res)
-        MockScan.return_value.run = AsyncMock(return_value=scan_res)
-        MockDL.return_value.run = AsyncMock(return_value=dl_res)
-        MockMatch.return_value.run = AsyncMock(return_value=match_res)
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=tmdb_res)
+        mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
+        mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
+        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         result = await orch.run()
@@ -101,21 +101,48 @@ async def test_run_skips_tmdb_if_show_cached():
     match_res = _make_match_result()
 
     with (
-        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as MockTMDB,
-        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as MockScan,
-        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as MockDL,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as MockMatch,
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
     ):
-        mock_tmdb_instance = MockTMDB.return_value
+        mock_tmdb_instance = mock_tmdb_cls.return_value
         mock_tmdb_instance.sync_show_episodes = AsyncMock()
-        MockScan.return_value.run = AsyncMock(return_value=scan_res)
-        MockDL.return_value.run = AsyncMock(return_value=dl_res)
-        MockMatch.return_value.run = AsyncMock(return_value=match_res)
+        mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
+        mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
+        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         await orch.run(show_id=1)
 
     mock_tmdb_instance.sync_show_episodes.assert_not_called()
+
+
+async def test_run_dry_run_skips_tmdb_entirely():
+    """With dry_run=True, TMDBOrchestrator is never instantiated or called."""
+    session = _make_session()
+    sftp = MagicMock()
+    tmdb = MagicMock()
+
+    scan_res = _make_scan_result()
+    dl_res = _make_download_result()
+    match_res = _make_match_result()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+    ):
+        mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
+        mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
+        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        result = await orch.run(dry_run=True)
+
+    mock_tmdb_cls.assert_not_called()
+    assert result.tmdb.episodes_upserted == 0
 
 
 async def test_run_on_phase_called_4_times():
@@ -127,15 +154,15 @@ async def test_run_on_phase_called_4_times():
     on_phase = AsyncMock()
 
     with (
-        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as MockTMDB,
-        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as MockScan,
-        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as MockDL,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as MockMatch,
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
     ):
-        MockTMDB.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
-        MockScan.return_value.run = AsyncMock(return_value=_make_scan_result())
-        MockDL.return_value.run = AsyncMock(return_value=_make_download_result())
-        MockMatch.return_value.run = AsyncMock(return_value=_make_match_result())
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_match_cls.return_value.run = AsyncMock(return_value=_make_match_result())
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         await orch.run(on_phase=on_phase)
@@ -160,19 +187,19 @@ async def test_run_cancellation_propagates():
             raise TaskCancelledError("cancelled")
 
     with (
-        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as MockTMDB,
-        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as MockScan,
-        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as MockDL,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as MockMatch,
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
     ):
-        MockTMDB.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
-        MockScan.return_value.run = AsyncMock(return_value=_make_scan_result())
-        MockDL.return_value.run = AsyncMock(return_value=_make_download_result())
-        MockMatch.return_value.run = AsyncMock(return_value=_make_match_result())
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_match_cls.return_value.run = AsyncMock(return_value=_make_match_result())
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         with pytest.raises(TaskCancelledError):
             await orch.run(on_phase=cancel_on_second)
 
-    # Phase 3 (Download) should never have run
-    MockDL.return_value.run.assert_not_called()
+    # Phase 3 (Download) should never have run — cancelled at phase 2
+    mock_dl_cls.return_value.run.assert_not_called()
