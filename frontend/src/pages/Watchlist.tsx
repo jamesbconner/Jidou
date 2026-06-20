@@ -64,11 +64,13 @@ export default function Watchlist() {
   const [newShowId, setNewShowId] = useState('')
   const [newStatus, setNewStatus] = useState<WatchlistStatus>('planned')
 
+  const newShowIdParsed = parseInt(newShowId, 10)
+  const newShowIdValid = !isNaN(newShowIdParsed) && newShowIdParsed > 0
+
   function handleAdd() {
-    const showId = parseInt(newShowId, 10)
-    if (!showId) return
+    if (!newShowIdValid) return
     createEntry.mutate(
-      { show_id: showId, status: newStatus },
+      { show_id: newShowIdParsed, status: newStatus },
       { onSuccess: () => { setNewShowId(''); setNewStatus('planned') } },
     )
   }
@@ -117,7 +119,7 @@ export default function Watchlist() {
         </div>
         <button
           onClick={handleAdd}
-          disabled={!newShowId || createEntry.isPending}
+          disabled={!newShowIdValid || createEntry.isPending}
           className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
         >
           Add
