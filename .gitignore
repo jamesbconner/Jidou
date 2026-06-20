@@ -82,6 +82,7 @@ docker-data/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
 
 # npm debug logs
 npm-debug.log*
