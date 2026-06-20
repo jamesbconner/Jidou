@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
+from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
+from jidou.services.llm_service import LLMService
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -17,6 +19,8 @@ from jidou.services.progress import (
     mark_task_timed_out,
     update_task_status,
 )
+from jidou.services.sftp_service import SFTPService
+from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ async def _sync_all(
     try:
         async with session_factory() as session:
             task = await create_task_record(
-                session, celery_task_id, "sync", progress_total=3, dry_run=dry_run
+                session, celery_task_id, "sync", progress_total=4, dry_run=dry_run
             )
             # Redelivered Celery messages must not rerun finished work.
             if task.status in {
@@ -63,85 +67,68 @@ async def _sync_all(
             }:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
-            await update_task_status(
-                session, celery_task_id, TaskStatus.RUNNING, progress_message="Starting sync..."
+            sftp = SFTPService(
+                host=settings.sftp_host or "",
+                port=settings.sftp_port,
+                username=settings.sftp_username,
+                password=settings.sftp_password,
+                key_path=settings.sftp_key_path,
+                remote_base_path=settings.sftp_remote_base_path,
+                known_hosts=None,
+            )
+            tmdb_svc = TMDBService()
+            llm = LLMService(
+                provider=settings.llm_provider,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                model=settings.llm_model,
+                cache_ttl=settings.llm_cache_ttl,
+                timeout=settings.llm_timeout,
             )
 
-            # Phase 1: Scan
-            await check_task_cancelled(session, celery_task_id)
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "progress",
-                    "data": {
-                        "current": 1,
-                        "total": 3,
-                        "message": "Phase 1/3: Scanning remote directories",
-                    },
-                }
-            )
             await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.RUNNING,
-                progress_current=1,
-                progress_message="Scanning remote directories...",
+                progress_total=4,
+                progress_message="Starting sync...",
             )
-            await asyncio.sleep(0.1)  # Simulate work
 
-            # Phase 2: Download
-            await check_task_cancelled(session, celery_task_id)
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "progress",
-                    "data": {
-                        "current": 2,
-                        "total": 3,
-                        "message": "Phase 2/3: Downloading new files",
-                    },
-                }
-            )
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.RUNNING,
-                progress_current=2,
-                progress_message="Downloading new files...",
-            )
-            await asyncio.sleep(0.1)  # Simulate work
+            async def on_phase(current: int, total: int, message: str) -> None:
+                await check_task_cancelled(session, celery_task_id)
+                await update_task_status(
+                    session,
+                    celery_task_id,
+                    TaskStatus.RUNNING,
+                    progress_current=current,
+                    progress_total=total,
+                    progress_message=message,
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "progress",
+                        "data": {"current": current, "total": total, "message": message},
+                    }
+                )
 
-            # Phase 3: Match
-            await check_task_cancelled(session, celery_task_id)
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "progress",
-                    "data": {
-                        "current": 3,
-                        "total": 3,
-                        "message": "Phase 3/3: Matching files to episodes",
-                    },
-                }
+            result = await SyncOrchestrator(session, sftp, tmdb_svc, llm).run(
+                dry_run=dry_run, on_phase=on_phase
             )
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.RUNNING,
-                progress_current=3,
-                progress_message="Matching files to episodes...",
-            )
-            await asyncio.sleep(0.1)  # Simulate work
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=3,
+                progress_current=4,
+                progress_total=4,
                 progress_message="Sync complete",
                 result_summary={
-                    "phases_completed": 3,
+                    "episodes_upserted": result.tmdb.episodes_upserted,
+                    "files_created": result.scan.files_created,
+                    "files_downloaded": result.download.files_downloaded,
+                    "files_matched": result.match.files_matched,
                     "dry_run": dry_run,
                 },
             )
@@ -152,9 +139,9 @@ async def _sync_all(
                         "type": "complete",
                         "data": {
                             "summary": {
-                                "phases_completed": 3,
+                                "files_matched": result.match.files_matched,
                                 "dry_run": dry_run,
-                            },
+                            }
                         },
                     }
                 )

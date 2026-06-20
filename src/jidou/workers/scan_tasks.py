@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
+from jidou.orchestrators.scan_orchestrator import ScanOrchestrator
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -17,6 +18,7 @@ from jidou.services.progress import (
     mark_task_timed_out,
     update_task_status,
 )
+from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
 
@@ -63,56 +65,60 @@ async def _scan_remote(
             }:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
-            await update_task_status(
-                session, celery_task_id, TaskStatus.RUNNING, progress_message="Scanning remote..."
+            sftp = SFTPService(
+                host=settings.sftp_host or "",
+                port=settings.sftp_port,
+                username=settings.sftp_username,
+                password=settings.sftp_password,
+                key_path=settings.sftp_key_path,
+                remote_base_path=settings.sftp_remote_base_path,
+                known_hosts=None,
             )
 
-            # TODO: Implement SFTP scan logic
-            # For now, simulate progress
-            total_dirs = 5  # Placeholder
             await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.RUNNING,
-                progress_total=total_dirs,
-                progress_message="Scanning directories...",
+                progress_message="Scanning remote directories...",
             )
 
-            for i in range(1, total_dirs + 1):
-                # Check whether the task was cancelled
+            async def on_progress(current: int, total: int, message: str) -> None:
                 await check_task_cancelled(session, celery_task_id)
-
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "progress",
-                        "data": {
-                            "current": i,
-                            "total": total_dirs,
-                            "message": f"Scanning directory {i}/{total_dirs}",
-                        },
-                    }
-                )
-
                 await update_task_status(
                     session,
                     celery_task_id,
                     TaskStatus.RUNNING,
-                    progress_current=i,
-                    progress_message=f"Scanned {i}/{total_dirs} directories",
+                    progress_current=current,
+                    progress_total=total,
+                    progress_message=message,
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "progress",
+                        "data": {"current": current, "total": total, "message": message},
+                    }
                 )
 
-                # Simulate work
-                await asyncio.sleep(0.1)
+            result = await ScanOrchestrator(session, sftp).run(
+                dry_run=dry_run, on_progress=on_progress
+            )
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=total_dirs,
-                progress_message="Scan complete",
-                result_summary={"directories_scanned": total_dirs, "dry_run": dry_run},
+                progress_current=result.shows_scanned,
+                progress_total=result.shows_scanned,
+                progress_message=f"Scan complete: {result.files_created} new files found",
+                result_summary={
+                    "shows_scanned": result.shows_scanned,
+                    "files_found": result.files_found,
+                    "files_created": result.files_created,
+                    "files_skipped": result.files_skipped,
+                    "dry_run": dry_run,
+                },
             )
             if completed is not None and completed.status == TaskStatus.COMPLETED.value:
                 await emit_progress(
@@ -120,7 +126,10 @@ async def _scan_remote(
                         "celery_task_id": celery_task_id,
                         "type": "complete",
                         "data": {
-                            "summary": {"directories_scanned": total_dirs, "dry_run": dry_run},
+                            "summary": {
+                                "files_created": result.files_created,
+                                "dry_run": dry_run,
+                            }
                         },
                     }
                 )

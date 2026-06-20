@@ -25,12 +25,13 @@ def sftp_service() -> SFTPService:
 # ---------------------------------------------------------------------------
 
 
-def _make_entry(filename: str, size: int) -> MagicMock:
+def _make_entry(filename: str, size: int, is_dir: bool = False) -> MagicMock:
     """Build a mock asyncssh SFTP directory entry."""
     entry = MagicMock()
     entry.filename = filename
     entry.attrs = MagicMock()
     entry.attrs.size = size
+    entry.attrs.is_dir = MagicMock(return_value=is_dir)
     return entry
 
 
