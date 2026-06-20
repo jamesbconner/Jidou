@@ -1,9 +1,13 @@
 """Tests for DownloadOrchestrator."""
 
+import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.download_orchestrator import DownloadOrchestrator
+from jidou.orchestrators.download_orchestrator import DownloadOrchestrator, _local_path_for
 from jidou.services.sftp_service import DownloadResult as SFTPDownloadResult
 
 
@@ -23,6 +27,7 @@ def _make_row(
     remote_path="/remote/ep.mkv",
     show_id=10,
     local_path="/local/show",
+    show_remote_path="/remote",
 ):
     file = MagicMock()
     file.id = file_id
@@ -36,6 +41,7 @@ def _make_row(
     show = MagicMock()
     show.id = show_id
     show.local_path = local_path
+    show.remote_path = show_remote_path
 
     return file, show
 
@@ -78,6 +84,59 @@ def _make_session(rows=None, dry_run=False):
     return session
 
 
+# ---------------------------------------------------------------------------
+# _local_path_for unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "remote_path, show_remote, show_local, expected",
+    [
+        # Flat file at show root: basename only
+        ("/sftp/Show/ep.mkv", "/sftp/Show", "/media/Show", "/media/Show/ep.mkv"),
+        # Season subdirectory is mirrored into local tree
+        (
+            "/sftp/Show/Season 01/ep.mkv",
+            "/sftp/Show",
+            "/media/Show",
+            "/media/Show/Season 01/ep.mkv",
+        ),
+        # Trailing slash on show_remote is normalised away
+        (
+            "/sftp/Show/Season 02/ep.mkv",
+            "/sftp/Show/",
+            "/media/Show",
+            "/media/Show/Season 02/ep.mkv",
+        ),
+        # Fallback: remote_path not under show_remote → bare filename, no crash
+        (
+            "/other/path/ep.mkv",
+            "/sftp/Show",
+            "/media/Show",
+            "/media/Show/ep.mkv",
+        ),
+    ],
+)
+def test_local_path_for(remote_path, show_remote, show_local, expected):
+    """_local_path_for mirrors season subdirectories and falls back to basename."""
+    result = _local_path_for(remote_path, show_remote, show_local)
+    assert result == Path(expected)
+
+
+def test_local_path_for_two_seasons_differ():
+    """Files with identical basenames in different seasons resolve to distinct paths."""
+    path_s1 = _local_path_for("/sftp/Show/Season 01/ep01.mkv", "/sftp/Show", "/media/Show")
+    path_s2 = _local_path_for("/sftp/Show/Season 02/ep01.mkv", "/sftp/Show", "/media/Show")
+    assert path_s1 != path_s2
+    assert path_s1 == Path("/media/Show/Season 01/ep01.mkv")
+    assert path_s2 == Path("/media/Show/Season 02/ep01.mkv")
+
+
+# ---------------------------------------------------------------------------
+# DownloadOrchestrator integration tests
+# ---------------------------------------------------------------------------
+
+
 async def test_run_downloads_pending_files():
     """PENDING files are transferred and status set to DOWNLOADED."""
     file1, show1 = _make_row(file_id=1, filename="ep1.mkv")
@@ -98,6 +157,25 @@ async def test_run_downloads_pending_files():
     assert sftp.download_file.call_count == 2
     # 2 claim commits + 2 finish commits
     assert session.commit.call_count == 4
+
+
+async def test_run_uses_season_subdirectory_path():
+    """File in a season subdirectory is downloaded to the mirrored local path."""
+    file1, show1 = _make_row(
+        remote_path="/sftp/Show/Season 01/ep01.mkv",
+        show_remote_path="/sftp/Show",
+        local_path="/media/Show",
+    )
+    session = _make_session(rows=[(file1, show1)])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result())
+
+    orch = DownloadOrchestrator(session, sftp)
+    await orch.run()
+
+    call_args = sftp.download_file.call_args
+    local_path_used = call_args[0][1]  # second positional arg to download_file
+    assert local_path_used == Path("/media/Show/Season 01/ep01.mkv")
 
 
 async def test_run_skips_files_without_local_path():
@@ -194,8 +272,6 @@ async def test_run_skips_no_local_path_without_infinite_loop():
 
 async def test_run_resets_to_error_on_cancellation():
     """CancelledError mid-transfer resets file to ERROR and re-raises."""
-    import asyncio
-
     file1, show1 = _make_row()
 
     count_result = MagicMock()
@@ -213,7 +289,6 @@ async def test_run_resets_to_error_on_cancellation():
     sftp.download_file = AsyncMock(side_effect=asyncio.CancelledError())
 
     orch = DownloadOrchestrator(session, sftp)
-    import pytest
 
     with pytest.raises(asyncio.CancelledError):
         await orch.run()
