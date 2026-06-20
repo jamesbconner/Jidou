@@ -15,9 +15,7 @@ from jidou.services.sftp_service import SFTPService
 logger = logging.getLogger(__name__)
 
 
-def _local_path_for(
-    remote_path: str, show_remote_path: str | None, show_local_path: str
-) -> Path:
+def _local_path_for(remote_path: str, show_remote_path: str | None, show_local_path: str) -> Path:
     """Return the local destination path, mirroring remote subdirectory structure.
 
     Season subdirectories (e.g. ``Season 01/ep01.mkv``) are preserved locally
@@ -125,9 +123,7 @@ class DownloadOrchestrator:
                     )
                     files_skipped += 1
                     continue
-                local_path = _local_path_for(
-                    file.remote_path, show.remote_path, show.local_path
-                )
+                local_path = _local_path_for(file.remote_path, show.remote_path, show.local_path)
                 logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
                 files_downloaded += 1
 
@@ -197,9 +193,7 @@ class DownloadOrchestrator:
                 await self.session.commit()  # release FOR UPDATE lock
                 continue
 
-            local_path = _local_path_for(
-                file.remote_path, show.remote_path, show.local_path
-            )
+            local_path = _local_path_for(file.remote_path, show.remote_path, show.local_path)
 
             # Claim the file: transition to DOWNLOADING and commit to release the
             # FOR UPDATE lock before the slow SFTP transfer begins.

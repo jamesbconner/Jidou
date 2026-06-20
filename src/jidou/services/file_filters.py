@@ -7,7 +7,7 @@ validation pass.
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 EXCLUDED_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -86,4 +86,7 @@ def is_recently_modified(mtime: datetime, grace_seconds: int = _UPLOAD_GRACE_SEC
         True when the file is too recent and should be skipped.
     """
     now = datetime.now(tz=mtime.tzinfo)
-    return (now - mtime) < timedelta(seconds=grace_seconds)
+    elapsed = (now - mtime).total_seconds()
+    # Negative elapsed means the SFTP host clock is ahead of ours. Treat that
+    # as "not recently modified" so clock skew never blocks all downloads.
+    return 0 <= elapsed < grace_seconds

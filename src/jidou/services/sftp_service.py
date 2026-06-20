@@ -217,7 +217,11 @@ class SFTPService:
             pattern: Glob pattern applied to filenames.
             results: Accumulator list; matched files are appended in place.
         """
-        entries = await sftp.readdir(path)
+        try:
+            entries = await sftp.readdir(path)
+        except Exception as exc:
+            logger.warning("Failed to list directory %s, skipping: %s", path, exc)
+            return
         for entry in entries:
             name: str = entry.filename
             if name in (".", ".."):

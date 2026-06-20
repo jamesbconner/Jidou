@@ -93,3 +93,8 @@ class TestIsRecentlyModified:
         # Naive datetimes are compared to datetime.now(tz=None) = naive local time
         recent_naive = datetime.now() - timedelta(seconds=10)
         assert is_recently_modified(recent_naive) is True
+
+    def test_future_mtime_is_not_recent(self) -> None:
+        # SFTP host clock is ahead of scanner: negative elapsed must not block files.
+        future = datetime.now(tz=dt.UTC) + timedelta(minutes=5)
+        assert is_recently_modified(future) is False

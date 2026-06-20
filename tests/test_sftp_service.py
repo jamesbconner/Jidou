@@ -378,6 +378,41 @@ class TestListRemoteFilesRecursive:
 
         assert [f.name for f in files] == ["ep01.mkv", "ep02.mkv", "ep03.mkv"]
 
+    @pytest.mark.asyncio
+    async def test_readdir_failure_on_subdirectory_is_skipped(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A readdir error on one subdirectory is logged and skipped; others succeed."""
+        season1 = MagicMock()
+        season1.filename = "Season 01"
+        season1.attrs = MagicMock()
+        season1.attrs.is_dir.return_value = True
+
+        season2 = MagicMock()
+        season2.filename = "Season 02"
+        season2.attrs = MagicMock()
+        season2.attrs.is_dir.return_value = True
+
+        root_entries = [season1, season2]
+
+        mock_sftp = AsyncMock()
+
+        async def readdir_side_effect(path: str):
+            if "Season 01" in path:
+                raise OSError("permission denied")
+            if "Season 02" in path:
+                return [_make_entry("ep01.mkv", 500, mtime=_old_mtime())]
+            return root_entries
+
+        mock_sftp.readdir = AsyncMock(side_effect=readdir_side_effect)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            files = await sftp_service.list_remote_files_recursive(path="/show")
+
+        # Season 01 failed but Season 02 should still be returned
+        assert len(files) == 1
+        assert files[0].name == "ep01.mkv"
+
 
 # ---------------------------------------------------------------------------
 # download_file
