@@ -1,9 +1,53 @@
 import { useState } from 'react'
 import { useFiles, useRematchFile } from '@/hooks/useFiles'
+import { fileKeys } from '@/hooks/useFiles'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
-import type { FileStatus } from '@/types/api'
+import { api } from '@/api/client'
+import { useQueryClient, useMutation } from '@tanstack/react-query'
+import type { FileRead, FileStatus } from '@/types/api'
 
 const STATUS_OPTIONS: (FileStatus | '')[] = ['', 'pending', 'downloading', 'downloaded', 'routing', 'routed', 'error']
+
+function InlineShowId({ fileId, showId }: { fileId: number; showId: number | null }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(showId?.toString() ?? '')
+  const qc = useQueryClient()
+  const patch = useMutation({
+    mutationFn: (newShowId: number | null) =>
+      api.patch<FileRead>(`/files/${fileId}`, { show_id: newShowId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.all }),
+  })
+
+  function commit() {
+    setEditing(false)
+    const parsed = value === '' ? null : parseInt(value, 10)
+    if (parsed !== showId) patch.mutate(parsed)
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="text-gray-500 hover:text-blue-600 hover:underline text-left"
+        title="Click to assign show"
+      >
+        {showId ?? '—'}
+      </button>
+    )
+  }
+
+  return (
+    <input
+      type="number"
+      autoFocus
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+      className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+    />
+  )
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -56,7 +100,9 @@ export default function Files() {
                   <td className="px-4 py-2">
                     <FileStatusBadge status={f.status} />
                   </td>
-                  <td className="px-4 py-2 text-gray-500">{f.show_id ?? '—'}</td>
+                  <td className="px-4 py-2">
+                    <InlineShowId fileId={f.id} showId={f.show_id} />
+                  </td>
                   <td className="px-4 py-2 text-right">
                     {f.show_id != null && (
                       <button

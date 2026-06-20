@@ -6,6 +6,7 @@ const LINKS = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/shows', label: 'Shows' },
   { to: '/files', label: 'Files' },
+  { to: '/watchlist', label: 'Watchlist' },
   { to: '/tasks', label: 'Tasks' },
   { to: '/settings', label: 'Settings' },
 ]

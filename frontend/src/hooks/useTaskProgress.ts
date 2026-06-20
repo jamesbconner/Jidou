@@ -7,7 +7,6 @@ import type { WsMessage, TaskRead, TaskList, TaskStatus } from '@/types/api'
 
 // Track active WebSocket connections globally to avoid premature badge clearance
 let activeConnections = 0
-const connectionLock = new Object()
 
 export function useTaskProgress(celeryTaskId: string | null) {
   const qc = useQueryClient()
