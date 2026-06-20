@@ -49,7 +49,7 @@ async def test_run_creates_new_files():
 
     session = _make_session(shows=[show])
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf1, rf2])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf1, rf2])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
@@ -71,7 +71,7 @@ async def test_run_skips_existing_non_error_files():
 
     session = _make_session(shows=[show], existing_file=existing)
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
@@ -92,7 +92,7 @@ async def test_run_skips_error_files():
 
     session = _make_session(shows=[show], existing_file=existing)
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
@@ -112,7 +112,7 @@ async def test_run_dry_run_does_not_commit():
 
     session = _make_session(shows=[show])
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf1, rf2])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf1, rf2])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run(dry_run=True)
@@ -130,7 +130,7 @@ async def test_run_continues_on_sftp_error():
 
     session = _make_session(shows=[show1, show2])
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(side_effect=[Exception("connection error"), [rf]])
+    sftp.list_remote_files_recursive = AsyncMock(side_effect=[Exception("connection error"), [rf]])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
@@ -156,7 +156,7 @@ async def test_run_skips_duplicate_on_constraint_violation():
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf])
 
     orch = ScanOrchestrator(session, sftp)
     result = await orch.run()
@@ -184,7 +184,7 @@ async def test_run_reraises_non_unique_integrity_error():
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[rf])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[rf])
 
     orch = ScanOrchestrator(session, sftp)
     with pytest.raises(IntegrityError):
@@ -198,7 +198,7 @@ async def test_on_progress_called_per_show():
 
     session = _make_session(shows=[show1, show2])
     sftp = MagicMock()
-    sftp.list_remote_files = AsyncMock(return_value=[])
+    sftp.list_remote_files_recursive = AsyncMock(return_value=[])
 
     on_progress = AsyncMock()
     orch = ScanOrchestrator(session, sftp)
