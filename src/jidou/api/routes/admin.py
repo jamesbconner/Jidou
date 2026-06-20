@@ -47,6 +47,19 @@ async def get_stats(
     return counts
 
 
+@router.get("/cache")
+async def get_cache() -> dict[str, Any]:
+    """Inspect the in-memory TMDB response cache.
+
+    Returns:
+        Dictionary with current entry count, configured capacity and TTL,
+        and a list of active entries with their TMDB endpoint labels.
+    """
+    from jidou.services.cache import cache
+
+    return await cache.stats()
+
+
 @router.post("/cache/flush")
 async def flush_cache() -> dict[str, Any]:
     """Flush the in-memory TMDB response cache.
@@ -59,6 +72,7 @@ async def flush_cache() -> dict[str, Any]:
     async with cache._lock:
         count = len(cache._cache)
         cache._cache.clear()
+        cache._labels.clear()
 
     logger.info("Admin: flushed %d cache entries", count)
     return {"ok": True, "cleared": count}

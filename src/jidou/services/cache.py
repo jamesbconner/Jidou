@@ -24,6 +24,7 @@ class CacheBackend:
         """
         self._cache: TTLCache[str, Any] = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = asyncio.Lock()
+        self._labels: dict[str, str] = {}
 
     async def get(self, key: str) -> Any | None:
         """Retrieve a value from the cache.
@@ -46,6 +47,35 @@ class CacheBackend:
         """
         async with self._lock:
             self._cache[key] = value
+
+    def register(self, key: str, label: str) -> None:
+        """Associate a human-readable label with a cache key.
+
+        Args:
+            key: The cache key (SHA-256 hash).
+            label: A descriptive label, e.g. the TMDB endpoint path.
+        """
+        self._labels[key] = label
+
+    async def stats(self) -> dict[str, Any]:
+        """Return cache statistics and active entry list for admin introspection.
+
+        Returns:
+            Dictionary with count, capacity, TTL, and labelled entry list.
+        """
+        async with self._lock:
+            active_keys = set(self._cache.keys())
+            entries = [
+                {"label": self._labels[key], "key": key}
+                for key in active_keys
+                if key in self._labels
+            ]
+        return {
+            "count": len(active_keys),
+            "maxsize": self._cache.maxsize,
+            "ttl_seconds": self._cache.ttl,
+            "entries": sorted(entries, key=lambda e: e["label"]),
+        }
 
     @staticmethod
     def make_key(url: str) -> str:

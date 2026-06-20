@@ -121,6 +121,7 @@ class TMDBService:
                 response.elapsed.total_seconds(),
             )
             await cache.set(cache_key, result)
+            cache.register(cache_key, endpoint)
             return result
         finally:
             if is_owner:
