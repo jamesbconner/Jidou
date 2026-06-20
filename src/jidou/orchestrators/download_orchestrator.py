@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
@@ -51,6 +51,13 @@ class DownloadOrchestrator:
 
         Files whose Show has no local_path are counted as skipped.
 
+        In non-dry-run mode each file is processed with a LIMIT 1
+        SELECT … FOR UPDATE SKIP LOCKED query so the row lock is held only
+        for the brief claim step (PENDING → DOWNLOADING + commit), not for
+        the entire SFTP transfer.  DOWNLOADING status then prevents other
+        workers from re-selecting the same file without needing a long-lived
+        lock.
+
         Args:
             show_id: Limit to one show. None processes all shows.
             dry_run: Log what would be downloaded without performing transfers.
@@ -61,28 +68,87 @@ class DownloadOrchestrator:
         Returns:
             DownloadResult with counts.
         """
-        # SKIP LOCKED lets concurrent workers claim disjoint sets of rows —
-        # worker B skips any rows already locked by worker A rather than blocking.
-        stmt = (
-            select(DownloadedFile, Show)
-            .join(Show, DownloadedFile.show_id == Show.id)
-            .where(
-                (DownloadedFile.status == FileStatus.PENDING)
-                | (DownloadedFile.status == FileStatus.ERROR)
-            )
-            .with_for_update(skip_locked=True, of=DownloadedFile)
-        )
-        if show_id is not None:
-            stmt = stmt.where(DownloadedFile.show_id == show_id)
-
-        rows = list((await self.session.execute(stmt)).all())
-        total = len(rows)
         files_downloaded = 0
         bytes_downloaded = 0
         files_skipped = 0
         files_failed = 0
 
-        for idx, (file, show) in enumerate(rows, 1):
+        base_where = (DownloadedFile.status == FileStatus.PENDING) | (
+            DownloadedFile.status == FileStatus.ERROR
+        )
+
+        if dry_run:
+            stmt = (
+                select(DownloadedFile, Show)
+                .join(Show, DownloadedFile.show_id == Show.id)
+                .where(base_where)
+            )
+            if show_id is not None:
+                stmt = stmt.where(DownloadedFile.show_id == show_id)
+            rows = list((await self.session.execute(stmt)).all())
+            total = len(rows)
+
+            for idx, (file, show) in enumerate(rows, 1):
+                if on_progress:
+                    await on_progress(idx, total, f"Downloading {file.original_filename}")
+                if show.local_path is None:
+                    logger.warning(
+                        "Show id=%d has no local_path; skipping file id=%d",
+                        show.id,
+                        file.id,
+                    )
+                    files_skipped += 1
+                    continue
+                local_path = Path(show.local_path) / file.original_filename
+                logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
+                files_downloaded += 1
+
+            logger.info(
+                "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
+                files_downloaded,
+                files_failed,
+                files_skipped,
+                bytes_downloaded,
+                dry_run,
+            )
+            return DownloadResult(
+                files_downloaded=files_downloaded,
+                bytes_downloaded=bytes_downloaded,
+                files_skipped=files_skipped,
+                files_failed=files_failed,
+                dry_run=dry_run,
+            )
+
+        # Count upfront for accurate progress reporting (no lock held).
+        count_stmt = (
+            select(func.count(DownloadedFile.id))
+            .join(Show, DownloadedFile.show_id == Show.id)
+            .where(base_where)
+        )
+        if show_id is not None:
+            count_stmt = count_stmt.where(DownloadedFile.show_id == show_id)
+        total = (await self.session.execute(count_stmt)).scalar_one()
+
+        idx = 0
+        while True:
+            # Lock exactly one eligible row; other workers skip locked rows.
+            stmt = (
+                select(DownloadedFile, Show)
+                .join(Show, DownloadedFile.show_id == Show.id)
+                .where(base_where)
+                .with_for_update(skip_locked=True, of=DownloadedFile)
+                .limit(1)
+            )
+            if show_id is not None:
+                stmt = stmt.where(DownloadedFile.show_id == show_id)
+
+            row = (await self.session.execute(stmt)).first()
+            if row is None:
+                break
+
+            idx += 1
+            file, show = row
+
             if on_progress:
                 await on_progress(idx, total, f"Downloading {file.original_filename}")
 
@@ -93,17 +159,16 @@ class DownloadOrchestrator:
                     file.id,
                 )
                 files_skipped += 1
+                await self.session.commit()  # release FOR UPDATE lock
                 continue
 
             local_path = Path(show.local_path) / file.original_filename
 
-            if dry_run:
-                logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
-                files_downloaded += 1
-                continue
-
+            # Claim the file: transition to DOWNLOADING and commit to release the
+            # FOR UPDATE lock before the slow SFTP transfer begins.
             file.status = FileStatus.DOWNLOADING
             await self.session.flush()
+            await self.session.commit()  # lock released; DOWNLOADING visible to other workers
 
             try:
                 result = await self.sftp.download_file(file.remote_path, local_path)
@@ -120,8 +185,7 @@ class DownloadOrchestrator:
                 files_failed += 1
 
             await self.session.flush()
-
-        await self.session.commit()
+            await self.session.commit()  # persist DOWNLOADED or ERROR
 
         logger.info(
             "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
