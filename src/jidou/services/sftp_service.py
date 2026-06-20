@@ -122,6 +122,11 @@ class SFTPService:
         self._max_retries = max_retries
         self._retry_delay = retry_delay
 
+    @property
+    def max_workers(self) -> int:
+        """Maximum concurrent transfers configured for this service."""
+        return self._max_workers
+
     def _connect_kwargs(self) -> dict[str, Any]:
         """Build keyword arguments for ``asyncssh.connect()``."""
         kwargs: dict[str, Any] = {

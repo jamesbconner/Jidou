@@ -116,7 +116,7 @@ class SyncOrchestrator:
         if on_phase:
             await on_phase(3, 4, "Downloading new files")
         dl_result = await DownloadOrchestrator(self.session, self.sftp).run(
-            show_id=show_id, dry_run=dry_run
+            show_id=show_id, dry_run=dry_run, max_workers=self.sftp.max_workers
         )
 
         # Phase 4: Match

@@ -205,20 +205,36 @@ class DownloadOrchestrator:
             if not pending:
                 continue
 
+            # Cancellation check before committing to this batch's transfers.
+            # If the task was cancelled between batches, on_progress already
+            # raised TaskCancelledError; this covers cancellation that arrived
+            # after the previous on_progress call but before gather starts.
+            if on_progress:
+                await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
+
             # Download all files in this batch concurrently.
-            download_tasks = [
-                self.sftp.download_file(file.remote_path, local_path)
+            # Use Task objects so the interrupt handler can tell which
+            # transfers already finished (and must not be reset to ERROR).
+            tasks = [
+                asyncio.ensure_future(self.sftp.download_file(file.remote_path, local_path))
                 for file, local_path in pending
             ]
 
             try:
-                results = await asyncio.gather(*download_tasks, return_exceptions=True)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
             except BaseException:
-                # Outer task was cancelled or interrupted while transfers were in
-                # flight.  Best-effort: mark all in-progress files as ERROR so
-                # they can be retried rather than stuck in DOWNLOADING forever.
-                for file, _ in pending:
-                    if file.status == FileStatus.DOWNLOADING:
+                # Outer task cancelled while gather was in flight.
+                # Tasks that completed successfully must be credited, not reset.
+                for (file, local_path), task in zip(pending, tasks, strict=True):
+                    if task.done() and not task.cancelled() and task.exception() is None:
+                        r = task.result()
+                        file.status = FileStatus.DOWNLOADED
+                        file.local_path = str(local_path)
+                        file.file_size = r.size
+                        file.error_message = None
+                        files_downloaded += 1
+                        bytes_downloaded += r.size
+                    elif file.status == FileStatus.DOWNLOADING:
                         file.status = FileStatus.ERROR
                         file.error_message = "Download interrupted"
                         files_failed += 1
