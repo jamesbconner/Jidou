@@ -24,6 +24,7 @@ class CacheBackend:
         """
         self._cache: TTLCache[str, Any] = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = asyncio.Lock()
+        self._labels: dict[str, str] = {}
 
     async def get(self, key: str) -> Any | None:
         """Retrieve a value from the cache.
@@ -37,15 +38,45 @@ class CacheBackend:
         async with self._lock:
             return self._cache.get(key)
 
-    async def set(self, key: str, value: Any) -> None:
+    async def set(self, key: str, value: Any, label: str | None = None) -> None:
         """Store a value in the cache.
 
         Args:
             key: The cache key.
             value: The value to cache.
+            label: Optional human-readable label (e.g. TMDB endpoint path).
+                   Stored atomically with the value so no flush race is possible.
         """
         async with self._lock:
             self._cache[key] = value
+            if label is not None:
+                self._labels[key] = label
+
+    async def stats(self) -> dict[str, Any]:
+        """Return cache statistics and active entry list for admin introspection.
+
+        Prunes stale label keys (entries evicted by TTL or capacity) on each call
+        so _labels never grows beyond the set of live cache entries.
+
+        Returns:
+            Dictionary with count, capacity, TTL, and labelled entry list.
+        """
+        async with self._lock:
+            active_keys = set(self._cache.keys())
+            # Prune labels for entries evicted since the last stats call
+            for stale in [k for k in self._labels if k not in active_keys]:
+                del self._labels[stale]
+            entries = [
+                {"label": self._labels[key], "key": key}
+                for key in active_keys
+                if key in self._labels
+            ]
+        return {
+            "count": len(active_keys),
+            "maxsize": self._cache.maxsize,
+            "ttl_seconds": self._cache.ttl,
+            "entries": sorted(entries, key=lambda e: e["label"]),
+        }
 
     @staticmethod
     def make_key(url: str) -> str:
