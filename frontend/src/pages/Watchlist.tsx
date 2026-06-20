@@ -55,6 +55,48 @@ function InlineStatusSelect({ id, current }: { id: number; current: WatchlistSta
   )
 }
 
+function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(notes ?? '')
+  const cancelRef = useRef(false)
+  const patch = usePatchWatchlistEntry()
+
+  function commit() {
+    if (cancelRef.current) { cancelRef.current = false; return }
+    setEditing(false)
+    const trimmed = value.trim()
+    const next = trimmed === '' ? null : trimmed
+    if (next !== notes) patch.mutate({ id, update: { notes: next } })
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { cancelRef.current = false; setValue(notes ?? ''); setEditing(true) }}
+        className="text-left text-gray-500 hover:text-blue-600 hover:underline max-w-[12rem] truncate block"
+        title={notes ?? 'Click to add notes'}
+      >
+        {notes ?? '—'}
+      </button>
+    )
+  }
+
+  return (
+    <input
+      type="text"
+      autoFocus
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') { cancelRef.current = true; setValue(notes ?? ''); setEditing(false) }
+      }}
+      className="border rounded px-1 py-0.5 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-blue-500"
+    />
+  )
+}
+
 export default function Watchlist() {
   const [statusFilter, setStatusFilter] = useState<WatchlistStatus | ''>('')
   const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
@@ -139,6 +181,7 @@ export default function Watchlist() {
                 <th className="px-4 py-2 text-left">#</th>
                 <th className="px-4 py-2 text-left">Show ID</th>
                 <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Notes</th>
                 <th className="px-4 py-2 text-left">Position</th>
                 <th className="px-4 py-2 text-left">Added</th>
                 <th className="px-4 py-2" />
@@ -151,6 +194,9 @@ export default function Watchlist() {
                   <td className="px-4 py-2 font-medium">{e.show_id}</td>
                   <td className="px-4 py-2">
                     <InlineStatusSelect id={e.id} current={e.status} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <InlineNotes id={e.id} notes={e.notes} />
                   </td>
                   <td className="px-4 py-2 text-gray-500">{e.position}</td>
                   <td className="px-4 py-2 text-gray-400 text-xs">

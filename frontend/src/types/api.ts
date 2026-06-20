@@ -204,6 +204,18 @@ export interface HealthCheck {
   }
 }
 
+export interface CacheEntry {
+  label: string
+  key: string
+}
+
+export interface CacheStats {
+  count: number
+  maxsize: number
+  ttl_seconds: number
+  entries: CacheEntry[]
+}
+
 // ─── Watchlist ────────────────────────────────────────────────────────────
 
 export type WatchlistStatus = 'planned' | 'watching' | 'completed' | 'on_hold' | 'dropped'

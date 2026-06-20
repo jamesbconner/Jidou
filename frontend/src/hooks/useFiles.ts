@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { FileList, FileRead, FileMatchRequest, FileStatus } from '@/types/api'
+import type { FileRead, FileMatchRequest, FileStatus } from '@/types/api'
 
 export const fileKeys = {
   all: ['files'] as const,
@@ -12,7 +12,14 @@ export function useFiles(status?: FileStatus) {
   const params = status ? `?status=${status}` : ''
   return useQuery({
     queryKey: fileKeys.list(status),
-    queryFn: () => api.get<FileList[]>(`/files${params}`),
+    queryFn: () => api.get<FileRead[]>(`/files${params}`),
+  })
+}
+
+export function useFilesByShow(showId: number) {
+  return useQuery({
+    queryKey: [...fileKeys.all, 'show', showId] as const,
+    queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}&limit=1000`),
   })
 }
 

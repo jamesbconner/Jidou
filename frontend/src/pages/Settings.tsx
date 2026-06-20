@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import type { AppConfig, ConnectionTestResult } from '@/types/api'
+import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import clsx from 'clsx'
 
 export default function Settings() {
@@ -12,7 +13,10 @@ export default function Settings() {
   const testTmdb = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/tmdb') })
   const testSftp = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/sftp') })
   const testRedis = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/redis') })
-  const flushCache = useMutation({ mutationFn: () => api.post<{ ok: boolean; cleared: number }>('/admin/cache/flush') })
+
+  const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = useAdminCache()
+  const flushCache = useFlushCache()
+  const { data: health, refetch: refetchHealth, isFetching: healthFetching } = useAdminHealth()
 
   return (
     <div className="space-y-8">
@@ -57,20 +61,99 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="font-semibold mb-3">Cache</h2>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => flushCache.mutate()}
-            disabled={flushCache.isPending}
-            className="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50"
-          >
-            Flush TMDB Cache
-          </button>
-          {flushCache.data && (
-            <span className="text-xs text-gray-500">Cleared {flushCache.data.cleared} entries</span>
-          )}
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">TMDB Cache</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => refetchCache()}
+              disabled={cacheFetching}
+              className="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
+            >
+              {cacheFetching ? 'Loading…' : 'Refresh'}
+            </button>
+            <button
+              onClick={() => flushCache.mutate()}
+              disabled={flushCache.isPending}
+              className="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50"
+            >
+              {flushCache.isPending ? 'Flushing…' : 'Flush'}
+            </button>
+          </div>
         </div>
+        {cacheStats && (
+          <>
+            <p className="text-xs text-gray-500">
+              {cacheStats.count} / {cacheStats.maxsize} entries · TTL {cacheStats.ttl_seconds}s
+            </p>
+            {cacheStats.entries.length > 0 && (
+              <details open className="text-xs">
+                <summary className="cursor-pointer text-gray-500 mb-1">
+                  {cacheStats.entries.length} active {cacheStats.entries.length === 1 ? 'entry' : 'entries'}
+                </summary>
+                <ul className="mt-1 space-y-0.5 pl-3">
+                  {cacheStats.entries.map((entry) => (
+                    <li key={entry.key} className="font-mono text-gray-600 truncate" title={entry.key}>
+                      {entry.label}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {cacheStats.entries.length === 0 && (
+              <p className="text-xs text-gray-400 italic">Cache is empty</p>
+            )}
+          </>
+        )}
+        {flushCache.data && (
+          <p className="text-xs text-gray-500">Cleared {flushCache.data.cleared} entries</p>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold">System Health</h2>
+            {health && (
+              <span
+                className={clsx(
+                  'text-xs font-medium px-2 py-0.5 rounded-full',
+                  health.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
+                )}
+              >
+                {health.healthy ? '● Healthy' : '● Degraded'}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => refetchHealth()}
+            disabled={healthFetching}
+            className="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
+          >
+            {healthFetching ? 'Checking…' : 'Refresh'}
+          </button>
+        </div>
+        {health ? (
+          <div className="space-y-2">
+            {(Object.entries(health.services) as [string, typeof health.services.database][]).map(([name, svc]) => (
+              <div key={name} className="flex items-center gap-3 text-sm">
+                <span className={clsx('w-4 text-center', svc.ok ? 'text-green-600' : 'text-red-600')}>
+                  {svc.ok ? '✓' : '✗'}
+                </span>
+                <span className="w-20 text-gray-700 capitalize">{name}</span>
+                <span className="text-xs text-gray-500">
+                  {svc.latency_ms != null
+                    ? `${svc.latency_ms} ms`
+                    : svc.configured === false
+                      ? 'not configured'
+                      : svc.error ?? ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic">Click Refresh to check service health</p>
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useShow, useShowEpisodes, useUpdateShowPaths } from '@/hooks/useShows'
+import { useShow, useShowEpisodes, useUpdateShowPaths, useSyncEpisodes } from '@/hooks/useShows'
 import { useTriggerTask } from '@/hooks/useTasks'
+import { useFilesByShow, useRematchFile } from '@/hooks/useFiles'
+import { FileStatusBadge } from '@/components/FileStatusBadge'
 
 export default function ShowDetail() {
   const { id } = useParams<{ id: string }>()
@@ -11,6 +13,9 @@ export default function ShowDetail() {
   const { data: episodes = [] } = useShowEpisodes(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const triggerTask = useTriggerTask()
+  const syncEpisodes = useSyncEpisodes()
+  const { data: showFiles = [] } = useFilesByShow(showId)
+  const rematch = useRematchFile()
 
   const [remotePath, setRemotePath] = useState('')
   const [localPath, setLocalPath] = useState('')
@@ -22,6 +27,11 @@ export default function ShowDetail() {
       setLocalPath(show.local_path ?? '')
     }
   }, [show, showId])
+
+  // Reset stale sync mutation feedback when navigating to a different show
+  useEffect(() => {
+    syncEpisodes.reset()
+  }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>
   if (!show) return <p className="text-red-500">Show not found.</p>
@@ -102,7 +112,7 @@ export default function ShowDetail() {
 
       <section className="bg-white rounded-lg shadow p-4">
         <h2 className="font-semibold mb-3">Actions</h2>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <button
             onClick={() => triggerDownload(false)}
             disabled={triggerTask.isPending}
@@ -117,6 +127,19 @@ export default function ShowDetail() {
           >
             Dry Run
           </button>
+          <button
+            onClick={() => syncEpisodes.mutate(showId)}
+            disabled={syncEpisodes.isPending}
+            className="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
+          </button>
+          {syncEpisodes.isSuccess && (
+            <span className="text-xs text-green-600">Episodes synced</span>
+          )}
+          {syncEpisodes.isError && (
+            <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
+          )}
         </div>
       </section>
 
@@ -147,6 +170,49 @@ export default function ShowDetail() {
             </details>
           ))}
       </section>
+
+      {showFiles.length > 0 && (
+        <section>
+          <h2 className="font-semibold mb-3">Files ({showFiles.length})</h2>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-2 text-left">Filename</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {showFiles.map((f) => (
+                  <tr key={f.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 font-mono text-xs max-w-xs">
+                      <div className="truncate">{f.original_filename}</div>
+                      {f.error_message && (
+                        <div className="text-red-500 truncate mt-0.5" title={f.error_message}>
+                          {f.error_message}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <FileStatusBadge status={f.status} />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => rematch.mutate({ id: f.id, payload: { method: 'auto' } })}
+                        disabled={rematch.isPending}
+                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        Re-match
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

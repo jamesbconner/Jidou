@@ -108,7 +108,14 @@ export default function Files() {
             <tbody className="divide-y">
               {files.map((f) => (
                 <tr key={f.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-mono text-xs max-w-xs truncate">{f.original_filename}</td>
+                  <td className="px-4 py-2 font-mono text-xs max-w-xs">
+                    <div className="truncate">{f.original_filename}</div>
+                    {f.error_message && (
+                      <div className="text-red-500 truncate mt-0.5" title={f.error_message}>
+                        {f.error_message}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-gray-500">{formatBytes(f.file_size)}</td>
                   <td className="px-4 py-2">
                     <FileStatusBadge status={f.status} />
