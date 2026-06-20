@@ -122,6 +122,10 @@ def _make_session(rows=None, dry_run=False):
             "/media/Show",
             "/media/Show/Show/Season 01/ep.mkv",
         ),
+        # show_remote_path is None: fall back to bare filename, not relative-to-root
+        ("/remote/Show/Season 01/ep.mkv", None, "/media/Show", "/media/Show/ep.mkv"),
+        # show_remote_path is empty string: same bare-filename fallback
+        ("/remote/Show/Season 01/ep.mkv", "", "/media/Show", "/media/Show/ep.mkv"),
     ],
 )
 def test_local_path_for(remote_path, show_remote, show_local, expected):
