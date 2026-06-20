@@ -289,6 +289,34 @@ def test_patch_file_partial_only_updates_provided_fields() -> None:
         app.dependency_overrides.clear()
 
 
+def test_patch_file_show_id_conflict_returns_409() -> None:
+    """PATCH /api/files/{id} returns 409 when the new show_id violates the unique constraint."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+
+    async def _conflict_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(
+            side_effect=IntegrityError("stmt", {}, Exception("unique constraint violated"))
+        )
+        session.rollback = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _conflict_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 42})
+        assert response.status_code == 409
+        assert "already exists" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_rematch_file_commits_before_dispatch() -> None:
     """Commit must happen before Celery dispatch so the worker reads updated state."""
     from unittest.mock import patch

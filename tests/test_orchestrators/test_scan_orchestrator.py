@@ -26,6 +26,11 @@ def _make_session(shows=None, existing_file=None):
     session.commit = AsyncMock()
     session.add = MagicMock()
 
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__ = AsyncMock(return_value=None)
+    nested_ctx.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
     show_result = MagicMock()
     show_result.scalars.return_value.all.return_value = shows or []
 
@@ -132,6 +137,34 @@ async def test_run_continues_on_sftp_error():
 
     assert result.shows_scanned == 2
     assert result.files_created == 1
+
+
+async def test_run_skips_duplicate_on_constraint_violation():
+    """IntegrityError on savepoint (race condition) skips the file without failing the scan."""
+    from sqlalchemy.exc import IntegrityError
+
+    show = _make_show()
+    rf = _make_remote_file()
+
+    session = _make_session(shows=[show])
+
+    # Simulate constraint violation inside the savepoint
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__ = AsyncMock(return_value=None)
+    nested_ctx.__aexit__ = AsyncMock(
+        side_effect=IntegrityError("stmt", {}, Exception("unique constraint violated"))
+    )
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    sftp = MagicMock()
+    sftp.list_remote_files = AsyncMock(return_value=[rf])
+
+    orch = ScanOrchestrator(session, sftp)
+    result = await orch.run()
+
+    assert result.files_created == 0
+    assert result.files_skipped == 1
+    session.commit.assert_called_once()
 
 
 async def test_on_progress_called_per_show():

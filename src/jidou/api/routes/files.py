@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -120,7 +121,14 @@ async def patch_file(
     if "error_message" in payload.model_fields_set:
         file.error_message = payload.error_message
 
-    await db_session.flush()
+    try:
+        await db_session.flush()
+    except IntegrityError:
+        await db_session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A file with that show_id and remote_path combination already exists",
+        ) from None
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return file
 
