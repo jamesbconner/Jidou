@@ -37,7 +37,7 @@ export default function Tasks() {
             onChange={(e) => setTaskType(e.target.value as TaskType)}
             className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {(['scan', 'sync'] as TaskType[]).map((t) => (
+            {(['scan', 'download', 'match', 'sync'] as TaskType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>

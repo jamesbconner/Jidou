@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { WatchlistCreate, WatchlistList, WatchlistRead, WatchlistStatus, WatchlistUpdate } from '@/types/api'
+import type { WatchlistCreate, WatchlistRead, WatchlistStatus, WatchlistUpdate } from '@/types/api'
 
 export const watchlistKeys = {
   all: ['watchlist'] as const,
@@ -12,7 +12,7 @@ export function useWatchlist(status?: WatchlistStatus) {
   const params = status ? `?status=${status}` : ''
   return useQuery({
     queryKey: watchlistKeys.list(status),
-    queryFn: () => api.get<WatchlistList[]>(`/watchlist${params}`),
+    queryFn: () => api.get<WatchlistRead[]>(`/watchlist${params}`),
   })
 }
 

@@ -12,7 +12,6 @@ from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.watchlist_schema import (
     WatchlistCreate,
-    WatchlistList,
     WatchlistRead,
     WatchlistUpdate,
 )
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
 
-@router.get("", response_model=list[WatchlistList])
+@router.get("", response_model=list[WatchlistRead])
 async def list_watchlist(
     status: str | None = None,
     limit: int = 50,
