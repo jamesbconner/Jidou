@@ -14,8 +14,9 @@ def test_settings_database_url() -> None:
 
 
 def test_settings_redis_url() -> None:
-    """Test that Redis URL defaults to localhost."""
-    assert "localhost" in settings.redis_url
+    """Test that Redis URL defaults to localhost when no env override is present."""
+    default = Settings(_env_file=None)
+    assert default.redis_url == "redis://localhost:6379/0"
 
 
 def test_settings_celery_urls_fallback_to_redis() -> None:
