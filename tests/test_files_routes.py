@@ -213,6 +213,82 @@ def test_rematch_file_resets_status_to_pending() -> None:
         app.dependency_overrides.clear()
 
 
+# ---------------------------------------------------------------------------
+# PATCH /api/files/{file_id}
+# ---------------------------------------------------------------------------
+
+
+def test_patch_file_show_id() -> None:
+    """PATCH /api/files/{id} with show_id updates the show assignment."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 42})
+        assert response.status_code == 200
+        assert f.show_id == 42
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_status() -> None:
+    """PATCH /api/files/{id} with status updates the file status."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "downloaded"})
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_invalid_status_returns_422() -> None:
+    """PATCH /api/files/{id} with a bad status string returns 422 (Pydantic pattern validation)."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "not_a_status"})
+        # Pydantic's pattern constraint on FilePatch.status rejects bad values
+        # before the route handler runs, returning 422 Unprocessable Entity.
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_not_found_returns_404() -> None:
+    """PATCH /api/files/{id} returns 404 for an unknown file ID."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).patch("/api/files/9999", json={"status": "pending"})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_partial_only_updates_provided_fields() -> None:
+    """PATCH /api/files/{id} with only status leaves show_id unchanged."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR, show_id=7)
+    original_show_id = f.show_id
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "pending"})
+        assert response.status_code == 200
+        assert f.show_id == original_show_id
+        assert f.status == FileStatus.PENDING
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_rematch_file_commits_before_dispatch() -> None:
     """Commit must happen before Celery dispatch so the worker reads updated state."""
     from unittest.mock import patch

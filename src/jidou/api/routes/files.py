@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
-from jidou.schemas.file_schema import FileList, FileMatchRequest, FileRead
+from jidou.schemas.file_schema import FileList, FileMatchRequest, FilePatch, FileRead
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,48 @@ async def get_file(
     file = (await db_session.execute(stmt)).scalar_one_or_none()
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
+    return file
+
+
+@router.patch("/{file_id}", response_model=FileRead)
+async def patch_file(
+    file_id: int,
+    payload: FilePatch,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> DownloadedFile:
+    """Manually override show_id, episode_id, status, or error_message on a file.
+
+    Only fields explicitly provided in the request body are updated.
+    Intended for operator correction of mismatched or stuck files.
+
+    Args:
+        file_id: Database primary key.
+        payload: Fields to update.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated DownloadedFile record.
+
+    Raises:
+        HTTPException: 404 if the file is not found.
+        HTTPException: 400 if the status value is not a valid FileStatus.
+    """
+    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
+    file = (await db_session.execute(stmt)).scalar_one_or_none()
+    if file is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if "show_id" in payload.model_fields_set:
+        file.show_id = payload.show_id
+    if "episode_id" in payload.model_fields_set:
+        file.episode_id = payload.episode_id
+    if "status" in payload.model_fields_set and payload.status is not None:
+        file.status = FileStatus(payload.status)
+    if "error_message" in payload.model_fields_set:
+        file.error_message = payload.error_message
+
+    await db_session.flush()
+    logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return file
 
 
