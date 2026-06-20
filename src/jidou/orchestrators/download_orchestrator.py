@@ -23,7 +23,9 @@ def _local_path_for(remote_path: str, show_remote_path: str, show_local_path: st
     other.  Falls back to the bare filename when the remote path cannot be made
     relative to the show root (defensive: should not happen in normal operation).
     """
-    remote_root = show_remote_path.rstrip("/")
+    # rstrip("/") on "/" yields ""; preserve "/" so relative_to() works when
+    # show_remote_path is the filesystem root.
+    remote_root = show_remote_path.rstrip("/") or "/"
     try:
         rel = Path(remote_path).relative_to(remote_root)
     except ValueError:

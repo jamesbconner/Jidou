@@ -1,6 +1,7 @@
 """Tests for jidou.services.file_filters."""
 
-from datetime import datetime, timedelta, timezone
+import datetime as dt
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -68,23 +69,23 @@ class TestIsValidDirectory:
 
 class TestIsRecentlyModified:
     def test_file_modified_just_now_is_recent(self) -> None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=dt.UTC)
         assert is_recently_modified(now) is True
 
     def test_file_modified_within_grace_window_is_recent(self) -> None:
-        recent = datetime.now(tz=timezone.utc) - timedelta(seconds=30)
+        recent = datetime.now(tz=dt.UTC) - timedelta(seconds=30)
         assert is_recently_modified(recent) is True
 
     def test_file_modified_at_grace_boundary_is_not_recent(self) -> None:
-        old_enough = datetime.now(tz=timezone.utc) - timedelta(seconds=61)
+        old_enough = datetime.now(tz=dt.UTC) - timedelta(seconds=61)
         assert is_recently_modified(old_enough) is False
 
     def test_file_modified_yesterday_is_not_recent(self) -> None:
-        old = datetime.now(tz=timezone.utc) - timedelta(days=1)
+        old = datetime.now(tz=dt.UTC) - timedelta(days=1)
         assert is_recently_modified(old) is False
 
     def test_custom_grace_seconds(self) -> None:
-        mtime = datetime.now(tz=timezone.utc) - timedelta(seconds=90)
+        mtime = datetime.now(tz=dt.UTC) - timedelta(seconds=90)
         assert is_recently_modified(mtime, grace_seconds=120) is True
         assert is_recently_modified(mtime, grace_seconds=60) is False
 

@@ -115,6 +115,13 @@ def _make_session(rows=None, dry_run=False):
             "/media/Show",
             "/media/Show/ep.mkv",
         ),
+        # show_remote_path is "/" (filesystem root): rstrip yields ""; must not crash
+        (
+            "/Show/Season 01/ep.mkv",
+            "/",
+            "/media/Show",
+            "/media/Show/Show/Season 01/ep.mkv",
+        ),
     ],
 )
 def test_local_path_for(remote_path, show_remote, show_local, expected):

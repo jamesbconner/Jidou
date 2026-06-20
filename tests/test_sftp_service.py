@@ -234,7 +234,9 @@ class TestListRemoteFiles:
     async def test_uses_custom_path(self, sftp_service: SFTPService) -> None:
         """Explicit path overrides remote_base_path."""
         mock_sftp = AsyncMock()
-        mock_sftp.readdir = AsyncMock(return_value=[_make_entry("file.mkv", 500, mtime=_old_mtime())])
+        mock_sftp.readdir = AsyncMock(
+            return_value=[_make_entry("file.mkv", 500, mtime=_old_mtime())]
+        )
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
             files = await sftp_service.list_remote_files(path="/custom/path")
