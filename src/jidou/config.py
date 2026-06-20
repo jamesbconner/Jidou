@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     sftp_password: str | None = None
     sftp_key_path: str | None = None
     sftp_remote_base_path: str = "/"
+    sftp_max_workers: int = Field(default=8, ge=1, le=32)
+    sftp_max_retries: int = Field(default=3, ge=0)
+    sftp_retry_delay: float = Field(default=1.0, ge=0.1)
 
     # LLM
     llm_provider: str = "none"

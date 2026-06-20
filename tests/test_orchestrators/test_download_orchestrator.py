@@ -47,12 +47,16 @@ def _make_row(
 
 
 def _make_session(rows=None, dry_run=False):
-    """Build a mock session.
+    """Build a mock session for the batch-parallel orchestrator.
+
+    Non-dry-run sequence:
+      1. COUNT query  → scalar_one()
+      2. Batch query  → all() returning rows
+      3. Empty query  → all() returning [] (loop exit)
 
     Args:
-        rows: List of (file, show) tuples to process.
-        dry_run: If True, mock returns all rows via .all() (batch path).
-                 If False, mock returns COUNT then one row at a time via .first().
+        rows: List of (file, show) tuples for the single batch.
+        dry_run: If True, a single execute returns all rows via .all().
     """
     session = MagicMock()
     session.flush = AsyncMock()
@@ -66,20 +70,16 @@ def _make_session(rows=None, dry_run=False):
         result.all.return_value = rows
         session.execute = AsyncMock(return_value=result)
     else:
-        # Non-dry-run: COUNT query first, then one row per execute(), then None sentinel
         count_result = MagicMock()
         count_result.scalar_one.return_value = len(rows)
 
-        row_results = []
-        for row in rows:
-            r = MagicMock()
-            r.first.return_value = row
-            row_results.append(r)
+        batch_result = MagicMock()
+        batch_result.all.return_value = rows
 
-        end_result = MagicMock()
-        end_result.first.return_value = None
+        empty_result = MagicMock()
+        empty_result.all.return_value = []
 
-        session.execute = AsyncMock(side_effect=[count_result, *row_results, end_result])
+        session.execute = AsyncMock(side_effect=[count_result, batch_result, empty_result])
 
     return session
 
@@ -166,8 +166,8 @@ async def test_run_downloads_pending_files():
     assert file1.status == FileStatus.DOWNLOADED
     assert file2.status == FileStatus.DOWNLOADED
     assert sftp.download_file.call_count == 2
-    # 2 claim commits + 2 finish commits
-    assert session.commit.call_count == 4
+    # 1 commit to release locks (DOWNLOADING) + 1 commit to persist results
+    assert session.commit.call_count == 2
 
 
 async def test_run_uses_season_subdirectory_path():
@@ -204,7 +204,7 @@ async def test_run_skips_files_without_local_path():
     assert result.files_skipped == 1
     assert result.files_downloaded == 0
     sftp.download_file.assert_not_called()
-    # One commit to release the FOR UPDATE lock on the skipped row
+    # 1 commit to release the FOR UPDATE lock (all rows in batch were skipped)
     assert session.commit.call_count == 1
 
 
@@ -251,23 +251,21 @@ async def test_run_skips_no_local_path_without_infinite_loop():
     show1.local_path = None
     file2, show2 = _make_row(file_id=2, filename="ep2.mkv")
 
-    # First COUNT; then file1 (no local_path); then file2; then None sentinel.
+    # Single batch returns both rows; after processing, file1 in skipped_ids,
+    # file2 downloaded. Second iteration returns empty batch → loop exits.
     count_result = MagicMock()
     count_result.scalar_one.return_value = 2
 
-    row1_result = MagicMock()
-    row1_result.first.return_value = (file1, show1)
+    batch1_result = MagicMock()
+    batch1_result.all.return_value = [(file1, show1), (file2, show2)]
 
-    row2_result = MagicMock()
-    row2_result.first.return_value = (file2, show2)
-
-    end_result = MagicMock()
-    end_result.first.return_value = None
+    empty_result = MagicMock()
+    empty_result.all.return_value = []
 
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
-    session.execute = AsyncMock(side_effect=[count_result, row1_result, row2_result, end_result])
+    session.execute = AsyncMock(side_effect=[count_result, batch1_result, empty_result])
 
     sftp = MagicMock()
     sftp.download_file = AsyncMock(return_value=_make_sftp_result())
@@ -277,50 +275,45 @@ async def test_run_skips_no_local_path_without_infinite_loop():
 
     assert result.files_skipped == 1
     assert result.files_downloaded == 1
-    # The loop must not spin on file1; exactly 4 execute() calls expected
-    assert session.execute.call_count == 4
+    # 3 executes: COUNT, batch1, empty
+    assert session.execute.call_count == 3
+    # 2 commits: claim batch (releases lock) + persist result
+    assert session.commit.call_count == 2
 
 
 async def test_run_resets_to_error_on_cancellation():
-    """CancelledError mid-transfer resets file to ERROR and re-raises."""
+    """CancelledError from a download is caught and recorded as ERROR, not re-raised."""
     file1, show1 = _make_row()
 
-    count_result = MagicMock()
-    count_result.scalar_one.return_value = 1
-
-    row_result = MagicMock()
-    row_result.first.return_value = (file1, show1)
-
-    session = MagicMock()
-    session.flush = AsyncMock()
-    session.commit = AsyncMock()
-    session.execute = AsyncMock(side_effect=[count_result, row_result])
-
+    session = _make_session(rows=[(file1, show1)])
     sftp = MagicMock()
     sftp.download_file = AsyncMock(side_effect=asyncio.CancelledError())
 
     orch = DownloadOrchestrator(session, sftp)
+    # CancelledError raised inside download_file is caught by asyncio.gather
+    # (return_exceptions=True) and turned into a per-file ERROR — not re-raised.
+    result = await orch.run()
 
-    with pytest.raises(asyncio.CancelledError):
-        await orch.run()
-
+    assert result.files_failed == 1
+    assert result.files_downloaded == 0
     assert file1.status == FileStatus.ERROR
     assert file1.error_message == "Download interrupted"
+    assert session.commit.call_count == 2  # claim + error
 
 
 async def test_run_sets_downloading_before_transfer():
-    """Status is flushed as DOWNLOADING before SFTP call; lock is released at first commit."""
+    """Status is flushed as DOWNLOADING before transfers begin."""
     file1, show1 = _make_row()
     status_at_flush: list[FileStatus] = []
 
     count_result = MagicMock()
     count_result.scalar_one.return_value = 1
 
-    row_result = MagicMock()
-    row_result.first.return_value = (file1, show1)
+    batch_result = MagicMock()
+    batch_result.all.return_value = [(file1, show1)]
 
-    end_result = MagicMock()
-    end_result.first.return_value = None
+    empty_result = MagicMock()
+    empty_result.all.return_value = []
 
     session = MagicMock()
 
@@ -329,7 +322,7 @@ async def test_run_sets_downloading_before_transfer():
 
     session.flush = AsyncMock(side_effect=capture_flush)
     session.commit = AsyncMock()
-    session.execute = AsyncMock(side_effect=[count_result, row_result, end_result])
+    session.execute = AsyncMock(side_effect=[count_result, batch_result, empty_result])
 
     sftp = MagicMock()
     sftp.download_file = AsyncMock(return_value=_make_sftp_result())
@@ -337,8 +330,8 @@ async def test_run_sets_downloading_before_transfer():
     orch = DownloadOrchestrator(session, sftp)
     await orch.run()
 
-    # First flush must capture DOWNLOADING (before SFTP call)
+    # First flush must see DOWNLOADING (before gather)
     assert len(status_at_flush) >= 1
     assert status_at_flush[0] == FileStatus.DOWNLOADING
-    # Two commits: claim (lock release) + finish (persist DOWNLOADED)
+    # 2 commits: claim (lock release) + finish (persist DOWNLOADED)
     assert session.commit.call_count == 2

@@ -87,6 +87,8 @@ async def test_sftp() -> dict[str, Any]:
             password=settings.sftp_password,
             key_path=settings.sftp_key_path,
             remote_base_path=settings.sftp_remote_base_path,
+            max_retries=settings.sftp_max_retries,
+            retry_delay=settings.sftp_retry_delay,
         )
         files = await sftp.list_remote_files()
         return {"ok": True, "file_count": len(files)}
