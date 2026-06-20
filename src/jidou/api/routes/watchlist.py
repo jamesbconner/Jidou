@@ -89,7 +89,7 @@ async def create_watchlist_entry(
     existing_stmt = select(WatchlistEntry).where(WatchlistEntry.show_id == payload.show_id)
     existing = (await db_session.execute(existing_stmt)).scalar_one_or_none()
     if existing is not None:
-        if existing.status != payload.status:
+        if "status" in payload.model_fields_set and existing.status != payload.status:
             existing.status = WatchlistStatus(payload.status)
             await db_session.flush()
             logger.debug(
