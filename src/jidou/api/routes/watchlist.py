@@ -69,8 +69,8 @@ async def create_watchlist_entry(
 ) -> WatchlistEntry:
     """Add a show to the watchlist.
 
-    If the show is already on the watchlist, the existing entry is returned
-    unchanged (idempotent — no duplicate entries per show).
+    If the show is already on the watchlist, the status is updated to the
+    requested value and the entry is returned (idempotent — no duplicates).
 
     Args:
         payload: Show and initial status to track.
@@ -89,7 +89,19 @@ async def create_watchlist_entry(
     existing_stmt = select(WatchlistEntry).where(WatchlistEntry.show_id == payload.show_id)
     existing = (await db_session.execute(existing_stmt)).scalar_one_or_none()
     if existing is not None:
-        logger.debug("Show id=%d already on watchlist (entry id=%d)", payload.show_id, existing.id)
+        if existing.status != payload.status:
+            existing.status = WatchlistStatus(payload.status)
+            await db_session.flush()
+            logger.debug(
+                "Show id=%d already on watchlist (entry id=%d); updated status to %s",
+                payload.show_id,
+                existing.id,
+                payload.status,
+            )
+        else:
+            logger.debug(
+                "Show id=%d already on watchlist (entry id=%d)", payload.show_id, existing.id
+            )
         return existing
 
     entry = WatchlistEntry(**payload.model_dump())
