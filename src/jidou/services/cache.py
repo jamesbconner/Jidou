@@ -38,33 +38,34 @@ class CacheBackend:
         async with self._lock:
             return self._cache.get(key)
 
-    async def set(self, key: str, value: Any) -> None:
+    async def set(self, key: str, value: Any, label: str | None = None) -> None:
         """Store a value in the cache.
 
         Args:
             key: The cache key.
             value: The value to cache.
+            label: Optional human-readable label (e.g. TMDB endpoint path).
+                   Stored atomically with the value so no flush race is possible.
         """
         async with self._lock:
             self._cache[key] = value
-
-    def register(self, key: str, label: str) -> None:
-        """Associate a human-readable label with a cache key.
-
-        Args:
-            key: The cache key (SHA-256 hash).
-            label: A descriptive label, e.g. the TMDB endpoint path.
-        """
-        self._labels[key] = label
+            if label is not None:
+                self._labels[key] = label
 
     async def stats(self) -> dict[str, Any]:
         """Return cache statistics and active entry list for admin introspection.
+
+        Prunes stale label keys (entries evicted by TTL or capacity) on each call
+        so _labels never grows beyond the set of live cache entries.
 
         Returns:
             Dictionary with count, capacity, TTL, and labelled entry list.
         """
         async with self._lock:
             active_keys = set(self._cache.keys())
+            # Prune labels for entries evicted since the last stats call
+            for stale in [k for k in self._labels if k not in active_keys]:
+                del self._labels[stale]
             entries = [
                 {"label": self._labels[key], "key": key}
                 for key in active_keys
