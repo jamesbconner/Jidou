@@ -7,7 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 
 from jidou.models import Base
 from jidou.models.show import Show  # noqa: F401
@@ -76,16 +76,19 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Allow DATABASE_URL env var to override alembic.ini
+    # Build the engine directly from DATABASE_URL when available, bypassing
+    # config.set_main_option() which routes through Python's configparser.
+    # configparser treats '%' as an interpolation escape, so percent-encoded
+    # characters in a URL password (e.g. %21 for '!') cause a ValueError.
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
-        config.set_main_option("sqlalchemy.url", database_url)
-
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+        connectable = create_async_engine(database_url, poolclass=pool.NullPool)
+    else:
+        connectable = async_engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     async def run_async() -> None:
         async with connectable.connect() as connection:
