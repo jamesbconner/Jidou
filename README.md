@@ -30,8 +30,8 @@ Jidou ("自動", *automatic*) is a self-hosted TV show management system. It tra
                                  │  └── /ws/task-progress/{task_id}    │
                                  └────────────┬────────────────────────┘
                                               │
-                         ┌────────────────────┼────────────────────┐
-                         │                    │                    │
+                         ┌────────────────────┼──────────────────┐
+                         │                    │                  │
                    ┌─────▼──────┐    ┌────────▼───────┐   ┌──────▼──────┐
                    │ PostgreSQL │    │  Redis         │   │ Celery      │
                    │ (models,   │    │  (broker,      │   │ Worker      │
@@ -43,7 +43,7 @@ Jidou ("自動", *automatic*) is a self-hosted TV show management system. It tra
 ```
 
 **Key constraints:**
-- API always runs on port **8192** (never 8000)
+- API was configured to run on port **8192**
 - Frontend never calls TMDB directly — all external traffic is proxied through the backend
 - TMDB rate limit enforced globally across all workers via Redis (max 0.5 req/sec)
 
