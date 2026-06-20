@@ -24,6 +24,14 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Widen alembic_version.version_num from VARCHAR(32) to VARCHAR(64).
+    # This revision's ID is 38 chars — longer than the Alembic default column
+    # width.  The ALTER must run before Alembic writes the new revision string,
+    # so it belongs here at the start of the first migration that exceeds 32 chars.
+    op.execute(
+        "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)"
+    )
+
     # Remove any pre-existing duplicates before adding the constraint.
     # Keep the row with the lowest id (earliest insert) for each pair.
     op.execute("""
