@@ -156,6 +156,72 @@ async def test_run_dry_run_skips_transfer():
     session.commit.assert_not_called()
 
 
+async def test_run_skips_no_local_path_without_infinite_loop():
+    """Files whose show has no local_path are skipped and excluded from re-selection."""
+    file1, show1 = _make_row(file_id=1, local_path=None)
+    show1.local_path = None
+    file2, show2 = _make_row(file_id=2, filename="ep2.mkv")
+
+    # First COUNT; then file1 (no local_path); then file2; then None sentinel.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 2
+
+    row1_result = MagicMock()
+    row1_result.first.return_value = (file1, show1)
+
+    row2_result = MagicMock()
+    row2_result.first.return_value = (file2, show2)
+
+    end_result = MagicMock()
+    end_result.first.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, row1_result, row2_result, end_result])
+
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result())
+
+    orch = DownloadOrchestrator(session, sftp)
+    result = await orch.run()
+
+    assert result.files_skipped == 1
+    assert result.files_downloaded == 1
+    # The loop must not spin on file1; exactly 4 execute() calls expected
+    assert session.execute.call_count == 4
+
+
+async def test_run_resets_to_error_on_cancellation():
+    """CancelledError mid-transfer resets file to ERROR and re-raises."""
+    import asyncio
+
+    file1, show1 = _make_row()
+
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
+
+    row_result = MagicMock()
+    row_result.first.return_value = (file1, show1)
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, row_result])
+
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=asyncio.CancelledError())
+
+    orch = DownloadOrchestrator(session, sftp)
+    import pytest
+
+    with pytest.raises(asyncio.CancelledError):
+        await orch.run()
+
+    assert file1.status == FileStatus.ERROR
+    assert file1.error_message == "Download interrupted"
+
+
 async def test_run_sets_downloading_before_transfer():
     """Status is flushed as DOWNLOADING before SFTP call; lock is released at first commit."""
     file1, show1 = _make_row()

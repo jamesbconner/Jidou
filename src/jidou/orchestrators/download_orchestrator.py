@@ -130,6 +130,10 @@ class DownloadOrchestrator:
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         idx = 0
+        # IDs of files that cannot be processed this run (show has no local_path).
+        # Excluded from subsequent loop iterations to prevent infinite re-selection.
+        skipped_ids: set[int] = set()
+
         while True:
             # Lock exactly one eligible row; other workers skip locked rows.
             stmt = (
@@ -141,6 +145,8 @@ class DownloadOrchestrator:
             )
             if show_id is not None:
                 stmt = stmt.where(DownloadedFile.show_id == show_id)
+            if skipped_ids:
+                stmt = stmt.where(DownloadedFile.id.notin_(skipped_ids))
 
             row = (await self.session.execute(stmt)).first()
             if row is None:
@@ -158,6 +164,7 @@ class DownloadOrchestrator:
                     show.id,
                     file.id,
                 )
+                skipped_ids.add(file.id)  # exclude from future iterations
                 files_skipped += 1
                 await self.session.commit()  # release FOR UPDATE lock
                 continue
@@ -171,21 +178,41 @@ class DownloadOrchestrator:
             await self.session.commit()  # lock released; DOWNLOADING visible to other workers
 
             try:
-                result = await self.sftp.download_file(file.remote_path, local_path)
-                file.status = FileStatus.DOWNLOADED
-                file.local_path = str(local_path)
-                file.file_size = result.size
-                file.error_message = None
-                files_downloaded += 1
-                bytes_downloaded += result.size
-            except Exception as exc:
-                logger.error("Failed to download %s: %s", file.remote_path, exc)
-                file.status = FileStatus.ERROR
-                file.error_message = str(exc)
-                files_failed += 1
+                try:
+                    result = await self.sftp.download_file(file.remote_path, local_path)
+                    file.status = FileStatus.DOWNLOADED
+                    file.local_path = str(local_path)
+                    file.file_size = result.size
+                    file.error_message = None
+                    files_downloaded += 1
+                    bytes_downloaded += result.size
+                except Exception as exc:
+                    logger.error("Failed to download %s: %s", file.remote_path, exc)
+                    file.status = FileStatus.ERROR
+                    file.error_message = str(exc)
+                    files_failed += 1
 
-            await self.session.flush()
-            await self.session.commit()  # persist DOWNLOADED or ERROR
+                await self.session.flush()
+                await self.session.commit()  # persist DOWNLOADED or ERROR
+
+            except BaseException:
+                # CancelledError / KeyboardInterrupt escaped the inner except.
+                # Best-effort: reset to ERROR so the file can be retried.
+                if file.status == FileStatus.DOWNLOADING:
+                    file.status = FileStatus.ERROR
+                    file.error_message = "Download interrupted"
+                    files_failed += 1
+                    try:
+                        await self.session.flush()
+                        await self.session.commit()
+                    except Exception:
+                        logger.warning(
+                            "Could not persist interrupted status for file id=%d; "
+                            "manual recovery via PATCH /files/%d may be required",
+                            file.id,
+                            file.id,
+                        )
+                raise
 
         logger.info(
             "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
