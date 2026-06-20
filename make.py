@@ -225,7 +225,7 @@ def health() -> None:
         click.echo(json.dumps(data, indent=2))
         if not data.get("healthy"):
             sys.exit(1)
-    except httpx.ConnectError:
+    except httpx.TransportError:
         click.secho("API not reachable at http://localhost:8192", fg="red", err=True)
         sys.exit(1)
 
