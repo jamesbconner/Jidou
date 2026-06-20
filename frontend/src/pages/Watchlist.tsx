@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import type { WatchlistStatus } from '@/types/api'
 
@@ -22,12 +22,13 @@ const STATUS_COLOR: Record<WatchlistStatus, string> = {
 
 function InlineStatusSelect({ id, current }: { id: number; current: WatchlistStatus }) {
   const [editing, setEditing] = useState(false)
+  const pendingRef = useRef<WatchlistStatus>(current)
   const patch = usePatchWatchlistEntry()
 
   if (!editing) {
     return (
       <button
-        onClick={() => setEditing(true)}
+        onClick={() => { pendingRef.current = current; setEditing(true) }}
         className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLOR[current]} hover:opacity-80`}
         title="Click to change status"
       >
@@ -40,11 +41,10 @@ function InlineStatusSelect({ id, current }: { id: number; current: WatchlistSta
     <select
       autoFocus
       defaultValue={current}
-      onBlur={() => setEditing(false)}
-      onChange={(e) => {
-        const next = e.target.value as WatchlistStatus
+      onChange={(e) => { pendingRef.current = e.target.value as WatchlistStatus }}
+      onBlur={() => {
         setEditing(false)
-        if (next !== current) patch.mutate({ id, update: { status: next } })
+        if (pendingRef.current !== current) patch.mutate({ id, update: { status: pendingRef.current } })
       }}
       className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
