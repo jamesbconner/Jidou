@@ -19,7 +19,7 @@ export function useFiles(status?: FileStatus) {
 export function useFilesByShow(showId: number) {
   return useQuery({
     queryKey: [...fileKeys.all, 'show', showId] as const,
-    queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}`),
+    queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}&limit=1000`),
   })
 }
 

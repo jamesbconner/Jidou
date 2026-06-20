@@ -28,6 +28,11 @@ export default function ShowDetail() {
     }
   }, [show, showId])
 
+  // Reset stale sync mutation feedback when navigating to a different show
+  useEffect(() => {
+    syncEpisodes.reset()
+  }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isLoading) return <p className="text-gray-400">Loading…</p>
   if (!show) return <p className="text-red-500">Show not found.</p>
 
