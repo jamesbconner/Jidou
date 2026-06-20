@@ -39,9 +39,17 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Copy application source (may be overridden by docker-compose mount in dev)
 COPY src/ ./src/
 
+# Copy Alembic migration files so the entrypoint can run `alembic upgrade head`
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+
+# Copy and register the entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+
 # Run as non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chmod +x /docker-entrypoint.sh
 USER appuser
 
 # Expose API port (8192, never 8000)
@@ -51,5 +59,6 @@ EXPOSE 8192
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8192/api/health || exit 1
 
-# Run Uvicorn
+# Run migrations then start Uvicorn
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["uvicorn", "jidou.main:app", "--host", "0.0.0.0", "--port", "8192"]
