@@ -28,14 +28,15 @@ import sys
 import click
 
 
-def run(cmd: str, check: bool = False) -> subprocess.CompletedProcess:
+def run(cmd: str, check: bool = False, cwd: str | None = None) -> subprocess.CompletedProcess:
     """Run a shell command.
 
     Args:
         cmd: Shell command to execute.
         check: If True, exit with the subprocess return code on failure.
+        cwd: Working directory for the command.
     """
-    result = subprocess.run(cmd, shell=True)  # type: ignore[call-arg]
+    result = subprocess.run(cmd, shell=True, cwd=cwd)  # type: ignore[call-arg]
     if check and result.returncode != 0:
         sys.exit(result.returncode)
     return result
@@ -143,9 +144,39 @@ def migrate() -> None:
 
 @cli.command()
 def seed() -> None:
-    """Populate DB with sample data."""
-    click.echo("Seed command not yet implemented.")
-    sys.exit(0)
+    """Populate DB with sample shows for local development.
+
+    Requires a running PostgreSQL instance (DATABASE_URL env var).
+    """
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from jidou.config import settings
+
+    sample_shows = [
+        {"tmdb_id": 1396, "title": "Breaking Bad", "media_type": "tv"},
+        {"tmdb_id": 60735, "title": "The Flash", "media_type": "tv"},
+        {"tmdb_id": 94997, "title": "House of the Dragon", "media_type": "tv"},
+    ]
+
+    async def _run() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            for show in sample_shows:
+                await conn.execute(
+                    text(
+                        "INSERT INTO shows (tmdb_id, title, media_type)"
+                        " VALUES (:tmdb_id, :title, :media_type)"
+                        " ON CONFLICT (tmdb_id) DO NOTHING"
+                    ),
+                    show,
+                )
+        await engine.dispose()
+
+    asyncio.run(_run())
+    click.echo(f"Seeded {len(sample_shows)} sample shows.")
 
 
 # ---------------------------------------------------------------------------
@@ -155,16 +186,22 @@ def seed() -> None:
 
 @cli.command()
 def generate_types() -> None:
-    """Generate TypeScript types from OpenAPI spec."""
-    click.echo("Generate types command not yet implemented (requires running API).")
-    sys.exit(0)
+    """Generate TypeScript types from the running API's OpenAPI spec.
+
+    Requires the API to be running at http://localhost:8192.
+    Start it first with: uv run python make.py docker-up
+    """
+    run(
+        "npx openapi-typescript http://localhost:8192/openapi.json -o frontend/src/types/api.ts",
+        check=True,
+    )
+    click.echo("Types written to frontend/src/types/api.ts")
 
 
 @cli.command()
 def build_frontend() -> None:
     """Build React SPA for production."""
-    click.echo("Build frontend command not yet implemented (requires frontend setup).")
-    sys.exit(0)
+    run("npm run build", cwd="frontend", check=True)
 
 
 # ---------------------------------------------------------------------------
@@ -174,9 +211,23 @@ def build_frontend() -> None:
 
 @cli.command()
 def health() -> None:
-    """Run health checks."""
-    click.echo("Health check command not yet implemented (requires running API).")
-    sys.exit(0)
+    """Check service health via GET /api/admin/health.
+
+    Requires the API to be running at http://localhost:8192.
+    """
+    import json
+
+    import httpx
+
+    try:
+        r = httpx.get("http://localhost:8192/api/admin/health", timeout=5)
+        data = r.json()
+        click.echo(json.dumps(data, indent=2))
+        if not data.get("healthy"):
+            sys.exit(1)
+    except httpx.TransportError:
+        click.secho("API not reachable at http://localhost:8192", fg="red", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

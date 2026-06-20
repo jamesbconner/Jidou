@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard'
 import Shows from '@/pages/Shows'
 import ShowDetail from '@/pages/ShowDetail'
 import Files from '@/pages/Files'
+import Watchlist from '@/pages/Watchlist'
 import Tasks from '@/pages/Tasks'
 import Settings from '@/pages/Settings'
 
@@ -32,6 +33,7 @@ export default function App() {
                 <Route path="/shows" element={<Shows />} />
                 <Route path="/shows/:id" element={<ShowDetail />} />
                 <Route path="/files" element={<Files />} />
+                <Route path="/watchlist" element={<Watchlist />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>

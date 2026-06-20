@@ -204,6 +204,45 @@ export interface HealthCheck {
   }
 }
 
+// ─── Watchlist ────────────────────────────────────────────────────────────
+
+export type WatchlistStatus = 'planned' | 'watching' | 'completed' | 'on_hold' | 'dropped'
+
+export interface WatchlistList {
+  id: number
+  show_id: number
+  status: WatchlistStatus
+  position: number
+  created_at: string
+}
+
+export interface WatchlistRead extends WatchlistList {
+  notes: string | null
+  updated_at: string
+}
+
+export interface WatchlistCreate {
+  show_id: number
+  status?: WatchlistStatus
+  notes?: string | null
+  position?: number
+}
+
+export interface WatchlistUpdate {
+  status?: WatchlistStatus | null
+  notes?: string | null
+  position?: number | null
+}
+
+// ─── File PATCH ───────────────────────────────────────────────────────────
+
+export interface FilePatch {
+  show_id?: number | null
+  episode_id?: number | null
+  status?: FileStatus | null
+  error_message?: string | null
+}
+
 // ─── TMDB raw responses (proxied through backend) ─────────────────────────
 
 export interface TmdbResult {
