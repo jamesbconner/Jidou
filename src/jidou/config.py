@@ -1,6 +1,6 @@
 """Application configuration via pydantic-settings."""
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,18 +27,14 @@ class Settings(BaseSettings):
     tmdb_rate_limit_per_second: float = Field(default=0.5, ge=0.1, le=2.0)
     tmdb_cache_ttl: int = Field(default=86400, ge=3600)  # 24 hours in seconds
 
-    # CORS
-    allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3100"],
-    )
+    # CORS — stored as a plain string so pydantic-settings never attempts
+    # JSON-parsing. Use the cors_origins property for the parsed list.
+    allowed_origins: str = "http://localhost:3100"
 
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def _parse_origins(cls, value: str | list[str]) -> list[str]:
-        """Allow comma-separated string or JSON array for CORS origins."""
-        if isinstance(value, str):
-            return [o.strip() for o in value.split(",") if o.strip()]
-        return value
+    @property
+    def cors_origins(self) -> list[str]:
+        """Return ALLOWED_ORIGINS as a list, split on commas."""
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     # SFTP
     sftp_host: str | None = None

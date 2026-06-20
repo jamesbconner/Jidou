@@ -32,7 +32,7 @@ async def get_config() -> dict[str, Any]:
         "tmdb_base_url": settings.tmdb_base_url,
         "tmdb_rate_limit_per_second": settings.tmdb_rate_limit_per_second,
         "tmdb_cache_ttl": settings.tmdb_cache_ttl,
-        "allowed_origins": settings.allowed_origins,
+        "allowed_origins": settings.cors_origins,
         "sftp_host": settings.sftp_host,
         "sftp_port": settings.sftp_port,
         "sftp_username": settings.sftp_username,
