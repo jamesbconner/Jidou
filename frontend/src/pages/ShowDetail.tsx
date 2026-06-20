@@ -13,7 +13,7 @@ export default function ShowDetail() {
   const { data: episodes = [] } = useShowEpisodes(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const triggerTask = useTriggerTask()
-  const syncEpisodes = useSyncEpisodes(showId)
+  const syncEpisodes = useSyncEpisodes()
   const { data: showFiles = [] } = useFilesByShow(showId)
   const rematch = useRematchFile()
 
@@ -128,7 +128,7 @@ export default function ShowDetail() {
             Dry Run
           </button>
           <button
-            onClick={() => syncEpisodes.mutate()}
+            onClick={() => syncEpisodes.mutate(showId)}
             disabled={syncEpisodes.isPending}
             className="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50"
           >

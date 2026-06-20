@@ -74,10 +74,10 @@ export function useDeleteShow() {
   })
 }
 
-export function useSyncEpisodes(showId: number) {
+export function useSyncEpisodes() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api.post<EpisodeList[]>(`/shows/${showId}/sync-episodes`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.episodes(showId) }),
+    mutationFn: (showId: number) => api.post<EpisodeList[]>(`/shows/${showId}/sync-episodes`),
+    onSuccess: (_data, showId) => qc.invalidateQueries({ queryKey: showKeys.episodes(showId) }),
   })
 }
