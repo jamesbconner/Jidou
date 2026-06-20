@@ -27,7 +27,7 @@ Jidou ("自動", *automatic*) is a self-hosted TV show management system. It tra
 │  (Nginx :3100)  │              │  ├── /api/shows   /api/files        │
 └─────────────────┘              │  ├── /api/watchlist  /api/tasks     │
                                  │  ├── /api/admin  /api/config        │
-                                 │  └── /ws/task-progress/{task_id}   │
+                                 │  └── /ws/task-progress/{task_id}    │
                                  └────────────┬────────────────────────┘
                                               │
                          ┌────────────────────┼────────────────────┐
