@@ -12,11 +12,18 @@ import logging
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import asyncssh
+
+from jidou.services.file_filters import (
+    is_recently_modified,
+    is_valid_directory,
+    is_valid_media_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +35,7 @@ class RemoteFile:
     name: str
     path: str
     size: int
+    mtime: datetime | None = field(default=None)
 
 
 @dataclass
@@ -115,12 +123,37 @@ class SFTPService:
         ):
             yield sftp
 
+    @staticmethod
+    def _parse_mtime(entry: Any) -> datetime | None:
+        """Extract and normalise mtime from an asyncssh SFTP entry.
+
+        Args:
+            entry: asyncssh ``SFTPName`` instance.
+
+        Returns:
+            UTC-aware datetime, or None if mtime is unavailable.
+        """
+        try:
+            ts = entry.attrs.mtime
+            if ts is None:
+                return None
+            return datetime.fromtimestamp(float(ts), tz=UTC)
+        except (TypeError, ValueError, OSError):
+            return None
+
     async def list_remote_files(
         self,
         path: str | None = None,
         pattern: str = "*",
     ) -> list[RemoteFile]:
-        """List files at the given remote directory.
+        """List files at the given remote directory (non-recursive).
+
+        Only regular files that:
+        - match *pattern*
+        - pass the extension/keyword exclusion rules
+        - were not modified within the last 60 seconds (upload grace window)
+
+        are returned.  Subdirectories are never included.
 
         Args:
             path: Remote directory path.  Defaults to ``remote_base_path``.
@@ -140,9 +173,16 @@ class SFTPService:
                 name: str = entry.filename
                 if name in (".", ".."):
                     continue
+                if entry.attrs.is_dir():
+                    continue
                 if not fnmatch.fnmatch(name, pattern):
                     continue
-                if entry.attrs.is_dir():
+                if not is_valid_media_file(name):
+                    logger.debug("Filtered out %s (extension/keyword rule)", name)
+                    continue
+                mtime = self._parse_mtime(entry)
+                if mtime is not None and is_recently_modified(mtime):
+                    logger.debug("Skipping recently modified file: %s", name)
                     continue
                 size: int = getattr(entry.attrs, "size", 0) or 0
                 files.append(
@@ -150,11 +190,91 @@ class SFTPService:
                         name=name,
                         path=f"{remote_path.rstrip('/')}/{name}",
                         size=size,
+                        mtime=mtime,
                     )
                 )
 
         files.sort(key=lambda f: f.name)
         logger.info("Found %d files at %s", len(files), remote_path)
+        return files
+
+    async def _collect_files_recursive(
+        self,
+        sftp: Any,
+        path: str,
+        pattern: str,
+        results: list[RemoteFile],
+    ) -> None:
+        """Collect files recursively within an already-open SFTP session.
+
+        Directories that pass ``is_valid_directory()`` are descended into;
+        files that pass ``is_valid_media_file()`` and *pattern* and are not
+        recently modified are appended to *results*.
+
+        Args:
+            sftp: Open asyncssh SFTP client.
+            path: Remote directory path to read.
+            pattern: Glob pattern applied to filenames.
+            results: Accumulator list; matched files are appended in place.
+        """
+        entries = await sftp.readdir(path)
+        for entry in entries:
+            name: str = entry.filename
+            if name in (".", ".."):
+                continue
+            entry_path = f"{path.rstrip('/')}/{name}"
+
+            if entry.attrs.is_dir():
+                if is_valid_directory(name):
+                    await self._collect_files_recursive(sftp, entry_path, pattern, results)
+                else:
+                    logger.debug("Skipping excluded directory: %s", name)
+                continue
+
+            if not fnmatch.fnmatch(name, pattern):
+                continue
+            if not is_valid_media_file(name):
+                logger.debug("Filtered out %s (extension/keyword rule)", name)
+                continue
+
+            mtime = self._parse_mtime(entry)
+            if mtime is not None and is_recently_modified(mtime):
+                logger.debug("Skipping recently modified file: %s", entry_path)
+                continue
+
+            size: int = getattr(entry.attrs, "size", 0) or 0
+            results.append(RemoteFile(name=name, path=entry_path, size=size, mtime=mtime))
+
+    async def list_remote_files_recursive(
+        self,
+        path: str | None = None,
+        pattern: str = "*",
+    ) -> list[RemoteFile]:
+        """Recursively list files beneath the given remote directory.
+
+        Descends into all subdirectories that pass ``is_valid_directory()``
+        (excluding directories like ``sample`` or ``screens``).  Only regular
+        files that pass the extension/keyword rules and are not recently
+        modified are returned.
+
+        A single SSH connection is opened for the entire traversal.
+
+        Args:
+            path: Remote root path.  Defaults to ``remote_base_path``.
+            pattern: Glob pattern applied to filenames (e.g. ``"*.mkv"``).
+
+        Returns:
+            List of :class:`RemoteFile` objects, sorted by name.
+        """
+        remote_path = path or self.remote_base_path
+        logger.info("Recursively listing remote files at %s (pattern=%r)", remote_path, pattern)
+
+        files: list[RemoteFile] = []
+        async with self._connection() as sftp:
+            await self._collect_files_recursive(sftp, remote_path, pattern, files)
+
+        files.sort(key=lambda f: f.name)
+        logger.info("Found %d files recursively at %s", len(files), remote_path)
         return files
 
     async def download_file(

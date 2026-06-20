@@ -72,7 +72,7 @@ class ScanOrchestrator:
                 await on_progress(idx, total, f"Scanning {show.title}")
 
             try:
-                remote_files = await self.sftp.list_remote_files(show.remote_path)
+                remote_files = await self.sftp.list_remote_files_recursive(show.remote_path)
             except Exception:
                 logger.exception(
                     "Failed to list remote path %s for show id=%d",
