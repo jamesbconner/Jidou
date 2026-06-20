@@ -37,7 +37,7 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
   if (!editing) {
     return (
       <button
-        onClick={() => { setValue(showId?.toString() ?? ''); setEditing(true) }}
+        onClick={() => { cancelRef.current = false; setValue(showId?.toString() ?? ''); setEditing(true) }}
         className="text-gray-500 hover:text-blue-600 hover:underline text-left"
         title="Click to assign show"
       >
