@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useFiles, useRematchFile } from '@/hooks/useFiles'
 import { fileKeys } from '@/hooks/useFiles'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
@@ -11,6 +11,7 @@ const STATUS_OPTIONS: (FileStatus | '')[] = ['', 'pending', 'downloading', 'down
 function InlineShowId({ fileId, showId }: { fileId: number; showId: number | null }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(showId?.toString() ?? '')
+  const cancelRef = useRef(false)
   const qc = useQueryClient()
   const patch = useMutation({
     mutationFn: (newShowId: number | null) =>
@@ -19,15 +20,24 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
   })
 
   function commit() {
+    if (cancelRef.current) { cancelRef.current = false; return }
     setEditing(false)
-    const parsed = value === '' ? null : parseInt(value, 10)
+    if (value === '') {
+      if (showId !== null) patch.mutate(null)
+      return
+    }
+    const parsed = parseInt(value, 10)
+    if (isNaN(parsed) || parsed <= 0) {
+      setValue(showId?.toString() ?? '')
+      return
+    }
     if (parsed !== showId) patch.mutate(parsed)
   }
 
   if (!editing) {
     return (
       <button
-        onClick={() => setEditing(true)}
+        onClick={() => { setValue(showId?.toString() ?? ''); setEditing(true) }}
         className="text-gray-500 hover:text-blue-600 hover:underline text-left"
         title="Click to assign show"
       >
@@ -43,7 +53,10 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') { cancelRef.current = true; setValue(showId?.toString() ?? ''); setEditing(false) }
+      }}
       className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
     />
   )

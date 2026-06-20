@@ -40,11 +40,7 @@ function InlineStatusSelect({ id, current }: { id: number; current: WatchlistSta
     <select
       autoFocus
       defaultValue={current}
-      onBlur={(e) => {
-        setEditing(false)
-        const next = e.target.value as WatchlistStatus
-        if (next !== current) patch.mutate({ id, update: { status: next } })
-      }}
+      onBlur={() => setEditing(false)}
       onChange={(e) => {
         const next = e.target.value as WatchlistStatus
         setEditing(false)

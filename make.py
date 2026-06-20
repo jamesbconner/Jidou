@@ -148,28 +148,34 @@ def seed() -> None:
 
     Requires a running PostgreSQL instance (DATABASE_URL env var).
     """
-    from sqlalchemy import create_engine, text
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     from jidou.config import settings
 
-    # asyncpg driver cannot be used synchronously — swap for the sync psycopg2 driver.
-    sync_url = settings.database_url.replace("+asyncpg", "")
-    engine = create_engine(sync_url)
     sample_shows = [
         {"tmdb_id": 1396, "title": "Breaking Bad", "media_type": "tv"},
         {"tmdb_id": 60735, "title": "The Flash", "media_type": "tv"},
         {"tmdb_id": 94997, "title": "House of the Dragon", "media_type": "tv"},
     ]
-    with engine.begin() as conn:
-        for show in sample_shows:
-            conn.execute(
-                text(
-                    "INSERT INTO shows (tmdb_id, title, media_type)"
-                    " VALUES (:tmdb_id, :title, :media_type)"
-                    " ON CONFLICT (tmdb_id) DO NOTHING"
-                ),
-                show,
-            )
+
+    async def _run() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            for show in sample_shows:
+                await conn.execute(
+                    text(
+                        "INSERT INTO shows (tmdb_id, title, media_type)"
+                        " VALUES (:tmdb_id, :title, :media_type)"
+                        " ON CONFLICT (tmdb_id) DO NOTHING"
+                    ),
+                    show,
+                )
+        await engine.dispose()
+
+    asyncio.run(_run())
     click.echo(f"Seeded {len(sample_shows)} sample shows.")
 
 
