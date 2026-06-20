@@ -258,6 +258,47 @@ async def delete_show(
     logger.info("Deleted show id=%d title=%r", show_id, show.title)
 
 
+@router.post("/{show_id}/sync-episodes", response_model=list[EpisodeList])
+async def sync_episodes(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> list[Episode]:
+    """Sync episodes from TMDB for a specific show and return the updated list.
+
+    Fetches all seasons and episodes from TMDB, upserts Episode rows, and marks
+    the show as cached.  Intended for on-demand refresh from the Show Detail page.
+
+    Args:
+        show_id: Database primary key of the show to sync.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Updated list of episodes ordered by season and episode number.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    orchestrator = TMDBOrchestrator(db_session, tmdb)
+    await orchestrator.sync_show_episodes(show)
+
+    ep_stmt = (
+        select(Episode)
+        .where(Episode.show_id == show_id)
+        .order_by(Episode.season_number, Episode.episode_number)
+    )
+    result = await db_session.execute(ep_stmt)
+    return list(result.scalars().all())
+
+
 @router.get("/{show_id}/episodes", response_model=list[EpisodeList])
 async def list_episodes(
     show_id: int,

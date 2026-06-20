@@ -9,14 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
-from jidou.schemas.file_schema import FileList, FileMatchRequest, FilePatch, FileRead
+from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
 
-@router.get("", response_model=list[FileList])
+@router.get("", response_model=list[FileRead])
 async def list_files(
     status: str | None = None,
     show_id: int | None = None,
