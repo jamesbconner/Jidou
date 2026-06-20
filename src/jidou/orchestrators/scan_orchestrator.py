@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
@@ -83,12 +84,6 @@ class ScanOrchestrator:
             files_found += len(remote_files)
 
             for rf in remote_files:
-                # TODO: Add unique constraint or row locking to prevent concurrent
-                # scans from creating duplicate DownloadedFile rows. Currently two
-                # overlapping scans can both check for existence, find nothing, and
-                # both insert, creating duplicates with same (show_id, remote_path).
-                # Solution: Add UNIQUE(show_id, remote_path) constraint or use
-                # SELECT ... FOR UPDATE before the insert.
                 file_stmt = select(DownloadedFile).where(
                     (DownloadedFile.remote_path == rf.path) & (DownloadedFile.show_id == show.id)
                 )
@@ -100,17 +95,31 @@ class ScanOrchestrator:
 
                 if dry_run:
                     logger.info("[DRY RUN] Would create DownloadedFile for %s", rf.path)
+                    files_created += 1
                 else:
-                    self.session.add(
-                        DownloadedFile(
-                            show_id=show.id,
-                            original_filename=rf.name,
-                            remote_path=rf.path,
-                            file_size=rf.size,
-                            status=FileStatus.PENDING,
+                    try:
+                        async with self.session.begin_nested():
+                            self.session.add(
+                                DownloadedFile(
+                                    show_id=show.id,
+                                    original_filename=rf.name,
+                                    remote_path=rf.path,
+                                    file_size=rf.size,
+                                    status=FileStatus.PENDING,
+                                )
+                            )
+                        files_created += 1
+                    except IntegrityError as exc:
+                        orig = getattr(exc, "orig", None)
+                        pgcode = getattr(orig, "pgcode", None)
+                        if pgcode is not None and pgcode != "23505":
+                            raise
+                        logger.debug(
+                            "Skipping duplicate file (race): show_id=%d remote_path=%s",
+                            show.id,
+                            rf.path,
                         )
-                    )
-                files_created += 1
+                        files_skipped += 1
 
         if not dry_run:
             await self.session.commit()

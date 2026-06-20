@@ -213,6 +213,196 @@ def test_rematch_file_resets_status_to_pending() -> None:
         app.dependency_overrides.clear()
 
 
+# ---------------------------------------------------------------------------
+# PATCH /api/files/{file_id}
+# ---------------------------------------------------------------------------
+
+
+def test_patch_file_show_id() -> None:
+    """PATCH /api/files/{id} with show_id updates the show assignment."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 42})
+        assert response.status_code == 200
+        assert f.show_id == 42
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_status() -> None:
+    """PATCH /api/files/{id} with status updates the file status."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "downloaded"})
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_invalid_status_returns_422() -> None:
+    """PATCH /api/files/{id} with a bad status string returns 422 (Pydantic pattern validation)."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "not_a_status"})
+        # Pydantic's pattern constraint on FilePatch.status rejects bad values
+        # before the route handler runs, returning 422 Unprocessable Entity.
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_not_found_returns_404() -> None:
+    """PATCH /api/files/{id} returns 404 for an unknown file ID."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).patch("/api/files/9999", json={"status": "pending"})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_partial_only_updates_provided_fields() -> None:
+    """PATCH /api/files/{id} with only status leaves show_id unchanged."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR, show_id=7)
+    original_show_id = f.show_id
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"status": "pending"})
+        assert response.status_code == 200
+        assert f.show_id == original_show_id
+        assert f.status == FileStatus.PENDING
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_show_id_change_clears_stale_episode() -> None:
+    """PATCH show_id to a different value clears episode_id and matched_by."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "llm"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 10})
+        assert response.status_code == 200
+        assert f.show_id == 10
+        assert f.episode_id is None
+        assert f.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_show_id_same_value_preserves_episode() -> None:
+    """PATCH show_id with the same value does not clear episode_id."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "heuristic"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 5})
+        assert response.status_code == 200
+        assert f.episode_id == 99
+        assert f.matched_by == "heuristic"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_explicit_episode_wins_over_show_clear() -> None:
+    """PATCH show_id with explicit episode_id keeps the caller-provided episode."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "llm"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 10, "episode_id": 42})
+        assert response.status_code == 200
+        assert f.show_id == 10
+        assert f.episode_id == 42
+        assert f.matched_by is None  # always cleared; not in FilePatch schema
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_show_id_conflict_returns_409() -> None:
+    """PATCH /api/files/{id} returns 409 when the new show_id violates the unique constraint."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+
+    orig = Exception("unique constraint violated")
+    orig.pgcode = "23505"  # type: ignore[attr-defined]
+
+    async def _conflict_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+        session.rollback = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _conflict_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 42})
+        assert response.status_code == 409
+        assert "already exists" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_fk_violation_returns_422() -> None:
+    """PATCH /api/files/{id} returns 422 when episode_id references a non-existent row."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+
+    orig = Exception("foreign key constraint violated")
+    orig.pgcode = "23503"  # type: ignore[attr-defined]
+
+    async def _fk_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+        session.rollback = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _fk_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 9999})
+        assert response.status_code == 422
+        assert "does not exist" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_rematch_file_commits_before_dispatch() -> None:
     """Commit must happen before Celery dispatch so the worker reads updated state."""
     from unittest.mock import patch

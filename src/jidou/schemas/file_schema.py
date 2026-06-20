@@ -48,3 +48,15 @@ class FileMatchRequest(BaseModel):
         pattern="^(auto|llm|heuristic)$",
         description="Matching strategy: 'auto' tries LLM first then heuristic.",
     )
+
+
+class FilePatch(BaseModel):
+    """Request body for manually overriding fields on a downloaded file."""
+
+    show_id: int | None = None
+    episode_id: int | None = None
+    status: str | None = Field(
+        default=None,
+        pattern="^(pending|downloading|downloaded|routing|routed|error)$",
+    )
+    error_message: str | None = None

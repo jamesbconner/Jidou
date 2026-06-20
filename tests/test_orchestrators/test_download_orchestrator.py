@@ -40,15 +40,41 @@ def _make_row(
     return file, show
 
 
-def _make_session(rows=None):
+def _make_session(rows=None, dry_run=False):
+    """Build a mock session.
+
+    Args:
+        rows: List of (file, show) tuples to process.
+        dry_run: If True, mock returns all rows via .all() (batch path).
+                 If False, mock returns COUNT then one row at a time via .first().
+    """
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.add = MagicMock()
 
-    result = MagicMock()
-    result.all.return_value = rows or []
-    session.execute = AsyncMock(return_value=result)
+    rows = rows or []
+
+    if dry_run:
+        result = MagicMock()
+        result.all.return_value = rows
+        session.execute = AsyncMock(return_value=result)
+    else:
+        # Non-dry-run: COUNT query first, then one row per execute(), then None sentinel
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = len(rows)
+
+        row_results = []
+        for row in rows:
+            r = MagicMock()
+            r.first.return_value = row
+            row_results.append(r)
+
+        end_result = MagicMock()
+        end_result.first.return_value = None
+
+        session.execute = AsyncMock(side_effect=[count_result, *row_results, end_result])
+
     return session
 
 
@@ -70,6 +96,8 @@ async def test_run_downloads_pending_files():
     assert file1.status == FileStatus.DOWNLOADED
     assert file2.status == FileStatus.DOWNLOADED
     assert sftp.download_file.call_count == 2
+    # 2 claim commits + 2 finish commits
+    assert session.commit.call_count == 4
 
 
 async def test_run_skips_files_without_local_path():
@@ -87,6 +115,8 @@ async def test_run_skips_files_without_local_path():
     assert result.files_skipped == 1
     assert result.files_downloaded == 0
     sftp.download_file.assert_not_called()
+    # One commit to release the FOR UPDATE lock on the skipped row
+    assert session.commit.call_count == 1
 
 
 async def test_run_marks_error_on_sftp_failure():
@@ -104,6 +134,8 @@ async def test_run_marks_error_on_sftp_failure():
     assert result.files_downloaded == 0
     assert file1.status == FileStatus.ERROR
     assert "connection refused" in file1.error_message
+    # claim commit + error commit
+    assert session.commit.call_count == 2
 
 
 async def test_run_dry_run_skips_transfer():
@@ -111,7 +143,7 @@ async def test_run_dry_run_skips_transfer():
     file1, show1 = _make_row(filename="ep1.mkv")
     file2, show2 = _make_row(file_id=2, filename="ep2.mkv")
 
-    session = _make_session(rows=[(file1, show1), (file2, show2)])
+    session = _make_session(rows=[(file1, show1), (file2, show2)], dry_run=True)
     sftp = MagicMock()
     sftp.download_file = AsyncMock()
 
@@ -121,19 +153,97 @@ async def test_run_dry_run_skips_transfer():
     assert result.files_downloaded == 2
     assert result.dry_run is True
     sftp.download_file.assert_not_called()
+    session.commit.assert_not_called()
+
+
+async def test_run_skips_no_local_path_without_infinite_loop():
+    """Files whose show has no local_path are skipped and excluded from re-selection."""
+    file1, show1 = _make_row(file_id=1, local_path=None)
+    show1.local_path = None
+    file2, show2 = _make_row(file_id=2, filename="ep2.mkv")
+
+    # First COUNT; then file1 (no local_path); then file2; then None sentinel.
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 2
+
+    row1_result = MagicMock()
+    row1_result.first.return_value = (file1, show1)
+
+    row2_result = MagicMock()
+    row2_result.first.return_value = (file2, show2)
+
+    end_result = MagicMock()
+    end_result.first.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, row1_result, row2_result, end_result])
+
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result())
+
+    orch = DownloadOrchestrator(session, sftp)
+    result = await orch.run()
+
+    assert result.files_skipped == 1
+    assert result.files_downloaded == 1
+    # The loop must not spin on file1; exactly 4 execute() calls expected
+    assert session.execute.call_count == 4
+
+
+async def test_run_resets_to_error_on_cancellation():
+    """CancelledError mid-transfer resets file to ERROR and re-raises."""
+    import asyncio
+
+    file1, show1 = _make_row()
+
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
+
+    row_result = MagicMock()
+    row_result.first.return_value = (file1, show1)
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, row_result])
+
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=asyncio.CancelledError())
+
+    orch = DownloadOrchestrator(session, sftp)
+    import pytest
+
+    with pytest.raises(asyncio.CancelledError):
+        await orch.run()
+
+    assert file1.status == FileStatus.ERROR
+    assert file1.error_message == "Download interrupted"
 
 
 async def test_run_sets_downloading_before_transfer():
-    """File status is set to DOWNLOADING and flushed before the SFTP call."""
+    """Status is flushed as DOWNLOADING before SFTP call; lock is released at first commit."""
     file1, show1 = _make_row()
-    status_sequence: list[FileStatus] = []
+    status_at_flush: list[FileStatus] = []
 
-    session = _make_session(rows=[(file1, show1)])
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 1
+
+    row_result = MagicMock()
+    row_result.first.return_value = (file1, show1)
+
+    end_result = MagicMock()
+    end_result.first.return_value = None
+
+    session = MagicMock()
 
     async def capture_flush() -> None:
-        status_sequence.append(file1.status)
+        status_at_flush.append(file1.status)
 
     session.flush = AsyncMock(side_effect=capture_flush)
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[count_result, row_result, end_result])
 
     sftp = MagicMock()
     sftp.download_file = AsyncMock(return_value=_make_sftp_result())
@@ -141,6 +251,8 @@ async def test_run_sets_downloading_before_transfer():
     orch = DownloadOrchestrator(session, sftp)
     await orch.run()
 
-    # First flush should capture DOWNLOADING status
-    assert len(status_sequence) >= 1
-    assert status_sequence[0] == FileStatus.DOWNLOADING
+    # First flush must capture DOWNLOADING (before SFTP call)
+    assert len(status_at_flush) >= 1
+    assert status_at_flush[0] == FileStatus.DOWNLOADING
+    # Two commits: claim (lock release) + finish (persist DOWNLOADED)
+    assert session.commit.call_count == 2

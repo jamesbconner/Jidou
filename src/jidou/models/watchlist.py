@@ -3,7 +3,7 @@
 from enum import StrEnum
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from jidou.models.base import Base, TimestampMixin
@@ -23,6 +23,7 @@ class WatchlistEntry(TimestampMixin, Base):
     """A user's watchlist entry tracking a specific show."""
 
     __tablename__ = "watchlist"
+    __table_args__ = (UniqueConstraint("show_id", name="uq_watchlist_show_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"))
