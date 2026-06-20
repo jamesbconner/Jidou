@@ -113,7 +113,15 @@ async def patch_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     if "show_id" in payload.model_fields_set:
+        show_changed = file.show_id != payload.show_id
         file.show_id = payload.show_id
+        if show_changed:
+            # Invalidate match data that belonged to the previous show
+            if "episode_id" not in payload.model_fields_set:
+                file.episode_id = None
+            file.matched_by = None  # not patchable — always clear on reassignment
+            if "error_message" not in payload.model_fields_set:
+                file.error_message = None
     if "episode_id" in payload.model_fields_set:
         file.episode_id = payload.episode_id
     if "status" in payload.model_fields_set and payload.status is not None:

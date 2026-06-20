@@ -289,6 +289,62 @@ def test_patch_file_partial_only_updates_provided_fields() -> None:
         app.dependency_overrides.clear()
 
 
+def test_patch_file_show_id_change_clears_stale_episode() -> None:
+    """PATCH show_id to a different value clears episode_id and matched_by."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "llm"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 10})
+        assert response.status_code == 200
+        assert f.show_id == 10
+        assert f.episode_id is None
+        assert f.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_show_id_same_value_preserves_episode() -> None:
+    """PATCH show_id with the same value does not clear episode_id."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "heuristic"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 5})
+        assert response.status_code == 200
+        assert f.episode_id == 99
+        assert f.matched_by == "heuristic"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_explicit_episode_wins_over_show_clear() -> None:
+    """PATCH show_id with explicit episode_id keeps the caller-provided episode."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 99
+    f.matched_by = "llm"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"show_id": 10, "episode_id": 42})
+        assert response.status_code == 200
+        assert f.show_id == 10
+        assert f.episode_id == 42
+        assert f.matched_by is None  # always cleared; not in FilePatch schema
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_patch_file_show_id_conflict_returns_409() -> None:
     """PATCH /api/files/{id} returns 409 when the new show_id violates the unique constraint."""
     from sqlalchemy.exc import IntegrityError
