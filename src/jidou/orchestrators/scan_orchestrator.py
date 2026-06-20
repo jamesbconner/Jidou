@@ -109,7 +109,11 @@ class ScanOrchestrator:
                                 )
                             )
                         files_created += 1
-                    except IntegrityError:
+                    except IntegrityError as exc:
+                        orig = getattr(exc, "orig", None)
+                        pgcode = getattr(orig, "pgcode", None)
+                        if pgcode is not None and pgcode != "23505":
+                            raise
                         logger.debug(
                             "Skipping duplicate file (race): show_id=%d remote_path=%s",
                             show.id,

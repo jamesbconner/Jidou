@@ -131,12 +131,21 @@ async def patch_file(
 
     try:
         await db_session.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db_session.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="A file with that show_id and remote_path combination already exists",
-        ) from None
+        orig = getattr(exc, "orig", None)
+        pgcode = getattr(orig, "pgcode", None)
+        if pgcode == "23503":
+            raise HTTPException(
+                status_code=422,
+                detail="Referenced show_id or episode_id does not exist",
+            ) from None
+        if pgcode is None or pgcode == "23505":
+            raise HTTPException(
+                status_code=409,
+                detail="A file with that show_id and remote_path combination already exists",
+            ) from None
+        raise
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return file
 

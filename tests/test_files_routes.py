@@ -353,14 +353,15 @@ def test_patch_file_show_id_conflict_returns_409() -> None:
 
     f = _make_file(id=1, show_id=None)
 
+    orig = Exception("unique constraint violated")
+    orig.pgcode = "23505"  # type: ignore[attr-defined]
+
     async def _conflict_session() -> AsyncMock:
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = f
         session.execute = AsyncMock(return_value=result)
-        session.flush = AsyncMock(
-            side_effect=IntegrityError("stmt", {}, Exception("unique constraint violated"))
-        )
+        session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
         session.rollback = AsyncMock()
         yield session
 
@@ -369,6 +370,35 @@ def test_patch_file_show_id_conflict_returns_409() -> None:
         response = TestClient(app).patch("/api/files/1", json={"show_id": 42})
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_fk_violation_returns_422() -> None:
+    """PATCH /api/files/{id} returns 422 when episode_id references a non-existent row."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+
+    orig = Exception("foreign key constraint violated")
+    orig.pgcode = "23503"  # type: ignore[attr-defined]
+
+    async def _fk_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+        session.rollback = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _fk_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 9999})
+        assert response.status_code == 422
+        assert "does not exist" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

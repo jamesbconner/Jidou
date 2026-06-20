@@ -140,7 +140,7 @@ async def test_run_continues_on_sftp_error():
 
 
 async def test_run_skips_duplicate_on_constraint_violation():
-    """IntegrityError on savepoint (race condition) skips the file without failing the scan."""
+    """Unique constraint violation (pgcode 23505) skips the file without failing the scan."""
     from sqlalchemy.exc import IntegrityError
 
     show = _make_show()
@@ -148,12 +148,11 @@ async def test_run_skips_duplicate_on_constraint_violation():
 
     session = _make_session(shows=[show])
 
-    # Simulate constraint violation inside the savepoint
+    orig = Exception("unique constraint violated")
+    orig.pgcode = "23505"  # type: ignore[attr-defined]
     nested_ctx = AsyncMock()
     nested_ctx.__aenter__ = AsyncMock(return_value=None)
-    nested_ctx.__aexit__ = AsyncMock(
-        side_effect=IntegrityError("stmt", {}, Exception("unique constraint violated"))
-    )
+    nested_ctx.__aexit__ = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     sftp = MagicMock()
@@ -165,6 +164,31 @@ async def test_run_skips_duplicate_on_constraint_violation():
     assert result.files_created == 0
     assert result.files_skipped == 1
     session.commit.assert_called_once()
+
+
+async def test_run_reraises_non_unique_integrity_error():
+    """Non-unique integrity errors (e.g. FK violation, pgcode 23503) propagate out of run()."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    show = _make_show()
+    rf = _make_remote_file()
+
+    session = _make_session(shows=[show])
+
+    orig = Exception("foreign key constraint violated")
+    orig.pgcode = "23503"  # type: ignore[attr-defined]
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__ = AsyncMock(return_value=None)
+    nested_ctx.__aexit__ = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    sftp = MagicMock()
+    sftp.list_remote_files = AsyncMock(return_value=[rf])
+
+    orch = ScanOrchestrator(session, sftp)
+    with pytest.raises(IntegrityError):
+        await orch.run()
 
 
 async def test_on_progress_called_per_show():
