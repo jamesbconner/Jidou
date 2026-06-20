@@ -15,6 +15,7 @@ COPY pyproject.toml uv.lock ./
 
 # Copy application source so uv can install the local package
 COPY src/ ./src/
+COPY README.md ./
 
 # Install dependencies (creates .venv)
 RUN uv sync --frozen --no-dev
