@@ -171,6 +171,7 @@ export interface AppConfig {
   sftp_username: string | null
   llm_provider: string
   llm_model: string
+  llm_base_url: string | null
 }
 
 export interface ConnectionTestResult {

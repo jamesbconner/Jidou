@@ -30,6 +30,8 @@ export default function Settings() {
           <ConfigRow label="Debug" value={String(config.debug)} />
           <ConfigRow label="TMDB API key" value={config.tmdb_api_key_set ? 'Set ✓' : 'Not set ✗'} />
           <ConfigRow label="LLM provider" value={config.llm_provider} />
+          <ConfigRow label="LLM model" value={config.llm_model || 'Not configured'} />
+          <ConfigRow label="LLM host" value={config.llm_base_url ?? 'Default'} />
           <ConfigRow label="SFTP host" value={config.sftp_host ?? 'Not configured'} />
           <ConfigRow label="Redis" value={config.redis_url ?? 'Not configured'} />
           <ConfigRow label="Database" value={config.database_url ?? 'Not configured'} />
