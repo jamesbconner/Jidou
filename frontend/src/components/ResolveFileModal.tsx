@@ -27,9 +27,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
     staleTime: 60_000,
   })
 
-  const { data: suggestions, isFetching: suggestionsLoading } = useTmdbSuggestions(
-    customSearch ? null : file.id,
-  )
+  const {
+    data: suggestions,
+    isFetching: suggestionsLoading,
+    error: suggestionsError,
+  } = useTmdbSuggestions(customSearch ? null : file.id)
 
   const { data: searchResults, isFetching: searchLoading } = useQuery({
     queryKey: ['tmdb-search', debouncedQuery],
@@ -176,7 +178,14 @@ export function ResolveFileModal({ file, onClose }: Props) {
             {isLoading && (
               <div className="text-xs text-zinc-500 py-2">Loading suggestions…</div>
             )}
-            {!isLoading && displayResults.length === 0 && (
+            {!isLoading && !customSearch && suggestionsError && (
+              <div className="text-xs text-red-400 py-2">
+                {suggestionsError instanceof Error
+                  ? suggestionsError.message
+                  : 'Failed to load suggestions'}
+              </div>
+            )}
+            {!isLoading && !(suggestionsError && !customSearch) && displayResults.length === 0 && (
               <div className="text-xs text-zinc-500 py-2">No results found.</div>
             )}
             <div className="grid grid-cols-3 gap-2">
