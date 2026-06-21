@@ -84,9 +84,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
     }
   }, [searchQuery, customSearch])
 
-  // Infer content type from media_type when a suggestion is selected
+  // Snap content type to match the TMDB media type on every selection change.
+  // Anime requires manual override after selection.
   useEffect(() => {
-    if (selected?.media_type === 'movie') setContentType('movie')
+    if (!selected) return
+    setContentType(selected.media_type === 'movie' ? 'movie' : 'tv')
   }, [selected])
 
   function handleConfirm() {

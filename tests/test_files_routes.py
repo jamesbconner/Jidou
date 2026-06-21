@@ -592,8 +592,8 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
         with patch(
             "jidou.api.routes.files.TMDBService",
             autospec=True,
-        ) as MockTMDB:
-            MockTMDB.return_value.get_details = AsyncMock(return_value=tmdb_data)
+        ) as mock_tmdb:
+            mock_tmdb.return_value.get_details = AsyncMock(return_value=tmdb_data)
             response = TestClient(app).post(
                 "/api/files/1/match",
                 json={
@@ -662,8 +662,8 @@ def test_tmdb_suggestions_returns_results() -> None:
         with patch(
             "jidou.api.routes.files.TMDBService",
             autospec=True,
-        ) as MockTMDB:
-            MockTMDB.return_value.search = AsyncMock(
+        ) as mock_tmdb:
+            mock_tmdb.return_value.search = AsyncMock(
                 return_value={
                     "results": [
                         {

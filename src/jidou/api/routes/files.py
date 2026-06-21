@@ -162,6 +162,7 @@ async def tmdb_suggestions(
 
     tmdb = TMDBService()
     data = await tmdb.search(query, media_type="multi")
+    tv_movie = [r for r in data.get("results", []) if r.get("media_type") in ("tv", "movie")]
     results = [
         {
             "tmdb_id": r.get("id"),
@@ -172,8 +173,7 @@ async def tmdb_suggestions(
             "first_air_date": r.get("first_air_date") or r.get("release_date"),
             "vote_average": r.get("vote_average"),
         }
-        for r in data.get("results", [])[:6]
-        if r.get("media_type") in ("tv", "movie")
+        for r in tv_movie[:6]
     ]
     return {"query": query, "results": results}
 
