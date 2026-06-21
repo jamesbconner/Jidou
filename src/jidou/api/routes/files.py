@@ -339,6 +339,8 @@ async def manual_match_file(
                 vote_count=data.get("vote_count", 0),
                 release_date=data.get("first_air_date") or data.get("release_date"),
                 original_language=data.get("original_language"),
+                genres=data.get("genres") or [],
+                origin_country=data.get("origin_country") or [],
                 sys_name=_sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,

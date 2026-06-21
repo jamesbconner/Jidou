@@ -1,5 +1,10 @@
 // ─── Shows ────────────────────────────────────────────────────────────────
 
+export interface TmdbGenre {
+  id: number
+  name: string
+}
+
 export interface ShowList {
   id: number
   tmdb_id: number
@@ -8,7 +13,10 @@ export interface ShowList {
   poster_path: string | null
   vote_average: number | null
   release_date: string | null
-  remote_path: string | null
+  content_type: string | null
+  sys_name: string | null
+  genres: TmdbGenre[] | null
+  origin_country: string[] | null
   local_path: string | null
   created_at: string
 }
@@ -19,6 +27,7 @@ export interface ShowRead extends ShowList {
   vote_count: number
   original_language: string | null
   cached: boolean
+  aliases: string[] | null
   updated_at: string
 }
 
@@ -33,6 +42,8 @@ export interface ShowCreate {
   vote_count?: number
   release_date?: string | null
   original_language?: string | null
+  genres?: TmdbGenre[] | null
+  origin_country?: string[] | null
 }
 
 export interface ShowPaths {

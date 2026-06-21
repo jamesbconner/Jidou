@@ -23,6 +23,14 @@ class ShowCreate(BaseModel):
     vote_count: int = 0
     release_date: str | None = None
     original_language: str | None = None
+    genres: list[dict[str, object]] | None = Field(
+        default=None,
+        description='TMDB genre objects: [{"id": 16, "name": "Animation"}]',
+    )
+    origin_country: list[str] | None = Field(
+        default=None,
+        description='ISO 3166-1 country codes: ["JP", "US"]',
+    )
     content_type: str | None = Field(
         default=None, pattern="^(anime|tv|movie)$", description="Routing category"
     )
@@ -69,6 +77,8 @@ class ShowRead(BaseModel):
     content_type: str | None = None
     sys_name: str | None = None
     aliases: list[str] | None = None
+    genres: list[dict[str, object]] | None = None
+    origin_country: list[str] | None = None
     local_path: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -88,5 +98,7 @@ class ShowList(BaseModel):
     release_date: str | None = None
     content_type: str | None = None
     sys_name: str | None = None
+    genres: list[dict[str, object]] | None = None
+    origin_country: list[str] | None = None
     local_path: str | None = None
     created_at: datetime
