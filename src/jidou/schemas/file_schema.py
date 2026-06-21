@@ -49,9 +49,17 @@ class FileList(BaseModel):
 
 
 class FileMatchRequest(BaseModel):
-    """Request body for manually assigning a show to an unmatched file."""
+    """Request body for assigning a show to an unmatched file.
 
-    show_id: int = Field(description="Database ID of the show to assign to this file")
+    When ``show_id`` is supplied the show is assigned directly (manual match).
+    When omitted the file is reset to ``downloaded`` so the parse/match
+    pipeline will re-process it automatically on the next sync.
+    """
+
+    show_id: int | None = Field(
+        default=None,
+        description="Show to assign; omit to trigger automatic re-matching",
+    )
 
 
 class FilePatch(BaseModel):

@@ -458,3 +458,52 @@ def test_match_file_flushes_then_commits() -> None:
         assert call_order == ["flush", "commit"], "flush must precede commit"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_match_file_no_show_id_resets_to_downloaded() -> None:
+    """POST /api/files/{id}/match without show_id resets file to DOWNLOADED."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+
+    async def _single_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=file_result)
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _single_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={})
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+        assert f.show_id is None
+        assert f.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_routed_returns_409() -> None:
+    """POST /api/files/{id}/match on a ROUTED file must return 409."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ROUTED)
+
+    async def _single_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=file_result)
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _single_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 409
+    finally:
+        app.dependency_overrides.clear()

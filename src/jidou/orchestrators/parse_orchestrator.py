@@ -174,16 +174,23 @@ class ParseOrchestrator:
         normalised = _sanitize_alias(parsed_name)
 
         # 1. Check if any show's aliases array contains this name (GIN-indexed).
-        #    Use limit(1)+first() rather than scalar_one_or_none() to avoid
-        #    MultipleResultsFound when the same alias appears on more than one show.
-        alias_stmt = select(Show).where(Show.aliases.cast(JSONB).contains([normalised])).limit(1)
+        #    limit(1) + order_by(id) avoids MultipleResultsFound and gives a
+        #    deterministic result when the alias appears on more than one show.
+        alias_stmt = (
+            select(Show)
+            .where(Show.aliases.cast(JSONB).contains([normalised]))
+            .order_by(Show.id)
+            .limit(1)
+        )
         show = (await self.session.execute(alias_stmt)).scalars().first()
         if show is not None:
             return show
 
-        # 2. Case-insensitive title fallback — use first() to avoid MultipleResultsFound
-        #    when more than one title matches the substring.
-        title_stmt = select(Show).where(Show.title.ilike(f"%{parsed_name}%")).limit(1)
+        # 2. Case-insensitive title fallback — order_by(id) ensures a deterministic
+        #    result when more than one show title contains the parsed name.
+        title_stmt = (
+            select(Show).where(Show.title.ilike(f"%{parsed_name}%")).order_by(Show.id).limit(1)
+        )
         return (await self.session.execute(title_stmt)).scalars().first()
 
     async def _find_episode(

@@ -186,21 +186,24 @@ async def manual_match_file(
     payload: FileMatchRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DownloadedFile:
-    """Manually assign a show to an unmatched file and queue it for routing.
+    """Assign a show to an unmatched file, or reset it for automatic re-matching.
 
-    Sets the file's ``show_id`` and transitions status from ``unmatched``
-    to ``matched`` so the route phase will pick it up on the next sync.
+    When ``show_id`` is provided the show is assigned directly (manual match)
+    and the file transitions to ``matched`` for the next route phase.
+    When ``show_id`` is omitted the file is reset to ``downloaded`` so the
+    parse pipeline will re-process it automatically on the next sync.
 
     Args:
         file_id: Database primary key.
-        payload: ``show_id`` to assign.
+        payload: Optional ``show_id``; omit to trigger automatic re-matching.
         db_session: DB session (injected).
 
     Returns:
-        The updated :class:`DownloadedFile` record with status ``matched``.
+        The updated :class:`DownloadedFile` record.
 
     Raises:
         HTTPException: 404 if the file or show is not found.
+        HTTPException: 409 if the file is not in a re-matchable status.
         HTTPException: 422 if the show has no ``local_path`` configured.
     """
     stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
@@ -212,9 +215,21 @@ async def manual_match_file(
     if file.status not in matchable:
         raise HTTPException(
             status_code=409,
-            detail=f"Cannot manually match a file with status '{file.status.value}'; "
+            detail=f"Cannot match a file with status '{file.status.value}'; "
             f"only {', '.join(s.value for s in matchable)} files can be matched",
         )
+
+    if payload.show_id is None:
+        # Auto re-match: reset to DOWNLOADED so the parse phase picks it up.
+        file.status = FileStatus.DOWNLOADED
+        file.show_id = None
+        file.episode_id = None
+        file.matched_by = None
+        file.error_message = None
+        await db_session.flush()
+        await db_session.commit()
+        logger.info("Reset file id=%d to downloaded for auto re-matching", file_id)
+        return file
 
     show_stmt = select(Show).where(Show.id == payload.show_id)
     show = (await db_session.execute(show_stmt)).scalar_one_or_none()

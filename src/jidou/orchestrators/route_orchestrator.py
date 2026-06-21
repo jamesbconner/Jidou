@@ -131,6 +131,7 @@ class RouteOrchestrator:
                 await self.session.flush()
                 await self.session.commit()
 
+            staging_path: str | None = file.local_path
             try:
                 if file.local_path is None:
                     raise FileNotFoundError(f"File id={file.id} has no local_path in staging")
@@ -194,6 +195,9 @@ class RouteOrchestrator:
                     file.original_filename,
                     exc,
                 )
+                # Reset local_path to the original staging path so a future retry
+                # can still locate the source file.
+                file.local_path = staging_path
                 file.status = FileStatus.ERROR
                 file.error_message = str(exc)
                 files_failed += 1
