@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
+from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 
 logger = logging.getLogger(__name__)
@@ -247,13 +249,32 @@ async def manual_match_file(
     file.matched_by = MatchedBy.MANUAL
     file.status = FileStatus.MATCHED
     file.error_message = None
+
+    # Populate parsed_season / parsed_episode from filename heuristic so
+    # RouteOrchestrator can place the file in Season NN/ instead of show root.
+    if file.parsed_season is None and file.parsed_episode is None:
+        se = _heuristic_se(file.original_filename)
+        if se is not None:
+            file.parsed_season, file.parsed_episode = se
+            # Attempt episode linkage while we have the show in scope.
+            ep_stmt = select(Episode).where(
+                (Episode.show_id == show.id)
+                & (Episode.season_number == file.parsed_season)
+                & (Episode.episode_number == file.parsed_episode)
+            )
+            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+            if ep is not None:
+                file.episode_id = ep.id
+
     await db_session.flush()
     await db_session.commit()
 
     logger.info(
-        "Manually matched file id=%d → show id=%d (%s)",
+        "Manually matched file id=%d → show id=%d (%s) S%sE%s",
         file_id,
         show.id,
         show.title,
+        file.parsed_season,
+        file.parsed_episode,
     )
     return file

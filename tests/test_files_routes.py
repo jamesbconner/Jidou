@@ -211,29 +211,35 @@ def test_match_file_sets_matched_status() -> None:
     from jidou.models.show import Show
 
     f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_season = None  # triggers heuristic extraction + episode lookup
+    f.parsed_episode = None
     show = MagicMock(spec=Show)
     show.id = 5
     show.title = "Test Show"
     show.local_path = "/media/test"
 
-    async def _two_query_session() -> AsyncMock:
+    async def _three_query_session() -> AsyncMock:
         session = AsyncMock()
         file_result = MagicMock()
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        session.execute = AsyncMock(side_effect=[file_result, show_result])
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None  # no episode in DB
+        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session
 
-    app.dependency_overrides[get_session] = _two_query_session
+    app.dependency_overrides[get_session] = _three_query_session
     try:
         response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
         assert response.status_code == 200
         assert f.status == FileStatus.MATCHED
         assert f.show_id == show.id
         assert f.matched_by == MatchedBy.MANUAL
+        assert f.parsed_season == 1  # extracted from "show.s01e01.mkv"
+        assert f.parsed_episode == 1
     finally:
         app.dependency_overrides.clear()
 
@@ -434,6 +440,8 @@ def test_match_file_flushes_then_commits() -> None:
     from jidou.models.show import Show
 
     f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_season = None  # triggers heuristic extraction + episode lookup
+    f.parsed_episode = None
     show = MagicMock(spec=Show)
     show.id = 7
     show.title = "Test Show"
@@ -447,7 +455,9 @@ def test_match_file_flushes_then_commits() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        session.execute = AsyncMock(side_effect=[file_result, show_result])
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
         session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
         session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
         yield session
