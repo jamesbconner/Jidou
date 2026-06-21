@@ -66,6 +66,11 @@ class FileMatchRequest(BaseModel):
         default=None,
         description="TMDB ID to look up or create a show on demand",
     )
+    tmdb_media_type: str | None = Field(
+        default=None,
+        pattern="^(tv|movie)$",
+        description="TMDB media type ('tv' or 'movie') for the correct details endpoint",
+    )
     local_path: str | None = Field(
         default=None,
         description="Local filesystem root for this show (required when creating via tmdb_id)",

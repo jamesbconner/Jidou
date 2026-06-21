@@ -18,6 +18,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery)
   const [customSearch, setCustomSearch] = useState(false)
+  const [pathEdited, setPathEdited] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data: config } = useQuery({
@@ -61,9 +62,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const displayResults = customSearch ? searchAsSuggestions : (suggestions?.results ?? [])
   const isLoading = customSearch ? searchLoading : suggestionsLoading
 
-  // Suggest local path whenever selection or content type changes
+  // Suggest local path when selection or content type changes, but not if the
+  // user has already typed a custom path (pathEdited guard).  Changing the
+  // selected show resets pathEdited so the suggestion updates automatically.
   useEffect(() => {
-    if (!selected || !config) return
+    if (!selected || !config || pathEdited) return
     const safeTitle = (selected.title ?? '').replace(/[\\/:*?"<>|]/g, '_').trim()
     const base =
       contentType === 'anime'
@@ -72,7 +75,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
           ? config.local_movie_path
           : config.local_tv_path
     setLocalPath(`${base}/${safeTitle}`)
-  }, [selected, contentType, config])
+  }, [selected, contentType, config, pathEdited])
 
   // Debounce manual search input
   useEffect(() => {
@@ -86,9 +89,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
 
   // Snap content type to match the TMDB media type on every selection change.
   // Anime requires manual override after selection.
+  // Also reset pathEdited so the path suggestion updates for the new show.
   useEffect(() => {
     if (!selected) return
     setContentType(selected.media_type === 'movie' ? 'movie' : 'tv')
+    setPathEdited(false)
   }, [selected])
 
   function handleConfirm() {
@@ -98,6 +103,9 @@ export function ResolveFileModal({ file, onClose }: Props) {
         id: file.id,
         payload: {
           tmdb_id: selected.tmdb_id,
+          tmdb_media_type: (selected.media_type === 'tv' || selected.media_type === 'movie')
+            ? selected.media_type
+            : undefined,
           local_path: localPath || undefined,
           content_type: contentType,
         },
@@ -174,10 +182,10 @@ export function ResolveFileModal({ file, onClose }: Props) {
             <div className="grid grid-cols-3 gap-2">
               {displayResults.map((r) => (
                 <button
-                  key={r.tmdb_id}
+                  key={`${r.tmdb_id}-${r.media_type}`}
                   onClick={() => setSelected(r)}
                   className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
-                    selected?.tmdb_id === r.tmdb_id
+                    selected?.tmdb_id === r.tmdb_id && selected?.media_type === r.media_type
                       ? 'border-indigo-500 bg-indigo-950/50'
                       : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
                   }`}
@@ -239,7 +247,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 <input
                   type="text"
                   value={localPath}
-                  onChange={(e) => setLocalPath(e.target.value)}
+                  onChange={(e) => { setLocalPath(e.target.value); setPathEdited(true) }}
                   placeholder="/media/tv/Show Name"
                   className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                 />

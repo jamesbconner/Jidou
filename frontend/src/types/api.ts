@@ -102,6 +102,7 @@ export type ContentType = 'tv' | 'anime' | 'movie'
 export interface FileMatchRequest {
   show_id?: number | null
   tmdb_id?: number | null
+  tmdb_media_type?: 'tv' | 'movie' | null
   local_path?: string | null
   content_type?: ContentType | null
 }

@@ -526,9 +526,7 @@ def test_match_file_both_show_id_and_tmdb_id_returns_422() -> None:
     f = _make_file(id=1, status=FileStatus.UNMATCHED)
     app.dependency_overrides[get_session] = _session_override(single=f)
     try:
-        response = TestClient(app).post(
-            "/api/files/1/match", json={"show_id": 1, "tmdb_id": 99}
-        )
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 1, "tmdb_id": 99})
         assert response.status_code == 422
         assert "both" in response.json()["detail"]
     finally:

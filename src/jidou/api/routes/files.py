@@ -317,7 +317,11 @@ async def manual_match_file(
                     detail="local_path is required when creating a new show via tmdb_id",
                 )
             tmdb = TMDBService()
-            media_type = "movie" if payload.content_type == "movie" else "tv"
+            # Use the TMDB-reported media_type from the search result (tv/movie).
+            # Fall back to inferring from content_type only when not provided.
+            media_type = payload.tmdb_media_type or (
+                "movie" if payload.content_type == "movie" else "tv"
+            )
             try:
                 data = await tmdb.get_details(payload.tmdb_id, media_type=media_type)
             except Exception as exc:
