@@ -125,13 +125,11 @@ async def trigger_task(
     # not stay PENDING with no Celery job to ever advance it.
     try:
         if payload.task_type == "download":
-            download_files_task.apply_async(
-                args=[payload.show_id, payload.dry_run], task_id=task_id
-            )
+            download_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "scan":
             scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "match":
-            match_files_task.apply_async(args=[payload.show_id, payload.dry_run], task_id=task_id)
+            match_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "sync":
             sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
     except Exception as exc:

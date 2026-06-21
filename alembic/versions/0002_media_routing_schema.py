@@ -59,7 +59,22 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # 4. downloaded_files — replace old compound unique with remote_path alone.
+    #    First deduplicate any rows that share the same remote_path (possible
+    #    when the same file was tracked under different show_ids); keep the
+    #    row with the highest id (most recent) and delete the others.
     # ------------------------------------------------------------------
+    op.execute(
+        sa.text(
+            """
+            DELETE FROM downloaded_files
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM downloaded_files
+                GROUP BY remote_path
+            )
+            """
+        )
+    )
     op.drop_constraint("uq_downloaded_files_show_remote_path", "downloaded_files", type_="unique")
     op.create_unique_constraint(
         "uq_downloaded_files_remote_path", "downloaded_files", ["remote_path"]

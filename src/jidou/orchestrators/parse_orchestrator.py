@@ -146,14 +146,15 @@ class ParseOrchestrator:
         normalised = _sanitize_alias(parsed_name)
 
         # 1. Check if any show's aliases array contains this name (GIN-indexed).
-        alias_stmt = select(Show).where(Show.aliases.cast(JSONB).contains(json.dumps([normalised])))
+        alias_stmt = select(Show).where(Show.aliases.cast(JSONB).contains([normalised]))
         show = (await self.session.execute(alias_stmt)).scalar_one_or_none()
         if show is not None:
             return show
 
-        # 2. Case-insensitive title fallback.
-        title_stmt = select(Show).where(Show.title.ilike(f"%{parsed_name}%"))
-        return (await self.session.execute(title_stmt)).scalar_one_or_none()
+        # 2. Case-insensitive title fallback — use first() to avoid MultipleResultsFound
+        #    when more than one title matches the substring.
+        title_stmt = select(Show).where(Show.title.ilike(f"%{parsed_name}%")).limit(1)
+        return (await self.session.execute(title_stmt)).scalars().first()
 
     async def _find_episode(
         self,

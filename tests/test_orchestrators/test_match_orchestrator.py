@@ -179,8 +179,7 @@ async def test_run_exception_marks_error():
     llm.is_available.return_value = True
     llm_response = MagicMock()
     llm_response.content = (
-        '{"show": "Some Show", "season": 1, "episode": 1,'
-        ' "content_type": "tv", "confidence": 0.9}'
+        '{"show": "Some Show", "season": 1, "episode": 1, "content_type": "tv", "confidence": 0.9}'
     )
     llm.complete = AsyncMock(return_value=llm_response)
 
