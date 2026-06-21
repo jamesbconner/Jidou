@@ -182,6 +182,7 @@ class DownloadOrchestrator:
                 break
 
             # Classify rows: mark eligible files as DOWNLOADING; record skipped.
+            skipped_in_batch: list[DownloadedFile] = []
             pending: list[tuple[DownloadedFile, Path]] = []
             for file, show in batch:
                 if show.local_path is None:
@@ -192,6 +193,7 @@ class DownloadOrchestrator:
                     )
                     skipped_ids.add(file.id)
                     files_skipped += 1
+                    skipped_in_batch.append(file)
                     continue
                 local_path = _local_path_for(file.remote_path, show.remote_path, show.local_path)
                 file.status = FileStatus.DOWNLOADING
@@ -202,81 +204,111 @@ class DownloadOrchestrator:
             await self.session.flush()
             await self.session.commit()
 
-            if not pending:
-                continue
-
-            # Cancellation check before committing to this batch's transfers.
-            # If the task was cancelled between batches, on_progress already
-            # raised TaskCancelledError; this covers cancellation that arrived
-            # after the previous on_progress call but before gather starts.
-            if on_progress:
-                await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
-
-            # Download all files in this batch concurrently.
-            # Use Task objects so the interrupt handler can tell which
-            # transfers already finished (and must not be reset to ERROR).
-            tasks = [
-                asyncio.ensure_future(self.sftp.download_file(file.remote_path, local_path))
-                for file, local_path in pending
-            ]
-
+            # Everything from here until the post-commit progress loop may raise
+            # TaskCancelledError (via on_progress) or BaseException (outer cancel).
+            # If that happens BEFORE the gather finishes, any files still in
+            # DOWNLOADING must be reset to ERROR so they are not stuck permanently.
+            gather_cleanup_done = False
             try:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-            except BaseException:
-                # Outer task cancelled while gather was in flight.
-                # Tasks that completed successfully must be credited, not reset.
-                for (file, local_path), task in zip(pending, tasks, strict=True):
-                    if task.done() and not task.cancelled() and task.exception() is None:
-                        r = task.result()
+                # Emit progress for skipped rows and check for cancellation before
+                # starting transfers.  Raises TaskCancelledError if cancelled.
+                if on_progress:
+                    for file in skipped_in_batch:
+                        progress_idx += 1
+                        await on_progress(progress_idx, total, f"Skipped {file.original_filename}")
+                    if pending:
+                        await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
+
+                if not pending:
+                    continue
+
+                # Download all files in this batch concurrently.
+                # Use Task objects so the interrupt handler can tell which
+                # transfers already finished (and must not be reset to ERROR).
+                tasks = [
+                    asyncio.ensure_future(self.sftp.download_file(file.remote_path, local_path))
+                    for file, local_path in pending
+                ]
+
+                try:
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                except BaseException:
+                    # Outer task cancelled while gather was in flight.
+                    # Tasks that completed successfully must be credited, not reset.
+                    for (file, local_path), task in zip(pending, tasks, strict=True):
+                        if task.done() and not task.cancelled() and task.exception() is None:
+                            r = task.result()
+                            file.status = FileStatus.DOWNLOADED
+                            file.local_path = str(local_path)
+                            file.file_size = r.size
+                            file.error_message = None
+                            files_downloaded += 1
+                            bytes_downloaded += r.size
+                        elif file.status == FileStatus.DOWNLOADING:
+                            file.status = FileStatus.ERROR
+                            file.error_message = "Download interrupted"
+                            files_failed += 1
+                    try:
+                        await self.session.flush()
+                        await self.session.commit()
+                    except Exception:
+                        logger.warning(
+                            "Could not persist interrupted statuses; "
+                            "manual recovery via PATCH /files/<id> may be required"
+                        )
+                    gather_cleanup_done = True
+                    raise
+
+                # Update statuses sequentially — safe because all SFTP I/O is done.
+                for (file, local_path), result in zip(pending, results, strict=True):
+                    if isinstance(result, BaseException):
+                        error_msg = (
+                            "Download interrupted"
+                            if isinstance(result, asyncio.CancelledError)
+                            else str(result)
+                        )
+                        logger.error("Failed to download %s: %s", file.remote_path, result)
+                        file.status = FileStatus.ERROR
+                        file.error_message = error_msg
+                        files_failed += 1
+                    else:
                         file.status = FileStatus.DOWNLOADED
                         file.local_path = str(local_path)
-                        file.file_size = r.size
+                        file.file_size = result.size
                         file.error_message = None
                         files_downloaded += 1
-                        bytes_downloaded += r.size
-                    elif file.status == FileStatus.DOWNLOADING:
-                        file.status = FileStatus.ERROR
-                        file.error_message = "Download interrupted"
-                        files_failed += 1
-                try:
-                    await self.session.flush()
-                    await self.session.commit()
-                except Exception:
-                    logger.warning(
-                        "Could not persist interrupted statuses; "
-                        "manual recovery via PATCH /files/<id> may be required"
-                    )
+                        bytes_downloaded += result.size
+
+                await self.session.flush()
+                await self.session.commit()
+
+                # Emit progress after committing so the DB reflects final state.
+                # on_progress may raise TaskCancelledError to abort between batches.
+                if on_progress:
+                    for file, _ in pending:
+                        progress_idx += 1
+                        await on_progress(
+                            progress_idx, total, f"Downloaded {file.original_filename}"
+                        )
+
+            except BaseException:
+                if not gather_cleanup_done:
+                    # TaskCancelledError from on_progress before transfers started,
+                    # or after gather committed.  Reset any DOWNLOADING files.
+                    for file, _ in pending:
+                        if file.status == FileStatus.DOWNLOADING:
+                            file.status = FileStatus.ERROR
+                            file.error_message = "Download interrupted"
+                            files_failed += 1
+                    try:
+                        await self.session.flush()
+                        await self.session.commit()
+                    except Exception:
+                        logger.warning(
+                            "Could not persist interrupted statuses; "
+                            "manual recovery via PATCH /files/<id> may be required"
+                        )
                 raise
-
-            # Update statuses sequentially — safe because all SFTP I/O is done.
-            for (file, local_path), result in zip(pending, results, strict=True):
-                if isinstance(result, BaseException):
-                    error_msg = (
-                        "Download interrupted"
-                        if isinstance(result, asyncio.CancelledError)
-                        else str(result)
-                    )
-                    logger.error("Failed to download %s: %s", file.remote_path, result)
-                    file.status = FileStatus.ERROR
-                    file.error_message = error_msg
-                    files_failed += 1
-                else:
-                    file.status = FileStatus.DOWNLOADED
-                    file.local_path = str(local_path)
-                    file.file_size = result.size
-                    file.error_message = None
-                    files_downloaded += 1
-                    bytes_downloaded += result.size
-
-            await self.session.flush()
-            await self.session.commit()
-
-            # Emit progress after committing so the DB reflects final state.
-            # on_progress may raise TaskCancelledError to abort between batches.
-            if on_progress:
-                for file, _ in pending:
-                    progress_idx += 1
-                    await on_progress(progress_idx, total, f"Downloaded {file.original_filename}")
 
         logger.info(
             "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
