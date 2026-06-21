@@ -100,6 +100,10 @@ services:
     volumes:
       # Mount source code for hot reload in development
       - ./src:/app/src
+      # Mount SSH private key for SFTP key-based auth (optional).
+      # Set SFTP_KEY_FILE in .env to the host path of your private key.
+      # The container path /run/secrets/sftp_key matches SFTP_KEY_PATH default.
+      - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
     command: >
       uvicorn jidou.main:app
       --host 0.0.0.0
@@ -164,6 +168,8 @@ services:
     volumes:
       # Mount source code for hot reload in development
       - ./src:/app/src
+      # Mount SSH private key for SFTP key-based auth (optional).
+      - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
     depends_on:
       postgres:
         condition: service_healthy
