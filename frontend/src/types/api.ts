@@ -363,3 +363,24 @@ export interface TmdbSearchResponse {
   total_pages: number
   page: number
 }
+
+// ─── NAS Import ───────────────────────────────────────────────────────────────
+
+export interface ShowImportResult {
+  show_dir: string
+  tmdb_id: number | null
+  tmdb_title: string | null
+  action: 'created' | 'found' | 'not_found'
+  episodes_tracked: number
+  episodes_unmatched: number
+}
+
+export interface NASImportResult {
+  shows_processed: number
+  shows_created: number
+  shows_found: number
+  shows_not_found: number
+  episodes_tracked: number
+  episodes_unmatched: number
+  show_results: ShowImportResult[]
+}
