@@ -159,7 +159,7 @@ class ParseOrchestrator:
             "season": parsed.get("season"),
             "episode": parsed.get("episode"),
             "content_type": parsed.get("content_type"),
-            "confidence": float(parsed.get("confidence", 0.0)),
+            "confidence": float(parsed.get("confidence") or 0.0),
         }
 
     async def _find_show(self, parsed_name: str) -> Show | None:

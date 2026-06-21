@@ -107,6 +107,7 @@ class RouteOrchestrator:
                     file.error_message = "Show has no local_path configured"
                     files_failed += 1
                     await self.session.flush()
+                    await self.session.commit()
                 continue
 
             is_movie = (show.content_type or show.media_type) == "movie"

@@ -243,6 +243,7 @@ async def manual_match_file(
         )
 
     file.show_id = show.id
+    file.episode_id = None  # clear stale episode from any previous match
     file.matched_by = MatchedBy.MANUAL
     file.status = FileStatus.MATCHED
     file.error_message = None
