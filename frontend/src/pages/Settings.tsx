@@ -150,11 +150,9 @@ export default function Settings() {
                 <span className="text-xs text-gray-500">
                   {svc.latency_ms != null
                     ? `${svc.latency_ms} ms`
-                    : svc.configured === false
-                      ? 'not configured'
-                      : svc.model
-                        ? `${svc.provider} / ${svc.model}`
-                        : svc.error ?? ''}
+                    : svc.model
+                      ? `${svc.provider} / ${svc.model}`
+                      : svc.error ?? (svc.configured === false ? 'not configured' : '')}
                 </span>
               </div>
             ))}
