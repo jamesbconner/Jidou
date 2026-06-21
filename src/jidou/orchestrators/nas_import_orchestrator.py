@@ -102,6 +102,9 @@ class NASImportOrchestrator:
         tmdb: Configured :class:`~jidou.services.tmdb.TMDBService` instance.
         content_type: Content type assigned to newly created shows
             (``"anime"``, ``"tv"``, or ``"movie"``).
+        dry_run: When True, performs all lookups and matching but skips all
+            database writes (no show creation, episode sync, or file_tracked
+            updates).
     """
 
     def __init__(
@@ -109,10 +112,12 @@ class NASImportOrchestrator:
         session: AsyncSession,
         tmdb: TMDBService,
         content_type: str = "anime",
+        dry_run: bool = False,
     ) -> None:
         self.session = session
         self.tmdb = tmdb
         self.content_type = content_type
+        self.dry_run = dry_run
 
     async def run(
         self,
@@ -196,8 +201,10 @@ class NASImportOrchestrator:
             ep = await self._find_episode(show.id, entry)
             if ep is not None:
                 if not ep.file_tracked:
-                    ep.file_tracked = True
-                show_result.episodes_tracked += 1
+                    if not self.dry_run:
+                        ep.file_tracked = True
+                    show_result.episodes_tracked += 1
+                # Already tracked — count as matched but don't increment episodes_tracked.
             else:
                 show_result.episodes_unmatched += 1
                 logger.debug(
@@ -210,7 +217,8 @@ class NASImportOrchestrator:
                     entry.raw_path,
                 )
 
-        await self.session.commit()
+        if not self.dry_run:
+            await self.session.commit()
         return show_result
 
     async def _db_find_show(self, name: str) -> Show | None:
@@ -340,6 +348,11 @@ class NASImportOrchestrator:
             runtime=runtime,
             tagline=data.get("tagline"),
         )
+
+        if self.dry_run:
+            # Report what would be created without touching the database.
+            logger.info("[dry-run] Would create show %r (tmdb_id=%d)", title, tmdb_id)
+            return show, "created"
 
         try:
             self.session.add(show)

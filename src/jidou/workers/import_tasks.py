@@ -114,7 +114,9 @@ async def _nas_import(
                 )
 
             tmdb = TMDBService()
-            orchestrator = NASImportOrchestrator(session, tmdb, content_type=content_type)
+            orchestrator = NASImportOrchestrator(
+                session, tmdb, content_type=content_type, dry_run=dry_run
+            )
             import_result = await orchestrator.run(entries, on_progress=on_progress)
 
             summary: dict[str, object] = {
