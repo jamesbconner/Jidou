@@ -1,6 +1,7 @@
 """API routes for show management and TMDB discovery."""
 
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,13 +13,20 @@ from jidou.database import get_session
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import EpisodeList
-from jidou.schemas.show_schema import ShowCreate, ShowList, ShowPaths, ShowRead
+from jidou.schemas.show_schema import ShowAliasesUpdate, ShowCreate, ShowList, ShowPaths, ShowRead
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/shows", tags=["shows"])
 _tmdb = TMDBService()
+
+_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def _sanitize_sys_name(title: str) -> str:
+    """Derive a Windows-safe directory name from a show title."""
+    return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +85,6 @@ async def get_tmdb_details(
 ) -> dict[str, Any]:
     """Return full TMDB metadata for a show by its TMDB ID.
 
-    This endpoint replaces the old ``GET /shows/{tmdb_id}`` proxy which was
-    removed when the router was rewritten to use database primary keys for
-    ``/{show_id}``.  Use this path when you need TMDB detail data and only
-    have the TMDB ID, not the internal database ID.
-
     Args:
         tmdb_id: The TMDB identifier for the show or movie.
         media_type: ``"tv"`` or ``"movie"``.
@@ -126,8 +129,8 @@ async def create_show(
 ) -> Show:
     """Add a show to the database (upsert by TMDB ID).
 
-    If the show already exists it is returned unchanged.  Pass data from a
-    TMDB search result card so no extra API round-trip is needed.
+    If the show already exists it is returned unchanged.  ``sys_name`` is
+    auto-derived from the title if not provided.
 
     Args:
         payload: Show data from a TMDB search/trending result.
@@ -142,13 +145,15 @@ async def create_show(
         logger.debug("Show tmdb_id=%d already exists (id=%d)", payload.tmdb_id, existing.id)
         return existing
 
-    show = Show(**payload.model_dump(), cached=False)
+    data = payload.model_dump()
+    if not data.get("sys_name"):
+        data["sys_name"] = _sanitize_sys_name(payload.title)
+
+    show = Show(**data, cached=False)
     db_session.add(show)
     try:
         await db_session.flush()
     except IntegrityError:
-        # Concurrent request inserted the same tmdb_id between our select and
-        # flush.  Roll back and return the row the other request created.
         await db_session.rollback()
         stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
         existing = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -195,13 +200,13 @@ async def update_show_paths(
     payload: ShowPaths,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> Show:
-    """Link a show to its SFTP remote path and/or local filesystem path.
+    """Update a show's local filesystem path.
 
-    Passing ``null`` for a field clears that path.
+    Passing ``null`` for the field clears the stored path.
 
     Args:
         show_id: Database primary key.
-        payload: New path values.
+        payload: New path value.
         db_session: DB session (injected).
 
     Returns:
@@ -215,19 +220,44 @@ async def update_show_paths(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    # Only overwrite fields the client explicitly provided.  Both fields default
-    # to None in ShowPaths, so an absent key must not clear the stored value.
-    if "remote_path" in payload.model_fields_set:
-        show.remote_path = payload.remote_path
     if "local_path" in payload.model_fields_set:
         show.local_path = payload.local_path
     await db_session.flush()
-    logger.info(
-        "Updated paths for show id=%d: remote=%r local=%r",
-        show_id,
-        show.remote_path,
-        show.local_path,
-    )
+    logger.info("Updated local_path for show id=%d: %r", show_id, show.local_path)
+    return show
+
+
+@router.put("/{show_id}/aliases", response_model=ShowRead)
+async def update_show_aliases(
+    show_id: int,
+    payload: ShowAliasesUpdate,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Show:
+    """Replace the full aliases list for a show.
+
+    Aliases are normalised to lowercase before storage.  Duplicate values
+    are silently deduplicated.
+
+    Args:
+        show_id: Database primary key.
+        payload: New list of alias strings.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    normalised = list(dict.fromkeys(a.strip().lower() for a in payload.aliases if a.strip()))
+    show.aliases = normalised or None
+    await db_session.flush()
+    logger.info("Updated aliases for show id=%d: %r", show_id, show.aliases)
     return show
 
 
@@ -237,10 +267,6 @@ async def delete_show(
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> None:
     """Remove a show and all its cascaded data from the database.
-
-    Episodes and watchlist entries for this show are deleted via ON DELETE
-    CASCADE.  DownloadedFiles that referenced the show have their ``show_id``
-    set to NULL via ON DELETE SET NULL so file records are preserved.
 
     Args:
         show_id: Database primary key.
@@ -265,9 +291,6 @@ async def sync_episodes(
     tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
 ) -> list[Episode]:
     """Sync episodes from TMDB for a specific show and return the updated list.
-
-    Fetches all seasons and episodes from TMDB, upserts Episode rows, and marks
-    the show as cached.  Intended for on-demand refresh from the Show Detail page.
 
     Args:
         show_id: Database primary key of the show to sync.

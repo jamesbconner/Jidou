@@ -26,7 +26,6 @@ def _make_show(*, id: int = 1) -> MagicMock:
     s.release_date = None
     s.original_language = None
     s.cached = False
-    s.remote_path = None
     s.local_path = None
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)

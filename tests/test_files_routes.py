@@ -11,7 +11,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 def _make_file(
     *,
     id: int = 1,
-    status: str = FileStatus.PENDING,
+    status: str = FileStatus.DISCOVERED,
     show_id: int | None = None,
 ) -> MagicMock:
     """Build a minimal DownloadedFile mock."""
@@ -29,6 +29,11 @@ def _make_file(
     f.status = status
     f.matched_by = None
     f.error_message = None
+    f.parsed_show_name = None
+    f.parsed_season = None
+    f.parsed_episode = None
+    f.parsed_confidence = None
+    f.parsed_content_type = None
     f.created_at = datetime.now(UTC)
     f.updated_at = datetime.now(UTC)
     return f
@@ -130,85 +135,111 @@ def test_get_file_returns_404_when_not_found() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_rematch_file_returns_404_when_file_missing() -> None:
+def test_match_file_returns_404_when_file_missing() -> None:
     """POST /api/files/{id}/match returns 404 when the file doesn't exist."""
     from jidou.database import get_session
 
     app.dependency_overrides[get_session] = _session_override(single=None)
     try:
-        response = TestClient(app).post("/api/files/9999/match", json={"method": "auto"})
+        response = TestClient(app).post("/api/files/9999/match", json={"show_id": 5})
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
 
 
-def test_rematch_file_returns_422_when_no_show_assigned() -> None:
-    """POST /api/files/{id}/match returns 422 when the file has no show."""
+def test_match_file_returns_404_when_show_missing() -> None:
+    """POST /api/files/{id}/match returns 404 when the referenced show doesn't exist."""
     from jidou.database import get_session
 
-    f = _make_file(id=1, show_id=None)
-    app.dependency_overrides[get_session] = _session_override(single=f)
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"method": "auto"})
-        assert response.status_code == 422
-        assert "no associated show" in response.json()["detail"]
-    finally:
-        app.dependency_overrides.clear()
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
 
-
-def test_rematch_file_returns_503_when_broker_unavailable() -> None:
-    """POST /api/files/{id}/match returns 503 when Celery broker is down."""
-    import sys
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-
-    # show_id must be set so the 422 guard does not trigger
-    f = _make_file(id=1, show_id=5)
-    app.dependency_overrides[get_session] = _session_override(single=f)
-    try:
-        # Setting the module to None in sys.modules makes `from module import X`
-        # raise ImportError, simulating a missing/broken Celery broker.
-        with patch.dict(sys.modules, {"jidou.workers.match_tasks": None}):  # type: ignore[dict-item]
-            response = TestClient(app).post("/api/files/1/match", json={"method": "auto"})
-        assert response.status_code == 503
-        # Bug 4 regression: file must be ERROR, not stuck as PENDING
-        assert f.status == FileStatus.ERROR
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_rematch_file_resets_status_to_pending() -> None:
-    """POST /api/files/{id}/match resets the file status to PENDING before dispatch."""
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-
-    # show_id must be set so the 422 guard does not trigger
-    f = _make_file(id=1, status=FileStatus.ERROR, show_id=5)
-
-    async def _session_with_capture() -> AsyncMock:
+    async def _two_query_session() -> AsyncMock:
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=result)
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, show_result])
         session.flush = AsyncMock()
+        session.commit = AsyncMock()
         yield session
 
-    app.dependency_overrides[get_session] = _session_with_capture
+    app.dependency_overrides[get_session] = _two_query_session
     try:
-        mock_task = MagicMock()
-        mock_task.apply_async = MagicMock()
-        with patch.dict(
-            "sys.modules",
-            {"jidou.workers.match_tasks": MagicMock(match_files_task=mock_task)},
-        ):
-            TestClient(app).post("/api/files/1/match", json={"method": "heuristic"})
-        assert f.status == FileStatus.PENDING
-        # Bug: episode_id must be cleared so the worker assigns a fresh match
-        assert f.episode_id is None
-        # Verify dispatch used the correct show-level args (Bug 1 regression)
-        mock_task.apply_async.assert_called_once_with(args=[5, False])
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 9999})
+        assert response.status_code == 404
+        assert "Show not found" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_returns_422_when_show_has_no_local_path() -> None:
+    """POST /api/files/{id}/match returns 422 when show.local_path is None."""
+    from jidou.database import get_session
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    show = MagicMock(spec=Show)
+    show.id = 5
+    show.title = "Test Show"
+    show.local_path = None
+
+    async def _two_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        session.execute = AsyncMock(side_effect=[file_result, show_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _two_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 422
+        assert "local_path" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_sets_matched_status() -> None:
+    """POST /api/files/{id}/match transitions file status to MATCHED."""
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import MatchedBy
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_season = None  # triggers heuristic extraction + episode lookup
+    f.parsed_episode = None
+    show = MagicMock(spec=Show)
+    show.id = 5
+    show.title = "Test Show"
+    show.local_path = "/media/test"
+
+    async def _three_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None  # no episode in DB
+        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _three_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 200
+        assert f.status == FileStatus.MATCHED
+        assert f.show_id == show.id
+        assert f.matched_by == MatchedBy.MANUAL
+        assert f.parsed_season == 1  # extracted from "show.s01e01.mkv"
+        assert f.parsed_episode == 1
     finally:
         app.dependency_overrides.clear()
 
@@ -403,36 +434,86 @@ def test_patch_file_fk_violation_returns_422() -> None:
         app.dependency_overrides.clear()
 
 
-def test_rematch_file_commits_before_dispatch() -> None:
-    """Commit must happen before Celery dispatch so the worker reads updated state."""
-    from unittest.mock import patch
-
+def test_match_file_flushes_then_commits() -> None:
+    """Match endpoint must flush before commit so the DB state is visible."""
     from jidou.database import get_session
+    from jidou.models.show import Show
 
-    f = _make_file(id=1, show_id=7)
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_season = None  # triggers heuristic extraction + episode lookup
+    f.parsed_episode = None
+    show = MagicMock(spec=Show)
+    show.id = 7
+    show.title = "Test Show"
+    show.local_path = "/media/test"
+
     call_order: list[str] = []
 
     async def _ordered_session() -> AsyncMock:
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=result)
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
         session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
         session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
         yield session
 
-    def _recording_apply_async(**_kwargs: object) -> None:
-        call_order.append("dispatch")
-
     app.dependency_overrides[get_session] = _ordered_session
     try:
-        mock_task = MagicMock()
-        mock_task.apply_async = MagicMock(side_effect=_recording_apply_async)
-        with patch.dict(
-            "sys.modules",
-            {"jidou.workers.match_tasks": MagicMock(match_files_task=mock_task)},
-        ):
-            TestClient(app).post("/api/files/1/match", json={"method": "auto"})
-        assert call_order == ["flush", "commit", "dispatch"], "commit must precede Celery dispatch"
+        TestClient(app).post("/api/files/1/match", json={"show_id": 7})
+        assert call_order == ["flush", "commit"], "flush must precede commit"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_no_show_id_resets_to_downloaded() -> None:
+    """POST /api/files/{id}/match without show_id resets file to DOWNLOADED."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+
+    async def _single_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=file_result)
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _single_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={})
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+        assert f.show_id is None
+        assert f.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_routed_returns_409() -> None:
+    """POST /api/files/{id}/match on a ROUTED file must return 409."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ROUTED)
+
+    async def _single_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=file_result)
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _single_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 409
     finally:
         app.dependency_overrides.clear()

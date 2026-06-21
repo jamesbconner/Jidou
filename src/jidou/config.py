@@ -42,10 +42,19 @@ class Settings(BaseSettings):
     sftp_username: str | None = None
     sftp_password: str | None = None
     sftp_key_path: str | None = None
-    sftp_remote_base_path: str = "/"
+    # Comma-separated remote paths to scan, e.g. "/downloads,/completed"
+    sftp_remote_paths: str = "/"
     sftp_max_workers: int = Field(default=8, ge=1, le=32)
     sftp_max_retries: int = Field(default=3, ge=0)
     sftp_retry_delay: float = Field(default=1.0, ge=0.1)
+
+    @property
+    def sftp_remote_paths_list(self) -> list[str]:
+        """Return SFTP_REMOTE_PATHS as a list, split on commas."""
+        return [p.strip() for p in self.sftp_remote_paths.split(",") if p.strip()]
+
+    # Local staging area for downloaded files awaiting parse/match/route
+    local_staging_path: str = "/data/staging"
 
     # LLM
     llm_provider: str = "none"

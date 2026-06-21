@@ -1,4 +1,4 @@
-"""Celery tasks for matching local files to episodes via TMDB."""
+"""Celery tasks for parsing downloaded filenames and matching them to shows."""
 
 import asyncio
 import logging
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
-from jidou.orchestrators.match_orchestrator import MatchOrchestrator
+from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
 from jidou.services.llm_service import LLMService
 from jidou.services.progress import (
     TaskCancelledError,
@@ -26,21 +26,19 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
 def match_files_task(  # type: ignore[no-untyped-def]
     self,
-    show_id: int,
     dry_run: bool = False,
 ) -> str:
-    """Match local files to episodes via TMDB API.
+    """Parse DOWNLOADED filenames and match them to shows.
 
     Args:
         self: Celery request context for retries.
-        show_id: Database ID of the show to match.
-        dry_run: Simulate without actually matching.
+        dry_run: Simulate without actually updating the DB.
 
     Returns:
         The celery task ID.
     """
     try:
-        return asyncio.run(_match_files(self.request.id, show_id, dry_run))
+        return asyncio.run(_match_files(self.request.id, dry_run))
     except SoftTimeLimitExceeded:
         asyncio.run(mark_task_timed_out(self.request.id))
         raise
@@ -48,10 +46,9 @@ def match_files_task(  # type: ignore[no-untyped-def]
 
 async def _match_files(
     celery_task_id: str,
-    show_id: int,
     dry_run: bool = False,
 ) -> str:
-    """Async implementation of the match task."""
+    """Async implementation of the parse/match task."""
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -60,7 +57,6 @@ async def _match_files(
             task = await create_task_record(
                 session, celery_task_id, "match", progress_total=0, dry_run=dry_run
             )
-            # Redelivered Celery messages must not rerun finished work.
             if task.status in {
                 TaskStatus.COMPLETED.value,
                 TaskStatus.FAILED.value,
@@ -68,6 +64,7 @@ async def _match_files(
             }:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
+
             llm = LLMService(
                 provider=settings.llm_provider,
                 api_key=settings.llm_api_key,
@@ -81,7 +78,7 @@ async def _match_files(
                 session,
                 celery_task_id,
                 TaskStatus.RUNNING,
-                progress_message="Starting file matching...",
+                progress_message="Parsing and matching files...",
             )
 
             async def on_progress(current: int, total: int, message: str) -> None:
@@ -102,24 +99,23 @@ async def _match_files(
                     }
                 )
 
-            result = await MatchOrchestrator(session, llm).run(
-                show_id=show_id, dry_run=dry_run, on_progress=on_progress
+            result = await ParseOrchestrator(session, llm).run(
+                dry_run=dry_run, on_progress=on_progress
             )
 
-            # Mark complete — gate the WebSocket event on the DB update landing.
-            total_processed = result.files_matched + result.files_unmatched + result.files_failed
+            total_processed = result.files_processed
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
                 progress_current=total_processed,
                 progress_total=total_processed,
-                progress_message=f"Match complete: {result.files_matched} matched",
+                progress_message=f"Parse complete: {result.files_matched} matched",
                 result_summary={
+                    "files_processed": result.files_processed,
                     "files_matched": result.files_matched,
-                    "matched_by_heuristic": result.matched_by_heuristic,
-                    "matched_by_llm": result.matched_by_llm,
                     "files_unmatched": result.files_unmatched,
+                    "files_failed": result.files_failed,
                     "dry_run": dry_run,
                 },
             )

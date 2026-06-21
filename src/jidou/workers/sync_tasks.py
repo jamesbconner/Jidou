@@ -57,7 +57,7 @@ async def _sync_all(
     try:
         async with session_factory() as session:
             task = await create_task_record(
-                session, celery_task_id, "sync", progress_total=4, dry_run=dry_run
+                session, celery_task_id, "sync", progress_total=5, dry_run=dry_run
             )
             # Redelivered Celery messages must not rerun finished work.
             if task.status in {
@@ -73,7 +73,6 @@ async def _sync_all(
                 username=settings.sftp_username,
                 password=settings.sftp_password,
                 key_path=settings.sftp_key_path,
-                remote_base_path=settings.sftp_remote_base_path,
                 known_hosts=None,
                 max_workers=settings.sftp_max_workers,
                 max_retries=settings.sftp_max_retries,
@@ -93,7 +92,7 @@ async def _sync_all(
                 session,
                 celery_task_id,
                 TaskStatus.RUNNING,
-                progress_total=4,
+                progress_total=5,
                 progress_message="Starting sync...",
             )
 
@@ -115,23 +114,29 @@ async def _sync_all(
                     }
                 )
 
-            result = await SyncOrchestrator(session, sftp, tmdb_svc, llm).run(
-                dry_run=dry_run, on_phase=on_phase
-            )
+            result = await SyncOrchestrator(
+                session,
+                sftp,
+                tmdb_svc,
+                llm,
+                remote_paths=settings.sftp_remote_paths_list,
+                local_staging_path=settings.local_staging_path,
+            ).run(dry_run=dry_run, on_phase=on_phase)
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=4,
-                progress_total=4,
+                progress_current=5,
+                progress_total=5,
                 progress_message="Sync complete",
                 result_summary={
                     "episodes_upserted": result.tmdb.episodes_upserted,
                     "files_created": result.scan.files_created,
                     "files_downloaded": result.download.files_downloaded,
-                    "files_matched": result.match.files_matched,
+                    "files_matched": result.parse.files_matched,
+                    "files_routed": result.route.files_routed,
                     "dry_run": dry_run,
                 },
             )
@@ -142,7 +147,8 @@ async def _sync_all(
                         "type": "complete",
                         "data": {
                             "summary": {
-                                "files_matched": result.match.files_matched,
+                                "files_matched": result.parse.files_matched,
+                                "files_routed": result.route.files_routed,
                                 "dry_run": dry_run,
                             }
                         },

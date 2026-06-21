@@ -1,4 +1,4 @@
-"""Orchestrator for downloading PENDING files from SFTP to local paths."""
+"""Orchestrator for downloading DISCOVERED files from SFTP to the local staging area."""
 
 import asyncio
 import logging
@@ -10,34 +10,28 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
-from jidou.models.show import Show
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
 
 
-def _local_path_for(remote_path: str, show_remote_path: str | None, show_local_path: str) -> Path:
-    """Return the local destination path, mirroring remote subdirectory structure.
+def _staging_path_for(remote_path: str, staging_root: str) -> Path:
+    """Return the local staging destination, mirroring remote directory structure.
 
-    Season subdirectories (e.g. ``Season 01/ep01.mkv``) are preserved locally
-    so files with identical basenames in different seasons never overwrite each
-    other.
+    For example: remote ``/downloads/shows/ShowName_S01E01.mkv`` under
+    staging root ``/data/staging`` becomes
+    ``/data/staging/downloads/shows/ShowName_S01E01.mkv``.
 
-    Falls back to the bare filename when ``show_remote_path`` is ``None`` or
-    empty (no show root configured) or when the remote path cannot be made
-    relative to the show root.
+    Args:
+        remote_path: Full path of the file on the remote SFTP server.
+        staging_root: Local staging directory root.
+
+    Returns:
+        Absolute :class:`Path` for the staging destination.
     """
-    if not show_remote_path:
-        return Path(show_local_path) / Path(remote_path).name
-
-    # rstrip("/") on a bare "/" yields ""; restore "/" so relative_to() works
-    # when show_remote_path is the filesystem root rather than a show directory.
-    remote_root = show_remote_path.rstrip("/") or "/"
-    try:
-        rel = Path(remote_path).relative_to(remote_root)
-    except ValueError:
-        rel = Path(Path(remote_path).name)
-    return Path(show_local_path) / rel
+    # Strip leading slash so Path joining works correctly
+    relative = remote_path.lstrip("/")
+    return Path(staging_root) / relative
 
 
 @dataclass
@@ -46,38 +40,42 @@ class DownloadResult:
 
     files_downloaded: int
     bytes_downloaded: int
-    files_skipped: int
     files_failed: int
     dry_run: bool
 
 
 class DownloadOrchestrator:
-    """Download PENDING DownloadedFile records from SFTP.
+    """Download DISCOVERED DownloadedFile records from SFTP to a local staging area.
 
-    Requires the file's associated Show to have local_path set.
-    Files without a local_path are skipped.
+    Files land under ``local_staging_path`` with their remote directory
+    structure preserved.  ``show_id`` is still NULL at this stage; the parse
+    phase links each file to a show after download.
 
     Args:
         session: Active async SQLAlchemy session (must be created with
             ``expire_on_commit=False`` so file objects remain usable after
             each intermediate commit).
         sftp: Configured SFTPService instance.
+        local_staging_path: Root directory for staging downloads.
     """
 
-    def __init__(self, session: AsyncSession, sftp: SFTPService) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        sftp: SFTPService,
+        local_staging_path: str,
+    ) -> None:
         self.session = session
         self.sftp = sftp
+        self.local_staging_path = local_staging_path
 
     async def run(
         self,
-        show_id: int | None = None,
         dry_run: bool = False,
         max_workers: int = 8,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     ) -> DownloadResult:
-        """Download all PENDING files, updating status to DOWNLOADED or ERROR.
-
-        Files whose Show has no local_path are counted as skipped.
+        """Download all DISCOVERED files, updating status to DOWNLOADED or ERROR.
 
         In non-dry-run mode files are processed in batches of up to
         ``max_workers``.  Each batch is claimed atomically with
@@ -87,7 +85,6 @@ class DownloadOrchestrator:
         sequentially after the parallel transfers complete.
 
         Args:
-            show_id: Limit to one show. None processes all shows.
             dry_run: Log what would be downloaded without performing transfers.
             max_workers: Maximum concurrent SFTP transfers per batch.
             on_progress: Optional async callback(current, total, message).
@@ -99,132 +96,76 @@ class DownloadOrchestrator:
         """
         files_downloaded = 0
         bytes_downloaded = 0
-        files_skipped = 0
         files_failed = 0
 
-        base_where = (DownloadedFile.status == FileStatus.PENDING) | (
-            DownloadedFile.status == FileStatus.ERROR
+        # Only retry ERROR files that never reached staging (local_path IS NULL).
+        # Parse and route failures also land in ERROR but have a staging local_path;
+        # re-downloading them would undo pipeline progress.
+        base_where = (DownloadedFile.status == FileStatus.DISCOVERED) | (
+            (DownloadedFile.status == FileStatus.ERROR) & (DownloadedFile.local_path.is_(None))
         )
 
         if dry_run:
-            stmt = (
-                select(DownloadedFile, Show)
-                .join(Show, DownloadedFile.show_id == Show.id)
-                .where(base_where)
-            )
-            if show_id is not None:
-                stmt = stmt.where(DownloadedFile.show_id == show_id)
-            rows = list((await self.session.execute(stmt)).all())
+            stmt = select(DownloadedFile).where(base_where)
+            rows = list((await self.session.execute(stmt)).scalars().all())
             total = len(rows)
 
-            for idx, (file, show) in enumerate(rows, 1):
+            for idx, file in enumerate(rows, 1):
                 if on_progress:
                     await on_progress(idx, total, f"Downloading {file.original_filename}")
-                if show.local_path is None:
-                    logger.warning(
-                        "Show id=%d has no local_path; skipping file id=%d",
-                        show.id,
-                        file.id,
-                    )
-                    files_skipped += 1
-                    continue
-                local_path = _local_path_for(file.remote_path, show.remote_path, show.local_path)
+                local_path = _staging_path_for(file.remote_path, self.local_staging_path)
                 logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
                 files_downloaded += 1
 
             logger.info(
-                "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
+                "Download complete: %d downloaded, %d failed, %d bytes (dry_run=%s)",
                 files_downloaded,
                 files_failed,
-                files_skipped,
                 bytes_downloaded,
                 dry_run,
             )
             return DownloadResult(
                 files_downloaded=files_downloaded,
                 bytes_downloaded=bytes_downloaded,
-                files_skipped=files_skipped,
                 files_failed=files_failed,
                 dry_run=dry_run,
             )
 
         # Count upfront for accurate progress reporting (no lock held).
-        count_stmt = (
-            select(func.count(DownloadedFile.id))
-            .join(Show, DownloadedFile.show_id == Show.id)
-            .where(base_where)
-        )
-        if show_id is not None:
-            count_stmt = count_stmt.where(DownloadedFile.show_id == show_id)
+        count_stmt = select(func.count(DownloadedFile.id)).where(base_where)
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         progress_idx = 0
-        # IDs of files that cannot be processed this run (show has no local_path).
-        # Excluded from subsequent batch queries to prevent infinite re-selection.
-        skipped_ids: set[int] = set()
 
         while True:
             # Claim up to max_workers eligible rows; other workers skip locked rows.
             stmt = (
-                select(DownloadedFile, Show)
-                .join(Show, DownloadedFile.show_id == Show.id)
+                select(DownloadedFile)
                 .where(base_where)
                 .with_for_update(skip_locked=True, of=DownloadedFile)
                 .limit(max_workers)
             )
-            if show_id is not None:
-                stmt = stmt.where(DownloadedFile.show_id == show_id)
-            if skipped_ids:
-                stmt = stmt.where(DownloadedFile.id.notin_(skipped_ids))
 
-            batch = list((await self.session.execute(stmt)).all())
+            batch = list((await self.session.execute(stmt)).scalars().all())
             if not batch:
                 break
 
-            # Classify rows: mark eligible files as DOWNLOADING; record skipped.
-            skipped_in_batch: list[DownloadedFile] = []
+            # Mark all batch files DOWNLOADING before releases the locks.
             pending: list[tuple[DownloadedFile, Path]] = []
-            for file, show in batch:
-                if show.local_path is None:
-                    logger.warning(
-                        "Show id=%d has no local_path; skipping file id=%d",
-                        show.id,
-                        file.id,
-                    )
-                    skipped_ids.add(file.id)
-                    files_skipped += 1
-                    skipped_in_batch.append(file)
-                    continue
-                local_path = _local_path_for(file.remote_path, show.remote_path, show.local_path)
+            for file in batch:
+                local_path = _staging_path_for(file.remote_path, self.local_staging_path)
                 file.status = FileStatus.DOWNLOADING
                 pending.append((file, local_path))
 
             # Flush DOWNLOADING status and commit to release FOR UPDATE locks.
-            # Other workers can now claim new rows; DOWNLOADING prevents double-work.
             await self.session.flush()
             await self.session.commit()
 
-            # Everything from here until the post-commit progress loop may raise
-            # TaskCancelledError (via on_progress) or BaseException (outer cancel).
-            # If that happens BEFORE the gather finishes, any files still in
-            # DOWNLOADING must be reset to ERROR so they are not stuck permanently.
             gather_cleanup_done = False
             try:
-                # Emit progress for skipped rows and check for cancellation before
-                # starting transfers.  Raises TaskCancelledError if cancelled.
-                if on_progress:
-                    for file in skipped_in_batch:
-                        progress_idx += 1
-                        await on_progress(progress_idx, total, f"Skipped {file.original_filename}")
-                    if pending:
-                        await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
+                if on_progress and pending:
+                    await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
 
-                if not pending:
-                    continue
-
-                # Download all files in this batch concurrently.
-                # Use Task objects so the interrupt handler can tell which
-                # transfers already finished (and must not be reset to ERROR).
                 tasks = [
                     asyncio.ensure_future(self.sftp.download_file(file.remote_path, local_path))
                     for file, local_path in pending
@@ -283,7 +224,6 @@ class DownloadOrchestrator:
                 await self.session.commit()
 
                 # Emit progress after committing so the DB reflects final state.
-                # on_progress may raise TaskCancelledError to abort between batches.
                 if on_progress:
                     for file, _ in pending:
                         progress_idx += 1
@@ -296,8 +236,6 @@ class DownloadOrchestrator:
 
             except BaseException:
                 if not gather_cleanup_done:
-                    # TaskCancelledError from on_progress before transfers started,
-                    # or after gather committed.  Reset any DOWNLOADING files.
                     for file, _ in pending:
                         if file.status == FileStatus.DOWNLOADING:
                             file.status = FileStatus.ERROR
@@ -314,17 +252,15 @@ class DownloadOrchestrator:
                 raise
 
         logger.info(
-            "Download complete: %d downloaded, %d failed, %d skipped, %d bytes (dry_run=%s)",
+            "Download complete: %d downloaded, %d failed, %d bytes (dry_run=%s)",
             files_downloaded,
             files_failed,
-            files_skipped,
             bytes_downloaded,
             dry_run,
         )
         return DownloadResult(
             files_downloaded=files_downloaded,
             bytes_downloaded=bytes_downloaded,
-            files_skipped=files_skipped,
             files_failed=files_failed,
             dry_run=dry_run,
         )
