@@ -53,7 +53,7 @@ class SyncOrchestrator:
         tmdb: TMDBService,
         llm: LLMService | None = None,
         remote_paths: list[str] | None = None,
-        local_staging_path: str = "/tmp/jidou_staging",
+        local_staging_path: str = "/data/staging",
     ) -> None:
         self.session = session
         self.sftp = sftp

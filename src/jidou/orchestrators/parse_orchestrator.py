@@ -5,6 +5,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -23,6 +24,31 @@ _SE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})"),
     re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)"),
 ]
+
+# Strips everything from the first S/E marker onward, then cleans separators.
+# Used to derive a heuristic show name when no LLM is available.
+_SHOW_NAME_STRIP = re.compile(r"[\.\s_-]*(?:[Ss]\d{1,2}[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}).*$")
+_SHOW_NAME_CLEAN = re.compile(r"[\._]+")
+
+
+def _heuristic_show_name(filename: str) -> str | None:
+    """Extract a probable show name from a filename without an LLM.
+
+    Strips the file extension, removes everything from the first S/E
+    pattern onward, then converts separators to spaces.  Returns None
+    if nothing remains after cleaning.
+
+    Args:
+        filename: Raw filename (may include a path).
+
+    Returns:
+        Best-effort show name, or None if it cannot be extracted.
+    """
+    stem = Path(filename).stem
+    name = _SHOW_NAME_STRIP.sub("", stem).strip()
+    name = _SHOW_NAME_CLEAN.sub(" ", name).strip()
+    return name if name else None
+
 
 _PARSE_SYSTEM = (
     "You are a media filename parser. "
@@ -106,7 +132,9 @@ class ParseOrchestrator:
             "confidence": 0.0,
         }
         if self.llm is None or not self.llm.is_available():
-            return empty
+            # No LLM: derive a show name heuristically so DB lookup can still run.
+            heuristic = _heuristic_show_name(filename)
+            return {**empty, "show": heuristic}
 
         response = await self.llm.complete(
             prompt=f"Filename: {filename}",

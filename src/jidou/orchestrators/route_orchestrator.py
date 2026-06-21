@@ -84,7 +84,7 @@ class RouteOrchestrator:
         stmt = (
             select(DownloadedFile, Show)
             .join(Show, DownloadedFile.show_id == Show.id)
-            .where(DownloadedFile.status == FileStatus.MATCHED)
+            .where(DownloadedFile.status.in_([FileStatus.MATCHED, FileStatus.ROUTING]))
         )
         rows = list((await self.session.execute(stmt)).all())
         total = len(rows)

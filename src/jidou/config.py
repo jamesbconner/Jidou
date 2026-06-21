@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         return [p.strip() for p in self.sftp_remote_paths.split(",") if p.strip()]
 
     # Local staging area for downloaded files awaiting parse/match/route
-    local_staging_path: str = "/tmp/jidou_staging"
+    local_staging_path: str = "/data/staging"
 
     # LLM
     llm_provider: str = "none"

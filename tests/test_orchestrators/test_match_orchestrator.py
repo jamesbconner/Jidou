@@ -71,7 +71,11 @@ def _make_show(show_id=10, title="Test Show", aliases=None, local_path="/media/s
 
 
 def _make_session(files=None, show=None, episode=None):
-    """Return a mock session that yields files on first execute, then show/episode."""
+    """Return a mock session that yields files on first execute, then show/episode.
+
+    show_result covers both the alias check (scalar_one_or_none) and the
+    title-fallback (scalars().first()); both are wired to return *show*.
+    """
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
@@ -81,6 +85,8 @@ def _make_session(files=None, show=None, episode=None):
 
     show_result = MagicMock()
     show_result.scalar_one_or_none.return_value = show
+    # Wire scalars().first() for the title fallback path
+    show_result.scalars.return_value.first.return_value = show
 
     ep_result = MagicMock()
     ep_result.scalar_one_or_none.return_value = episode
@@ -90,7 +96,7 @@ def _make_session(files=None, show=None, episode=None):
 
 
 async def test_run_no_llm_marks_unmatched():
-    """Without LLM and no heuristic show name, files are set to UNMATCHED."""
+    """Without LLM, heuristic name extracted but no DB match → file is UNMATCHED."""
     file1 = _make_file(filename="UnknownFile.S01E01.mkv")
 
     session = _make_session(files=[file1])

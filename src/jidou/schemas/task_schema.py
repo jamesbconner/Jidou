@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from jidou.models.task import TaskStatus
 
@@ -82,14 +82,6 @@ class TaskTrigger(BaseModel):
     """Request body for triggering a background task."""
 
     task_type: str
-    show_id: int | None = None
     dry_run: bool = False
 
     model_config = ConfigDict(validate_assignment=True)
-
-    @model_validator(mode="after")
-    def _validate_show_id(self) -> "TaskTrigger":
-        """Ensure show_id is present when task_type requires it."""
-        if self.task_type in ("download", "match") and self.show_id is None:
-            raise ValueError(f"show_id is required for task_type '{self.task_type}'")
-        return self

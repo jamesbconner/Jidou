@@ -47,11 +47,48 @@ def test_trigger_task_unknown_type_returns_400() -> None:
     assert "Unknown task type" in response.json()["detail"]
 
 
-def test_trigger_task_download_missing_show_id_returns_422() -> None:
-    """download tasks require show_id — omitting it must be a 422 validation error."""
-    client = TestClient(app)
-    response = client.post("/api/tasks/trigger", json={"task_type": "download"})
-    assert response.status_code == 422
+@pytest.mark.asyncio
+async def test_trigger_task_download_no_show_id_accepted() -> None:
+    """download is a global operation — schema must accept it without show_id."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    mock_task = _make_task(celery_task_id="dl-no-show-id")
+
+    async def _mock_session():  # type: ignore[no-untyped-def]
+        session = AsyncMock()
+        yield session
+
+    mock_celery = MagicMock()
+    mock_celery.apply_async.return_value = MagicMock(id="dl-no-show-id")
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        with (
+            patch(
+                "jidou.services.progress.create_task_record",
+                new_callable=AsyncMock,
+                return_value=mock_task,
+            ),
+            patch(
+                "jidou.workers.download_tasks.download_files_task",
+                mock_celery,
+            ),
+        ):
+            response = TestClient(app).post(
+                "/api/tasks/trigger", json={"task_type": "download"}
+            )
+        # Must NOT be 422 (schema validation) — download no longer requires show_id
+        assert response.status_code != 422
+        mock_celery.apply_async.assert_called_once()
+        # Confirm show_id is absent from the dispatch args
+        call_args = mock_celery.apply_async.call_args
+        assert call_args is not None
+        dispatched_args = call_args[1].get("args") or call_args[0][0]
+        assert len(dispatched_args) == 1  # only dry_run
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -230,11 +267,46 @@ def test_trigger_task_sync_dispatches() -> None:
     assert dispatched == ["create", "dispatch"]
 
 
-def test_trigger_task_match_requires_show_id() -> None:
-    """POST /api/tasks/trigger with task_type=match and no show_id must return 422."""
-    client = TestClient(app)
-    response = client.post("/api/tasks/trigger", json={"task_type": "match"})
-    assert response.status_code == 422
+@pytest.mark.asyncio
+async def test_trigger_task_match_no_show_id_accepted() -> None:
+    """match is a global operation — schema must accept it without show_id."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    mock_task = _make_task(celery_task_id="match-no-show-id")
+
+    async def _mock_session():  # type: ignore[no-untyped-def]
+        session = AsyncMock()
+        yield session
+
+    mock_celery = MagicMock()
+    mock_celery.apply_async.return_value = MagicMock(id="match-no-show-id")
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        with (
+            patch(
+                "jidou.services.progress.create_task_record",
+                new_callable=AsyncMock,
+                return_value=mock_task,
+            ),
+            patch(
+                "jidou.workers.match_tasks.match_files_task",
+                mock_celery,
+            ),
+        ):
+            response = TestClient(app).post(
+                "/api/tasks/trigger", json={"task_type": "match"}
+            )
+        assert response.status_code != 422
+        mock_celery.apply_async.assert_called_once()
+        call_args = mock_celery.apply_async.call_args
+        assert call_args is not None
+        dispatched_args = call_args[1].get("args") or call_args[0][0]
+        assert len(dispatched_args) == 1  # only dry_run
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_trigger_task_broker_failure_marks_task_failed() -> None:
