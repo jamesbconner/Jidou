@@ -335,6 +335,9 @@ async def manual_match_file(
                 for c in (data.get("production_countries") or [])
                 if isinstance(c, dict) and "iso_3166_1" in c
             ]
+            # TV: episode_run_time is a list; take first value. Movie: runtime is an int.
+            ep_runtimes: list[int] = data.get("episode_run_time") or []
+            runtime: int | None = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
             show = Show(
                 tmdb_id=payload.tmdb_id,
                 title=title,
@@ -348,6 +351,14 @@ async def manual_match_file(
                 original_language=data.get("original_language"),
                 genres=data.get("genres") or [],
                 origin_country=raw_countries,
+                status=data.get("status"),
+                in_production=data.get("in_production"),
+                number_of_seasons=data.get("number_of_seasons"),
+                number_of_episodes=data.get("number_of_episodes"),
+                networks=data.get("networks") or [],
+                show_type=data.get("type"),
+                runtime=runtime,
+                tagline=data.get("tagline"),
                 sys_name=_sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,

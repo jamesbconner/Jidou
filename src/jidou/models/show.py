@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Float, String, Text
+from sqlalchemy import Boolean, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,6 +44,22 @@ class Show(TimestampMixin, Base):
     genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
     # ISO 3166-1 origin country codes: ["JP", "US", ...]
     origin_country: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # TMDB show status: "Returning Series", "Ended", "Cancelled", "Released", etc.
+    status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # TV only: whether the show is currently in production
+    in_production: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # TV only: total number of seasons
+    number_of_seasons: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # TV only: total number of episodes across all seasons
+    number_of_episodes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # TV only: broadcast networks / streaming services [{"id": 49, "name": "HBO", ...}]
+    networks: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    # TV only: "Scripted", "Miniseries", "Documentary", "Reality", etc.
+    show_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Episode runtime in minutes (TV: first value of episode_run_time; movie: runtime)
+    runtime: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Short promotional tagline
+    tagline: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Local filesystem path to this show's root directory
     local_path: Mapped[str | None] = mapped_column(String(1000))
 

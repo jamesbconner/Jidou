@@ -37,6 +37,14 @@ def upgrade() -> None:
         sa.Column("aliases", JSONB(), nullable=True),
         sa.Column("genres", JSONB(), nullable=True),
         sa.Column("origin_country", JSONB(), nullable=True),
+        sa.Column("status", sa.String(length=100), nullable=True),
+        sa.Column("in_production", sa.Boolean(), nullable=True),
+        sa.Column("number_of_seasons", sa.Integer(), nullable=True),
+        sa.Column("number_of_episodes", sa.Integer(), nullable=True),
+        sa.Column("networks", JSONB(), nullable=True),
+        sa.Column("show_type", sa.String(length=50), nullable=True),
+        sa.Column("runtime", sa.Integer(), nullable=True),
+        sa.Column("tagline", sa.Text(), nullable=True),
         sa.Column("local_path", sa.String(length=1000), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False

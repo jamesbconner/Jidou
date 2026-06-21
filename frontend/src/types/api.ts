@@ -5,6 +5,13 @@ export interface TmdbGenre {
   name: string
 }
 
+export interface TmdbNetwork {
+  id: number
+  name: string
+  logo_path: string | null
+  origin_country: string
+}
+
 export interface ShowList {
   id: number
   tmdb_id: number
@@ -17,6 +24,14 @@ export interface ShowList {
   sys_name: string | null
   genres: TmdbGenre[] | null
   origin_country: string[] | null
+  status: string | null
+  in_production: boolean | null
+  number_of_seasons: number | null
+  number_of_episodes: number | null
+  networks: TmdbNetwork[] | null
+  show_type: string | null
+  runtime: number | null
+  tagline: string | null
   local_path: string | null
   created_at: string
 }
@@ -44,6 +59,14 @@ export interface ShowCreate {
   original_language?: string | null
   genres?: TmdbGenre[] | null
   origin_country?: string[] | null
+  status?: string | null
+  in_production?: boolean | null
+  number_of_seasons?: number | null
+  number_of_episodes?: number | null
+  networks?: TmdbNetwork[] | null
+  show_type?: string | null
+  runtime?: number | null
+  tagline?: string | null
 }
 
 export interface ShowPaths {

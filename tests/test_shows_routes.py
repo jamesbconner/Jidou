@@ -36,6 +36,16 @@ def _make_show(
     s.content_type = None
     s.sys_name = None
     s.aliases = None
+    s.genres = None
+    s.origin_country = None
+    s.status = None
+    s.in_production = None
+    s.number_of_seasons = None
+    s.number_of_episodes = None
+    s.networks = None
+    s.show_type = None
+    s.runtime = None
+    s.tagline = None
     s.local_path = local_path
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
