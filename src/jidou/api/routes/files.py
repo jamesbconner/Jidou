@@ -353,6 +353,12 @@ async def manual_match_file(
                 show = (await db_session.execute(show_stmt)).scalar_one_or_none()
                 if show is None:
                     raise
+                # Apply caller's path/type to the concurrently-created row
+                if payload.local_path:
+                    show.local_path = payload.local_path
+                if payload.content_type:
+                    show.content_type = payload.content_type
+                await db_session.flush()
             else:
                 logger.info(
                     "Created show tmdb_id=%d title=%r (id=%d) via on-demand match",
