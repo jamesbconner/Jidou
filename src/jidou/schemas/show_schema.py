@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class ShowCreate(BaseModel):
     """Payload for adding a show to the database.
 
-    All fields mirror the TMDB search/trending response so the frontend can
+    All TMDB fields mirror the search/trending response so the frontend can
     pass a result card directly to ``POST /shows`` without an extra round-trip.
+    ``content_type`` and ``sys_name`` are optional user-assigned fields.
     """
 
     tmdb_id: int
@@ -22,13 +23,30 @@ class ShowCreate(BaseModel):
     vote_count: int = 0
     release_date: str | None = None
     original_language: str | None = None
+    content_type: str | None = Field(
+        default=None, pattern="^(anime|tv|movie)$", description="Routing category"
+    )
+    sys_name: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Windows-safe directory name; auto-derived from title if omitted",
+    )
+    local_path: str | None = Field(
+        default=None,
+        description="Absolute path to the show's root directory on the local filesystem",
+    )
 
 
 class ShowPaths(BaseModel):
-    """Payload for linking a show to SFTP / local filesystem paths."""
+    """Payload for updating a show's local filesystem path."""
 
-    remote_path: str | None = None
     local_path: str | None = None
+
+
+class ShowAliasesUpdate(BaseModel):
+    """Payload for replacing the full aliases list on a show."""
+
+    aliases: list[str] = Field(default_factory=list)
 
 
 class ShowRead(BaseModel):
@@ -48,7 +66,9 @@ class ShowRead(BaseModel):
     release_date: str | None = None
     original_language: str | None = None
     cached: bool
-    remote_path: str | None = None
+    content_type: str | None = None
+    sys_name: str | None = None
+    aliases: list[str] | None = None
     local_path: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -66,6 +86,7 @@ class ShowList(BaseModel):
     poster_path: str | None = None
     vote_average: float | None = None
     release_date: str | None = None
-    remote_path: str | None = None
+    content_type: str | None = None
+    sys_name: str | None = None
     local_path: str | None = None
     created_at: datetime

@@ -71,7 +71,6 @@ async def _scan_remote(
                 username=settings.sftp_username,
                 password=settings.sftp_password,
                 key_path=settings.sftp_key_path,
-                remote_base_path=settings.sftp_remote_base_path,
                 known_hosts=None,
                 max_retries=settings.sftp_max_retries,
                 retry_delay=settings.sftp_retry_delay,
@@ -102,7 +101,7 @@ async def _scan_remote(
                     }
                 )
 
-            result = await ScanOrchestrator(session, sftp).run(
+            result = await ScanOrchestrator(session, sftp, settings.sftp_remote_paths_list).run(
                 dry_run=dry_run, on_progress=on_progress
             )
 
@@ -111,11 +110,11 @@ async def _scan_remote(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
-                progress_current=result.shows_scanned,
-                progress_total=result.shows_scanned,
+                progress_current=result.paths_scanned,
+                progress_total=result.paths_scanned,
                 progress_message=f"Scan complete: {result.files_created} new files found",
                 result_summary={
-                    "shows_scanned": result.shows_scanned,
+                    "paths_scanned": result.paths_scanned,
                     "files_found": result.files_found,
                     "files_created": result.files_created,
                     "files_skipped": result.files_skipped,

@@ -45,7 +45,7 @@ def test_get_config_redacts_redis_password() -> None:
         mock_settings.sftp_host = None
         mock_settings.sftp_port = 22
         mock_settings.sftp_username = None
-        mock_settings.sftp_remote_base_path = "/"
+        mock_settings.sftp_remote_paths = "/"
         mock_settings.llm_provider = "none"
         mock_settings.llm_model = ""
         mock_settings.llm_base_url = ""

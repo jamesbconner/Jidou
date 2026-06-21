@@ -15,7 +15,6 @@ def _make_show(
     tmdb_id: int = 100,
     title: str = "Test Show",
     media_type: str = "tv",
-    remote_path: str | None = None,
     local_path: str | None = None,
 ) -> MagicMock:
     """Build a minimal Show mock suitable for route responses."""
@@ -34,7 +33,9 @@ def _make_show(
     s.release_date = None
     s.original_language = None
     s.cached = False
-    s.remote_path = remote_path
+    s.content_type = None
+    s.sys_name = None
+    s.aliases = None
     s.local_path = local_path
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
@@ -256,7 +257,7 @@ def test_get_show_returns_404_when_not_found() -> None:
 
 
 def test_update_paths_returns_updated_show() -> None:
-    """PUT /api/shows/{id}/paths returns the show with updated paths."""
+    """PUT /api/shows/{id}/paths returns the show with updated local_path."""
     from jidou.database import get_session
 
     show = _make_show(id=1)
@@ -264,11 +265,9 @@ def test_update_paths_returns_updated_show() -> None:
     try:
         response = TestClient(app).put(
             "/api/shows/1/paths",
-            json={"remote_path": "/shows/test", "local_path": "/media/test"},
+            json={"local_path": "/media/test"},
         )
         assert response.status_code == 200
-        # Path fields are set on the mock object by the route handler
-        # so the response reflects whatever the mock has now.
         assert "id" in response.json()
     finally:
         app.dependency_overrides.clear()
@@ -282,31 +281,25 @@ def test_update_paths_returns_404_for_missing_show() -> None:
     try:
         response = TestClient(app).put(
             "/api/shows/9999/paths",
-            json={"remote_path": "/x"},
+            json={"local_path": "/x"},
         )
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
 
 
-def test_update_paths_does_not_clear_omitted_field() -> None:
-    """PUT /api/shows/{id}/paths must not null a path the client did not send.
-
-    Regression: both ShowPaths fields default to None.  A body containing only
-    remote_path must leave local_path at its stored value, not overwrite it.
-    """
+def test_update_paths_sets_local_path() -> None:
+    """PUT /api/shows/{id}/paths updates local_path on the show object."""
     from jidou.database import get_session
 
-    show = _make_show(id=1, local_path="/media/existing")
+    show = _make_show(id=1)
     app.dependency_overrides[get_session] = _session_override(single=show)
     try:
         TestClient(app).put(
             "/api/shows/1/paths",
-            json={"remote_path": "/remote/new"},
+            json={"local_path": "/media/new"},
         )
-        # remote_path was sent → updated; local_path was absent → untouched
-        assert show.remote_path == "/remote/new"
-        assert show.local_path == "/media/existing"
+        assert show.local_path == "/media/new"
     finally:
         app.dependency_overrides.clear()
 

@@ -1,4 +1,4 @@
-"""Orchestrator for scanning SFTP and creating DownloadedFile records."""
+"""Orchestrator for scanning all configured SFTP paths and creating DownloadedFile records."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -9,7 +9,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
-from jidou.models.show import Show
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
@@ -19,74 +18,71 @@ logger = logging.getLogger(__name__)
 class ScanResult:
     """Result of a remote SFTP scan operation."""
 
-    shows_scanned: int
+    paths_scanned: int
     files_found: int
     files_created: int
     files_skipped: int
 
 
 class ScanOrchestrator:
-    """List remote SFTP files and create or update DownloadedFile records.
+    """Scan all configured SFTP remote paths and create DownloadedFile records.
+
+    Files are created with ``show_id=NULL`` and status ``DISCOVERED``; the
+    parse phase later matches them to shows.  Duplicate detection uses
+    ``remote_path`` alone (unique on the SFTP server regardless of show).
 
     Args:
         session: Active async SQLAlchemy session.
         sftp: Configured SFTPService instance.
+        remote_paths: List of remote directory paths to scan.
     """
 
-    def __init__(self, session: AsyncSession, sftp: SFTPService) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        sftp: SFTPService,
+        remote_paths: list[str],
+    ) -> None:
         self.session = session
         self.sftp = sftp
+        self.remote_paths = remote_paths
 
     async def run(
         self,
-        show_id: int | None = None,
         dry_run: bool = False,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
     ) -> ScanResult:
-        """Scan remote directories and create DownloadedFile rows for new files.
+        """Scan every remote path and create DISCOVERED records for new files.
 
-        Files already tracked (PENDING, DOWNLOADING, DOWNLOADED, ROUTING,
-        ROUTED, or ERROR) are skipped. Each phase handles retries for its own
-        failures; scan only creates new DownloadedFile records.
+        Already-tracked files (any status) are skipped to preserve their
+        current pipeline state.
 
         Args:
-            show_id: Limit to one show. None scans all shows with remote_path set.
             dry_run: Log what would be created without writing to the DB.
             on_progress: Optional async callback(current, total, message).
 
         Returns:
             ScanResult with counts.
         """
-        stmt = select(Show).where(Show.remote_path.isnot(None))
-        if show_id is not None:
-            stmt = stmt.where(Show.id == show_id)
-        shows = list((await self.session.execute(stmt)).scalars().all())
-
-        total = len(shows)
+        total = len(self.remote_paths)
         files_found = 0
         files_created = 0
         files_skipped = 0
 
-        for idx, show in enumerate(shows, 1):
+        for idx, remote_path in enumerate(self.remote_paths, 1):
             if on_progress:
-                await on_progress(idx, total, f"Scanning {show.title}")
+                await on_progress(idx, total, f"Scanning {remote_path}")
 
             try:
-                remote_files = await self.sftp.list_remote_files_recursive(show.remote_path)
+                remote_files = await self.sftp.list_remote_files_recursive(remote_path)
             except Exception:
-                logger.exception(
-                    "Failed to list remote path %s for show id=%d",
-                    show.remote_path,
-                    show.id,
-                )
+                logger.exception("Failed to list remote path %s; skipping", remote_path)
                 continue
 
             files_found += len(remote_files)
 
             for rf in remote_files:
-                file_stmt = select(DownloadedFile).where(
-                    (DownloadedFile.remote_path == rf.path) & (DownloadedFile.show_id == show.id)
-                )
+                file_stmt = select(DownloadedFile).where(DownloadedFile.remote_path == rf.path)
                 existing = (await self.session.execute(file_stmt)).scalar_one_or_none()
 
                 if existing is not None:
@@ -101,11 +97,11 @@ class ScanOrchestrator:
                         async with self.session.begin_nested():
                             self.session.add(
                                 DownloadedFile(
-                                    show_id=show.id,
+                                    show_id=None,
                                     original_filename=rf.name,
                                     remote_path=rf.path,
                                     file_size=rf.size,
-                                    status=FileStatus.PENDING,
+                                    status=FileStatus.DISCOVERED,
                                 )
                             )
                         files_created += 1
@@ -114,18 +110,14 @@ class ScanOrchestrator:
                         pgcode = getattr(orig, "pgcode", None)
                         if pgcode is not None and pgcode != "23505":
                             raise
-                        logger.debug(
-                            "Skipping duplicate file (race): show_id=%d remote_path=%s",
-                            show.id,
-                            rf.path,
-                        )
+                        logger.debug("Skipping duplicate file (race): remote_path=%s", rf.path)
                         files_skipped += 1
 
         if not dry_run:
             await self.session.commit()
 
         logger.info(
-            "Scan complete: %d shows, %d found, %d created, %d skipped (dry_run=%s)",
+            "Scan complete: %d paths, %d found, %d created, %d skipped (dry_run=%s)",
             total,
             files_found,
             files_created,
@@ -133,7 +125,7 @@ class ScanOrchestrator:
             dry_run,
         )
         return ScanResult(
-            shows_scanned=total,
+            paths_scanned=total,
             files_found=files_found,
             files_created=files_created,
             files_skipped=files_skipped,

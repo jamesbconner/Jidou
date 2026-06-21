@@ -59,7 +59,7 @@ def test_download_task_soft_timeout_calls_mark_timed_out() -> None:
         pytest.raises(SoftTimeLimitExceeded),
     ):
         # Celery bind=True tasks auto-inject self; do not pass mock as first arg.
-        download_files_task(show_id=1, dry_run=False)
+        download_files_task(dry_run=False)
 
     assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"
 
@@ -94,7 +94,7 @@ async def test_download_files_skips_redelivery_for_terminal_task() -> None:
             new_callable=AsyncMock,
         ) as mock_update,
     ):
-        result = await _download_files("redelivered-123", show_id=1, dry_run=False)
+        result = await _download_files("redelivered-123", dry_run=False)
 
     mock_update.assert_not_called()
     assert result == "redelivered-123"

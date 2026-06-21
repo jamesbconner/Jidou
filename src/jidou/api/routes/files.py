@@ -1,4 +1,4 @@
-"""API routes for downloaded file management and episode matching."""
+"""API routes for downloaded file management."""
 
 import logging
 
@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
-from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
+from jidou.models.show import Show
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ async def list_files(
     """List tracked downloaded files with optional filters.
 
     Args:
-        status: Filter by file status (``pending``, ``downloaded``, etc.).
+        status: Filter by file status (``discovered``, ``downloaded``, etc.).
         show_id: Filter by matched show ID.
         limit: Maximum results to return (default 50).
         offset: Number of results to skip for pagination.
@@ -56,6 +57,36 @@ async def list_files(
         stmt = stmt.where(DownloadedFile.show_id == show_id)
 
     stmt = stmt.order_by(DownloadedFile.created_at.desc()).offset(offset).limit(limit)
+    result = await db_session.execute(stmt)
+    return list(result.scalars().all())
+
+
+@router.get("/unmatched", response_model=list[FileRead])
+async def list_unmatched_files(
+    limit: int = 50,
+    offset: int = 0,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[DownloadedFile]:
+    """List files that could not be automatically matched to a show.
+
+    Returns files in ``unmatched`` status ordered by creation time descending.
+    These files require manual review via ``POST /files/{id}/match``.
+
+    Args:
+        limit: Maximum results to return (default 50).
+        offset: Number of results to skip for pagination.
+        db_session: DB session (injected).
+
+    Returns:
+        List of unmatched :class:`DownloadedFile` records.
+    """
+    stmt = (
+        select(DownloadedFile)
+        .where(DownloadedFile.status == FileStatus.UNMATCHED)
+        .order_by(DownloadedFile.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db_session.execute(stmt)
     return list(result.scalars().all())
 
@@ -116,10 +147,9 @@ async def patch_file(
         show_changed = file.show_id != payload.show_id
         file.show_id = payload.show_id
         if show_changed:
-            # Invalidate match data that belonged to the previous show
             if "episode_id" not in payload.model_fields_set:
                 file.episode_id = None
-            file.matched_by = None  # not patchable — always clear on reassignment
+            file.matched_by = None
             if "error_message" not in payload.model_fields_set:
                 file.error_message = None
     if "episode_id" in payload.model_fields_set:
@@ -135,15 +165,15 @@ async def patch_file(
         await db_session.rollback()
         orig = getattr(exc, "orig", None)
         pgcode = getattr(orig, "pgcode", None)
+        if pgcode == "23505":
+            raise HTTPException(
+                status_code=409,
+                detail="A file with that remote_path already exists",
+            ) from None
         if pgcode == "23503":
             raise HTTPException(
                 status_code=422,
                 detail="Referenced show_id or episode_id does not exist",
-            ) from None
-        if pgcode is None or pgcode == "23505":
-            raise HTTPException(
-                status_code=409,
-                detail="A file with that show_id and remote_path combination already exists",
             ) from None
         raise
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
@@ -151,77 +181,55 @@ async def patch_file(
 
 
 @router.post("/{file_id}/match", response_model=FileRead)
-async def rematch_file(
+async def manual_match_file(
     file_id: int,
     payload: FileMatchRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DownloadedFile:
-    """Re-trigger episode matching for a downloaded file.
+    """Manually assign a show to an unmatched file and queue it for routing.
 
-    Resets the file status to ``pending`` and dispatches a Celery match task
-    for the file's associated show.  The match worker will update status and
-    populate ``episode_id`` and ``matched_by`` when it completes.
+    Sets the file's ``show_id`` and transitions status from ``unmatched``
+    to ``matched`` so the route phase will pick it up on the next sync.
 
     Args:
         file_id: Database primary key.
-        payload: Matching strategy hint (``"auto"``, ``"llm"``, or
-            ``"heuristic"``).  Stored for observability; the current worker
-            uses show-level matching.
+        payload: ``show_id`` to assign.
         db_session: DB session (injected).
 
     Returns:
-        The updated :class:`DownloadedFile` record with status reset to
-        ``pending``.
+        The updated :class:`DownloadedFile` record with status ``matched``.
 
     Raises:
-        HTTPException: 404 if the file is not found.
-        HTTPException: 422 if the file has no associated show (cannot match
-            without a show assignment).
-        HTTPException: 503 if the Celery broker is unavailable.
+        HTTPException: 404 if the file or show is not found.
+        HTTPException: 422 if the show has no ``local_path`` configured.
     """
     stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
     file = (await db_session.execute(stmt)).scalar_one_or_none()
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
-    if file.show_id is None:
+    show_stmt = select(Show).where(Show.id == payload.show_id)
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    if show.local_path is None:
         raise HTTPException(
             status_code=422,
-            detail="File has no associated show; assign a show before re-matching",
+            detail="Show has no local_path configured; set it via PUT /shows/{id}/paths first",
         )
 
-    # Reset to pending, then commit so the worker reads the updated state from
-    # its own DB connection before it begins processing.
-    # Clear episode_id so the worker assigns a fresh match rather than
-    # returning a stale result that contradicts pending status.
-    file.status = FileStatus.PENDING
-    file.episode_id = None
-    file.matched_by = None
+    file.show_id = show.id
+    file.matched_by = MatchedBy.MANUAL
+    file.status = FileStatus.MATCHED
     file.error_message = None
     await db_session.flush()
     await db_session.commit()
 
-    try:
-        from jidou.workers.match_tasks import match_files_task
-
-        match_files_task.apply_async(args=[file.show_id, False])
-    except Exception as exc:
-        logger.exception("Failed to dispatch match task for file %d", file_id)
-        # Roll the file back to ERROR so it is not left as PENDING with no
-        # queued job — the caller can retry once the broker is available.
-        file.status = FileStatus.ERROR
-        file.error_message = "Failed to dispatch matching task to broker"
-        await db_session.flush()
-        await db_session.commit()
-        raise HTTPException(
-            status_code=503,
-            detail="Failed to dispatch matching task to broker",
-        ) from exc
-
     logger.info(
-        "Re-queued matching for file id=%d show_id=%d method=%s",
+        "Manually matched file id=%d → show id=%d (%s)",
         file_id,
-        file.show_id,
-        payload.method,
+        show.id,
+        show.title,
     )
     return file

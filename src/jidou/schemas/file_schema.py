@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+_VALID_STATUSES = "discovered|downloading|downloaded|unmatched|matched|routing|routed|error|pending"
+
 
 class FileRead(BaseModel):
     """Full downloaded-file record."""
@@ -21,6 +23,11 @@ class FileRead(BaseModel):
     status: str
     matched_by: str | None = None
     error_message: str | None = None
+    parsed_show_name: str | None = None
+    parsed_season: int | None = None
+    parsed_episode: int | None = None
+    parsed_confidence: float | None = None
+    parsed_content_type: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -37,17 +44,14 @@ class FileList(BaseModel):
     status: str
     show_id: int | None = None
     episode_id: int | None = None
+    parsed_show_name: str | None = None
     created_at: datetime
 
 
 class FileMatchRequest(BaseModel):
-    """Request body for re-triggering episode matching on a file."""
+    """Request body for manually assigning a show to an unmatched file."""
 
-    method: str = Field(
-        default="auto",
-        pattern="^(auto|llm|heuristic)$",
-        description="Matching strategy: 'auto' tries LLM first then heuristic.",
-    )
+    show_id: int = Field(description="Database ID of the show to assign to this file")
 
 
 class FilePatch(BaseModel):
@@ -57,6 +61,6 @@ class FilePatch(BaseModel):
     episode_id: int | None = None
     status: str | None = Field(
         default=None,
-        pattern="^(pending|downloading|downloaded|routing|routed|error)$",
+        pattern=f"^({_VALID_STATUSES})$",
     )
     error_message: str | None = None

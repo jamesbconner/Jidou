@@ -36,7 +36,7 @@ async def get_config() -> dict[str, Any]:
         "sftp_host": settings.sftp_host,
         "sftp_port": settings.sftp_port,
         "sftp_username": settings.sftp_username,
-        "sftp_remote_base_path": settings.sftp_remote_base_path,
+        "sftp_remote_paths": settings.sftp_remote_paths,
         "llm_provider": settings.llm_provider,
         "llm_model": settings.llm_model,
         "llm_base_url": settings.llm_base_url or None,
@@ -86,7 +86,9 @@ async def test_sftp() -> dict[str, Any]:
             username=settings.sftp_username or "",
             password=settings.sftp_password,
             key_path=settings.sftp_key_path,
-            remote_base_path=settings.sftp_remote_base_path,
+            remote_base_path=settings.sftp_remote_paths_list[0]
+            if settings.sftp_remote_paths_list
+            else "/",
             max_retries=settings.sftp_max_retries,
             retry_delay=settings.sftp_retry_delay,
         )

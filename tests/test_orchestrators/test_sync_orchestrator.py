@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from jidou.orchestrators.download_orchestrator import DownloadResult
-from jidou.orchestrators.match_orchestrator import MatchResult
+from jidou.orchestrators.parse_orchestrator import ParseResult
+from jidou.orchestrators.route_orchestrator import RouteResult
 from jidou.orchestrators.scan_orchestrator import ScanResult
 from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
 from jidou.orchestrators.tmdb_orchestrator import TMDBSyncResult
@@ -18,7 +19,7 @@ def _make_tmdb_result(**kwargs):
 
 
 def _make_scan_result(**kwargs):
-    defaults = {"shows_scanned": 1, "files_found": 3, "files_created": 3, "files_skipped": 0}
+    defaults = {"paths_scanned": 1, "files_found": 3, "files_created": 3, "files_skipped": 0}
     return ScanResult(**{**defaults, **kwargs})
 
 
@@ -26,23 +27,26 @@ def _make_download_result(**kwargs):
     defaults = {
         "files_downloaded": 3,
         "bytes_downloaded": 3000,
-        "files_skipped": 0,
         "files_failed": 0,
         "dry_run": False,
     }
     return DownloadResult(**{**defaults, **kwargs})
 
 
-def _make_match_result(**kwargs):
+def _make_parse_result(**kwargs):
     defaults = {
+        "files_processed": 3,
         "files_matched": 3,
-        "matched_by_heuristic": 3,
-        "matched_by_llm": 0,
         "files_unmatched": 0,
         "files_failed": 0,
         "dry_run": False,
     }
-    return MatchResult(**{**defaults, **kwargs})
+    return ParseResult(**{**defaults, **kwargs})
+
+
+def _make_route_result(**kwargs):
+    defaults = {"files_routed": 3, "files_failed": 0, "dry_run": False}
+    return RouteResult(**{**defaults, **kwargs})
 
 
 def _make_session(show=None):
@@ -57,26 +61,30 @@ def _make_session(show=None):
 
 
 async def test_run_returns_all_phase_results():
-    """SyncResult contains the results from all 4 phases."""
+    """SyncResult contains the results from all 5 phases."""
     session = _make_session()
     sftp = MagicMock()
+    sftp.max_workers = 4
     tmdb = MagicMock()
 
     tmdb_res = _make_tmdb_result()
     scan_res = _make_scan_result()
     dl_res = _make_download_result()
-    match_res = _make_match_result()
+    parse_res = _make_parse_result()
+    route_res = _make_route_result()
 
     with (
         patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
         patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
         patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
     ):
         mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=tmdb_res)
         mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
         mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
-        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
+        mock_parse_cls.return_value.run = AsyncMock(return_value=parse_res)
+        mock_route_cls.return_value.run = AsyncMock(return_value=route_res)
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         result = await orch.run()
@@ -84,7 +92,8 @@ async def test_run_returns_all_phase_results():
     assert result.tmdb == tmdb_res
     assert result.scan == scan_res
     assert result.download == dl_res
-    assert result.match == match_res
+    assert result.parse == parse_res
+    assert result.route == route_res
 
 
 async def test_run_skips_tmdb_if_show_cached():
@@ -94,23 +103,27 @@ async def test_run_skips_tmdb_if_show_cached():
 
     session = _make_session(show=show)
     sftp = MagicMock()
+    sftp.max_workers = 4
     tmdb = MagicMock()
 
     scan_res = _make_scan_result()
     dl_res = _make_download_result()
-    match_res = _make_match_result()
+    parse_res = _make_parse_result()
+    route_res = _make_route_result()
 
     with (
         patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
         patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
         patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
     ):
         mock_tmdb_instance = mock_tmdb_cls.return_value
         mock_tmdb_instance.sync_show_episodes = AsyncMock()
         mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
         mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
-        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
+        mock_parse_cls.return_value.run = AsyncMock(return_value=parse_res)
+        mock_route_cls.return_value.run = AsyncMock(return_value=route_res)
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         await orch.run(show_id=1)
@@ -122,21 +135,25 @@ async def test_run_dry_run_skips_tmdb_entirely():
     """With dry_run=True, TMDBOrchestrator is never instantiated or called."""
     session = _make_session()
     sftp = MagicMock()
+    sftp.max_workers = 4
     tmdb = MagicMock()
 
     scan_res = _make_scan_result()
     dl_res = _make_download_result()
-    match_res = _make_match_result()
+    parse_res = _make_parse_result()
+    route_res = _make_route_result()
 
     with (
         patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
         patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
         patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
     ):
         mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
         mock_dl_cls.return_value.run = AsyncMock(return_value=dl_res)
-        mock_match_cls.return_value.run = AsyncMock(return_value=match_res)
+        mock_parse_cls.return_value.run = AsyncMock(return_value=parse_res)
+        mock_route_cls.return_value.run = AsyncMock(return_value=route_res)
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         result = await orch.run(dry_run=True)
@@ -145,10 +162,11 @@ async def test_run_dry_run_skips_tmdb_entirely():
     assert result.tmdb.episodes_upserted == 0
 
 
-async def test_run_on_phase_called_4_times():
+async def test_run_on_phase_called_5_times():
     """on_phase callback is invoked once per phase with correct phase numbers."""
     session = _make_session()
     sftp = MagicMock()
+    sftp.max_workers = 4
     tmdb = MagicMock()
 
     on_phase = AsyncMock()
@@ -157,25 +175,28 @@ async def test_run_on_phase_called_4_times():
         patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
         patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
         patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
     ):
         mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
         mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
         mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
-        mock_match_cls.return_value.run = AsyncMock(return_value=_make_match_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         await orch.run(on_phase=on_phase)
 
-    assert on_phase.call_count == 4
+    assert on_phase.call_count == 5
     phase_numbers = [c.args[0] for c in on_phase.call_args_list]
-    assert phase_numbers == [1, 2, 3, 4]
+    assert phase_numbers == [1, 2, 3, 4, 5]
 
 
 async def test_run_cancellation_propagates():
     """TaskCancelledError raised by on_phase propagates out and stops later phases."""
     session = _make_session()
     sftp = MagicMock()
+    sftp.max_workers = 4
     tmdb = MagicMock()
 
     call_count = 0
@@ -190,12 +211,14 @@ async def test_run_cancellation_propagates():
         patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
         patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
         patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
-        patch("jidou.orchestrators.sync_orchestrator.MatchOrchestrator") as mock_match_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
     ):
         mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
         mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
         mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
-        mock_match_cls.return_value.run = AsyncMock(return_value=_make_match_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
 
         orch = SyncOrchestrator(session, sftp, tmdb)
         with pytest.raises(TaskCancelledError):

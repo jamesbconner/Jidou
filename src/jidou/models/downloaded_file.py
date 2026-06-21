@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,12 +12,15 @@ from jidou.models.base import Base, TimestampMixin
 class FileStatus(StrEnum):
     """Lifecycle status of a downloaded file."""
 
-    PENDING = "pending"
-    DOWNLOADING = "downloading"
-    DOWNLOADED = "downloaded"
-    ROUTING = "routing"
-    ROUTED = "routed"
-    ERROR = "error"
+    DISCOVERED = "discovered"  # Found on SFTP, not yet downloaded
+    DOWNLOADING = "downloading"  # Transfer in progress
+    DOWNLOADED = "downloaded"  # In staging area, awaiting parse/match
+    UNMATCHED = "unmatched"  # Parse/match failed; needs manual review
+    MATCHED = "matched"  # Matched to a show; ready to route
+    ROUTING = "routing"  # Being moved to final local path
+    ROUTED = "routed"  # In final location
+    ERROR = "error"  # Failed at any stage
+    PENDING = "pending"  # Legacy; replaced by DISCOVERED
 
 
 class MatchedBy(StrEnum):
@@ -31,11 +34,13 @@ class MatchedBy(StrEnum):
 class DownloadedFile(TimestampMixin, Base):
     """A media file tracked or downloaded from the remote SFTP server.
 
-    ``show_id`` and ``episode_id`` are populated by the matching worker after
-    the file has been linked to a specific show/episode.  Both are nullable
-    because a file may exist before matching has run.
+    ``show_id`` and ``episode_id`` are NULL until the parse/match phase
+    links the file to a specific show and episode.
 
     ``file_size`` uses ``BigInteger`` to support files larger than 2 GiB.
+
+    Parsed fields (``parsed_*``) are populated by the parse orchestrator
+    after the file has been downloaded to staging.
     """
 
     __tablename__ = "downloaded_files"
@@ -48,13 +53,13 @@ class DownloadedFile(TimestampMixin, Base):
         ForeignKey("episodes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     original_filename: Mapped[str] = mapped_column(String(500))
-    remote_path: Mapped[str] = mapped_column(String(1000))
+    remote_path: Mapped[str] = mapped_column(String(1000), unique=True)
     local_path: Mapped[str | None] = mapped_column(String(1000))
     file_size: Mapped[int] = mapped_column(BigInteger, default=0)
     hash_sha256: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[FileStatus] = mapped_column(
         SAEnum(FileStatus, values_callable=lambda e: [x.value for x in e]),
-        default=FileStatus.PENDING,
+        default=FileStatus.DISCOVERED,
         index=True,
     )
     matched_by: Mapped[MatchedBy | None] = mapped_column(
@@ -62,6 +67,12 @@ class DownloadedFile(TimestampMixin, Base):
         nullable=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text)
+    # Parsed metadata populated by the parse orchestrator
+    parsed_show_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    parsed_season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parsed_episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parsed_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    parsed_content_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the DownloadedFile."""

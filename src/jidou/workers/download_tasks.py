@@ -26,21 +26,19 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
 def download_files_task(  # type: ignore[no-untyped-def]
     self,
-    show_id: int,
     dry_run: bool = False,
 ) -> str:
-    """Download files for a show from remote SFTP.
+    """Download all DISCOVERED files from remote SFTP to local staging.
 
     Args:
         self: Celery request context for retries.
-        show_id: Database ID of the show to download.
         dry_run: Simulate without actually downloading.
 
     Returns:
         The celery task ID.
     """
     try:
-        return asyncio.run(_download_files(self.request.id, show_id, dry_run))
+        return asyncio.run(_download_files(self.request.id, dry_run))
     except SoftTimeLimitExceeded:
         asyncio.run(mark_task_timed_out(self.request.id))
         raise
@@ -48,7 +46,6 @@ def download_files_task(  # type: ignore[no-untyped-def]
 
 async def _download_files(
     celery_task_id: str,
-    show_id: int,
     dry_run: bool = False,
 ) -> str:
     """Async implementation of the download task."""
@@ -74,7 +71,6 @@ async def _download_files(
                 username=settings.sftp_username,
                 password=settings.sftp_password,
                 key_path=settings.sftp_key_path,
-                remote_base_path=settings.sftp_remote_base_path,
                 known_hosts=None,
                 max_workers=settings.sftp_max_workers,
                 max_retries=settings.sftp_max_retries,
@@ -103,8 +99,7 @@ async def _download_files(
                     }
                 )
 
-            result = await DownloadOrchestrator(session, sftp).run(
-                show_id=show_id,
+            result = await DownloadOrchestrator(session, sftp, settings.local_staging_path).run(
                 dry_run=dry_run,
                 max_workers=settings.sftp_max_workers,
                 on_progress=on_progress,
@@ -113,7 +108,7 @@ async def _download_files(
             # Mark complete — gate the WebSocket event on the DB update landing.
             # If the row was concurrently cancelled, update_task_status returns
             # it unchanged (status still CANCELLED) and we must not emit "complete".
-            total_processed = result.files_downloaded + result.files_failed + result.files_skipped
+            total_processed = result.files_downloaded + result.files_failed
             completed = await update_task_status(
                 session,
                 celery_task_id,
