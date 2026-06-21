@@ -45,6 +45,7 @@ set-env.ps1
 htmlcov/
 .coverage.*
 coverage.xml
+.ssh/
 
 # mypy
 .mypy_cache/
@@ -66,8 +67,6 @@ Thumbs.db
 # -----------------------------------------------------------
 # Claude Code local settings
 # -----------------------------------------------------------
-.claude/scheduled_tasks.lock
-.claude/settings.local.json
 .claude/
 
 # -----------------------------------------------------------
