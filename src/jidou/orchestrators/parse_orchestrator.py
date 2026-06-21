@@ -154,10 +154,13 @@ class ParseOrchestrator:
             logger.warning("LLM returned invalid JSON for %r: %r", filename, text)
             return empty
 
+        raw_season = parsed.get("season")
+        raw_episode = parsed.get("episode")
         return {
             "show": parsed.get("show"),
-            "season": parsed.get("season"),
-            "episode": parsed.get("episode"),
+            # Coerce to int — LLM may return strings like "01" or floats like 1.0.
+            "season": int(raw_season) if raw_season is not None else None,
+            "episode": int(raw_episode) if raw_episode is not None else None,
             "content_type": parsed.get("content_type"),
             "confidence": float(parsed.get("confidence") or 0.0),
         }
@@ -267,15 +270,19 @@ class ParseOrchestrator:
                 content_type: str | None = parsed.get("content_type")  # type: ignore[assignment]
 
                 if dry_run:
+                    # Run the DB lookup so the count reflects real match potential,
+                    # not just whether the parser extracted a show name.
+                    dry_show = await self._find_show(show_name) if show_name else None
                     logger.info(
-                        "[DRY RUN] %s → show=%r S%sE%s confidence=%.2f",
+                        "[DRY RUN] %s → show=%r S%sE%s confidence=%.2f match=%s",
                         file.original_filename,
                         show_name,
                         season,
                         episode,
                         confidence,
+                        dry_show.title if dry_show is not None else "none",
                     )
-                    if show_name:
+                    if dry_show is not None:
                         files_matched += 1
                     else:
                         files_unmatched += 1
@@ -298,7 +305,11 @@ class ParseOrchestrator:
                     file.show_id = show.id
                     ep = await self._find_episode(show.id, season, episode)
                     file.episode_id = ep.id if ep is not None else None
-                    file.matched_by = MatchedBy.LLM
+                    file.matched_by = (
+                        MatchedBy.LLM
+                        if (self.llm is not None and self.llm.is_available())
+                        else MatchedBy.HEURISTIC
+                    )
                     file.status = FileStatus.MATCHED
                     # Teach the alias index so future matches skip LLM
                     if show_name:
