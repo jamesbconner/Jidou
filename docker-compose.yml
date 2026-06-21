@@ -73,6 +73,9 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
       # Application
       - DEBUG=${DEBUG:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
@@ -123,6 +126,9 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
       # Application
       - DEBUG=${DEBUG:-true}
     volumes:
