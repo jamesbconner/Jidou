@@ -287,9 +287,12 @@ class DownloadOrchestrator:
                 if on_progress:
                     for file, _ in pending:
                         progress_idx += 1
-                        await on_progress(
-                            progress_idx, total, f"Downloaded {file.original_filename}"
+                        msg = (
+                            f"Downloaded {file.original_filename}"
+                            if file.status == FileStatus.DOWNLOADED
+                            else f"Failed {file.original_filename}"
                         )
+                        await on_progress(progress_idx, total, msg)
 
             except BaseException:
                 if not gather_cleanup_done:
