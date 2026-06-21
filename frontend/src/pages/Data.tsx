@@ -57,8 +57,8 @@ function TextImportSection() {
       <div>
         <h2 className="text-lg font-semibold">Text File Import</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Upload a plain-text file of Windows NAS paths (one per line) to batch-import shows and
-          mark episodes as tracked.
+          Upload a plain-text file of episode paths (one per line) to batch-import shows and mark
+          episodes as tracked. Accepts Windows (Z:\...) and POSIX (/mnt/...) paths.
         </p>
       </div>
 

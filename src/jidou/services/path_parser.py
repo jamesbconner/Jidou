@@ -1,13 +1,17 @@
-"""Parser for NAS file path lists.
+"""Parser for episode file path lists.
 
-Converts Windows-style absolute paths (e.g. ``Z:\\anime tv\\Show\\Season 1\\ep.mkv``)
-into structured :class:`ParsedNASEntry` objects that carry the show directory
-name, season, and episode numbers needed for TMDB/DB lookup.
+Converts absolute paths — either Windows-style (``Z:\\anime tv\\Show\\Season 1\\ep.mkv``)
+or POSIX-style (``/mnt/media/anime/Show/Season 1/ep.mkv``) — into structured
+:class:`ParsedPathEntry` objects that carry the show directory name, season, and
+episode numbers needed for TMDB/DB lookup.
+
+Path format is detected automatically: a path containing ``\\`` or a drive-letter
+prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POSIX.
 """
 
 import re
 from dataclasses import dataclass
-from pathlib import PureWindowsPath
+from pathlib import PurePath, PurePosixPath, PureWindowsPath
 
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
@@ -28,8 +32,8 @@ _MEDIA_EXTENSIONS = frozenset(
 
 
 @dataclass
-class ParsedNASEntry:
-    """A single episode file parsed from a NAS path list line.
+class ParsedPathEntry:
+    """A single episode file parsed from a path list line.
 
     Attributes:
         raw_path: The original unmodified line.
@@ -49,33 +53,48 @@ class ParsedNASEntry:
     is_absolute: bool
 
 
-def parse_line(line: str) -> ParsedNASEntry | None:
-    """Parse one line from a NAS path file into a structured entry.
+def _as_pure_path(line: str) -> PurePath:
+    """Return a Windows or POSIX PurePath based on the path format.
 
-    Skips blank lines and comment lines (starting with ``#``).
+    Args:
+        line: A single raw path string.
+
+    Returns:
+        :class:`~pathlib.PureWindowsPath` when the line contains a backslash or
+        a drive-letter prefix; :class:`~pathlib.PurePosixPath` otherwise.
+    """
+    if "\\" in line or (len(line) >= 2 and line[1] == ":"):
+        return PureWindowsPath(line)
+    return PurePosixPath(line)
+
+
+def parse_line(line: str) -> ParsedPathEntry | None:
+    """Parse one line from a path file into a structured entry.
+
+    Skips blank lines and comment lines (starting with ``#``).  Accepts both
+    Windows (``Z:\\...``) and POSIX (``/mnt/...``) absolute paths.
 
     Args:
         line: A single line from the path file, possibly with surrounding whitespace.
 
     Returns:
-        A :class:`ParsedNASEntry`, or None if the line should be ignored.
+        A :class:`ParsedPathEntry`, or None if the line should be ignored.
     """
     line = line.strip()
     if not line or line.startswith("#"):
         return None
 
     try:
-        path = PureWindowsPath(line)
+        path = _as_pure_path(line)
         parts = path.parts
     except Exception:
         return None
 
-    # Need at least: drive + root_dir + show_dir + filename  (4 parts)
+    # Need at least: root + show_dir + filename with one intermediate directory (4 parts).
     if len(parts) < 4:
         return None
 
-    filename = parts[-1]
-    if PureWindowsPath(filename).suffix.lower() not in _MEDIA_EXTENSIONS:
+    if path.suffix.lower() not in _MEDIA_EXTENSIONS:
         return None
 
     # Detect an optional "Season N" directory one level above the filename.
@@ -85,20 +104,20 @@ def parse_line(line: str) -> ParsedNASEntry | None:
     if season_match:
         dir_season: int | None = int(season_match.group(1))
         show_dir = parts[-3]
-        show_root = str(PureWindowsPath(*parts[:-2]))
+        show_root = str(path.parent.parent)
     else:
         dir_season = None
         show_dir = parts[-2]
-        show_root = str(PureWindowsPath(*parts[:-1]))
+        show_root = str(path.parent)
 
-    stem = PureWindowsPath(filename).stem
+    stem = path.stem
     fn_season, episode = _parse_episode(stem)
 
     # Season from directory takes precedence over season from filename.
     season = dir_season if dir_season is not None else fn_season
     is_absolute = season is None and episode is not None
 
-    return ParsedNASEntry(
+    return ParsedPathEntry(
         raw_path=line,
         show_dir=show_dir,
         show_root=show_root,
@@ -108,8 +127,8 @@ def parse_line(line: str) -> ParsedNASEntry | None:
     )
 
 
-def parse_file(content: str) -> list[ParsedNASEntry]:
-    """Parse every line of a NAS path file.
+def parse_file(content: str) -> list[ParsedPathEntry]:
+    """Parse every line of a path file.
 
     Args:
         content: Full text content of the path file (``\\n``-separated lines).
@@ -117,7 +136,7 @@ def parse_file(content: str) -> list[ParsedNASEntry]:
     Returns:
         List of successfully parsed entries; blank/comment/non-media lines skipped.
     """
-    entries: list[ParsedNASEntry] = []
+    entries: list[ParsedPathEntry] = []
     for line in content.splitlines():
         entry = parse_line(line)
         if entry is not None:
@@ -126,8 +145,8 @@ def parse_file(content: str) -> list[ParsedNASEntry]:
 
 
 def group_by_show(
-    entries: list[ParsedNASEntry],
-) -> dict[str, list[ParsedNASEntry]]:
+    entries: list[ParsedPathEntry],
+) -> dict[str, list[ParsedPathEntry]]:
     """Group parsed entries by their show directory name.
 
     Args:
@@ -137,7 +156,7 @@ def group_by_show(
         Dict mapping show directory name → list of entries for that show,
         in the order they appeared in the source file.
     """
-    groups: dict[str, list[ParsedNASEntry]] = {}
+    groups: dict[str, list[ParsedPathEntry]] = {}
     for entry in entries:
         groups.setdefault(entry.show_dir, []).append(entry)
     return groups

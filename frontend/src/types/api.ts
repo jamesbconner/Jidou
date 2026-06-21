@@ -364,7 +364,7 @@ export interface TmdbSearchResponse {
   page: number
 }
 
-// ─── NAS Import ───────────────────────────────────────────────────────────────
+// ─── Path Import ──────────────────────────────────────────────────────────────
 
 export interface ShowImportResult {
   show_dir: string
@@ -375,7 +375,7 @@ export interface ShowImportResult {
   episodes_unmatched: number
 }
 
-export interface NASImportResult {
+export interface PathImportResult {
   shows_processed: number
   shows_created: number
   shows_found: number
