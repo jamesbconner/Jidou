@@ -329,7 +329,7 @@ async def test_orchestrator_absolute_episode_fallback() -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /api/import/nas — API route
+# POST /api/import/text — API route
 # ---------------------------------------------------------------------------
 
 
@@ -359,14 +359,14 @@ class TestImportNASRoute:
     def test_invalid_content_type_returns_400(self, client: TestClient) -> None:
         data = {"content_type": "invalid", "dry_run": False}
         files = {"file": ("paths.txt", BytesIO(b"Z:\\anime tv\\Show\\ep.mkv"), "text/plain")}
-        resp = client.post("/api/import/nas", data=data, files=files)
+        resp = client.post("/api/import/text", data=data, files=files)
         assert resp.status_code == 400
         assert "content_type" in resp.json()["detail"]
 
     def test_file_too_large_returns_422(self, client: TestClient) -> None:
         large_content = b"Z:\\anime tv\\Show\\ep.mkv\n" * 600_000  # ~14 MB
         files = {"file": ("paths.txt", BytesIO(large_content), "text/plain")}
-        resp = client.post("/api/import/nas", data={"content_type": "anime"}, files=files)
+        resp = client.post("/api/import/text", data={"content_type": "anime"}, files=files)
         assert resp.status_code == 422
         assert "too large" in resp.json()["detail"]
 
@@ -407,7 +407,7 @@ class TestImportNASRoute:
                 content = b"Z:\\anime tv\\Show\\Season 1\\Show.S01E01.mkv\n"
                 files = {"file": ("paths.txt", BytesIO(content), "text/plain")}
                 resp = client.post(
-                    "/api/import/nas",
+                    "/api/import/text",
                     data={"content_type": "anime", "dry_run": False},
                     files=files,
                 )
