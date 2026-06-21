@@ -152,7 +152,9 @@ export default function Settings() {
                     ? `${svc.latency_ms} ms`
                     : svc.configured === false
                       ? 'not configured'
-                      : svc.error ?? ''}
+                      : svc.model
+                        ? `${svc.provider} / ${svc.model}`
+                        : svc.error ?? ''}
                 </span>
               </div>
             ))}
