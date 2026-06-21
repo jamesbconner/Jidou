@@ -13,6 +13,7 @@ export default function Settings() {
   const testTmdb = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/tmdb') })
   const testSftp = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/sftp') })
   const testRedis = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/redis') })
+  const testLlm = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/llm') })
 
   const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = useAdminCache()
   const flushCache = useFlushCache()
@@ -42,6 +43,9 @@ export default function Settings() {
             { label: 'Test TMDB', mutation: testTmdb },
             { label: 'Test SFTP', mutation: testSftp },
             { label: 'Test Redis', mutation: testRedis },
+            ...(config?.llm_provider && config.llm_provider !== 'none'
+              ? [{ label: 'Test LLM', mutation: testLlm }]
+              : []),
           ].map(({ label, mutation }) => (
             <div key={label} className="flex items-center gap-2">
               <button

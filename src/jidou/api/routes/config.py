@@ -99,6 +99,47 @@ async def test_sftp() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+@router.post("/test/llm")
+async def test_llm() -> dict[str, Any]:
+    """Test LLM connectivity by sending a minimal completion request.
+
+    Returns:
+        ``{"ok": True, "provider": "...", "model": "...", "latency_ms": N}`` on
+        success or ``{"ok": False, "error": "..."}`` on failure.
+    """
+    if settings.llm_provider == "none":
+        return {"ok": False, "error": "LLM provider is set to 'none'"}
+    if not settings.llm_model:
+        return {"ok": False, "error": "LLM_MODEL is not configured"}
+
+    try:
+        import time
+
+        from jidou.services.llm_service import LLMService
+
+        llm = LLMService(
+            provider=settings.llm_provider,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            model=settings.llm_model,
+            timeout=settings.llm_timeout,
+        )
+        t0 = time.monotonic()
+        response = await llm.complete(prompt="Reply with the single word: ok", bypass_cache=True)
+        latency_ms = round((time.monotonic() - t0) * 1000, 1)
+        if response is None:
+            return {"ok": False, "error": "LLM returned no response"}
+        return {
+            "ok": True,
+            "provider": settings.llm_provider,
+            "model": settings.llm_model,
+            "latency_ms": latency_ms,
+        }
+    except Exception as exc:
+        logger.warning("LLM test failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
 @router.post("/test/redis")
 async def test_redis() -> dict[str, Any]:
     """Test Redis connectivity by sending a PING command.
