@@ -1,21 +1,21 @@
-"""Tests for NAS batch import — parser, orchestrator, and API route."""
+"""Tests for path-file batch import — parser, orchestrator, and API route."""
 
 from io import BytesIO
-from pathlib import PureWindowsPath
+from pathlib import PurePosixPath, PureWindowsPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from jidou.main import app
-from jidou.services.nas_parser import (
+from jidou.services.path_parser import (
     group_by_show,
     parse_file,
     parse_line,
 )
 
 # ---------------------------------------------------------------------------
-# nas_parser — parse_line
+# path_parser — parse_line
 # ---------------------------------------------------------------------------
 
 
@@ -97,9 +97,31 @@ class TestParseLine:
         assert entry is not None
         assert entry.raw_path == line
 
+    # -- POSIX paths -----------------------------------------------------------
+
+    def test_posix_path_with_season_dir(self) -> None:
+        line = "/mnt/media/anime/Dorohedoro/Season 01/Dorohedoro.S01E03.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.show_dir == "Dorohedoro"
+        assert entry.season == 1
+        assert entry.episode == 3
+        assert entry.show_root == str(PurePosixPath("/mnt/media/anime/Dorohedoro"))
+
+    def test_posix_path_without_season_dir(self) -> None:
+        line = "/home/user/shows/Hunter x Hunter/[HorribleSubs] HxH - 146 [1080p].mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.show_dir == "Hunter x Hunter"
+        assert entry.episode == 146
+        assert entry.is_absolute
+
+    def test_posix_path_skips_short(self) -> None:
+        assert parse_line("/Show/ep.mkv") is None
+
 
 # ---------------------------------------------------------------------------
-# nas_parser — parse_file and group_by_show
+# path_parser — parse_file and group_by_show
 # ---------------------------------------------------------------------------
 
 
@@ -117,6 +139,17 @@ class TestParseFile:
         )
         entries = parse_file(content)
         assert len(entries) == 4
+
+    def test_parse_mixed_path_formats(self) -> None:
+        content = "\n".join(
+            [
+                r"Z:\anime\Dorohedoro\Season 01\ep.mkv",
+                "/mnt/media/anime/Dorohedoro/Season 01/ep.mkv",
+            ]
+        )
+        entries = parse_file(content)
+        assert len(entries) == 2
+        assert all(e.show_dir == "Dorohedoro" for e in entries)
 
     def test_group_by_show(self) -> None:
         content = "\n".join(
@@ -142,7 +175,7 @@ class TestParseFile:
 
 
 # ---------------------------------------------------------------------------
-# NASImportOrchestrator (unit — DB and TMDB fully mocked)
+# PathImportOrchestrator (unit — DB and TMDB fully mocked)
 # ---------------------------------------------------------------------------
 
 
@@ -169,11 +202,11 @@ def _make_show(*, id: int = 1, tmdb_id: int = 999, title: str = "Dorohedoro") ->
 @pytest.mark.asyncio
 async def test_orchestrator_creates_show_and_tracks_episode() -> None:
     """Happy path: show not in DB → TMDB create → mark episode tracked."""
-    from jidou.orchestrators.nas_import_orchestrator import NASImportOrchestrator
-    from jidou.services.nas_parser import ParsedNASEntry
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
 
     entries = [
-        ParsedNASEntry(
+        ParsedPathEntry(
             raw_path=r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E01.mkv",
             show_dir="Dorohedoro",
             show_root=r"Z:\anime tv\Dorohedoro",
@@ -194,7 +227,7 @@ async def test_orchestrator_creates_show_and_tracks_episode() -> None:
 
     tmdb = AsyncMock()
 
-    orch = NASImportOrchestrator(session, tmdb, content_type="anime")
+    orch = PathImportOrchestrator(session, tmdb, content_type="anime")
 
     # Patch the private methods so the test focuses on the coordination logic.
     with (
@@ -214,11 +247,11 @@ async def test_orchestrator_creates_show_and_tracks_episode() -> None:
 @pytest.mark.asyncio
 async def test_orchestrator_finds_existing_show() -> None:
     """Show already in DB → skip TMDB → match episode."""
-    from jidou.orchestrators.nas_import_orchestrator import NASImportOrchestrator
-    from jidou.services.nas_parser import ParsedNASEntry
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
 
     entries = [
-        ParsedNASEntry(
+        ParsedPathEntry(
             raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
             show_dir="Dorohedoro",
             show_root=r"Z:\anime tv\Dorohedoro",
@@ -243,7 +276,7 @@ async def test_orchestrator_finds_existing_show() -> None:
 
     tmdb = AsyncMock()
 
-    orch = NASImportOrchestrator(session, tmdb)
+    orch = PathImportOrchestrator(session, tmdb)
     result = await orch.run(entries)
 
     assert result.shows_found == 1
@@ -255,11 +288,11 @@ async def test_orchestrator_finds_existing_show() -> None:
 @pytest.mark.asyncio
 async def test_orchestrator_handles_tmdb_miss() -> None:
     """TMDB returns no results → show_not_found, all episodes unmatched."""
-    from jidou.orchestrators.nas_import_orchestrator import NASImportOrchestrator
-    from jidou.services.nas_parser import ParsedNASEntry
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
 
     entries = [
-        ParsedNASEntry(
+        ParsedPathEntry(
             raw_path=r"Z:\anime tv\UnknownShow\ep01.mkv",
             show_dir="UnknownShow",
             show_root=r"Z:\anime tv\UnknownShow",
@@ -277,7 +310,7 @@ async def test_orchestrator_handles_tmdb_miss() -> None:
     tmdb = AsyncMock()
     tmdb.search.return_value = {"results": []}
 
-    orch = NASImportOrchestrator(session, tmdb)
+    orch = PathImportOrchestrator(session, tmdb)
     result = await orch.run(entries)
 
     assert result.shows_not_found == 1
@@ -288,11 +321,11 @@ async def test_orchestrator_handles_tmdb_miss() -> None:
 @pytest.mark.asyncio
 async def test_orchestrator_absolute_episode_fallback() -> None:
     """No season dir → absolute lookup by absolute_episode_number first, then s1/eN."""
-    from jidou.orchestrators.nas_import_orchestrator import NASImportOrchestrator
-    from jidou.services.nas_parser import ParsedNASEntry
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
 
     entries = [
-        ParsedNASEntry(
+        ParsedPathEntry(
             raw_path=r"Z:\anime tv\Hunter x Hunter\HxH - 146 [1080p].mkv",
             show_dir="Hunter x Hunter",
             show_root=r"Z:\anime tv\Hunter x Hunter",
@@ -321,7 +354,7 @@ async def test_orchestrator_absolute_episode_fallback() -> None:
 
     tmdb = AsyncMock()
 
-    orch = NASImportOrchestrator(session, tmdb)
+    orch = PathImportOrchestrator(session, tmdb)
     result = await orch.run(entries)
 
     assert result.episodes_tracked == 1
@@ -343,8 +376,6 @@ def _import_route_session_override(task: MagicMock) -> "type[AsyncMock]":
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.commit = AsyncMock()
-        # create_task_record returns task
-        # Patch the whole function instead of the session for simplicity.
         yield session
 
     return _mock_session  # type: ignore[return-value]
@@ -355,7 +386,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-class TestImportNASRoute:
+class TestImportTextRoute:
     def test_invalid_content_type_returns_400(self, client: TestClient) -> None:
         data = {"content_type": "invalid", "dry_run": False}
         files = {"file": ("paths.txt", BytesIO(b"Z:\\anime tv\\Show\\ep.mkv"), "text/plain")}
@@ -401,7 +432,7 @@ class TestImportNASRoute:
                     "jidou.api.routes.import_routes.create_task_record",
                     AsyncMock(return_value=task),
                 ),
-                patch("jidou.workers.import_tasks.nas_import_task") as mock_task,
+                patch("jidou.workers.import_tasks.path_import_task") as mock_task,
             ):
                 mock_task.apply_async = MagicMock()
                 content = b"Z:\\anime tv\\Show\\Season 1\\Show.S01E01.mkv\n"

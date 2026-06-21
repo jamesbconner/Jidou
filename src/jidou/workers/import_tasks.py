@@ -1,4 +1,4 @@
-"""Celery task for importing NAS episode file lists into the database."""
+"""Celery task for importing episode file path lists into the database."""
 
 import asyncio
 import logging
@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
-from jidou.orchestrators.nas_import_orchestrator import NASImportOrchestrator
-from jidou.services.nas_parser import parse_file
+from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+from jidou.services.path_parser import parse_file
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -25,13 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
-def nas_import_task(  # type: ignore[no-untyped-def]
+def path_import_task(  # type: ignore[no-untyped-def]
     self,
     file_content: str,
     content_type: str = "anime",
     dry_run: bool = False,
 ) -> str:
-    """Import a NAS episode path file, creating shows and marking episodes tracked.
+    """Import an episode path file, creating shows and marking episodes tracked.
+
+    Accepts both Windows-style (``Z:\\...``) and POSIX-style (``/mnt/...``)
+    absolute paths; format is detected automatically per line.
 
     Args:
         self: Celery request context.
@@ -44,19 +47,19 @@ def nas_import_task(  # type: ignore[no-untyped-def]
         The Celery task ID.
     """
     try:
-        return asyncio.run(_nas_import(self.request.id, file_content, content_type, dry_run))
+        return asyncio.run(_path_import(self.request.id, file_content, content_type, dry_run))
     except SoftTimeLimitExceeded:
         asyncio.run(mark_task_timed_out(self.request.id))
         raise
 
 
-async def _nas_import(
+async def _path_import(
     celery_task_id: str,
     file_content: str,
     content_type: str,
     dry_run: bool,
 ) -> str:
-    """Async implementation of the NAS import task."""
+    """Async implementation of the path-file import task."""
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -114,7 +117,7 @@ async def _nas_import(
                 )
 
             tmdb = TMDBService()
-            orchestrator = NASImportOrchestrator(
+            orchestrator = PathImportOrchestrator(
                 session, tmdb, content_type=content_type, dry_run=dry_run
             )
             import_result = await orchestrator.run(entries, on_progress=on_progress)
@@ -166,9 +169,9 @@ async def _nas_import(
                 )
 
     except TaskCancelledError:
-        logger.info("NAS import task %s was cancelled", celery_task_id)
+        logger.info("Path import task %s was cancelled", celery_task_id)
     except Exception:
-        logger.exception("NAS import task %s failed", celery_task_id)
+        logger.exception("Path import task %s failed", celery_task_id)
         async with session_factory() as session:
             await update_task_status(
                 session,
@@ -180,7 +183,7 @@ async def _nas_import(
             {
                 "celery_task_id": celery_task_id,
                 "type": "error",
-                "data": {"error": "NAS import failed"},
+                "data": {"error": "Path import failed"},
             }
         )
         raise  # Let Celery record the job as failed and honour retry/DLQ policy.

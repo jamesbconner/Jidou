@@ -1,4 +1,4 @@
-"""API routes for batch imports (NAS text file and database JSON)."""
+"""API routes for batch imports (path text file and database JSON)."""
 
 import uuid
 
@@ -24,10 +24,12 @@ async def import_text(
     dry_run: bool = Form(default=False),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> BackgroundTask:
-    """Upload a text file of NAS paths and import them as a background task.
+    """Upload a text file of episode paths and import them as a background task.
 
-    Each line of the file should be a Windows-style absolute path to an
-    episode file (e.g. ``Z:\\anime tv\\Dorohedoro\\Season 01\\ep.mkv``).
+    Each line should be an absolute path to an episode file — either
+    Windows-style (``Z:\\anime tv\\Dorohedoro\\Season 01\\ep.mkv``) or
+    POSIX-style (``/mnt/media/anime/Dorohedoro/Season 01/ep.mkv``).
+    Format is detected automatically per line.
 
     The task:
     1. Parses every line into a show directory, season, and episode number.
@@ -38,7 +40,7 @@ async def import_text(
     includes a ``result_summary`` with per-show counts.
 
     Args:
-        file: Plain-text file with one NAS path per line.
+        file: Plain-text file with one absolute path per line.
         content_type: Content type assigned to newly created shows
             (``anime``, ``tv``, or ``movie``).
         dry_run: Parse and match without writing to the database.
@@ -69,7 +71,7 @@ async def import_text(
         file_content = raw.decode("latin-1")
 
     # Delayed import to avoid circular references with the Celery app.
-    from jidou.workers.import_tasks import nas_import_task
+    from jidou.workers.import_tasks import path_import_task
 
     task_id = str(uuid.uuid4())
     new_task = await create_task_record(
@@ -80,7 +82,7 @@ async def import_text(
     )
 
     try:
-        nas_import_task.apply_async(
+        path_import_task.apply_async(
             args=[file_content, content_type, dry_run],
             task_id=task_id,
         )

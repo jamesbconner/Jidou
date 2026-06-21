@@ -1,4 +1,4 @@
-"""Pydantic schemas for NAS import API responses."""
+"""Pydantic schemas for path-file import API responses."""
 
 from pydantic import BaseModel
 
@@ -23,8 +23,8 @@ class ShowImportResult(BaseModel):
     episodes_unmatched: int
 
 
-class NASImportResult(BaseModel):
-    """Aggregate result returned by ``POST /api/import/nas``.
+class PathImportResult(BaseModel):
+    """Aggregate result returned by ``POST /api/import/text``.
 
     Attributes:
         shows_processed: Unique show directories in the uploaded file.

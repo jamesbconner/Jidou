@@ -1,4 +1,4 @@
-"""Orchestrator for importing local NAS episode file lists into the database.
+"""Orchestrator for importing episode file path lists into the database.
 
 For each unique show directory found in the path list:
 
@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
-from jidou.services.nas_parser import ParsedNASEntry, group_by_show
+from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -67,8 +67,8 @@ class ShowImportResult:
 
 
 @dataclass
-class NASImportResult:
-    """Aggregate result of a full NAS import run.
+class PathImportResult:
+    """Aggregate result of a full path-file import run.
 
     Attributes:
         shows_processed: Total unique show directories seen.
@@ -94,8 +94,8 @@ class NASImportResult:
 # ---------------------------------------------------------------------------
 
 
-class NASImportOrchestrator:
-    """Import a parsed list of local NAS episode paths into the database.
+class PathImportOrchestrator:
+    """Import a parsed list of episode file paths into the database.
 
     Args:
         session: Active async SQLAlchemy session.
@@ -121,20 +121,20 @@ class NASImportOrchestrator:
 
     async def run(
         self,
-        entries: list[ParsedNASEntry],
+        entries: list[ParsedPathEntry],
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
-    ) -> NASImportResult:
+    ) -> PathImportResult:
         """Run the full import workflow.
 
         Args:
-            entries: Parsed entries from :func:`~jidou.services.nas_parser.parse_file`.
+            entries: Parsed entries from :func:`~jidou.services.path_parser.parse_file`.
             on_progress: Optional async callback ``(current, total, message)`` for
                 progress reporting.
 
         Returns:
-            :class:`NASImportResult` with aggregate and per-show counts.
+            :class:`PathImportResult` with aggregate and per-show counts.
         """
-        result = NASImportResult()
+        result = PathImportResult()
         grouped = group_by_show(entries)
         result.shows_processed = len(grouped)
         total = len(grouped)
@@ -165,7 +165,7 @@ class NASImportOrchestrator:
     async def _import_show(
         self,
         show_dir: str,
-        entries: list[ParsedNASEntry],
+        entries: list[ParsedPathEntry],
     ) -> ShowImportResult:
         """Import one show and mark its episode files as tracked.
 
@@ -390,9 +390,9 @@ class NASImportOrchestrator:
     async def _find_episode(
         self,
         show_id: int,
-        entry: ParsedNASEntry,
+        entry: ParsedPathEntry,
     ) -> Episode | None:
-        """Match a parsed NAS entry to an Episode row.
+        """Match a parsed path entry to an Episode row.
 
         Lookup priority:
         1. Season + episode (standard).
