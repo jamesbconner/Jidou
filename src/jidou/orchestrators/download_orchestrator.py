@@ -98,8 +98,11 @@ class DownloadOrchestrator:
         bytes_downloaded = 0
         files_failed = 0
 
+        # Only retry ERROR files that never reached staging (local_path IS NULL).
+        # Parse and route failures also land in ERROR but have a staging local_path;
+        # re-downloading them would undo pipeline progress.
         base_where = (DownloadedFile.status == FileStatus.DISCOVERED) | (
-            DownloadedFile.status == FileStatus.ERROR
+            (DownloadedFile.status == FileStatus.ERROR) & (DownloadedFile.local_path.is_(None))
         )
 
         if dry_run:

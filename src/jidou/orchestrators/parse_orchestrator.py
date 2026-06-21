@@ -186,10 +186,14 @@ class ParseOrchestrator:
         if show is not None:
             return show
 
-        # 2. Case-insensitive title fallback — order_by(id) ensures a deterministic
-        #    result when more than one show title contains the parsed name.
+        # 2. Case-insensitive title fallback — escape % and _ so parsed names that
+        #    contain SQL wildcard characters do not match arbitrary shows.
+        escaped = parsed_name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         title_stmt = (
-            select(Show).where(Show.title.ilike(f"%{parsed_name}%")).order_by(Show.id).limit(1)
+            select(Show)
+            .where(Show.title.ilike(f"%{escaped}%", escape="\\"))
+            .order_by(Show.id)
+            .limit(1)
         )
         return (await self.session.execute(title_stmt)).scalars().first()
 
