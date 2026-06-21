@@ -269,6 +269,37 @@ class TMDBService:
     # Images
     # ------------------------------------------------------------------
 
+    async def get_external_ids(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
+        """Get external IDs (IMDb, TVDB, etc.) for a show or movie.
+
+        Args:
+            tmdb_id: The TMDB identifier.
+            media_type: Either ``"movie"`` or ``"tv"``.
+
+        Returns:
+            Dictionary with keys like ``imdb_id``, ``tvdb_id``, ``wikidata_id``, etc.
+
+        Raises:
+            ValueError: If *media_type* is invalid.
+        """
+        if media_type not in {"movie", "tv"}:
+            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        return await self._request(f"/{media_type}/{tmdb_id}/external_ids")
+
+    async def get_episode_groups(self, tmdb_id: int) -> dict[str, Any]:
+        """Get episode groups for a TV show.
+
+        Episode groups (especially type 6 — Production) provide correct
+        season/episode numbering for anime and other non-standard shows.
+
+        Args:
+            tmdb_id: TMDB identifier of the TV show.
+
+        Returns:
+            Dictionary containing ``results`` list of episode group objects.
+        """
+        return await self._request(f"/tv/{tmdb_id}/episode_groups")
+
     async def get_images(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get available images (posters, backdrops, logos) for a show or movie.
 

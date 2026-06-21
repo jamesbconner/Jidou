@@ -74,9 +74,9 @@ def _anthropic_response(content: str, input_tokens: int = 5, output_tokens: int 
 def _mock_http_client(response: MagicMock) -> AsyncMock:
     """Return an AsyncMock suitable for use as an httpx.AsyncClient context manager."""
     client = AsyncMock()
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=False)
-    client.post = AsyncMock(return_value=response)
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = False
+    client.post.return_value = response
     return client
 
 
@@ -118,7 +118,7 @@ class TestGracefulDegradation:
     async def test_http_error_returns_none(self, openai_service: LLMService) -> None:
         """An HTTP error must be swallowed and return None."""
         client = _mock_http_client(MagicMock())
-        client.post = AsyncMock(side_effect=Exception("connection refused"))
+        client.post.side_effect = Exception("connection refused")
 
         with patch("httpx.AsyncClient", return_value=client):
             result = await openai_service.complete("test")
@@ -133,7 +133,7 @@ class TestGracefulDegradation:
         import logging
 
         client = _mock_http_client(MagicMock())
-        client.post = AsyncMock(side_effect=ConnectionError("broker down"))
+        client.post.side_effect = ConnectionError("broker down")
 
         with (
             patch("httpx.AsyncClient", return_value=client),

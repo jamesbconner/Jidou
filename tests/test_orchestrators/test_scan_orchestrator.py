@@ -19,8 +19,8 @@ def _make_session(existing_file=None):
     session.add = MagicMock()
 
     nested_ctx = AsyncMock()
-    nested_ctx.__aenter__ = AsyncMock(return_value=None)
-    nested_ctx.__aexit__ = AsyncMock(return_value=False)
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     file_result = MagicMock()
@@ -43,8 +43,8 @@ async def test_run_creates_new_files():
     session.commit = AsyncMock()
     session.add = MagicMock()
     nested_ctx = AsyncMock()
-    nested_ctx.__aenter__ = AsyncMock(return_value=None)
-    nested_ctx.__aexit__ = AsyncMock(return_value=False)
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
     session.begin_nested = MagicMock(return_value=nested_ctx)
     session.execute = AsyncMock(return_value=no_existing)
 
@@ -161,8 +161,8 @@ async def test_run_skips_duplicate_on_constraint_violation():
     orig = Exception("unique constraint violated")
     orig.pgcode = "23505"  # type: ignore[attr-defined]
     nested_ctx = AsyncMock()
-    nested_ctx.__aenter__ = AsyncMock(return_value=None)
-    nested_ctx.__aexit__ = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.side_effect = IntegrityError("stmt", {}, orig)
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     sftp = MagicMock()
@@ -188,8 +188,8 @@ async def test_run_reraises_non_unique_integrity_error():
     orig = Exception("foreign key constraint violated")
     orig.pgcode = "23503"  # type: ignore[attr-defined]
     nested_ctx = AsyncMock()
-    nested_ctx.__aenter__ = AsyncMock(return_value=None)
-    nested_ctx.__aexit__ = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.side_effect = IntegrityError("stmt", {}, orig)
     session.begin_nested = MagicMock(return_value=nested_ctx)
 
     sftp = MagicMock()

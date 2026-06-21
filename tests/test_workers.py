@@ -76,8 +76,8 @@ async def test_download_files_skips_redelivery_for_terminal_task() -> None:
 
     mock_engine = AsyncMock()
     mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.__aenter__.return_value = mock_session
+    mock_session.__aexit__.return_value = False
     mock_factory = MagicMock()
     mock_factory.return_value = mock_session
 

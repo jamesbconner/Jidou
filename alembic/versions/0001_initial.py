@@ -37,6 +37,20 @@ def upgrade() -> None:
         sa.Column("aliases", JSONB(), nullable=True),
         sa.Column("genres", JSONB(), nullable=True),
         sa.Column("origin_country", JSONB(), nullable=True),
+        sa.Column("last_air_date", sa.String(length=20), nullable=True),
+        sa.Column("last_episode_to_air", JSONB(), nullable=True),
+        sa.Column("next_episode_to_air", JSONB(), nullable=True),
+        sa.Column("homepage", sa.String(length=500), nullable=True),
+        sa.Column("external_ids", JSONB(), nullable=True),
+        sa.Column("episode_groups", JSONB(), nullable=True),
+        sa.Column("status", sa.String(length=100), nullable=True),
+        sa.Column("in_production", sa.Boolean(), nullable=True),
+        sa.Column("number_of_seasons", sa.Integer(), nullable=True),
+        sa.Column("number_of_episodes", sa.Integer(), nullable=True),
+        sa.Column("networks", JSONB(), nullable=True),
+        sa.Column("show_type", sa.String(length=50), nullable=True),
+        sa.Column("runtime", sa.Integer(), nullable=True),
+        sa.Column("tagline", sa.Text(), nullable=True),
         sa.Column("local_path", sa.String(length=1000), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -113,6 +127,9 @@ def upgrade() -> None:
         sa.Column("overview", sa.Text(), nullable=True),
         sa.Column("air_date", sa.Date(), nullable=True),
         sa.Column("runtime", sa.Integer(), nullable=True),
+        sa.Column("absolute_episode_number", sa.Integer(), nullable=True),
+        sa.Column("episode_type", sa.String(length=50), nullable=True),
+        sa.Column("still_path", sa.String(length=500), nullable=True),
         sa.Column("file_tracked", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False

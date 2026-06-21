@@ -327,6 +327,19 @@ async def manual_match_file(
             except Exception as exc:
                 raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
 
+            # Supplemental calls are best-effort — transient failures fall back to empty.
+            ext_ids: dict[str, Any] = {}
+            ep_groups: dict[str, Any] = {}
+            try:
+                ext_ids = await tmdb.get_external_ids(payload.tmdb_id, media_type=media_type)
+            except Exception:
+                logger.warning("get_external_ids failed for tmdb_id=%d", payload.tmdb_id)
+            if media_type == "tv":
+                try:
+                    ep_groups = await tmdb.get_episode_groups(payload.tmdb_id)
+                except Exception:
+                    logger.warning("get_episode_groups failed for tmdb_id=%d", payload.tmdb_id)
+
             title = data.get("name") or data.get("title") or ""
             # TV: origin_country is a flat list ["JP"]. Movie: production_countries
             # is [{"iso_3166_1": "US", ...}]. Normalise both to a flat code list.
@@ -335,6 +348,9 @@ async def manual_match_file(
                 for c in (data.get("production_countries") or [])
                 if isinstance(c, dict) and "iso_3166_1" in c
             ]
+            # TV: episode_run_time is a list; take first value. Movie: runtime is an int.
+            ep_runtimes: list[int] = data.get("episode_run_time") or []
+            runtime: int | None = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
             show = Show(
                 tmdb_id=payload.tmdb_id,
                 title=title,
@@ -348,6 +364,20 @@ async def manual_match_file(
                 original_language=data.get("original_language"),
                 genres=data.get("genres") or [],
                 origin_country=raw_countries,
+                last_air_date=data.get("last_air_date"),
+                last_episode_to_air=data.get("last_episode_to_air"),
+                next_episode_to_air=data.get("next_episode_to_air"),
+                homepage=data.get("homepage"),
+                external_ids=ext_ids or {},
+                episode_groups=ep_groups.get("results") or [],
+                status=data.get("status"),
+                in_production=data.get("in_production"),
+                number_of_seasons=data.get("number_of_seasons"),
+                number_of_episodes=data.get("number_of_episodes"),
+                networks=data.get("networks") or [],
+                show_type=data.get("type"),
+                runtime=runtime,
+                tagline=data.get("tagline"),
                 sys_name=_sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,

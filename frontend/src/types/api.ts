@@ -5,6 +5,13 @@ export interface TmdbGenre {
   name: string
 }
 
+export interface TmdbNetwork {
+  id: number
+  name: string
+  logo_path: string | null
+  origin_country: string
+}
+
 export interface ShowList {
   id: number
   tmdb_id: number
@@ -17,6 +24,20 @@ export interface ShowList {
   sys_name: string | null
   genres: TmdbGenre[] | null
   origin_country: string[] | null
+  last_air_date: string | null
+  last_episode_to_air: Record<string, unknown> | null
+  next_episode_to_air: Record<string, unknown> | null
+  homepage: string | null
+  external_ids: Record<string, unknown> | null
+  episode_groups: Record<string, unknown>[] | null
+  status: string | null
+  in_production: boolean | null
+  number_of_seasons: number | null
+  number_of_episodes: number | null
+  networks: TmdbNetwork[] | null
+  show_type: string | null
+  runtime: number | null
+  tagline: string | null
   local_path: string | null
   created_at: string
 }
@@ -44,6 +65,20 @@ export interface ShowCreate {
   original_language?: string | null
   genres?: TmdbGenre[] | null
   origin_country?: string[] | null
+  last_air_date?: string | null
+  last_episode_to_air?: Record<string, unknown> | null
+  next_episode_to_air?: Record<string, unknown> | null
+  homepage?: string | null
+  external_ids?: Record<string, unknown> | null
+  episode_groups?: Record<string, unknown>[] | null
+  status?: string | null
+  in_production?: boolean | null
+  number_of_seasons?: number | null
+  number_of_episodes?: number | null
+  networks?: TmdbNetwork[] | null
+  show_type?: string | null
+  runtime?: number | null
+  tagline?: string | null
 }
 
 export interface ShowPaths {
@@ -60,6 +95,8 @@ export interface EpisodeList {
   episode_number: number
   name: string
   air_date: string | null
+  episode_type: string | null
+  absolute_episode_number: number | null
   file_tracked: boolean
 }
 
@@ -67,6 +104,7 @@ export interface EpisodeRead extends EpisodeList {
   tmdb_id: number
   overview: string | null
   runtime: number | null
+  still_path: string | null
   created_at: string
   updated_at: string
 }

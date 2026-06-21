@@ -31,6 +31,29 @@ class ShowCreate(BaseModel):
         default=None,
         description='ISO 3166-1 country codes: ["JP", "US"]',
     )
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
+    status: str | None = Field(
+        default=None,
+        description='TMDB show status: "Returning Series", "Ended", "Released", etc.',
+    )
+    in_production: bool | None = None
+    number_of_seasons: int | None = None
+    number_of_episodes: int | None = None
+    networks: list[dict[str, object]] | None = Field(
+        default=None,
+        description="Broadcast networks / streaming services",
+    )
+    show_type: str | None = Field(
+        default=None,
+        description='TV series type: "Scripted", "Miniseries", "Documentary", etc.',
+    )
+    runtime: int | None = Field(default=None, description="Episode or movie runtime in minutes")
+    tagline: str | None = None
     content_type: str | None = Field(
         default=None, pattern="^(anime|tv|movie)$", description="Routing category"
     )
@@ -79,6 +102,20 @@ class ShowRead(BaseModel):
     aliases: list[str] | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
+    status: str | None = None
+    in_production: bool | None = None
+    number_of_seasons: int | None = None
+    number_of_episodes: int | None = None
+    networks: list[dict[str, object]] | None = None
+    show_type: str | None = None
+    runtime: int | None = None
+    tagline: str | None = None
     local_path: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -100,5 +137,19 @@ class ShowList(BaseModel):
     sys_name: str | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
+    status: str | None = None
+    in_production: bool | None = None
+    number_of_seasons: int | None = None
+    number_of_episodes: int | None = None
+    networks: list[dict[str, object]] | None = None
+    show_type: str | None = None
+    runtime: int | None = None
+    tagline: str | None = None
     local_path: str | None = None
     created_at: datetime
