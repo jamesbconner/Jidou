@@ -2,13 +2,14 @@
 
 Revision ID: 0001_initial
 Revises:
-Create Date: 2026-06-20
+Create Date: 2026-06-21
 """
 
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "0001_initial"
 down_revision: str | None = None
@@ -31,7 +32,11 @@ def upgrade() -> None:
         sa.Column("release_date", sa.String(length=20), nullable=True),
         sa.Column("original_language", sa.String(length=10), nullable=True),
         sa.Column("cached", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("remote_path", sa.String(length=1000), nullable=True),
+        sa.Column("content_type", sa.String(length=20), nullable=True),
+        sa.Column("sys_name", sa.String(length=500), nullable=True),
+        sa.Column("aliases", JSONB(), nullable=True),
+        sa.Column("genres", JSONB(), nullable=True),
+        sa.Column("origin_country", JSONB(), nullable=True),
         sa.Column("local_path", sa.String(length=1000), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -42,6 +47,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_shows_tmdb_id"), "shows", ["tmdb_id"], unique=True)
+    op.create_index("ix_shows_aliases_gin", "shows", ["aliases"], postgresql_using="gin")
 
     op.create_table(
         "watchlist",
@@ -134,8 +140,11 @@ def upgrade() -> None:
             "status",
             sa.Enum(
                 "pending",
+                "discovered",
                 "downloading",
                 "downloaded",
+                "unmatched",
+                "matched",
                 "routing",
                 "routed",
                 "error",
@@ -157,6 +166,11 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("parsed_show_name", sa.String(length=500), nullable=True),
+        sa.Column("parsed_season", sa.Integer(), nullable=True),
+        sa.Column("parsed_episode", sa.Integer(), nullable=True),
+        sa.Column("parsed_confidence", sa.Float(), nullable=True),
+        sa.Column("parsed_content_type", sa.String(length=20), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -166,7 +180,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["episode_id"], ["episodes.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["show_id"], ["shows.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("show_id", "remote_path", name="uq_downloaded_files_show_remote_path"),
+        sa.UniqueConstraint("remote_path", name="uq_downloaded_files_remote_path"),
     )
     op.create_index("ix_downloaded_files_show_id", "downloaded_files", ["show_id"])
     op.create_index("ix_downloaded_files_episode_id", "downloaded_files", ["episode_id"])
@@ -190,5 +204,6 @@ def downgrade() -> None:
     op.drop_table("watchlist")
     op.execute(sa.text("DROP TYPE IF EXISTS watchliststatus"))
 
+    op.drop_index("ix_shows_aliases_gin", table_name="shows")
     op.drop_index(op.f("ix_shows_tmdb_id"), table_name="shows")
     op.drop_table("shows")
