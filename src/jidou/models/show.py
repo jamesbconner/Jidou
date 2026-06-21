@@ -40,6 +40,10 @@ class Show(TimestampMixin, Base):
     sys_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Alternative names used to match parsed filenames; stored as a JSON array
     aliases: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # TMDB genres array: [{"id": 16, "name": "Animation"}, ...]
+    genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    # ISO 3166-1 origin country codes: ["JP", "US", ...]
+    origin_country: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     # Local filesystem path to this show's root directory
     local_path: Mapped[str | None] = mapped_column(String(1000))
 
