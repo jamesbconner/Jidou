@@ -150,9 +150,7 @@ async def system_health(
         results["llm"]["model"] = settings.llm_model
     else:
         results["llm"]["error"] = (
-            "LLM_MODEL not set"
-            if settings.llm_provider.lower() != "none"
-            else "not configured"
+            "LLM_MODEL not set" if settings.llm_provider.lower() != "none" else "not configured"
         )
 
     overall = all(v.get("ok") for v in results.values())
