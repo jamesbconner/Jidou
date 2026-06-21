@@ -41,6 +41,9 @@ async def get_config() -> dict[str, Any]:
         "llm_model": settings.llm_model,
         "llm_base_url": settings.llm_base_url or None,
         "llm_cache_ttl": settings.llm_cache_ttl,
+        "local_tv_path": settings.local_tv_path,
+        "local_anime_path": settings.local_anime_path,
+        "local_movie_path": settings.local_movie_path,
     }
 
 

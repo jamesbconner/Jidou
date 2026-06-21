@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # Local staging area for downloaded files awaiting parse/match/route
     local_staging_path: str = "/data/staging"
 
+    # Base paths for routed media — used to suggest local_path when resolving unmatched files
+    local_tv_path: str = "/data/media/tv"
+    local_anime_path: str = "/data/media/anime"
+    local_movie_path: str = "/data/media/movies"
+
     # LLM
     llm_provider: str = "none"
     llm_api_key: str = ""

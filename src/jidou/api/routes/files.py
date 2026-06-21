@@ -1,6 +1,8 @@
 """API routes for downloaded file management."""
 
 import logging
+import re
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -13,10 +15,18 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
+from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def _sanitize_sys_name(title: str) -> str:
+    """Derive a Windows-safe directory name from a show title."""
+    return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
 @router.get("", response_model=list[FileRead])
@@ -117,6 +127,57 @@ async def get_file(
     return file
 
 
+@router.get("/{file_id}/tmdb-suggestions")
+async def tmdb_suggestions(
+    file_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict[str, Any]:
+    """Return TMDB search results for an unmatched file based on its parsed show name.
+
+    Uses the file's ``parsed_show_name`` (set by the parse pipeline) as the
+    search query.  Results are cached by the TMDB service layer.
+
+    Args:
+        file_id: Database primary key of the unmatched file.
+        db_session: DB session (injected).
+
+    Returns:
+        ``{"query": str, "results": [...]}`` with up to 6 TMDB candidates.
+
+    Raises:
+        HTTPException: 404 if the file is not found.
+        HTTPException: 422 if the file has no parsed show name to search with.
+    """
+    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
+    file = (await db_session.execute(stmt)).scalar_one_or_none()
+    if file is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    query = file.parsed_show_name or ""
+    if not query:
+        raise HTTPException(
+            status_code=422,
+            detail="File has no parsed_show_name; run the parse phase first",
+        )
+
+    tmdb = TMDBService()
+    data = await tmdb.search(query, media_type="multi")
+    results = [
+        {
+            "tmdb_id": r.get("id"),
+            "title": r.get("name") or r.get("title"),
+            "media_type": r.get("media_type"),
+            "overview": r.get("overview"),
+            "poster_path": r.get("poster_path"),
+            "first_air_date": r.get("first_air_date") or r.get("release_date"),
+            "vote_average": r.get("vote_average"),
+        }
+        for r in data.get("results", [])[:6]
+        if r.get("media_type") in ("tv", "movie")
+    ]
+    return {"query": query, "results": results}
+
+
 @router.patch("/{file_id}", response_model=FileRead)
 async def patch_file(
     file_id: int,
@@ -190,24 +251,34 @@ async def manual_match_file(
 ) -> DownloadedFile:
     """Assign a show to an unmatched file, or reset it for automatic re-matching.
 
-    When ``show_id`` is provided the show is assigned directly (manual match)
-    and the file transitions to ``matched`` for the next route phase.
-    When ``show_id`` is omitted the file is reset to ``downloaded`` so the
-    parse pipeline will re-process it automatically on the next sync.
+    Three modes controlled by the request body:
+
+    * ``show_id`` supplied: assign an existing tracked show directly.
+    * ``tmdb_id`` supplied: look up or create the show on demand from TMDB,
+      then assign.  ``local_path`` is required when creating a new show.
+    * Neither supplied: reset the file to ``downloaded`` for automatic
+      re-processing by the parse pipeline.
 
     Args:
         file_id: Database primary key.
-        payload: Optional ``show_id``; omit to trigger automatic re-matching.
+        payload: Match request; see :class:`FileMatchRequest` for fields.
         db_session: DB session (injected).
 
     Returns:
         The updated :class:`DownloadedFile` record.
 
     Raises:
-        HTTPException: 404 if the file or show is not found.
+        HTTPException: 404 if the file, show, or TMDB resource is not found.
         HTTPException: 409 if the file is not in a re-matchable status.
-        HTTPException: 422 if the show has no ``local_path`` configured.
+        HTTPException: 422 if the show has no ``local_path`` or if both
+            ``show_id`` and ``tmdb_id`` are supplied.
     """
+    if payload.show_id is not None and payload.tmdb_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either show_id or tmdb_id, not both",
+        )
+
     stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
     file = (await db_session.execute(stmt)).scalar_one_or_none()
     if file is None:
@@ -221,8 +292,8 @@ async def manual_match_file(
             f"only {', '.join(s.value for s in matchable)} files can be matched",
         )
 
-    if payload.show_id is None:
-        # Auto re-match: reset to DOWNLOADED so the parse phase picks it up.
+    # ── Reset path: no show_id or tmdb_id → queue for auto re-match ──────────
+    if payload.show_id is None and payload.tmdb_id is None:
         file.status = FileStatus.DOWNLOADED
         file.show_id = None
         file.episode_id = None
@@ -233,15 +304,80 @@ async def manual_match_file(
         logger.info("Reset file id=%d to downloaded for auto re-matching", file_id)
         return file
 
-    show_stmt = select(Show).where(Show.id == payload.show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    # ── On-demand show creation via TMDB ID ───────────────────────────────────
+    if payload.tmdb_id is not None:
+        # Check DB first (idempotent)
+        show_stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
+        show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+
+        if show is None:
+            if not payload.local_path:
+                raise HTTPException(
+                    status_code=422,
+                    detail="local_path is required when creating a new show via tmdb_id",
+                )
+            tmdb = TMDBService()
+            media_type = "movie" if payload.content_type == "movie" else "tv"
+            try:
+                data = await tmdb.get_details(payload.tmdb_id, media_type=media_type)
+            except Exception as exc:
+                raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
+
+            title = data.get("name") or data.get("title") or ""
+            show = Show(
+                tmdb_id=payload.tmdb_id,
+                title=title,
+                overview=data.get("overview"),
+                media_type=media_type,
+                poster_path=data.get("poster_path"),
+                backdrop_path=data.get("backdrop_path"),
+                vote_average=data.get("vote_average"),
+                vote_count=data.get("vote_count", 0),
+                release_date=data.get("first_air_date") or data.get("release_date"),
+                original_language=data.get("original_language"),
+                sys_name=_sanitize_sys_name(title),
+                content_type=payload.content_type,
+                local_path=payload.local_path,
+                cached=False,
+            )
+            db_session.add(show)
+            try:
+                await db_session.flush()
+            except IntegrityError:
+                await db_session.rollback()
+                show_stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
+                show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+                if show is None:
+                    raise
+            else:
+                logger.info(
+                    "Created show tmdb_id=%d title=%r (id=%d) via on-demand match",
+                    show.tmdb_id,
+                    show.title,
+                    show.id,
+                )
+        else:
+            # Show exists — update local_path / content_type if caller provided them
+            if payload.local_path:
+                show.local_path = payload.local_path
+            if payload.content_type:
+                show.content_type = payload.content_type
+            await db_session.flush()
+
+    else:
+        # ── Existing show by show_id ───────────────────────────────────────────
+        show_stmt = select(Show).where(Show.id == payload.show_id)
+        show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+        if show is None:
+            raise HTTPException(status_code=404, detail="Show not found")
 
     if show.local_path is None:
         raise HTTPException(
             status_code=422,
-            detail="Show has no local_path configured; set it via PUT /shows/{id}/paths first",
+            detail=(
+                "Show has no local_path configured; "
+                "provide local_path or set it via PATCH /shows/{id}/paths"
+            ),
         )
 
     file.show_id = show.id
@@ -256,7 +392,6 @@ async def manual_match_file(
         se = _heuristic_se(file.original_filename)
         if se is not None:
             file.parsed_season, file.parsed_episode = se
-            # Attempt episode linkage while we have the show in scope.
             ep_stmt = select(Episode).where(
                 (Episode.show_id == show.id)
                 & (Episode.season_number == file.parsed_season)

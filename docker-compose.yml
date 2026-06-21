@@ -76,6 +76,10 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      # Media base paths
+      - LOCAL_TV_PATH=${LOCAL_TV_PATH:-/data/media/tv}
+      - LOCAL_ANIME_PATH=${LOCAL_ANIME_PATH:-/data/media/anime}
+      - LOCAL_MOVIE_PATH=${LOCAL_MOVIE_PATH:-/data/media/movies}
       # Application
       - DEBUG=${DEBUG:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
@@ -129,6 +133,10 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      # Media base paths
+      - LOCAL_TV_PATH=${LOCAL_TV_PATH:-/data/media/tv}
+      - LOCAL_ANIME_PATH=${LOCAL_ANIME_PATH:-/data/media/anime}
+      - LOCAL_MOVIE_PATH=${LOCAL_MOVIE_PATH:-/data/media/movies}
       # Application
       - DEBUG=${DEBUG:-true}
     volumes:

@@ -64,8 +64,11 @@ export interface EpisodeRead extends EpisodeList {
 
 export type FileStatus =
   | 'pending'
+  | 'discovered'
   | 'downloading'
   | 'downloaded'
+  | 'unmatched'
+  | 'matched'
   | 'routing'
   | 'routed'
   | 'error'
@@ -78,6 +81,7 @@ export interface FileList {
   status: FileStatus
   show_id: number | null
   episode_id: number | null
+  parsed_show_name: string | null
   created_at: string
 }
 
@@ -86,11 +90,35 @@ export interface FileRead extends FileList {
   hash_sha256: string | null
   matched_by: string | null
   error_message: string | null
+  parsed_season: number | null
+  parsed_episode: number | null
+  parsed_confidence: number | null
+  parsed_content_type: string | null
   updated_at: string
 }
 
+export type ContentType = 'tv' | 'anime' | 'movie'
+
 export interface FileMatchRequest {
-  method: 'auto' | 'llm' | 'heuristic'
+  show_id?: number | null
+  tmdb_id?: number | null
+  local_path?: string | null
+  content_type?: ContentType | null
+}
+
+export interface TmdbSuggestion {
+  tmdb_id: number
+  title: string | null
+  media_type: string | null
+  overview: string | null
+  poster_path: string | null
+  first_air_date: string | null
+  vote_average: number | null
+}
+
+export interface TmdbSuggestionsResponse {
+  query: string
+  results: TmdbSuggestion[]
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────
@@ -172,6 +200,9 @@ export interface AppConfig {
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
+  local_tv_path: string
+  local_anime_path: string
+  local_movie_path: string
 }
 
 export interface ConnectionTestResult {

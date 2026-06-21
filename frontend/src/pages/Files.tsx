@@ -1,12 +1,22 @@
 import { useState, useRef } from 'react'
-import { useFiles, useRematchFile } from '@/hooks/useFiles'
-import { fileKeys } from '@/hooks/useFiles'
+import { useFiles, useRematchFile, fileKeys } from '@/hooks/useFiles'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
+import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus } from '@/types/api'
 
-const STATUS_OPTIONS: (FileStatus | '')[] = ['', 'pending', 'downloading', 'downloaded', 'routing', 'routed', 'error']
+const STATUS_OPTIONS: (FileStatus | '')[] = [
+  '',
+  'discovered',
+  'downloading',
+  'downloaded',
+  'unmatched',
+  'matched',
+  'routing',
+  'routed',
+  'error',
+]
 
 function InlineShowId({ fileId, showId }: { fileId: number; showId: number | null }) {
   const [editing, setEditing] = useState(false)
@@ -71,6 +81,7 @@ function formatBytes(bytes: number): string {
 
 export default function Files() {
   const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
+  const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
   const { data: files = [], isLoading } = useFiles(statusFilter || undefined)
   const rematch = useRematchFile()
 
@@ -110,6 +121,11 @@ export default function Files() {
                 <tr key={f.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 font-mono text-xs max-w-xs">
                     <div className="truncate">{f.original_filename}</div>
+                    {f.parsed_show_name && f.status === 'unmatched' && (
+                      <div className="text-zinc-400 truncate text-xs mt-0.5">
+                        Parsed: {f.parsed_show_name}
+                      </div>
+                    )}
                     {f.error_message && (
                       <div className="text-red-500 truncate mt-0.5" title={f.error_message}>
                         {f.error_message}
@@ -123,10 +139,18 @@ export default function Files() {
                   <td className="px-4 py-2">
                     <InlineShowId fileId={f.id} showId={f.show_id} />
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    {f.show_id != null && (
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    {f.status === 'unmatched' && (
                       <button
-                        onClick={() => rematch.mutate({ id: f.id, payload: { method: 'auto' } })}
+                        onClick={() => setResolveFile(f)}
+                        className="text-xs text-indigo-600 hover:underline"
+                      >
+                        Resolve
+                      </button>
+                    )}
+                    {f.show_id != null && f.status !== 'unmatched' && (
+                      <button
+                        onClick={() => rematch.mutate({ id: f.id, payload: {} })}
                         disabled={rematch.isPending}
                         className="text-xs text-blue-600 hover:underline disabled:opacity-50"
                       >
@@ -139,6 +163,13 @@ export default function Files() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {resolveFile && (
+        <ResolveFileModal
+          file={resolveFile}
+          onClose={() => setResolveFile(null)}
+        />
       )}
     </div>
   )
