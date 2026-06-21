@@ -76,9 +76,7 @@ async def test_trigger_task_download_no_show_id_accepted() -> None:
                 mock_celery,
             ),
         ):
-            response = TestClient(app).post(
-                "/api/tasks/trigger", json={"task_type": "download"}
-            )
+            response = TestClient(app).post("/api/tasks/trigger", json={"task_type": "download"})
         # Must NOT be 422 (schema validation) — download no longer requires show_id
         assert response.status_code != 422
         mock_celery.apply_async.assert_called_once()
@@ -296,9 +294,7 @@ async def test_trigger_task_match_no_show_id_accepted() -> None:
                 mock_celery,
             ),
         ):
-            response = TestClient(app).post(
-                "/api/tasks/trigger", json={"task_type": "match"}
-            )
+            response = TestClient(app).post("/api/tasks/trigger", json={"task_type": "match"})
         assert response.status_code != 422
         mock_celery.apply_async.assert_called_once()
         call_args = mock_celery.apply_async.call_args

@@ -174,8 +174,10 @@ class ParseOrchestrator:
         normalised = _sanitize_alias(parsed_name)
 
         # 1. Check if any show's aliases array contains this name (GIN-indexed).
-        alias_stmt = select(Show).where(Show.aliases.cast(JSONB).contains([normalised]))
-        show = (await self.session.execute(alias_stmt)).scalar_one_or_none()
+        #    Use limit(1)+first() rather than scalar_one_or_none() to avoid
+        #    MultipleResultsFound when the same alias appears on more than one show.
+        alias_stmt = select(Show).where(Show.aliases.cast(JSONB).contains([normalised])).limit(1)
+        show = (await self.session.execute(alias_stmt)).scalars().first()
         if show is not None:
             return show
 

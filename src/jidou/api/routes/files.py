@@ -208,6 +208,14 @@ async def manual_match_file(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
+    matchable = {FileStatus.DOWNLOADED, FileStatus.UNMATCHED, FileStatus.ERROR}
+    if file.status not in matchable:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot manually match a file with status '{file.status.value}'; "
+            f"only {', '.join(s.value for s in matchable)} files can be matched",
+        )
+
     show_stmt = select(Show).where(Show.id == payload.show_id)
     show = (await db_session.execute(show_stmt)).scalar_one_or_none()
     if show is None:

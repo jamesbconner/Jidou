@@ -151,7 +151,7 @@ def test_match_file_returns_404_when_show_missing() -> None:
     """POST /api/files/{id}/match returns 404 when the referenced show doesn't exist."""
     from jidou.database import get_session
 
-    f = _make_file(id=1)
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
 
     async def _two_query_session() -> AsyncMock:
         session = AsyncMock()
@@ -178,7 +178,7 @@ def test_match_file_returns_422_when_show_has_no_local_path() -> None:
     from jidou.database import get_session
     from jidou.models.show import Show
 
-    f = _make_file(id=1)
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
     show = MagicMock(spec=Show)
     show.id = 5
     show.title = "Test Show"

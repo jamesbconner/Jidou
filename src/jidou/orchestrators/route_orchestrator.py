@@ -136,13 +136,52 @@ class RouteOrchestrator:
                     raise FileNotFoundError(f"File id={file.id} has no local_path in staging")
 
                 source = Path(file.local_path)
+
+                # Handle ROUTING retry: if the source is already gone but the
+                # dest exists, the move completed but the commit didn't — just
+                # record ROUTED and move on.
+                if not source.exists() and dest.exists() and str(file.local_path) != str(dest):
+                    logger.warning(
+                        "Retry: staging gone but dest exists for file id=%d; marking ROUTED",
+                        file.id,
+                    )
+                    file.local_path = str(dest)
+                    file.status = FileStatus.ROUTED
+                    file.error_message = None
+                    files_routed += 1
+                    await self.session.flush()
+                    await self.session.commit()
+                    continue
+
                 if not source.exists():
                     raise FileNotFoundError(f"Staging file not found: {source}")
 
+                # Resolve basename collision: if dest is already occupied by a
+                # *different* file, add a numeric suffix rather than overwriting.
+                if dest.exists() and str(file.local_path) != str(dest):
+                    stem = dest.stem
+                    suffix = dest.suffix
+                    parent = dest.parent
+                    counter = 1
+                    while dest.exists():
+                        dest = parent / f"{stem}.{counter}{suffix}"
+                        counter += 1
+                    logger.warning(
+                        "Destination collision for file id=%d; writing to %s instead",
+                        file.id,
+                        dest,
+                    )
+
                 dest.parent.mkdir(parents=True, exist_ok=True)
+
+                # Write dest to DB *before* the filesystem move so a crash after
+                # the move still leaves the row pointing at the correct location.
+                file.local_path = str(dest)
+                await self.session.flush()
+                await self.session.commit()
+
                 shutil.move(str(source), str(dest))
 
-                file.local_path = str(dest)
                 file.status = FileStatus.ROUTED
                 file.error_message = None
                 files_routed += 1

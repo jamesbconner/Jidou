@@ -132,6 +132,7 @@ async def test_run_with_llm_and_matched_show():
 
     show_result = MagicMock()
     show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
 
     ep_result = MagicMock()
     ep_result.scalar_one_or_none.return_value = None
