@@ -195,6 +195,8 @@ export interface ServiceHealth {
   configured?: boolean
   latency_ms?: number
   error?: string
+  provider?: string
+  model?: string
 }
 
 export interface HealthCheck {
@@ -203,6 +205,7 @@ export interface HealthCheck {
     database: ServiceHealth
     redis: ServiceHealth
     tmdb: ServiceHealth
+    llm: ServiceHealth
   }
 }
 

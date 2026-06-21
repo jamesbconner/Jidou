@@ -142,5 +142,16 @@ async def system_health(
     if not settings.tmdb_api_key:
         results["tmdb"]["error"] = "TMDB_API_KEY not set"
 
+    # LLM (config check only — live test available via POST /config/test/llm)
+    llm_configured = settings.llm_provider.lower() != "none" and bool(settings.llm_model)
+    results["llm"] = {"ok": True, "configured": llm_configured}
+    if llm_configured:
+        results["llm"]["provider"] = settings.llm_provider
+        results["llm"]["model"] = settings.llm_model
+    else:
+        results["llm"]["error"] = (
+            "LLM_MODEL not set" if settings.llm_provider.lower() != "none" else "not configured"
+        )
+
     overall = all(v.get("ok") for v in results.values())
     return {"healthy": overall, "services": results}
