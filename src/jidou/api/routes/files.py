@@ -1,5 +1,6 @@
 """API routes for downloaded file management."""
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -322,8 +323,19 @@ async def manual_match_file(
             media_type = payload.tmdb_media_type or (
                 "movie" if payload.content_type == "movie" else "tv"
             )
+            ep_groups: dict[str, Any] = {}
             try:
-                data = await tmdb.get_details(payload.tmdb_id, media_type=media_type)
+                if media_type == "tv":
+                    data, ext_ids, ep_groups = await asyncio.gather(
+                        tmdb.get_details(payload.tmdb_id, media_type=media_type),
+                        tmdb.get_external_ids(payload.tmdb_id, media_type=media_type),
+                        tmdb.get_episode_groups(payload.tmdb_id),
+                    )
+                else:
+                    data, ext_ids = await asyncio.gather(
+                        tmdb.get_details(payload.tmdb_id, media_type=media_type),
+                        tmdb.get_external_ids(payload.tmdb_id, media_type=media_type),
+                    )
             except Exception as exc:
                 raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
 
@@ -351,6 +363,12 @@ async def manual_match_file(
                 original_language=data.get("original_language"),
                 genres=data.get("genres") or [],
                 origin_country=raw_countries,
+                last_air_date=data.get("last_air_date"),
+                last_episode_to_air=data.get("last_episode_to_air"),
+                next_episode_to_air=data.get("next_episode_to_air"),
+                homepage=data.get("homepage"),
+                external_ids=ext_ids or {},
+                episode_groups=ep_groups.get("results") or [],
                 status=data.get("status"),
                 in_production=data.get("in_production"),
                 number_of_seasons=data.get("number_of_seasons"),

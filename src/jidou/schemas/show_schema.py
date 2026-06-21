@@ -31,6 +31,12 @@ class ShowCreate(BaseModel):
         default=None,
         description='ISO 3166-1 country codes: ["JP", "US"]',
     )
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
     status: str | None = Field(
         default=None,
         description='TMDB show status: "Returning Series", "Ended", "Released", etc.',
@@ -96,6 +102,12 @@ class ShowRead(BaseModel):
     aliases: list[str] | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
     status: str | None = None
     in_production: bool | None = None
     number_of_seasons: int | None = None
@@ -125,6 +137,12 @@ class ShowList(BaseModel):
     sys_name: str | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
     status: str | None = None
     in_production: bool | None = None
     number_of_seasons: int | None = None

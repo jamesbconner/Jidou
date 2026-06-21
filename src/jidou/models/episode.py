@@ -27,6 +27,9 @@ class Episode(TimestampMixin, Base):
     overview: Mapped[str | None] = mapped_column(Text)
     air_date: Mapped[date | None] = mapped_column(Date)
     runtime: Mapped[int | None] = mapped_column(Integer)
+    absolute_episode_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    episode_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    still_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_tracked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def __repr__(self) -> str:

@@ -38,6 +38,12 @@ def _make_show(
     s.aliases = None
     s.genres = None
     s.origin_country = None
+    s.last_air_date = None
+    s.last_episode_to_air = None
+    s.next_episode_to_air = None
+    s.homepage = None
+    s.external_ids = None
+    s.episode_groups = None
     s.status = None
     s.in_production = None
     s.number_of_seasons = None
@@ -66,6 +72,9 @@ def _make_episode(*, id: int = 10, show_id: int = 1) -> MagicMock:
     ep.overview = None
     ep.air_date = None
     ep.runtime = None
+    ep.absolute_episode_number = None
+    ep.episode_type = None
+    ep.still_path = None
     ep.file_tracked = False
     ep.created_at = datetime.now(UTC)
     ep.updated_at = datetime.now(UTC)

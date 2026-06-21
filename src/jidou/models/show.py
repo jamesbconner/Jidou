@@ -44,6 +44,18 @@ class Show(TimestampMixin, Base):
     genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
     # ISO 3166-1 origin country codes: ["JP", "US", ...]
     origin_country: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Date the show last aired (TV only)
+    last_air_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Most recently aired episode object (TV only)
+    last_episode_to_air: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    # Next scheduled episode object (TV only, null when ended)
+    next_episode_to_air: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    # Show/movie homepage URL
+    homepage: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Cross-service IDs: {"imdb_id": "tt...", "tvdb_id": 123, "wikidata_id": "Q...", ...}
+    external_ids: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    # TMDB episode groups; type-6 (Production) enables correct anime numbering
+    episode_groups: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
     # TMDB show status: "Returning Series", "Ended", "Cancelled", "Released", etc.
     status: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # TV only: whether the show is currently in production
