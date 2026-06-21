@@ -76,6 +76,17 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      # SFTP
+      - SFTP_HOST=${SFTP_HOST:-}
+      - SFTP_PORT=${SFTP_PORT:-22}
+      - SFTP_USERNAME=${SFTP_USERNAME:-}
+      - SFTP_PASSWORD=${SFTP_PASSWORD:-}
+      - SFTP_KEY_PATH=${SFTP_KEY_PATH:-}
+      - SFTP_REMOTE_PATHS=${SFTP_REMOTE_PATHS:-/}
+      - SFTP_MAX_WORKERS=${SFTP_MAX_WORKERS:-8}
+      - SFTP_MAX_RETRIES=${SFTP_MAX_RETRIES:-3}
+      - SFTP_RETRY_DELAY=${SFTP_RETRY_DELAY:-1.0}
+      - LOCAL_STAGING_PATH=${LOCAL_STAGING_PATH:-/data/staging}
       # Media base paths
       - LOCAL_TV_PATH=${LOCAL_TV_PATH:-/data/media/tv}
       - LOCAL_ANIME_PATH=${LOCAL_ANIME_PATH:-/data/media/anime}
@@ -133,6 +144,17 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      # SFTP
+      - SFTP_HOST=${SFTP_HOST:-}
+      - SFTP_PORT=${SFTP_PORT:-22}
+      - SFTP_USERNAME=${SFTP_USERNAME:-}
+      - SFTP_PASSWORD=${SFTP_PASSWORD:-}
+      - SFTP_KEY_PATH=${SFTP_KEY_PATH:-}
+      - SFTP_REMOTE_PATHS=${SFTP_REMOTE_PATHS:-/}
+      - SFTP_MAX_WORKERS=${SFTP_MAX_WORKERS:-8}
+      - SFTP_MAX_RETRIES=${SFTP_MAX_RETRIES:-3}
+      - SFTP_RETRY_DELAY=${SFTP_RETRY_DELAY:-1.0}
+      - LOCAL_STAGING_PATH=${LOCAL_STAGING_PATH:-/data/staging}
       # Media base paths
       - LOCAL_TV_PATH=${LOCAL_TV_PATH:-/data/media/tv}
       - LOCAL_ANIME_PATH=${LOCAL_ANIME_PATH:-/data/media/anime}
