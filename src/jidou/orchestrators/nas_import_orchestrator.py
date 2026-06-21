@@ -196,6 +196,17 @@ class NASImportOrchestrator:
         show_result.tmdb_id = show.tmdb_id
         show_result.tmdb_title = show.title
 
+        # In dry-run mode, a newly "created" show has no database id and no
+        # synced episodes yet, so _find_episode would query show_id=NULL and
+        # return nothing.  Estimate from the parsed entries instead.
+        if self.dry_run and show.id is None:
+            for entry in entries:
+                if entry.episode is not None:
+                    show_result.episodes_tracked += 1
+                else:
+                    show_result.episodes_unmatched += 1
+            return show_result
+
         # Match each file entry to an Episode row.
         for entry in entries:
             ep = await self._find_episode(show.id, entry)

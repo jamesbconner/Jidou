@@ -140,7 +140,7 @@ async def _nas_import(
                 "dry_run": dry_run,
             }
 
-            await update_task_status(
+            final_task = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
@@ -154,13 +154,16 @@ async def _nas_import(
                 result_summary=summary,
             )
 
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "complete",
-                    "data": {"summary": summary},
-                }
-            )
+            # Only emit "complete" if the row actually reached COMPLETED — a
+            # concurrent cancel between the last check and here takes precedence.
+            if final_task is not None and final_task.status == TaskStatus.COMPLETED.value:
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "complete",
+                        "data": {"summary": summary},
+                    }
+                )
 
     except TaskCancelledError:
         logger.info("NAS import task %s was cancelled", celery_task_id)
@@ -180,6 +183,7 @@ async def _nas_import(
                 "data": {"error": "NAS import failed"},
             }
         )
+        raise  # Let Celery record the job as failed and honour retry/DLQ policy.
     finally:
         await engine.dispose()
 
