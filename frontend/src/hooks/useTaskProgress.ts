@@ -65,6 +65,11 @@ export function useTaskProgress(celeryTaskId: string | null) {
           return old
         },
       )
+
+      // On completion/failure, invalidate detail queries so result_summary is fetched from the server.
+      if (msg.type === 'complete' || msg.type === 'error') {
+        qc.invalidateQueries({ queryKey: [taskKeys.all[0], 'detail'] })
+      }
     },
     [celeryTaskId, qc],
   )

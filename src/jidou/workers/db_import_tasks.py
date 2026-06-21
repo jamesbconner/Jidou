@@ -106,6 +106,11 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
             episodes_created = episodes_updated = 0
             watchlist_created = watchlist_updated = 0
 
+            # Maps backup primary-key → actual DB id so episodes and watchlist
+            # rows can be linked to the correct show even when auto-increment
+            # values differ between the backup and the restored database.
+            show_id_map: dict[int, int] = {}
+
             # --- Shows ---
             for row in shows_data:
                 await check_task_cancelled(session, celery_task_id)
@@ -121,6 +126,8 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
                     current += 1
                     continue
 
+                backup_show_id: int | None = row.get("id")
+
                 existing = (
                     await session.execute(select(Show).where(Show.tmdb_id == tmdb_id))
                 ).scalar_one_or_none()
@@ -128,9 +135,16 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
                 if existing is None:
                     show = _build_show(row)
                     session.add(show)
+                    # Flush immediately so the ORM assigns show.id before we
+                    # continue building the remap table.
+                    await session.flush()
+                    if backup_show_id is not None:
+                        show_id_map[backup_show_id] = show.id
                     shows_created += 1
                 else:
                     _update_show(existing, row)
+                    if backup_show_id is not None:
+                        show_id_map[backup_show_id] = existing.id
                     shows_updated += 1
 
                 current += 1
@@ -147,28 +161,31 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
                     current += 1
                     continue
 
-                show_id: int | None = row.get("show_id")
+                backup_show_id = row.get("show_id")
+                actual_show_id = (
+                    show_id_map.get(backup_show_id) if backup_show_id is not None else None
+                )
 
-                # show_tmdb_id is not stored in the episode row (it's a FK int).
-                # We use show_id directly — it must match the restored show's id.
-                # If shows were upserted with the same ids this works; otherwise
-                # look up by the FK value.
-                if show_id is not None:
-                    existing_ep = (
-                        await session.execute(
-                            select(Episode).where(Episode.tmdb_id == ep_tmdb_id)
-                        )
-                    ).scalar_one_or_none()
+                if actual_show_id is None:
+                    logger.warning(
+                        "Skipping episode tmdb_id=%s: backup show_id=%s not in restore map",
+                        ep_tmdb_id,
+                        backup_show_id,
+                    )
+                    current += 1
+                    continue
 
-                    if existing_ep is None:
-                        ep = _build_episode(row)
-                        session.add(ep)
-                        episodes_created += 1
-                    else:
-                        _update_episode(existing_ep, row)
-                        episodes_updated += 1
+                existing_ep = (
+                    await session.execute(select(Episode).where(Episode.tmdb_id == ep_tmdb_id))
+                ).scalar_one_or_none()
+
+                if existing_ep is None:
+                    ep = _build_episode({**row, "show_id": actual_show_id})
+                    session.add(ep)
+                    episodes_created += 1
                 else:
-                    logger.warning("Skipping episode tmdb_id=%s: missing show_id", ep_tmdb_id)
+                    _update_episode(existing_ep, row)
+                    episodes_updated += 1
 
                 current += 1
                 if current % 100 == 0:
@@ -181,21 +198,28 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
             # --- Watchlist ---
             for row in watchlist_data:
                 await check_task_cancelled(session, celery_task_id)
-                wl_show_id = row.get("show_id")
-                if wl_show_id is None:
-                    logger.warning("Skipping watchlist row with missing show_id")
+                backup_show_id = row.get("show_id")
+                actual_show_id = (
+                    show_id_map.get(backup_show_id) if backup_show_id is not None else None
+                )
+
+                if actual_show_id is None:
+                    logger.warning(
+                        "Skipping watchlist entry: backup show_id=%s not in restore map",
+                        backup_show_id,
+                    )
                     current += 1
                     continue
 
                 existing_wl = (
                     await session.execute(
-                        select(WatchlistEntry).where(WatchlistEntry.show_id == wl_show_id)
+                        select(WatchlistEntry).where(WatchlistEntry.show_id == actual_show_id)
                     )
                 ).scalar_one_or_none()
 
                 if existing_wl is None:
                     wl = WatchlistEntry(
-                        show_id=wl_show_id,
+                        show_id=actual_show_id,
                         status=WatchlistStatus(row.get("status", "planned")),
                         notes=row.get("notes"),
                         position=row.get("position", 0),
