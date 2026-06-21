@@ -328,6 +328,13 @@ async def manual_match_file(
                 raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
 
             title = data.get("name") or data.get("title") or ""
+            # TV: origin_country is a flat list ["JP"]. Movie: production_countries
+            # is [{"iso_3166_1": "US", ...}]. Normalise both to a flat code list.
+            raw_countries: list[object] = data.get("origin_country") or [
+                c["iso_3166_1"]
+                for c in (data.get("production_countries") or [])
+                if isinstance(c, dict) and "iso_3166_1" in c
+            ]
             show = Show(
                 tmdb_id=payload.tmdb_id,
                 title=title,
@@ -340,7 +347,7 @@ async def manual_match_file(
                 release_date=data.get("first_air_date") or data.get("release_date"),
                 original_language=data.get("original_language"),
                 genres=data.get("genres") or [],
-                origin_country=data.get("origin_country") or [],
+                origin_country=raw_countries,
                 sys_name=_sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,
