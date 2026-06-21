@@ -8,6 +8,7 @@ import type { FileRead, FileStatus } from '@/types/api'
 
 const STATUS_OPTIONS: (FileStatus | '')[] = [
   '',
+  'pending',
   'discovered',
   'downloading',
   'downloaded',
