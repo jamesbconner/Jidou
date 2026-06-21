@@ -48,12 +48,12 @@ def _make_entry(
 def _make_conn(mock_sftp: AsyncMock) -> MagicMock:
     """Build the two-level async context manager that asyncssh.connect() returns."""
     sftp_cm = MagicMock()
-    sftp_cm.__aenter__ = AsyncMock(return_value=mock_sftp)
-    sftp_cm.__aexit__ = AsyncMock(return_value=False)
+    sftp_cm.__aenter__.return_value = mock_sftp
+    sftp_cm.__aexit__.return_value = False
 
     conn = MagicMock()
-    conn.__aenter__ = AsyncMock(return_value=conn)
-    conn.__aexit__ = AsyncMock(return_value=False)
+    conn.__aenter__.return_value = conn
+    conn.__aexit__.return_value = False
     conn.start_sftp_client = MagicMock(return_value=sftp_cm)
     return conn
 

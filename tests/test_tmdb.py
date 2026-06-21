@@ -205,8 +205,8 @@ class TestTMDBService:
             return resp
 
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
         mock_client.get = slow_get  # deliberately not AsyncMock to preserve await semantics
 
         @asynccontextmanager  # type: ignore[arg-type]
@@ -259,8 +259,8 @@ class TestTMDBService:
             return resp
 
         mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
         mock_client.get = failing_then_succeeding_get
 
         @asynccontextmanager  # type: ignore[arg-type]

@@ -19,8 +19,8 @@ def test_main_runs() -> None:
     # Mock the DB engine execute to simulate a healthy postgres
     mock_conn = MagicMock()
     mock_conn.execute = AsyncMock()
-    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_conn.__aexit__ = AsyncMock(return_value=False)
+    mock_conn.__aenter__.return_value = mock_conn
+    mock_conn.__aexit__.return_value = False
 
     # Mock redis ping to simulate healthy redis
     mock_redis = AsyncMock()
@@ -53,8 +53,8 @@ def test_health_degraded_returns_503() -> None:
     # Force DB check to fail by raising an exception
     failing_conn = MagicMock()
     failing_conn.execute = AsyncMock(side_effect=Exception("connection refused"))
-    failing_conn.__aenter__ = AsyncMock(return_value=failing_conn)
-    failing_conn.__aexit__ = AsyncMock(return_value=False)
+    failing_conn.__aenter__.return_value = failing_conn
+    failing_conn.__aexit__.return_value = False
 
     failing_engine = MagicMock()
     failing_engine.connect = MagicMock(return_value=failing_conn)

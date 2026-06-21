@@ -263,8 +263,8 @@ async def test_mark_task_timed_out_swallows_inner_exception() -> None:
     """mark_task_timed_out must not propagate exceptions from update_task_status."""
     mock_engine = AsyncMock()
     mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.__aenter__.return_value = mock_session
+    mock_session.__aexit__.return_value = False
 
     mock_factory = MagicMock()
     mock_factory.return_value = mock_session
@@ -288,8 +288,8 @@ async def test_mark_task_timed_out_calls_update_and_emit() -> None:
     # so we patch them at their source modules.
     mock_engine = AsyncMock()
     mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.__aenter__.return_value = mock_session
+    mock_session.__aexit__.return_value = False
 
     mock_factory = MagicMock()
     mock_factory.return_value = mock_session

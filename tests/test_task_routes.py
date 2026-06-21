@@ -132,8 +132,8 @@ def test_cancel_task_not_found_returns_404() -> None:
         mock_session.execute = AsyncMock(
             side_effect=lambda s: MagicMock(scalar_one_or_none=MagicMock(return_value=None))
         )
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_factory.return_value.__aenter__.return_value = mock_session
+        mock_factory.return_value.__aexit__.return_value = False
 
         client = TestClient(app)
         response = client.post("/api/tasks/999/cancel")
@@ -149,8 +149,8 @@ def test_cancel_already_completed_returns_400() -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = completed_task
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_factory.return_value.__aenter__.return_value = mock_session
+        mock_factory.return_value.__aexit__.return_value = False
 
         client = TestClient(app)
         response = client.post("/api/tasks/1/cancel")

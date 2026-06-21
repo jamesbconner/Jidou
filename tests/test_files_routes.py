@@ -591,7 +591,9 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
             "jidou.api.routes.files.TMDBService",
             autospec=True,
         ) as mock_tmdb:
-            mock_tmdb.return_value.get_details = AsyncMock(return_value=tmdb_data)
+            mock_tmdb.return_value.get_details.return_value = tmdb_data
+            mock_tmdb.return_value.get_external_ids.return_value = {}
+            mock_tmdb.return_value.get_episode_groups.return_value = {}
             response = TestClient(app).post(
                 "/api/files/1/match",
                 json={
