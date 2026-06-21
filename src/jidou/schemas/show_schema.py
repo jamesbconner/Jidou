@@ -46,7 +46,7 @@ class ShowCreate(BaseModel):
     number_of_episodes: int | None = None
     networks: list[dict[str, object]] | None = Field(
         default=None,
-        description='Broadcast networks / streaming services',
+        description="Broadcast networks / streaming services",
     )
     show_type: str | None = Field(
         default=None,
