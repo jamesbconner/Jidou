@@ -1,4 +1,4 @@
-"""API routes for batch NAS import."""
+"""API routes for batch imports (NAS text file and database JSON)."""
 
 import uuid
 
@@ -14,10 +14,11 @@ router = APIRouter(prefix="/import", tags=["import"])
 
 _CONTENT_TYPES = {"anime", "tv", "movie"}
 _MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB — more than enough for any path list
+_MAX_DB_BYTES = 100 * 1024 * 1024  # 100 MB for database exports
 
 
-@router.post("/nas", response_model=TaskRead)
-async def import_nas(
+@router.post("/text", response_model=TaskRead)
+async def import_text(
     file: UploadFile,
     content_type: str = Form(default="anime"),
     dry_run: bool = Form(default=False),
@@ -83,6 +84,71 @@ async def import_nas(
             args=[file_content, content_type, dry_run],
             task_id=task_id,
         )
+    except Exception as exc:
+        from datetime import UTC, datetime
+
+        from jidou.models.task import TaskStatus
+
+        new_task.status = TaskStatus.FAILED.value
+        new_task.progress_message = f"Failed to enqueue task: {exc}"
+        new_task.completed_at = datetime.now(UTC)
+        await db_session.commit()
+        raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
+
+    return new_task
+
+
+@router.post("/database", response_model=TaskRead)
+async def import_database(
+    file: UploadFile,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BackgroundTask:
+    """Upload a Jidou database backup JSON and restore it as a background task.
+
+    Accepts a JSON file produced by ``GET /api/export/database``.  Shows and
+    episodes are upserted by their TMDB IDs; watchlist entries are upserted by
+    ``show_id``.  Existing records that match are updated; ``local_path`` on
+    shows is preserved when the backup value is absent.
+
+    Args:
+        file: JSON backup file exported by ``GET /api/export/database``.
+        db_session: Injected async database session.
+
+    Returns:
+        :class:`~jidou.models.task.BackgroundTask` row for tracking.
+
+    Raises:
+        HTTPException: 422 if the uploaded file exceeds the size limit or is
+            not valid JSON.
+    """
+    raw = await file.read(_MAX_DB_BYTES + 1)
+    if len(raw) > _MAX_DB_BYTES:
+        raise HTTPException(status_code=422, detail="File too large (limit: 100 MB)")
+
+    try:
+        file_content = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        file_content = raw.decode("latin-1")
+
+    import json
+
+    try:
+        json.loads(file_content)  # validate JSON before queuing
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}") from exc
+
+    from jidou.workers.db_import_tasks import db_import_task
+
+    task_id = str(uuid.uuid4())
+    new_task = await create_task_record(
+        db_session,
+        task_id,
+        "db_import",
+        dry_run=False,
+    )
+
+    try:
+        db_import_task.apply_async(args=[file_content], task_id=task_id)
     except Exception as exc:
         from datetime import UTC, datetime
 
