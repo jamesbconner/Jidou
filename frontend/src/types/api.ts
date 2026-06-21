@@ -176,6 +176,7 @@ export interface AppConfig {
 export interface ConnectionTestResult {
   ok: boolean
   error?: string
+  message?: string
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────────

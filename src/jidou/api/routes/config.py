@@ -99,6 +99,43 @@ async def test_sftp() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+@router.post("/test/llm")
+async def test_llm() -> dict[str, Any]:
+    """Test LLM connectivity by sending a minimal completion request.
+
+    Uses :meth:`LLMService.test_connection` which propagates real provider
+    errors (auth failures, unreachable hosts) rather than swallowing them.
+
+    Returns:
+        ``{"ok": True, "message": "Nms (provider / model)"}`` on success or
+        ``{"ok": False, "error": "..."}`` on failure.
+    """
+    if settings.llm_provider.lower() == "none":
+        return {"ok": False, "error": "LLM provider is set to 'none'"}
+    if not settings.llm_model:
+        return {"ok": False, "error": "LLM_MODEL is not configured"}
+
+    try:
+        from jidou.services.llm_service import LLMService
+
+        llm = LLMService(
+            provider=settings.llm_provider,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            model=settings.llm_model,
+            timeout=settings.llm_timeout,
+        )
+        latency_s, model = await llm.test_connection()
+        latency_ms = round(latency_s * 1000, 1)
+        return {
+            "ok": True,
+            "message": f"{latency_ms}ms ({settings.llm_provider} / {model})",
+        }
+    except Exception as exc:
+        logger.warning("LLM test failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
 @router.post("/test/redis")
 async def test_redis() -> dict[str, Any]:
     """Test Redis connectivity by sending a PING command.
