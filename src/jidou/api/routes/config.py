@@ -107,7 +107,7 @@ async def test_llm() -> dict[str, Any]:
         ``{"ok": True, "provider": "...", "model": "...", "latency_ms": N}`` on
         success or ``{"ok": False, "error": "..."}`` on failure.
     """
-    if settings.llm_provider == "none":
+    if settings.llm_provider.lower() == "none":
         return {"ok": False, "error": "LLM provider is set to 'none'"}
     if not settings.llm_model:
         return {"ok": False, "error": "LLM_MODEL is not configured"}

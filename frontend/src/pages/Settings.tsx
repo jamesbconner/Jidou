@@ -43,7 +43,7 @@ export default function Settings() {
             { label: 'Test TMDB', mutation: testTmdb },
             { label: 'Test SFTP', mutation: testSftp },
             { label: 'Test Redis', mutation: testRedis },
-            ...(config?.llm_provider && config.llm_provider !== 'none'
+            ...(config?.llm_provider && config.llm_provider.toLowerCase() !== 'none'
               ? [{ label: 'Test LLM', mutation: testLlm }]
               : []),
           ].map(({ label, mutation }) => (
