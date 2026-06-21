@@ -82,7 +82,6 @@ export interface ShowCreate {
 }
 
 export interface ShowPaths {
-  remote_path?: string | null
   local_path?: string | null
 }
 

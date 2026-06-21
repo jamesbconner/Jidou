@@ -17,13 +17,11 @@ export default function ShowDetail() {
   const { data: showFiles = [] } = useFilesByShow(showId)
   const rematch = useRematchFile()
 
-  const [remotePath, setRemotePath] = useState('')
   const [localPath, setLocalPath] = useState('')
 
   // Sync form state when show data loads or ID changes
   useEffect(() => {
     if (show) {
-      setRemotePath(show.remote_path ?? '')
       setLocalPath(show.local_path ?? '')
     }
   }, [show, showId])
@@ -44,7 +42,6 @@ export default function ShowDetail() {
   function savePaths(e: React.FormEvent) {
     e.preventDefault()
     updatePaths.mutate({
-      ...(remotePath !== (show?.remote_path ?? '') && { remote_path: remotePath || null }),
       ...(localPath !== (show?.local_path ?? '') && { local_path: localPath || null }),
     })
   }
@@ -80,15 +77,6 @@ export default function ShowDetail() {
       <section className="bg-white rounded-lg shadow p-4">
         <h2 className="font-semibold mb-3">Paths</h2>
         <form onSubmit={savePaths} className="space-y-3">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Remote path (SFTP)</label>
-            <input
-              value={remotePath}
-              onChange={(e) => setRemotePath(e.target.value)}
-              className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="/shows/example"
-            />
-          </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Local path</label>
             <input
