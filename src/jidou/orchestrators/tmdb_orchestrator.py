@@ -88,6 +88,7 @@ class TMDBOrchestrator:
                     existing.runtime = ep_data.get("runtime")
                     existing.episode_type = ep_data.get("episode_type")
                     existing.still_path = ep_data.get("still_path")
+                    existing.absolute_episode_number = ep_data.get("absolute_number")
                     episodes_skipped += 1
                 else:
                     new_ep = Episode(
@@ -101,6 +102,7 @@ class TMDBOrchestrator:
                         runtime=ep_data.get("runtime"),
                         episode_type=ep_data.get("episode_type"),
                         still_path=ep_data.get("still_path"),
+                        absolute_episode_number=ep_data.get("absolute_number"),
                     )
                     self.session.add(new_ep)
                     episodes_upserted += 1

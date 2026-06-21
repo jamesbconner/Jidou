@@ -1,6 +1,5 @@
 """API routes for downloaded file management."""
 
-import asyncio
 import logging
 import re
 from typing import Any
@@ -323,21 +322,23 @@ async def manual_match_file(
             media_type = payload.tmdb_media_type or (
                 "movie" if payload.content_type == "movie" else "tv"
             )
-            ep_groups: dict[str, Any] = {}
             try:
-                if media_type == "tv":
-                    data, ext_ids, ep_groups = await asyncio.gather(
-                        tmdb.get_details(payload.tmdb_id, media_type=media_type),
-                        tmdb.get_external_ids(payload.tmdb_id, media_type=media_type),
-                        tmdb.get_episode_groups(payload.tmdb_id),
-                    )
-                else:
-                    data, ext_ids = await asyncio.gather(
-                        tmdb.get_details(payload.tmdb_id, media_type=media_type),
-                        tmdb.get_external_ids(payload.tmdb_id, media_type=media_type),
-                    )
+                data = await tmdb.get_details(payload.tmdb_id, media_type=media_type)
             except Exception as exc:
                 raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
+
+            # Supplemental calls are best-effort — transient failures fall back to empty.
+            ext_ids: dict[str, Any] = {}
+            ep_groups: dict[str, Any] = {}
+            try:
+                ext_ids = await tmdb.get_external_ids(payload.tmdb_id, media_type=media_type)
+            except Exception:
+                logger.warning("get_external_ids failed for tmdb_id=%d", payload.tmdb_id)
+            if media_type == "tv":
+                try:
+                    ep_groups = await tmdb.get_episode_groups(payload.tmdb_id)
+                except Exception:
+                    logger.warning("get_episode_groups failed for tmdb_id=%d", payload.tmdb_id)
 
             title = data.get("name") or data.get("title") or ""
             # TV: origin_country is a flat list ["JP"]. Movie: production_countries
