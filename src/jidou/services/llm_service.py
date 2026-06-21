@@ -113,6 +113,38 @@ class LLMService:
         """
         return self._provider != LLMProvider.NONE and bool(self._model)
 
+    async def test_connection(self) -> tuple[float, str]:
+        """Make a minimal provider call and return (latency_seconds, model).
+
+        Unlike :meth:`complete`, this method does **not** suppress exceptions
+        so callers receive the real error for diagnostic purposes (auth failures,
+        unreachable hosts, bad model names, etc.).
+
+        Returns:
+            Tuple of ``(latency_seconds, effective_model)``.
+
+        Raises:
+            RuntimeError: If the provider is not configured.
+            httpx.HTTPStatusError: On HTTP-level failures (401, 404, etc.).
+            Exception: On any other provider-side error.
+        """
+        if not self.is_available():
+            raise RuntimeError("LLM provider is not configured (provider='none' or model unset)")
+
+        start = time.monotonic()
+        if self._provider in _OPENAI_COMPATIBLE:
+            await self._call_openai_compatible(
+                system=None, prompt="Reply with the single word: ok", model=self._model
+            )
+        elif self._provider == LLMProvider.ANTHROPIC:
+            await self._call_anthropic(
+                system=None, prompt="Reply with the single word: ok", model=self._model
+            )
+        else:
+            raise RuntimeError(f"Unsupported LLM provider: {self._provider!r}")
+
+        return time.monotonic() - start, self._model
+
     @staticmethod
     def _make_cache_key(provider: str, model: str, system: str | None, prompt: str) -> str:
         raw = f"{provider}:{model}:{system or ''}:{prompt}"

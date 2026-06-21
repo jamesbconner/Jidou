@@ -57,7 +57,7 @@ export default function Settings() {
               </button>
               {mutation.data && (
                 <span className={clsx('text-xs', mutation.data.ok ? 'text-green-600' : 'text-red-600')}>
-                  {mutation.data.ok ? 'OK' : mutation.data.error}
+                  {mutation.data.ok ? (mutation.data.message ?? 'OK') : mutation.data.error}
                 </span>
               )}
             </div>

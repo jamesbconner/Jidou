@@ -103,9 +103,12 @@ async def test_sftp() -> dict[str, Any]:
 async def test_llm() -> dict[str, Any]:
     """Test LLM connectivity by sending a minimal completion request.
 
+    Uses :meth:`LLMService.test_connection` which propagates real provider
+    errors (auth failures, unreachable hosts) rather than swallowing them.
+
     Returns:
-        ``{"ok": True, "provider": "...", "model": "...", "latency_ms": N}`` on
-        success or ``{"ok": False, "error": "..."}`` on failure.
+        ``{"ok": True, "message": "Nms (provider / model)"}`` on success or
+        ``{"ok": False, "error": "..."}`` on failure.
     """
     if settings.llm_provider.lower() == "none":
         return {"ok": False, "error": "LLM provider is set to 'none'"}
@@ -113,8 +116,6 @@ async def test_llm() -> dict[str, Any]:
         return {"ok": False, "error": "LLM_MODEL is not configured"}
 
     try:
-        import time
-
         from jidou.services.llm_service import LLMService
 
         llm = LLMService(
@@ -124,16 +125,11 @@ async def test_llm() -> dict[str, Any]:
             model=settings.llm_model,
             timeout=settings.llm_timeout,
         )
-        t0 = time.monotonic()
-        response = await llm.complete(prompt="Reply with the single word: ok", bypass_cache=True)
-        latency_ms = round((time.monotonic() - t0) * 1000, 1)
-        if response is None:
-            return {"ok": False, "error": "LLM returned no response"}
+        latency_s, model = await llm.test_connection()
+        latency_ms = round(latency_s * 1000, 1)
         return {
             "ok": True,
-            "provider": settings.llm_provider,
-            "model": settings.llm_model,
-            "latency_ms": latency_ms,
+            "message": f"{latency_ms}ms ({settings.llm_provider} / {model})",
         }
     except Exception as exc:
         logger.warning("LLM test failed: %s", exc)
