@@ -199,7 +199,7 @@ export default function ShowDetail() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <button
-                        onClick={() => rematch.mutate({ id: f.id, payload: { method: 'auto' } })}
+                        onClick={() => rematch.mutate({ id: f.id, payload: {} })}
                         disabled={rematch.isPending}
                         className="text-xs text-blue-600 hover:underline disabled:opacity-50"
                       >

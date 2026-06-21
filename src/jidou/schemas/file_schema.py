@@ -51,14 +51,34 @@ class FileList(BaseModel):
 class FileMatchRequest(BaseModel):
     """Request body for assigning a show to an unmatched file.
 
-    When ``show_id`` is supplied the show is assigned directly (manual match).
-    When omitted the file is reset to ``downloaded`` so the parse/match
-    pipeline will re-process it automatically on the next sync.
+    Three modes:
+    - ``show_id`` only: assign an existing tracked show (fast path).
+    - ``tmdb_id`` only or with ``local_path``/``content_type``: look up or
+      create the show on demand, then assign.
+    - All omitted: reset the file to ``downloaded`` for automatic re-matching.
     """
 
     show_id: int | None = Field(
         default=None,
-        description="Show to assign; omit to trigger automatic re-matching",
+        description="Existing DB show to assign; omit to use tmdb_id or to reset",
+    )
+    tmdb_id: int | None = Field(
+        default=None,
+        description="TMDB ID to look up or create a show on demand",
+    )
+    tmdb_media_type: str | None = Field(
+        default=None,
+        pattern="^(tv|movie)$",
+        description="TMDB media type ('tv' or 'movie') for the correct details endpoint",
+    )
+    local_path: str | None = Field(
+        default=None,
+        description="Local filesystem root for this show (required when creating via tmdb_id)",
+    )
+    content_type: str | None = Field(
+        default=None,
+        pattern="^(tv|anime|movie)$",
+        description="Content type for routing (tv/anime/movie)",
     )
 
 

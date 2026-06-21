@@ -517,3 +517,208 @@ def test_match_file_routed_returns_409() -> None:
         assert response.status_code == 409
     finally:
         app.dependency_overrides.clear()
+
+
+def test_match_file_both_show_id_and_tmdb_id_returns_422() -> None:
+    """POST /api/files/{id}/match with both show_id and tmdb_id returns 422."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 1, "tmdb_id": 99})
+        assert response.status_code == 422
+        assert "both" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_tmdb_id_creates_show_and_matches() -> None:
+    """POST /api/files/{id}/match with tmdb_id creates a show and marks file MATCHED."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import MatchedBy
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    tmdb_data = {
+        "id": 1396,
+        "name": "Breaking Bad",
+        "overview": "A chemistry teacher turns to crime.",
+        "poster_path": "/poster.jpg",
+        "backdrop_path": None,
+        "vote_average": 9.5,
+        "vote_count": 12000,
+        "first_air_date": "2008-01-20",
+        "original_language": "en",
+    }
+
+    created_show = MagicMock(spec=Show)
+    created_show.id = 42
+    created_show.title = "Breaking Bad"
+    created_show.local_path = "/media/tv/Breaking Bad"
+
+    async def _tmdb_match_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        # show lookup by tmdb_id → not found (triggers creation)
+        no_show_result = MagicMock()
+        no_show_result.scalar_one_or_none.return_value = None
+        # episode lookup → not found
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        # Capture the Show added to the session and make it usable
+        def _add(obj: object) -> None:
+            if isinstance(obj, Show):
+                obj.id = created_show.id  # type: ignore[attr-defined]
+                obj.local_path = "/media/tv/Breaking Bad"  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        yield session
+
+    app.dependency_overrides[get_session] = _tmdb_match_session
+    try:
+        with patch(
+            "jidou.api.routes.files.TMDBService",
+            autospec=True,
+        ) as mock_tmdb:
+            mock_tmdb.return_value.get_details = AsyncMock(return_value=tmdb_data)
+            response = TestClient(app).post(
+                "/api/files/1/match",
+                json={
+                    "tmdb_id": 1396,
+                    "local_path": "/media/tv/Breaking Bad",
+                    "content_type": "tv",
+                },
+            )
+        assert response.status_code == 200
+        assert f.status == FileStatus.MATCHED
+        assert f.matched_by == MatchedBy.MANUAL
+        assert f.parsed_season == 1
+        assert f.parsed_episode == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_tmdb_id_without_local_path_returns_422() -> None:
+    """POST /api/files/{id}/match with tmdb_id but no local_path returns 422."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+
+    async def _tmdb_missing_path_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        no_show_result = MagicMock()
+        no_show_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, no_show_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _tmdb_missing_path_session
+    try:
+        with patch("jidou.api.routes.files.TMDBService"):
+            response = TestClient(app).post(
+                "/api/files/1/match",
+                json={"tmdb_id": 1396},
+            )
+        assert response.status_code == 422
+        assert "local_path" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/files/{file_id}/tmdb-suggestions
+# ---------------------------------------------------------------------------
+
+
+def test_tmdb_suggestions_returns_results() -> None:
+    """GET /api/files/{id}/tmdb-suggestions returns TMDB search results."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_show_name = "Breaking Bad"
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        with patch(
+            "jidou.api.routes.files.TMDBService",
+            autospec=True,
+        ) as mock_tmdb:
+            mock_tmdb.return_value.search = AsyncMock(
+                return_value={
+                    "results": [
+                        {
+                            "id": 1396,
+                            "name": "Breaking Bad",
+                            "media_type": "tv",
+                            "overview": "A chemistry teacher turns to crime.",
+                            "poster_path": "/poster.jpg",
+                            "first_air_date": "2008-01-20",
+                            "vote_average": 9.5,
+                        },
+                        {
+                            "id": 999,
+                            "title": "Breaking Film",
+                            "media_type": "movie",
+                            "overview": "Some movie.",
+                            "poster_path": None,
+                            "release_date": "2020-01-01",
+                            "vote_average": 6.0,
+                        },
+                    ]
+                }
+            )
+            response = TestClient(app).get("/api/files/1/tmdb-suggestions")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "Breaking Bad"
+        assert len(data["results"]) == 2
+        assert data["results"][0]["tmdb_id"] == 1396
+        assert data["results"][0]["title"] == "Breaking Bad"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_tmdb_suggestions_no_parsed_name_returns_422() -> None:
+    """GET /api/files/{id}/tmdb-suggestions with no parsed_show_name returns 422."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    f.parsed_show_name = None
+
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).get("/api/files/1/tmdb-suggestions")
+        assert response.status_code == 422
+        assert "parsed_show_name" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_tmdb_suggestions_file_not_found_returns_404() -> None:
+    """GET /api/files/{id}/tmdb-suggestions returns 404 for unknown file."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).get("/api/files/9999/tmdb-suggestions")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()

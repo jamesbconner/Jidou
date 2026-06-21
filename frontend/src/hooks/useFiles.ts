@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { FileRead, FileMatchRequest, FileStatus } from '@/types/api'
+import type { FileRead, FileMatchRequest, FileStatus, TmdbSuggestionsResponse } from '@/types/api'
 
 export const fileKeys = {
   all: ['files'] as const,
@@ -37,8 +37,16 @@ export function useRematchFile() {
       api.post<FileRead>(`/files/${id}/match`, payload),
     onSuccess: (data) => {
       qc.setQueryData(fileKeys.detail(data.id), data)
-      // Invalidate all file queries (both list and detail, all status filters)
       qc.invalidateQueries({ queryKey: fileKeys.all })
     },
+  })
+}
+
+export function useTmdbSuggestions(fileId: number | null) {
+  return useQuery({
+    queryKey: [...fileKeys.all, 'tmdb-suggestions', fileId] as const,
+    queryFn: () => api.get<TmdbSuggestionsResponse>(`/files/${fileId}/tmdb-suggestions`),
+    enabled: fileId != null,
+    staleTime: 5 * 60 * 1000,
   })
 }
