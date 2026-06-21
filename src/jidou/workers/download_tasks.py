@@ -76,6 +76,9 @@ async def _download_files(
                 key_path=settings.sftp_key_path,
                 remote_base_path=settings.sftp_remote_base_path,
                 known_hosts=None,
+                max_workers=settings.sftp_max_workers,
+                max_retries=settings.sftp_max_retries,
+                retry_delay=settings.sftp_retry_delay,
             )
 
             await update_task_status(
@@ -101,7 +104,10 @@ async def _download_files(
                 )
 
             result = await DownloadOrchestrator(session, sftp).run(
-                show_id=show_id, dry_run=dry_run, on_progress=on_progress
+                show_id=show_id,
+                dry_run=dry_run,
+                max_workers=settings.sftp_max_workers,
+                on_progress=on_progress,
             )
 
             # Mark complete — gate the WebSocket event on the DB update landing.
