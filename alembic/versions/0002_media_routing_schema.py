@@ -27,15 +27,25 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # ------------------------------------------------------------------
     # 1. Add new values to the filestatus enum.
-    #    ALTER TYPE … ADD VALUE is allowed inside a transaction in
-    #    PostgreSQL 12+ (which this project requires).
+    #
+    #    PostgreSQL forbids using a new enum value in the same transaction
+    #    where it was created (UnsafeNewEnumValueUsageError).  The workaround
+    #    is to COMMIT Alembic's wrapping transaction, add the values (they
+    #    are immediately committed in the subsequent implicit transaction),
+    #    then BEGIN a new transaction for all remaining DDL/DML.
+    #
+    #    IF NOT EXISTS makes this idempotent on retry.
     # ------------------------------------------------------------------
-    op.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'discovered'"))
-    op.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'unmatched'"))
-    op.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'matched'"))
+    conn = op.get_bind()
+    conn.execute(sa.text("COMMIT"))
+    conn.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'discovered'"))
+    conn.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'unmatched'"))
+    conn.execute(sa.text("ALTER TYPE filestatus ADD VALUE IF NOT EXISTS 'matched'"))
+    conn.execute(sa.text("BEGIN"))
 
     # ------------------------------------------------------------------
     # 2. Migrate existing PENDING rows → DISCOVERED.
+    #    New enum values are now committed and safe to reference.
     # ------------------------------------------------------------------
     op.execute(
         sa.text("UPDATE downloaded_files SET status = 'discovered' WHERE status = 'pending'")
