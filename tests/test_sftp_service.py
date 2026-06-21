@@ -33,11 +33,14 @@ def _make_entry(
     mtime: int | None = None,
 ) -> MagicMock:
     """Build a mock asyncssh SFTP directory entry."""
+    import stat as _stat
+
     entry = MagicMock()
     entry.filename = filename
     entry.attrs = MagicMock()
     entry.attrs.size = size
-    entry.attrs.is_dir = MagicMock(return_value=is_dir)
+    # asyncssh 2.x uses permissions; set the S_IFDIR/S_IFREG bits accordingly.
+    entry.attrs.permissions = _stat.S_IFDIR | 0o755 if is_dir else _stat.S_IFREG | 0o644
     entry.attrs.mtime = mtime
     return entry
 
@@ -383,15 +386,17 @@ class TestListRemoteFilesRecursive:
         self, sftp_service: SFTPService
     ) -> None:
         """A readdir error on one subdirectory is logged and skipped; others succeed."""
+        import stat as _stat
+
         season1 = MagicMock()
         season1.filename = "Season 01"
         season1.attrs = MagicMock()
-        season1.attrs.is_dir.return_value = True
+        season1.attrs.permissions = _stat.S_IFDIR | 0o755
 
         season2 = MagicMock()
         season2.filename = "Season 02"
         season2.attrs = MagicMock()
-        season2.attrs.is_dir.return_value = True
+        season2.attrs.permissions = _stat.S_IFDIR | 0o755
 
         root_entries = [season1, season2]
 

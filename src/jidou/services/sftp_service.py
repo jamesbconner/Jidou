@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import logging
+import stat
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -257,7 +258,7 @@ class SFTPService:
                     name: str = entry.filename
                     if name in (".", ".."):
                         continue
-                    if entry.attrs.is_dir():
+                    if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
                         continue
                     if not fnmatch.fnmatch(name, pattern):
                         continue
@@ -314,7 +315,7 @@ class SFTPService:
                 continue
             entry_path = f"{path.rstrip('/')}/{name}"
 
-            if entry.attrs.is_dir():
+            if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
                 if is_valid_directory(name):
                     await self._collect_files_recursive(sftp, entry_path, pattern, results)
                 else:
