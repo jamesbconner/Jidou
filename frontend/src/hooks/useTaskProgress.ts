@@ -20,7 +20,7 @@ export function useTaskProgress(celeryTaskId: string | null) {
 
       // Update both the list query (TaskList[]) and detail query (TaskRead)
       qc.setQueriesData(
-        { queryKey: taskKeys.list() },
+        { queryKey: [...taskKeys.all, 'list'] },
         (oldList: unknown) => {
           if (!Array.isArray(oldList)) return oldList
           return oldList.map((item: TaskList) => {

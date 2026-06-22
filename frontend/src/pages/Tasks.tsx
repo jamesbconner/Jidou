@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
+import { useState, useEffect } from 'react'
+import { useTasks, useTaskCount, useActiveTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import type { TaskType } from '@/types/api'
@@ -10,98 +10,162 @@ function LiveTask({ taskId }: { taskId: number }) {
   return null
 }
 
-const SHOW_ID_TYPES = new Set<TaskType>(['download', 'match'])
-
 const TASK_DESCRIPTIONS: Record<TaskType, string> = {
   scan: 'Connects to the SFTP server and lists remote files. New files are recorded in the database with status DISCOVERED. No files are downloaded.',
-  download: 'Downloads all DISCOVERED files from the SFTP server to the local staging directory. Optionally scope to a single show.',
-  match: 'Parses filenames of DOWNLOADED files using regex and (optionally) LLM, then matches them to shows and episodes in the database. Optionally scope to a single show.',
+  download: 'Downloads all DISCOVERED files from the SFTP server to the local staging directory.',
+  match: 'Parses filenames of DOWNLOADED files using regex and (optionally) LLM, then matches them to shows and episodes in the database.',
   route: 'Moves all MATCHED files from the staging directory to their final media library path. Creates season subdirectories as needed.',
   sync: 'Runs the full pipeline in sequence: Scan → Download → Match → Route.',
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync']
+
 export default function Tasks() {
-  const { data: tasks = [], isLoading } = useTasks()
-  const triggerTask = useTriggerTask()
-  const cancelTask = useCancelTask()
   const [taskType, setTaskType] = useState<TaskType>('scan')
   const [dryRun, setDryRun] = useState(false)
-  const [showIdInput, setShowIdInput] = useState('')
 
-  const needsShowId = SHOW_ID_TYPES.has(taskType)
-  const showIdParsed = showIdInput === '' ? null : parseInt(showIdInput, 10)
-  const showIdValid = showIdInput === '' || (!isNaN(showIdParsed!) && showIdParsed! > 0)
+  const [filterType, setFilterType] = useState<TaskType | ''>('')
+  const [pageSize, setPageSize] = useState(20)
+  const [maxRecords, setMaxRecords] = useState<number | null>(200)
+  const [page, setPage] = useState(0)
 
-  // Mount listeners for both pending and running tasks to capture updates from the start
-  const activeTasks = useMemo(() => tasks.filter((t) => t.status === 'pending' || t.status === 'running'), [tasks])
+  const offset = page * pageSize
+  const params = { limit: pageSize, offset, taskType: filterType || undefined }
+
+  const { data: tasks = [], isLoading } = useTasks(params)
+  const { data: countData } = useTaskCount(filterType || undefined)
+  const total = countData?.total
+  const effectiveTotal = total !== undefined
+    ? (maxRecords !== null ? Math.min(total, maxRecords) : total)
+    : undefined
+  const totalPages = Math.max(1, Math.ceil((effectiveTotal ?? 1) / pageSize))
+
+  // Clamp page when total shrinks (e.g. after cancel or refetch)
+  useEffect(() => {
+    if (page >= totalPages) setPage(Math.max(0, totalPages - 1))
+  }, [totalPages, page])
+
+  const triggerTask = useTriggerTask()
+  const cancelTask = useCancelTask()
+
+  const { data: activeTasks = [] } = useActiveTasks()
+
+  function handleFilterChange(type: TaskType | '') {
+    setFilterType(type)
+    setPage(0)
+  }
+
+  function handlePageSizeChange(size: number) {
+    setPageSize(size)
+    setPage(0)
+  }
+
+  function handleMaxRecordsChange(val: string) {
+    setMaxRecords(val === 'all' ? null : Number(val))
+    setPage(0)
+  }
 
   return (
     <div className="space-y-6">
-      {/* Mount WebSocket listeners for all active tasks (pending and running) */}
       {activeTasks.map((t) => (
         <LiveTask key={t.id} taskId={t.id} />
       ))}
 
       <h1 className="text-2xl font-bold">Tasks</h1>
 
-      <div className="bg-white rounded-lg shadow p-4 flex items-end gap-4 flex-wrap">
+      {/* Trigger panel */}
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-end gap-4 flex-wrap">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Task type</label>
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value as TaskType)}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="rounded"
+            />
+            Dry run
+          </label>
+          <button
+            onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })}
+            disabled={triggerTask.isPending}
+            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            Run
+          </button>
+          {triggerTask.isError && (
+            <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
+          )}
+        </div>
+        <p className="text-xs text-gray-500">{TASK_DESCRIPTIONS[taskType]}</p>
+      </div>
+
+      {/* List controls */}
+      <div className="flex items-center gap-4 flex-wrap">
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Task type</label>
+          <label className="text-xs text-gray-500 mr-2">Filter by type</label>
           <select
-            value={taskType}
-            onChange={(e) => { setTaskType(e.target.value as TaskType); setShowIdInput('') }}
+            value={filterType}
+            onChange={(e) => handleFilterChange(e.target.value as TaskType | '')}
             className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
-              <option key={t} value={t}>{t}</option>
+            {TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t || 'All types'}</option>
             ))}
           </select>
         </div>
-        {needsShowId && (
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Show ID <span className="text-gray-400">(optional — blank runs all)</span></label>
-            <input
-              type="number"
-              min="1"
-              placeholder="e.g. 42"
-              value={showIdInput}
-              onChange={(e) => setShowIdInput(e.target.value)}
-              className="border rounded px-2 py-1 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => setDryRun(e.target.checked)}
-            className="rounded"
-          />
-          Dry run
-        </label>
-        <button
-          onClick={() => triggerTask.mutate({
-            task_type: taskType,
-            dry_run: dryRun,
-            ...(needsShowId && showIdParsed != null && { show_id: showIdParsed }),
-          })}
-          disabled={triggerTask.isPending || !showIdValid}
-          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          Run
-        </button>
-        {triggerTask.isError && (
-          <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
-        )}
+        <div>
+          <label className="text-xs text-gray-500 mr-2">Per page</label>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mr-2">Max records</label>
+          <select
+            value={maxRecords === null ? 'all' : String(maxRecords)}
+            onChange={(e) => handleMaxRecordsChange(e.target.value)}
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {[50, 100, 200, 500].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+            <option value="all">All</option>
+          </select>
+        </div>
+        <span className="text-xs text-gray-500 ml-auto">
+          {total === undefined ? '—' : (
+            maxRecords !== null && total > maxRecords
+              ? `${maxRecords} of ${total} task${total !== 1 ? 's' : ''}`
+              : `${total} task${total !== 1 ? 's' : ''}`
+          )}
+          {filterType ? ` · ${filterType}` : ''}
+        </span>
       </div>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-900">
-        <p className="font-medium mb-1 capitalize">{taskType}</p>
-        <p className="text-blue-800">{TASK_DESCRIPTIONS[taskType]}</p>
-      </div>
-
+      {/* Task list */}
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
+      ) : tasks.length === 0 ? (
+        <p className="text-gray-500 text-sm">No tasks found.</p>
       ) : (
         <div className="space-y-2">
           {tasks.map((t) => (
@@ -109,7 +173,7 @@ export default function Tasks() {
               <TaskProgressBar
                 task={t}
                 onCancel={
-                  (t.status === 'pending' || t.status === 'running')
+                  t.status === 'pending' || t.status === 'running'
                     ? () => cancelTask.mutate(t.id)
                     : undefined
                 }
@@ -120,6 +184,43 @@ export default function Tasks() {
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <button
+            onClick={() => setPage(0)}
+            disabled={page === 0}
+            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            «
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            ‹
+          </button>
+          <span className="text-gray-600">
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            ›
+          </button>
+          <button
+            onClick={() => setPage(totalPages - 1)}
+            disabled={page >= totalPages - 1}
+            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          >
+            »
+          </button>
         </div>
       )}
     </div>

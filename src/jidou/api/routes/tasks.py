@@ -3,8 +3,8 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -17,19 +17,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["tasks"])
 
 
+_ACTIVE_STATUSES = (TaskStatus.PENDING.value, TaskStatus.RUNNING.value)
+
+
+@router.get("/tasks/count")
+async def count_tasks(
+    task_type: str | None = Query(default=None),
+    active_only: bool = False,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict[str, int]:
+    """Return total number of tasks, optionally filtered by task_type or active status."""
+    stmt = select(func.count()).select_from(BackgroundTask)
+    if task_type is not None:
+        stmt = stmt.where(BackgroundTask.task_type == task_type)
+    if active_only:
+        stmt = stmt.where(BackgroundTask.status.in_(_ACTIVE_STATUSES))
+    total = (await db_session.execute(stmt)).scalar_one()
+    return {"total": total}
+
+
 @router.get("/tasks", response_model=list[TaskList])
 async def list_tasks(
     limit: int = 20,
     offset: int = 0,
+    task_type: str | None = Query(default=None),
+    active_only: bool = False,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[BackgroundTask]:
-    """List background tasks."""
-    stmt = (
-        select(BackgroundTask)
-        .order_by(BackgroundTask.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    """List background tasks, optionally filtered by task_type or active status."""
+    stmt = select(BackgroundTask).order_by(BackgroundTask.created_at.desc())
+    if task_type is not None:
+        stmt = stmt.where(BackgroundTask.task_type == task_type)
+    if active_only:
+        stmt = stmt.where(BackgroundTask.status.in_(_ACTIVE_STATUSES))
+    stmt = stmt.offset(offset).limit(limit)
     result = await db_session.execute(stmt)
     return list(result.scalars().all())
 
