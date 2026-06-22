@@ -96,10 +96,20 @@ def test_heuristic_parse_ordinal_season():
 
 
 def test_heuristic_parse_bare_episode_with_group_tag():
-    """Anime release with group tag, bare episode number, and CRC32."""
-    r = _heuristic_parse("[HorribleSubs] One Piece - 1001 [ABCD1234].mkv")
+    """Anime release with group tag, 3-digit episode, and CRC32."""
+    r = _heuristic_parse("[HorribleSubs] One Piece - 999 [ABCD1234].mkv")
     assert r["show_name"] == "One Piece"
-    assert r["episode"] == 1001
+    assert r["episode"] == 999
+    assert r["crc32"] == "ABCD1234"
+
+
+def test_heuristic_parse_1000_plus_episode_falls_back():
+    """Episode numbers > 999 are not matched — 4-digit numbers are more likely
+    years/resolutions and the false-positive cost outweighs the edge case."""
+    r = _heuristic_parse("[HorribleSubs] One Piece - 1001 [ABCD1234].mkv")
+    assert r["season"] is None
+    assert r["episode"] is None
+    assert r["confidence"] == 0.1
     assert r["crc32"] == "ABCD1234"
 
 

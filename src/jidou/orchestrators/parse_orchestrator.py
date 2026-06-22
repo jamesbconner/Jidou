@@ -36,27 +36,29 @@ _DELIMITERS_PAT = re.compile(r"[_.]")
 _WHITESPACE_PAT = re.compile(r"\s+")
 
 # Ordered from most- to least-specific; first match wins.
-# Episode capture uses \d{1,4} to cover long-running anime (e.g. One Piece 1000+).
+# Episode capture is capped at \d{1,3} (max 999) intentionally: 4-digit years
+# (1080, 2024, etc.) appear in filenames far more often than shows with 1000+
+# episodes, and false positives on years are worse than missing edge cases.
 _HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
     # "2nd Season 04" / "1st Season 01"
     re.compile(
-        r"(?P<name>.*?)[\s\-]+(?P<season>\d{1,2})(?:st|nd|rd|th)?[\s\-]+Season[\s\-]+(?P<episode>\d{1,4})",
+        r"(?P<name>.*?)[\s\-]+(?P<season>\d{1,2})(?:st|nd|rd|th)?[\s\-]+Season[\s\-]+(?P<episode>\d{1,3})",
         re.IGNORECASE,
     ),
     # S01E02
-    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,3})"),
     # S01 02
-    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[\s\-]+(?P<episode>\d{1,4})"),
+    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[\s\-]+(?P<episode>\d{1,3})"),
     # E02 (season optional)
     re.compile(
-        r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,4})"
+        r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,3})"
     ),
     # bare episode number, optional v2 suffix
-    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,4})(?:v\d)?\b"),
+    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})(?:v\d)?\b"),
     # bare episode at end of string
-    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,4})$"),
+    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})$"),
     # S01E02 with leading space only
-    re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+    re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,3})"),
 ]
 
 # Strips characters that are invalid on common filesystems (Windows + Linux).
