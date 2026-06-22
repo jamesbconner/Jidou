@@ -258,6 +258,7 @@ class ParseOrchestrator:
         files_matched = 0
         files_unmatched = 0
         files_failed = 0
+        llm_active = self.llm is not None and self.llm.is_available()
 
         for idx, file in enumerate(files, 1):
             if on_progress:
@@ -288,7 +289,8 @@ class ParseOrchestrator:
                         confidence,
                         dry_show.title if dry_show is not None else "none",
                     )
-                    if dry_show is not None and confidence >= _CONFIDENCE_THRESHOLD:
+                    gate_passes = not llm_active or confidence >= _CONFIDENCE_THRESHOLD
+                    if dry_show is not None and gate_passes:
                         files_matched += 1
                     else:
                         files_unmatched += 1
@@ -301,8 +303,9 @@ class ParseOrchestrator:
                 file.parsed_confidence = confidence
                 file.parsed_content_type = content_type
 
-                # Stage 2: confidence gate — low-confidence parses go to manual review
-                if confidence < _CONFIDENCE_THRESHOLD:
+                # Stage 2: confidence gate — only applies when LLM was used;
+                # heuristic-only path always proceeds to DB lookup.
+                if llm_active and confidence < _CONFIDENCE_THRESHOLD:
                     file.status = FileStatus.UNMATCHED
                     file.error_message = (
                         f"Parse confidence {confidence:.2f} below threshold "

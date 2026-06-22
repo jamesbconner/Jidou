@@ -264,6 +264,35 @@ async def test_run_exception_marks_error():
     assert file1.status == FileStatus.ERROR
 
 
+async def test_run_no_llm_heuristic_proceeds_to_db_lookup():
+    """Without LLM the confidence gate is bypassed; heuristic name reaches _find_show."""
+    show = _make_show(title="UnknownFile")
+    file1 = _make_file(filename="UnknownFile.S01E01.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[file_result, show_result, show_result, ep_result]
+    )
+
+    orch = ParseOrchestrator(session, llm=None)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+
+
 async def test_run_on_progress_called_per_file():
     """on_progress callback is called once per file."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")
