@@ -196,6 +196,11 @@ class PathImportOrchestrator:
         show_result.tmdb_id = show.tmdb_id
         show_result.tmdb_title = show.title
 
+        # Persist the show's root directory path if not already set.
+        if not self.dry_run and show.local_path is None and entries:
+            show.local_path = entries[0].show_root
+            logger.debug("Set local_path=%r for show id=%d", show.local_path, show.id)
+
         # In dry-run mode, a newly "created" show has no database id and no
         # synced episodes yet, so _find_episode would query show_id=NULL and
         # return nothing.  Estimate from the parsed entries instead.
