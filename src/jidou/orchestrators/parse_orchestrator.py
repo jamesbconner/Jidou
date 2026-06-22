@@ -18,6 +18,9 @@ from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
+_PROMPT_FILE = Path(__file__).parent.parent / "services" / "prompts" / "parse_filename.txt"
+_PARSE_SYSTEM: str = _PROMPT_FILE.read_text(encoding="utf-8")
+
 # Fast-path regex: extract S/E before trying LLM.
 # Captures (season, episode) from common SxxEyy / NxM patterns.
 _SE_PATTERNS: list[re.Pattern[str]] = [
@@ -50,18 +53,7 @@ def _heuristic_show_name(filename: str) -> str | None:
     return name if name else None
 
 
-_PARSE_SYSTEM = (
-    "You are a media filename parser. "
-    "Extract the show name, season number, episode number, "
-    "content type (anime/tv/movie), and your confidence (0.0-1.0). "
-    "Reply with ONLY valid JSON, no markdown, no extra text:\n"
-    '{"show": "...", "season": N_or_null, "episode": N_or_null, '
-    '"content_type": "anime"|"tv"|"movie"|null, "confidence": 0.0}\n'
-    "For movies use season=null and episode=null. "
-    "If the filename is not a media file or you cannot parse it, "
-    'return {"show": null, "season": null, "episode": null,'
-    ' "content_type": null, "confidence": 0.0}'
-)
+_CONFIDENCE_THRESHOLD = 0.7
 
 
 @dataclass
@@ -114,55 +106,78 @@ class ParseOrchestrator:
         self.session = session
         self.llm = llm
 
-    async def _llm_parse(self, filename: str) -> dict[str, object]:
+    async def _llm_parse(
+        self,
+        filename: str,
+        regex_hint: tuple[int, int] | None = None,
+    ) -> dict[str, object]:
         """Ask the LLM to parse a media filename into structured metadata.
+
+        The regex anchor (season, episode) extracted by ``_heuristic_se`` is
+        included in the user message so the LLM can use it as a grounding
+        signal rather than rediscovering structural tokens it is not better at.
 
         Args:
             filename: The raw filename to parse.
+            regex_hint: Optional ``(season, episode)`` from ``_heuristic_se``,
+                passed as context to reduce LLM hallucination on structured tokens.
 
         Returns:
-            Dict with keys ``show``, ``season``, ``episode``,
+            Dict with keys ``show_name``, ``season``, ``episode``,
             ``content_type``, ``confidence``; values may be None.
         """
-        empty: dict[str, object] = {
-            "show": None,
-            "season": None,
-            "episode": None,
-            "content_type": None,
-            "confidence": 0.0,
-        }
+
+        def _heuristic_result() -> dict[str, object]:
+            return {
+                "show_name": _heuristic_show_name(filename),
+                "season": None,
+                "episode": None,
+                "content_type": None,
+                "confidence": 0.0,
+                "llm_ok": False,
+            }
+
         if self.llm is None or not self.llm.is_available():
-            # No LLM: derive a show name heuristically so DB lookup can still run.
-            heuristic = _heuristic_show_name(filename)
-            return {**empty, "show": heuristic}
+            return _heuristic_result()
+
+        hint_line = ""
+        if regex_hint is not None:
+            hint_line = f"\nRegex anchor detected: season={regex_hint[0]} episode={regex_hint[1]}"
 
         response = await self.llm.complete(
-            prompt=f"Filename: {filename}",
+            prompt=f"Given this filename: {filename}{hint_line}",
             system=_PARSE_SYSTEM,
         )
         if response is None:
-            return empty
+            logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
+            return _heuristic_result()
 
         text = response.content.strip()
-        # Strip markdown fences if present
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
 
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON for %r: %r", filename, text)
-            return empty
+            logger.warning(
+                "LLM returned invalid JSON for %r: %r; falling back to heuristic",
+                filename,
+                text,
+            )
+            return _heuristic_result()
+
+        if reasoning := parsed.get("reasoning"):
+            logger.debug("LLM reasoning for %r: %s", filename, reasoning)
 
         raw_season = parsed.get("season")
         raw_episode = parsed.get("episode")
         return {
-            "show": parsed.get("show"),
-            # Coerce to int — LLM may return strings like "01" or floats like 1.0.
+            "show_name": parsed.get("show_name"),
             "season": int(raw_season) if raw_season is not None else None,
             "episode": int(raw_episode) if raw_episode is not None else None,
             "content_type": parsed.get("content_type"),
             "confidence": float(parsed.get("confidence") or 0.0),
+            "llm_ok": True,
         }
 
     async def _find_show(self, parsed_name: str) -> Show | None:
@@ -252,26 +267,32 @@ class ParseOrchestrator:
         files_matched = 0
         files_unmatched = 0
         files_failed = 0
+        llm_active = self.llm is not None and self.llm.is_available()
 
         for idx, file in enumerate(files, 1):
             if on_progress:
                 await on_progress(idx, total, f"Parsing {file.original_filename}")
 
             try:
-                # Stage 1: parse filename
-                parsed = await self._llm_parse(file.original_filename)
-
-                # Fill in season/episode via heuristic if LLM missed them
+                # Stage 1a: regex anchors season/episode (fast, structural)
                 se = _heuristic_se(file.original_filename)
+
+                # Stage 1b: LLM parses show name + confirms/corrects S/E
+                parsed = await self._llm_parse(file.original_filename, regex_hint=se)
+
+                # Prefer LLM values; fall back to regex anchor if LLM missed them
                 season: int | None = parsed.get("season") or (se[0] if se else None)  # type: ignore[assignment]
                 episode: int | None = parsed.get("episode") or (se[1] if se else None)  # type: ignore[assignment]
-                show_name: str | None = parsed.get("show")  # type: ignore[assignment]
+                show_name: str | None = parsed.get("show_name")  # type: ignore[assignment]
                 confidence: float = float(parsed.get("confidence") or 0.0)  # type: ignore[arg-type]
                 content_type: str | None = parsed.get("content_type")  # type: ignore[assignment]
+                llm_ok: bool = bool(parsed.get("llm_ok", False))
+
+                # Gate applies only when LLM produced a result and content is not a
+                # movie (movie prompts always score low due to null-episode penalty).
+                apply_gate = llm_active and llm_ok and content_type != "movie"
 
                 if dry_run:
-                    # Run the DB lookup so the count reflects real match potential,
-                    # not just whether the parser extracted a show name.
                     dry_show = await self._find_show(show_name) if show_name else None
                     logger.info(
                         "[DRY RUN] %s → show=%r S%sE%s confidence=%.2f match=%s",
@@ -282,7 +303,8 @@ class ParseOrchestrator:
                         confidence,
                         dry_show.title if dry_show is not None else "none",
                     )
-                    if dry_show is not None:
+                    gate_passes = not apply_gate or confidence >= _CONFIDENCE_THRESHOLD
+                    if dry_show is not None and gate_passes:
                         files_matched += 1
                     else:
                         files_unmatched += 1
@@ -295,7 +317,24 @@ class ParseOrchestrator:
                 file.parsed_confidence = confidence
                 file.parsed_content_type = content_type
 
-                # Stage 2: DB lookup
+                # Stage 2: confidence gate — skipped for heuristic results (llm_ok=False)
+                # and for movies (null episode is expected, not a sign of uncertainty).
+                if apply_gate and confidence < _CONFIDENCE_THRESHOLD:
+                    file.status = FileStatus.UNMATCHED
+                    file.error_message = (
+                        f"Parse confidence {confidence:.2f} below threshold "
+                        f"{_CONFIDENCE_THRESHOLD} — manual review required"
+                    )
+                    files_unmatched += 1
+                    logger.info(
+                        "Low confidence (%.2f) for %s, flagging UNMATCHED",
+                        confidence,
+                        file.original_filename,
+                    )
+                    await self.session.flush()
+                    continue
+
+                # Stage 3: DB lookup
                 if show_name:
                     show = await self._find_show(show_name)
                 else:
