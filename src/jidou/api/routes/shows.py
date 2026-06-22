@@ -363,7 +363,12 @@ async def rematch_show(
     show.original_language = data.get("original_language")
     show.sys_name = _sanitize_sys_name(title)
     show.genres = data.get("genres") or []
-    show.origin_country = data.get("origin_country") or []
+    # TV uses origin_country (ISO list); movies use production_countries (objects).
+    tv_countries: list[str] = data.get("origin_country") or []
+    movie_countries: list[str] = [
+        c["iso_3166_1"] for c in (data.get("production_countries") or []) if "iso_3166_1" in c
+    ]
+    show.origin_country = tv_countries or movie_countries
     show.last_air_date = data.get("last_air_date")
     show.last_episode_to_air = data.get("last_episode_to_air")
     show.next_episode_to_air = data.get("next_episode_to_air")
@@ -376,6 +381,8 @@ async def rematch_show(
     show.show_type = data.get("type")
     show.runtime = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
     show.tagline = data.get("tagline")
+    show.external_ids = data.get("external_ids")
+    show.episode_groups = data.get("episode_groups") or []
 
     # Purge episodes from the old match — they belong to a different show.
     await db_session.execute(

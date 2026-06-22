@@ -572,9 +572,7 @@ def test_rematch_show_uses_payload_media_type() -> None:
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
         # movie path skips sync_show_episodes; no TMDBOrchestrator patch needed
-        TestClient(app).post(
-            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
-        )
+        TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"})
         tmdb_mock.get_details.assert_awaited_once_with(200, media_type="movie")
     finally:
         app.dependency_overrides.clear()
