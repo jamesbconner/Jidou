@@ -181,7 +181,7 @@ export default function Shows() {
         {activeFilterCount > 0 && (
           <button
             onClick={clearFilters}
-            className="ml-auto text-xs text-blue-600 hover:underline"
+            className="ml-auto text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
           >
             Clear filters ({activeFilterCount})
           </button>
