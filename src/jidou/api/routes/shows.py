@@ -13,7 +13,14 @@ from jidou.database import get_session
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import EpisodeList
-from jidou.schemas.show_schema import ShowAliasesUpdate, ShowCreate, ShowList, ShowPaths, ShowRead
+from jidou.schemas.show_schema import (
+    RematchRequest,
+    ShowAliasesUpdate,
+    ShowCreate,
+    ShowList,
+    ShowPaths,
+    ShowRead,
+)
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -282,6 +289,120 @@ async def delete_show(
 
     await db_session.delete(show)
     logger.info("Deleted show id=%d title=%r", show_id, show.title)
+
+
+@router.post("/{show_id}/rematch", response_model=ShowRead)
+async def rematch_show(
+    show_id: int,
+    payload: RematchRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> Show:
+    """Re-match a show to a different TMDB entry.
+
+    Replaces all TMDB-sourced metadata on the show row, purges every episode
+    that was synced from the old entry, and syncs fresh episodes from the new
+    TMDB ID.  User-managed fields (``local_path``, ``content_type``, ``aliases``)
+    are preserved.
+
+    Args:
+        show_id: Database primary key of the show to re-match.
+        payload: ``{ "tmdb_id": <new_tmdb_id> }``
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+        HTTPException: 409 if the target TMDB ID is already tracked as a
+            different show.
+        HTTPException: 502 if TMDB details cannot be fetched.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    if payload.tmdb_id != show.tmdb_id:
+        conflict = (
+            await db_session.execute(select(Show).where(Show.tmdb_id == payload.tmdb_id))
+        ).scalar_one_or_none()
+        if conflict is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"TMDB ID {payload.tmdb_id} is already tracked as"
+                    f" '{conflict.title}' (id={conflict.id})"
+                ),
+            )
+
+    try:
+        data = await tmdb.get_details(payload.tmdb_id, media_type=payload.media_type)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
+
+    # TV uses "name" + "first_air_date"; movies use "title" + "release_date".
+    title: str = data.get("name") or data.get("title") or show.title
+    release_date: str | None = data.get("first_air_date") or data.get("release_date")
+    ep_runtimes: list[int] = data.get("episode_run_time") or []
+
+    # Update all TMDB-sourced fields; preserve user-managed ones.
+    show.tmdb_id = payload.tmdb_id
+    show.media_type = payload.media_type
+    show.title = title
+    show.overview = data.get("overview")
+    show.poster_path = data.get("poster_path")
+    show.backdrop_path = data.get("backdrop_path")
+    show.vote_average = data.get("vote_average")
+    show.vote_count = data.get("vote_count", 0)
+    show.release_date = release_date
+    show.original_language = data.get("original_language")
+    show.sys_name = _sanitize_sys_name(title)
+    show.genres = data.get("genres") or []
+    # TV uses origin_country (ISO list); movies use production_countries (objects).
+    tv_countries: list[str] = data.get("origin_country") or []
+    movie_countries: list[str] = [
+        c["iso_3166_1"] for c in (data.get("production_countries") or []) if "iso_3166_1" in c
+    ]
+    show.origin_country = tv_countries or movie_countries
+    show.last_air_date = data.get("last_air_date")
+    show.last_episode_to_air = data.get("last_episode_to_air")
+    show.next_episode_to_air = data.get("next_episode_to_air")
+    show.homepage = data.get("homepage")
+    show.status = data.get("status")
+    show.in_production = data.get("in_production")
+    show.number_of_seasons = data.get("number_of_seasons")
+    show.number_of_episodes = data.get("number_of_episodes")
+    show.networks = data.get("networks") or []
+    show.show_type = data.get("type")
+    show.runtime = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
+    show.tagline = data.get("tagline")
+    show.external_ids = data.get("external_ids")
+    show.episode_groups = data.get("episode_groups") or []
+
+    # Purge episodes from the old match — they belong to a different show.
+    await db_session.execute(
+        Episode.__table__.delete().where(Episode.show_id == show_id)  # type: ignore[attr-defined]
+    )
+
+    await db_session.flush()
+    logger.info("Re-matched show id=%d → tmdb_id=%d title=%r", show_id, payload.tmdb_id, title)
+
+    # Movies have no episode structure; skip TV-specific season sync.
+    if payload.media_type != "movie":
+        try:
+            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
+        except Exception as exc:
+            logger.exception("Episode sync failed after rematch for show id=%d", show_id)
+            raise HTTPException(
+                status_code=502, detail="TMDB episode sync failed; rematch aborted"
+            ) from exc
+
+    return show
 
 
 @router.post("/{show_id}/sync-episodes", response_model=list[EpisodeList])
