@@ -345,18 +345,21 @@ async def rematch_show(
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
 
-    title: str = data.get("name") or show.title
+    # TV uses "name" + "first_air_date"; movies use "title" + "release_date".
+    title: str = data.get("name") or data.get("title") or show.title
+    release_date: str | None = data.get("first_air_date") or data.get("release_date")
     ep_runtimes: list[int] = data.get("episode_run_time") or []
 
     # Update all TMDB-sourced fields; preserve user-managed ones.
     show.tmdb_id = payload.tmdb_id
+    show.media_type = payload.media_type
     show.title = title
     show.overview = data.get("overview")
     show.poster_path = data.get("poster_path")
     show.backdrop_path = data.get("backdrop_path")
     show.vote_average = data.get("vote_average")
     show.vote_count = data.get("vote_count", 0)
-    show.release_date = data.get("first_air_date")
+    show.release_date = release_date
     show.original_language = data.get("original_language")
     show.sys_name = _sanitize_sys_name(title)
     show.genres = data.get("genres") or []
@@ -382,15 +385,15 @@ async def rematch_show(
     await db_session.flush()
     logger.info("Re-matched show id=%d → tmdb_id=%d title=%r", show_id, payload.tmdb_id, title)
 
-    # Sync fresh episodes for the new TMDB show.  If sync fails we raise so
-    # the transaction rolls back, restoring the pre-rematch state.
-    try:
-        await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
-    except Exception as exc:
-        logger.exception("Episode sync failed after rematch for show id=%d", show_id)
-        raise HTTPException(
-            status_code=502, detail="TMDB episode sync failed; rematch aborted"
-        ) from exc
+    # Movies have no episode structure; skip TV-specific season sync.
+    if payload.media_type != "movie":
+        try:
+            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
+        except Exception as exc:
+            logger.exception("Episode sync failed after rematch for show id=%d", show_id)
+            raise HTTPException(
+                status_code=502, detail="TMDB episode sync failed; rematch aborted"
+            ) from exc
 
     return show
 

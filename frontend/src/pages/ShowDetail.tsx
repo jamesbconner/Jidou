@@ -76,7 +76,7 @@ function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
           {searchData.results.slice(0, 12).map((r) => (
             <button
-              key={r.id}
+              key={`${r.media_type ?? 'unknown'}-${r.id}`}
               onClick={() => handlePick(r)}
               disabled={rematch.isPending || r.id === currentTmdbId}
               className="text-left bg-white rounded shadow overflow-hidden hover:ring-2 hover:ring-amber-400 disabled:opacity-40 transition"
@@ -122,6 +122,7 @@ export default function ShowDetail() {
 
   useEffect(() => {
     syncEpisodes.reset()
+    updatePaths.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>

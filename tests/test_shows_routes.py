@@ -571,12 +571,50 @@ def test_rematch_show_uses_payload_media_type() -> None:
     app.dependency_overrides[get_session] = _rematch_session(show)
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
-            mock_orch.return_value.sync_show_episodes = AsyncMock()
-            TestClient(app).post(
-                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
-            )
+        # movie path skips sync_show_episodes; no TMDBOrchestrator patch needed
+        TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
+        )
         tmdb_mock.get_details.assert_awaited_once_with(200, media_type="movie")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_movie_applies_movie_fields() -> None:
+    """POST /{id}/rematch for a movie uses data['title'] and data['release_date']."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    movie_data = {
+        "title": "My Movie",  # movies use 'title', not 'name'
+        "release_date": "2022-06-01",  # movies use 'release_date', not 'first_air_date'
+        "overview": "A film",
+        "poster_path": None,
+        "backdrop_path": None,
+        "vote_average": 7.5,
+        "vote_count": 200,
+        "original_language": "en",
+        "genres": [],
+        "runtime": 120,
+        "tagline": "A tagline",
+        "status": "Released",
+        "networks": [],
+    }
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=movie_data)
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 300, "media_type": "movie"}
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["title"] == "My Movie"
+        assert body["media_type"] == "movie"
+        assert body["release_date"] == "2022-06-01"
     finally:
         app.dependency_overrides.clear()
 
