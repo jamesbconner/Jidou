@@ -1,18 +1,38 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { TaskList, TaskRead, TaskTrigger } from '@/types/api'
+import type { TaskList, TaskRead, TaskTrigger, TaskType } from '@/types/api'
 
 export const taskKeys = {
   all: ['tasks'] as const,
-  list: () => [...taskKeys.all, 'list'] as const,
+  list: (params: TaskListParams) => [...taskKeys.all, 'list', params] as const,
+  count: (taskType?: TaskType) => [...taskKeys.all, 'count', taskType] as const,
   detail: (id: number) => [...taskKeys.all, 'detail', id] as const,
 }
 
-export function useTasks() {
+export interface TaskListParams {
+  limit: number
+  offset: number
+  taskType?: TaskType
+}
+
+export function useTasks(params: TaskListParams) {
+  const qs = new URLSearchParams({
+    limit: String(params.limit),
+    offset: String(params.offset),
+    ...(params.taskType ? { task_type: params.taskType } : {}),
+  })
   return useQuery({
-    queryKey: taskKeys.list(),
-    // Fetch up to 100 tasks to avoid silent truncation; backend defaults to 20
-    queryFn: () => api.get<TaskList[]>('/tasks?limit=100'),
+    queryKey: taskKeys.list(params),
+    queryFn: () => api.get<TaskList[]>(`/tasks?${qs}`),
+    refetchInterval: 5000,
+  })
+}
+
+export function useTaskCount(taskType?: TaskType) {
+  const qs = taskType ? `?task_type=${taskType}` : ''
+  return useQuery({
+    queryKey: taskKeys.count(taskType),
+    queryFn: () => api.get<{ total: number }>(`/tasks/count${qs}`),
     refetchInterval: 5000,
   })
 }
@@ -28,7 +48,7 @@ export function useTriggerTask() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: TaskTrigger) => api.post<TaskRead>('/tasks/trigger', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: taskKeys.list() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: taskKeys.all }),
   })
 }
 
@@ -38,7 +58,7 @@ export function useCancelTask() {
     mutationFn: (id: number) => api.post<TaskRead>(`/tasks/${id}/cancel`),
     onSuccess: (data) => {
       qc.setQueryData(taskKeys.detail(data.id), data)
-      qc.invalidateQueries({ queryKey: taskKeys.list() })
+      qc.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
 }

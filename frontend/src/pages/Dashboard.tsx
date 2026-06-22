@@ -13,7 +13,7 @@ function LiveTask({ taskId }: { taskId: number }) {
 }
 
 export default function Dashboard() {
-  const { data: tasks = [] } = useTasks()
+  const { data: tasks = [] } = useTasks({ limit: 20, offset: 0 })
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: () => api.get<AdminStats>('/admin/stats'),
