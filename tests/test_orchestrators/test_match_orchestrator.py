@@ -586,6 +586,45 @@ async def test_run_no_content_type_skips_local_path_auto_set():
     assert show.local_path is None
 
 
+async def test_run_movie_media_type_auto_sets_local_path_without_content_type():
+    """movie media_type is unambiguous — heuristic match auto-sets local_path even when
+    content_type is None (LLM not available, only media_type="movie" from TMDB)."""
+    show = _make_show(title="Spirited Away")
+    show.sys_name = "Spirited Away"
+    show.content_type = None  # not yet set
+    show.media_type = "movie"  # unambiguous from TMDB
+    show.local_path = None
+
+    file1 = _make_file(filename="Spirited.Away.2001.1080p.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    # No LLM — heuristic path; confidence gate is bypassed (llm_ok=False)
+    orch = ParseOrchestrator(
+        session,
+        llm=None,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    await orch.run()
+
+    assert show.local_path == "/media/movies/Spirited Away"
+
+
 async def test_run_on_progress_called_per_file():
     """on_progress callback is called once per file."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")

@@ -397,12 +397,12 @@ class ParseOrchestrator:
                     # Backfill show.content_type from the parsed value if unset
                     if content_type and not show.content_type:
                         show.content_type = content_type
-                    # Auto-populate show.local_path only when content_type is known.
-                    # Without it, media_type alone cannot distinguish anime from TV
-                    # (TMDB stores both as "tv"), so we'd silently pick the wrong root.
-                    # Leave local_path=None; RouteOrchestrator will surface an ERROR
-                    # that the operator can resolve via PATCH.
-                    if show.local_path is None and show.content_type:
+                    # Auto-populate show.local_path when the content type is
+                    # unambiguous.  media_type="movie" is always safe; media_type="tv"
+                    # is not (TMDB uses "tv" for both TV series and anime), so for
+                    # that case we require content_type to be explicitly set.
+                    can_auto_path = bool(show.content_type) or show.media_type == "movie"
+                    if show.local_path is None and can_auto_path:
                         show.local_path = self._resolve_local_path(show)
                         logger.debug(
                             "Auto-set local_path=%r for show id=%d",
