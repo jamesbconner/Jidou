@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ShowCard } from '@/components/ShowCard'
-import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
+import type { ShowSortOrder } from '@/hooks/useShows'
 import type { TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -8,6 +9,7 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 export default function Shows() {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [sort, setSort] = useState<ShowSortOrder>('title_asc')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export default function Shows() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [query])
 
-  const { data: shows = [], isLoading } = useShows()
+  const { data: shows = [], isLoading } = useShows(sort)
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
 
@@ -37,8 +39,17 @@ export default function Shows() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Shows</h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl font-bold mr-auto">Shows</h1>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as ShowSortOrder)}
+          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {(Object.entries(SHOW_SORT_LABELS) as [ShowSortOrder, string][]).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
         <input
           type="search"
           placeholder="Search TMDB…"

@@ -4,8 +4,8 @@ import logging
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import ColumnElement, nullslast, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,23 +108,46 @@ async def get_tmdb_details(
 # ---------------------------------------------------------------------------
 
 
+_SORT_MAP: dict[str, ColumnElement[Any]] = {
+    "title_asc": Show.title.asc(),
+    "title_desc": Show.title.desc(),
+    "added_desc": Show.created_at.desc(),
+    "added_asc": Show.created_at.asc(),
+    "release_desc": nullslast(Show.release_date.desc()),
+    "release_asc": nullslast(Show.release_date.asc()),
+    "last_aired_desc": nullslast(Show.last_air_date.desc()),
+    "rating_desc": nullslast(Show.vote_average.desc()),
+    "episodes_desc": nullslast(Show.number_of_episodes.desc()),
+}
+
+
 @router.get("", response_model=list[ShowList])
 async def list_shows(
-    limit: int = 20,
+    limit: int = 500,
     offset: int = 0,
+    sort: str = Query(
+        default="title_asc",
+        pattern=(
+            "^(title_asc|title_desc|added_desc|added_asc"
+            "|release_desc|release_asc|last_aired_desc|rating_desc|episodes_desc)$"
+        ),
+    ),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[Show]:
     """List all shows stored in the database.
 
     Args:
-        limit: Maximum results to return (default 20).
+        limit: Maximum results to return (default 500).
         offset: Number of results to skip for pagination.
+        sort: Sort order key. One of: ``title_asc``, ``title_desc``,
+            ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
+            ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
         db_session: DB session (injected).
 
     Returns:
-        List of shows ordered by title.
+        List of shows in the requested order.
     """
-    stmt = select(Show).order_by(Show.title).offset(offset).limit(limit)
+    stmt = select(Show).order_by(_SORT_MAP[sort]).offset(offset).limit(limit)
     result = await db_session.execute(stmt)
     return list(result.scalars().all())
 
