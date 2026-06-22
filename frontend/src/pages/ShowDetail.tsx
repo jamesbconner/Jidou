@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   useShow,
   useShowEpisodes,
   useUpdateShowPaths,
   useSyncEpisodes,
   useRematchShow,
+  useDeleteShow,
   useSearchShows,
 } from '@/hooks/useShows'
 import { useFilesByShow, useRematchFile } from '@/hooks/useFiles'
@@ -16,11 +17,18 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
 
 // ---------------------------------------------------------------------------
-// TMDB re-match panel
+// TMDB re-match panel (search UI only — trigger lives in the header)
 // ---------------------------------------------------------------------------
 
-function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId: number }) {
-  const [open, setOpen] = useState(false)
+function RematchPanel({
+  showId,
+  currentTmdbId,
+  onClose,
+}: {
+  showId: number
+  currentTmdbId: number
+  onClose: () => void
+}) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -29,35 +37,32 @@ function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => setDebouncedQuery(query), 300)
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
   }, [query])
 
   const { data: searchData } = useSearchShows(debouncedQuery)
 
   function handlePick(r: TmdbResult) {
     if (r.id === currentTmdbId) return
-    if (!window.confirm(`Re-match to "${r.name ?? r.title}"?\n\nThis will replace all episode data for this show.`)) return
-    rematch.mutate({ tmdbId: r.id, mediaType: r.media_type ?? 'tv' }, {
-      onSuccess: () => { setOpen(false); setQuery('') },
-    })
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="px-3 py-1 bg-amber-500 text-white text-sm rounded hover:bg-amber-600"
-      >
-        Change TMDB Match
-      </button>
+    if (
+      !window.confirm(
+        `Re-match to "${r.name ?? r.title}"?\n\nThis will replace all episode data for this show.`,
+      )
+    )
+      return
+    rematch.mutate(
+      { tmdbId: r.id, mediaType: r.media_type ?? 'tv' },
+      { onSuccess: () => onClose() },
     )
   }
 
   return (
-    <div className="mt-3 border rounded-lg p-3 bg-amber-50 space-y-3">
+    <div className="border rounded-lg p-4 bg-amber-50 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-amber-800">Search for the correct show on TMDB</p>
-        <button onClick={() => { setOpen(false); setQuery('') }} className="text-xs text-gray-500 hover:text-gray-700">
+        <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">
           Cancel
         </button>
       </div>
@@ -82,19 +87,87 @@ function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId
               className="text-left bg-white rounded shadow overflow-hidden hover:ring-2 hover:ring-amber-400 disabled:opacity-40 transition"
             >
               {r.poster_path ? (
-                <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title ?? ''} className="w-full h-28 object-cover" loading="lazy" />
+                <img
+                  src={`${TMDB_IMG}${r.poster_path}`}
+                  alt={r.name ?? r.title ?? ''}
+                  className="w-full h-28 object-cover"
+                  loading="lazy"
+                />
               ) : (
-                <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                  No image
+                </div>
               )}
               <div className="p-1">
                 <p className="text-xs line-clamp-2 leading-tight">{r.name ?? r.title}</p>
-                {r.id === currentTmdbId && <p className="text-xs text-green-600 font-medium">Current</p>}
+                {r.id === currentTmdbId && (
+                  <p className="text-xs text-green-600 font-medium">Current</p>
+                )}
               </div>
             </button>
           ))}
         </div>
       )}
-      {rematch.isPending && <p className="text-xs text-amber-700">Re-matching… episodes are being synced.</p>}
+      {rematch.isPending && (
+        <p className="text-xs text-amber-700">Re-matching… episodes are being synced.</p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Edit-path modal
+// ---------------------------------------------------------------------------
+
+function EditPathModal({
+  current,
+  onSave,
+  onClose,
+  isPending,
+}: {
+  current: string | null
+  onSave: (path: string | null) => void
+  onClose: () => void
+  isPending: boolean
+}) {
+  const [draft, setDraft] = useState(current ?? '')
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    onSave(draft.trim() || null)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
+        <h3 className="font-semibold mb-4">Edit Local Path</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="border rounded px-3 py-2 text-sm w-full font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="/media/shows/example  or  Z:\media\shows\example"
+            autoFocus
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -106,21 +179,23 @@ function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId
 export default function ShowDetail() {
   const { id } = useParams<{ id: string }>()
   const showId = Number(id)
+  const navigate = useNavigate()
 
   const { data: show, isLoading } = useShow(showId)
   const { data: episodes = [] } = useShowEpisodes(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
+  const deleteShow = useDeleteShow()
   const { data: showFiles = [] } = useFilesByShow(showId)
-  const rematch = useRematchFile()
+  const rematchFile = useRematchFile()
 
-  const [localPath, setLocalPath] = useState('')
-
-  useEffect(() => {
-    if (show) setLocalPath(show.local_path ?? '')
-  }, [show, showId])
+  const [rematchOpen, setRematchOpen] = useState(false)
+  const [pathModalOpen, setPathModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
+    setRematchOpen(false)
+    setPathModalOpen(false)
     syncEpisodes.reset()
     updatePaths.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,16 +210,27 @@ export default function ShowDetail() {
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
 
-  function savePaths(e: React.FormEvent) {
-    e.preventDefault()
-    updatePaths.mutate({
-      ...(localPath !== (show?.local_path ?? '') && { local_path: localPath || null }),
+  const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
+  const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
+
+  function handleDelete() {
+    if (!window.confirm(`Remove "${show!.title}" and all its episode data? This cannot be undone.`)) return
+    setIsDeleting(true)
+    deleteShow.mutate(showId, {
+      onSuccess: () => navigate('/shows'),
+      onSettled: () => setIsDeleting(false),
     })
+  }
+
+  function handleSavePath(path: string | null) {
+    updatePaths.mutate({ local_path: path }, { onSuccess: () => setPathModalOpen(false) })
   }
 
   return (
     <div className="space-y-8">
-      <Link to="/shows" className="text-sm text-blue-600 hover:underline">← Back to Shows</Link>
+      <Link to="/shows" className="text-sm text-blue-600 hover:underline">
+        ← Back to Shows
+      </Link>
 
       {/* Header */}
       <div className="flex gap-6">
@@ -156,44 +242,82 @@ export default function ShowDetail() {
           />
         )}
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold">{show.title}</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {show.release_date?.slice(0, 4)}
-            {show.release_date && ' · '}
-            {show.media_type}
-            {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-            {show.content_type && (
-              <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded">{show.content_type}</span>
-            )}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">TMDB #{show.tmdb_id}</p>
-          {show.overview && <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>}
-          <p className="text-sm text-gray-500 mt-2">
-            {trackedCount} / {episodes.length} episodes tracked
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold">{show.title}</h1>
+              <p className="text-gray-500 text-sm mt-1">
+                {show.release_date?.slice(0, 4)}
+                {show.release_date && ' · '}
+                {show.media_type}
+                {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
+                {show.content_type && (
+                  <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded">
+                    {show.content_type}
+                  </span>
+                )}
+              </p>
+              <a
+                href={tmdbUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-blue-500 hover:underline mt-0.5 inline-block"
+              >
+                TMDB #{show.tmdb_id}
+              </a>
+              {show.overview && (
+                <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>
+              )}
+              <p className="text-sm text-gray-500 mt-2">
+                {trackedCount} / {episodes.length} episodes tracked
+              </p>
+            </div>
+
+            {/* Rare actions — upper right */}
+            <div className="flex flex-col gap-2 items-end flex-shrink-0">
+              <button
+                onClick={() => setRematchOpen((v) => !v)}
+                className="px-3 py-1.5 text-xs border border-amber-400 text-amber-700 rounded hover:bg-amber-50 whitespace-nowrap"
+              >
+                Change TMDB Match
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+              >
+                {isDeleting ? 'Removing…' : 'Remove Show'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Rematch panel (shown inline below header when open) */}
+      {rematchOpen && (
+        <RematchPanel
+          key={showId}
+          showId={showId}
+          currentTmdbId={show.tmdb_id}
+          onClose={() => setRematchOpen(false)}
+        />
+      )}
+
       {/* Local path */}
       <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="font-semibold mb-3">Local path</h2>
-        <form onSubmit={savePaths} className="flex gap-2 items-end">
-          <div className="flex-1">
-            <input
-              value={localPath}
-              onChange={(e) => setLocalPath(e.target.value)}
-              className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-              placeholder="/media/shows/example  or  Z:\media\shows\example"
-            />
-          </div>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold">Local path</h2>
           <button
-            type="submit"
-            disabled={updatePaths.isPending}
-            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+            onClick={() => setPathModalOpen(true)}
+            className="px-3 py-1 text-xs border rounded hover:bg-gray-50"
           >
-            Save
+            Edit Path
           </button>
-        </form>
+        </div>
+        {show.local_path ? (
+          <p className="font-mono text-sm text-gray-700 break-all">{show.local_path}</p>
+        ) : (
+          <p className="text-sm text-gray-400 italic">Not set</p>
+        )}
         {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
       </section>
 
@@ -213,7 +337,6 @@ export default function ShowDetail() {
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
           )}
         </div>
-        <RematchPanel key={showId} showId={showId} currentTmdbId={show.tmdb_id} />
       </section>
 
       {/* Episodes */}
@@ -226,7 +349,9 @@ export default function ShowDetail() {
             return (
               <details key={season} className="mb-2">
                 <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
-                  <span>Season {season} ({eps.length} episodes)</span>
+                  <span>
+                    Season {season} ({eps.length} episodes)
+                  </span>
                   {seasonTracked > 0 && (
                     <span className="text-xs text-green-600">{seasonTracked} tracked</span>
                   )}
@@ -235,14 +360,21 @@ export default function ShowDetail() {
                   {eps
                     .sort((a, b) => a.episode_number - b.episode_number)
                     .map((ep) => (
-                      <div key={ep.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div
+                        key={ep.id}
+                        className="flex items-center justify-between px-3 py-2 text-sm"
+                      >
                         <span>
                           <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
                           {ep.name}
-                          {ep.air_date && <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>}
+                          {ep.air_date && (
+                            <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                          )}
                         </span>
                         {ep.file_tracked && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Tracked</span>
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                            Tracked
+                          </span>
                         )}
                       </div>
                     ))}
@@ -271,7 +403,10 @@ export default function ShowDetail() {
                     <td className="px-4 py-2 font-mono text-xs max-w-xs">
                       <div className="truncate">{f.original_filename}</div>
                       {f.error_message && (
-                        <div className="text-red-500 truncate mt-0.5" title={f.error_message}>
+                        <div
+                          className="text-red-500 truncate mt-0.5"
+                          title={f.error_message}
+                        >
                           {f.error_message}
                         </div>
                       )}
@@ -281,8 +416,8 @@ export default function ShowDetail() {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <button
-                        onClick={() => rematch.mutate({ id: f.id, payload: {} })}
-                        disabled={rematch.isPending}
+                        onClick={() => rematchFile.mutate({ id: f.id, payload: {} })}
+                        disabled={rematchFile.isPending}
                         className="text-xs text-blue-600 hover:underline disabled:opacity-50"
                       >
                         Re-match
@@ -294,6 +429,16 @@ export default function ShowDetail() {
             </table>
           </div>
         </section>
+      )}
+
+      {/* Edit path modal */}
+      {pathModalOpen && (
+        <EditPathModal
+          current={show.local_path ?? null}
+          onSave={handleSavePath}
+          onClose={() => setPathModalOpen(false)}
+          isPending={updatePaths.isPending}
+        />
       )}
     </div>
   )

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ShowCard } from '@/components/ShowCard'
-import { useShows, useSearchShows, useCreateShow, useDeleteShow } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
 import type { TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -19,7 +19,6 @@ export default function Shows() {
   const { data: shows = [], isLoading } = useShows()
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
-  const deleteShow = useDeleteShow()
 
   function handleTrack(r: TmdbResult) {
     createShow.mutate({
@@ -34,12 +33,6 @@ export default function Shows() {
       release_date: r.first_air_date ?? r.release_date,
       original_language: r.original_language,
     })
-  }
-
-  function handleDelete(id: number) {
-    if (window.confirm('Remove this show and all its data?')) {
-      deleteShow.mutate(id)
-    }
   }
 
   return (
@@ -95,7 +88,7 @@ export default function Shows() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {shows.map((s) => (
-              <ShowCard key={s.id} show={s} onDelete={handleDelete} />
+              <ShowCard key={s.id} show={s} />
             ))}
           </div>
         )}
