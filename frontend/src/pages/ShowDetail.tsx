@@ -213,7 +213,7 @@ export default function ShowDetail() {
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
           )}
         </div>
-        <RematchPanel showId={showId} currentTmdbId={show.tmdb_id} />
+        <RematchPanel key={showId} showId={showId} currentTmdbId={show.tmdb_id} />
       </section>
 
       {/* Episodes */}
