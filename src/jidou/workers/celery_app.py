@@ -35,6 +35,7 @@ celery_app.conf.update(
         "jidou.workers.download_tasks",
         "jidou.workers.scan_tasks",
         "jidou.workers.match_tasks",
+        "jidou.workers.route_tasks",
         "jidou.workers.sync_tasks",
         "jidou.workers.import_tasks",
         "jidou.workers.db_import_tasks",

@@ -33,6 +33,9 @@ _SE_PATTERNS: list[re.Pattern[str]] = [
 _SHOW_NAME_STRIP = re.compile(r"[\.\s_-]*(?:[Ss]\d{1,2}[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}).*$")
 _SHOW_NAME_CLEAN = re.compile(r"[\._]+")
 
+# Strips characters that are invalid on common filesystems (Windows + Linux).
+_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
+
 
 def _heuristic_show_name(filename: str) -> str | None:
     """Extract a probable show name from a filename without an LLM.
@@ -213,8 +216,10 @@ class ParseOrchestrator:
             base = self.local_anime_path
         else:
             base = self.local_tv_path
+        # sys_name is pre-sanitized; fall back to title with invalid chars stripped.
+        dir_name = show.sys_name or _INVALID_FS_CHARS.sub("_", show.title).strip()
         # PurePosixPath ensures forward slashes — these are always Linux container paths.
-        return str(PurePosixPath(base) / (show.sys_name or show.title))
+        return str(PurePosixPath(base) / dir_name)
 
     async def _find_show(self, parsed_name: str) -> Show | None:
         """Look up a show by alias list containment or title match.
