@@ -3,7 +3,13 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _heuristic_se, _sanitize_alias
+from jidou.orchestrators.parse_orchestrator import (
+    ParseOrchestrator,
+    _clean_filename,
+    _heuristic_parse,
+    _heuristic_se,
+    _sanitize_alias,
+)
 
 # ---------------------------------------------------------------------------
 # Unit helpers
@@ -33,6 +39,91 @@ def test_heuristic_se_avoids_resolution():
 def test_sanitize_alias():
     """Aliases are lowercased and stripped."""
     assert _sanitize_alias("  Attack on Titan  ") == "attack on titan"
+
+
+# ---------------------------------------------------------------------------
+# _clean_filename
+# ---------------------------------------------------------------------------
+
+
+def test_clean_filename_strips_extension_and_brackets():
+    """Extension and bracket tags are removed; delimiters become spaces."""
+    cleaned, crc32 = _clean_filename("[HorribleSubs] Attack on Titan - 01 [1080p].mkv")
+    assert "HorribleSubs" not in cleaned
+    assert "1080p" not in cleaned
+    assert ".mkv" not in cleaned
+    assert crc32 is None
+
+
+def test_clean_filename_extracts_crc32():
+    """8-char hex tag is returned as uppercase CRC32."""
+    _, crc32 = _clean_filename("Show.Name.S01E01.[ABCD1234].mkv")
+    assert crc32 == "ABCD1234"
+
+
+def test_clean_filename_crc32_lowercase_normalised():
+    """Lowercase CRC32 is uppercased."""
+    _, crc32 = _clean_filename("Show.Name.S01E01.[abcd1234].mkv")
+    assert crc32 == "ABCD1234"
+
+
+def test_clean_filename_no_crc32_returns_none():
+    _, crc32 = _clean_filename("Show.Name.S01E01.mkv")
+    assert crc32 is None
+
+
+# ---------------------------------------------------------------------------
+# _heuristic_parse
+# ---------------------------------------------------------------------------
+
+
+def test_heuristic_parse_sxxeyy():
+    """Standard SxxEyy notation."""
+    r = _heuristic_parse("Attack.on.Titan.S01E02.1080p.mkv")
+    assert r["show_name"] == "Attack on Titan"
+    assert r["season"] == 1
+    assert r["episode"] == 2
+    assert r["confidence"] == 0.6
+    assert r["llm_ok"] is False
+
+
+def test_heuristic_parse_ordinal_season():
+    """'2nd Season 04' — common anime release format."""
+    r = _heuristic_parse("[Group] My Hero Academia - 2nd Season - 04 [720p].mkv")
+    assert r["show_name"] == "My Hero Academia"
+    assert r["season"] == 2
+    assert r["episode"] == 4
+
+
+def test_heuristic_parse_bare_episode_with_group_tag():
+    """Anime release with group tag, bare episode number, and CRC32."""
+    r = _heuristic_parse("[HorribleSubs] One Piece - 1001 [ABCD1234].mkv")
+    assert r["show_name"] == "One Piece"
+    assert r["episode"] == 1001
+    assert r["crc32"] == "ABCD1234"
+
+
+def test_heuristic_parse_dot_separated():
+    """Dot-separated name with SxxEyy."""
+    r = _heuristic_parse("The.Office.S03E07.720p.BluRay.mkv")
+    assert r["show_name"] == "The Office"
+    assert r["season"] == 3
+    assert r["episode"] == 7
+
+
+def test_heuristic_parse_no_match_returns_cleaned_name():
+    """When no pattern matches, full cleaned name is returned at low confidence."""
+    r = _heuristic_parse("[SubGroup] SomeTitleWithNoMarker [1080p].mkv")
+    assert r["show_name"] == "SomeTitleWithNoMarker"
+    assert r["season"] is None
+    assert r["episode"] is None
+    assert r["confidence"] == 0.1
+
+
+def test_heuristic_parse_content_type_always_none():
+    """Heuristic parse never infers content_type — that requires LLM or TMDB."""
+    r = _heuristic_parse("Some.Movie.2024.1080p.mkv")
+    assert r["content_type"] is None
 
 
 # ---------------------------------------------------------------------------

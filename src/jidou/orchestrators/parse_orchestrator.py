@@ -28,32 +28,115 @@ _SE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)"),
 ]
 
-# Strips everything from the first S/E marker onward, then cleans separators.
-# Used to derive a heuristic show name when no LLM is available.
-_SHOW_NAME_STRIP = re.compile(r"[\.\s_-]*(?:[Ss]\d{1,2}[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}).*$")
-_SHOW_NAME_CLEAN = re.compile(r"[\._]+")
+# Heuristic parser — applied when no LLM is available.
+_CRC32_PAT = re.compile(r"\[([0-9A-Fa-f]{8})\]")
+_EXTENSION_PAT = re.compile(r"\.[a-z0-9]{2,4}$", re.IGNORECASE)
+_BRACKETS_PAT = re.compile(r"[\[\(].*?[\]\)]")
+_DELIMITERS_PAT = re.compile(r"[_.]")
+_WHITESPACE_PAT = re.compile(r"\s+")
+
+# Ordered from most- to least-specific; first match wins.
+# Episode capture uses \d{1,4} to cover long-running anime (e.g. One Piece 1000+).
+_HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
+    # "2nd Season 04" / "1st Season 01"
+    re.compile(
+        r"(?P<name>.*?)[\s\-]+(?P<season>\d{1,2})(?:st|nd|rd|th)?[\s\-]+Season[\s\-]+(?P<episode>\d{1,4})",
+        re.IGNORECASE,
+    ),
+    # S01E02
+    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+    # S01 02
+    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[\s\-]+(?P<episode>\d{1,4})"),
+    # E02 (season optional)
+    re.compile(
+        r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,4})"
+    ),
+    # bare episode number, optional v2 suffix
+    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,4})(?:v\d)?\b"),
+    # bare episode at end of string
+    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,4})$"),
+    # S01E02 with leading space only
+    re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+]
 
 # Strips characters that are invalid on common filesystems (Windows + Linux).
 _INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
-def _heuristic_show_name(filename: str) -> str | None:
-    """Extract a probable show name from a filename without an LLM.
+def _clean_filename(filename: str) -> tuple[str, str | None]:
+    """Strip metadata noise from a filename and extract any CRC32 checksum.
 
-    Strips the file extension, removes everything from the first S/E
-    pattern onward, then converts separators to spaces.  Returns None
-    if nothing remains after cleaning.
+    Removes the file extension, bracket/parenthesis tags (release group,
+    resolution, codec, etc.), then normalises delimiters to spaces.
 
     Args:
-        filename: Raw filename (may include a path).
+        filename: Raw filename (basename or full path).
 
     Returns:
-        Best-effort show name, or None if it cannot be extracted.
+        Tuple of (cleaned_name, crc32) where crc32 is an 8-char uppercase
+        hex string or None if no CRC32 tag was present.
     """
-    stem = Path(filename).stem
-    name = _SHOW_NAME_STRIP.sub("", stem).strip()
-    name = _SHOW_NAME_CLEAN.sub(" ", name).strip()
-    return name if name else None
+    crc32_m = _CRC32_PAT.search(filename)
+    crc32 = crc32_m.group(1).upper() if crc32_m else None
+    base = _EXTENSION_PAT.sub("", Path(filename).name)
+    cleaned = _BRACKETS_PAT.sub("", base)
+    cleaned = _DELIMITERS_PAT.sub(" ", cleaned)
+    cleaned = _WHITESPACE_PAT.sub(" ", cleaned).strip()
+    return cleaned, crc32
+
+
+def _heuristic_parse(filename: str) -> dict[str, object]:
+    """Parse a media filename into structured metadata using regex patterns only.
+
+    Applies an ordered set of patterns (most- to least-specific) against the
+    cleaned filename.  Falls back to the full cleaned string as the show name
+    when no pattern matches.  CRC32 checksums embedded in bracket tags are
+    extracted regardless of which pattern matches.
+
+    Args:
+        filename: Raw filename to parse.
+
+    Returns:
+        Dict with keys ``show_name``, ``season``, ``episode``, ``crc32``,
+        ``content_type``, ``confidence``, ``llm_ok``.
+    """
+    cleaned, crc32 = _clean_filename(filename)
+
+    for idx, pattern in enumerate(_HEURISTIC_PATTERNS):
+        m = pattern.search(cleaned)
+        if m:
+            groups = m.groupdict()
+            show_name: str | None = groups.get("name", "").strip(" -_") or None
+            season: int | None = int(groups["season"]) if groups.get("season") else None
+            episode: int | None = int(groups["episode"]) if groups.get("episode") else None
+            logger.debug(
+                "Heuristic parse: show=%r S%sE%s CRC32=%s pattern=%d",
+                show_name,
+                season,
+                episode,
+                crc32,
+                idx,
+            )
+            return {
+                "show_name": show_name,
+                "season": season,
+                "episode": episode,
+                "crc32": crc32,
+                "content_type": None,
+                "confidence": 0.6,
+                "llm_ok": False,
+            }
+
+    logger.debug("Heuristic parse: no pattern matched, fallback name=%r CRC32=%s", cleaned, crc32)
+    return {
+        "show_name": cleaned or None,
+        "season": None,
+        "episode": None,
+        "crc32": crc32,
+        "content_type": None,
+        "confidence": 0.1,
+        "llm_ok": False,
+    }
 
 
 _CONFIDENCE_THRESHOLD = 0.7
@@ -143,18 +226,8 @@ class ParseOrchestrator:
             ``content_type``, ``confidence``; values may be None.
         """
 
-        def _heuristic_result() -> dict[str, object]:
-            return {
-                "show_name": _heuristic_show_name(filename),
-                "season": None,
-                "episode": None,
-                "content_type": None,
-                "confidence": 0.0,
-                "llm_ok": False,
-            }
-
         if self.llm is None or not self.llm.is_available():
-            return _heuristic_result()
+            return _heuristic_parse(filename)
 
         hint_line = ""
         if regex_hint is not None:
@@ -166,7 +239,7 @@ class ParseOrchestrator:
         )
         if response is None:
             logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
-            return _heuristic_result()
+            return _heuristic_parse(filename)
 
         text = response.content.strip()
         if text.startswith("```"):
@@ -180,7 +253,7 @@ class ParseOrchestrator:
                 filename,
                 text,
             )
-            return _heuristic_result()
+            return _heuristic_parse(filename)
 
         if reasoning := parsed.get("reasoning"):
             logger.debug("LLM reasoning for %r: %s", filename, reasoning)
