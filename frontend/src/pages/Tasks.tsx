@@ -64,43 +64,41 @@ export default function Tasks() {
       <h1 className="text-2xl font-bold">Tasks</h1>
 
       {/* Trigger panel */}
-      <div className="bg-white rounded-lg shadow p-4 flex items-end gap-4 flex-wrap">
-        <div>
-          <label className="text-xs text-gray-500 block mb-1">Task type</label>
-          <select
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value as TaskType)}
-            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-end gap-4 flex-wrap">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Task type</label>
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value as TaskType)}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => setDryRun(e.target.checked)}
+              className="rounded"
+            />
+            Dry run
+          </label>
+          <button
+            onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })}
+            disabled={triggerTask.isPending}
+            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
           >
-            {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+            Run
+          </button>
+          {triggerTask.isError && (
+            <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
+          )}
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => setDryRun(e.target.checked)}
-            className="rounded"
-          />
-          Dry run
-        </label>
-        <button
-          onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })}
-          disabled={triggerTask.isPending}
-          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          Run
-        </button>
-        {triggerTask.isError && (
-          <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
-        )}
-      </div>
-
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-900">
-        <p className="font-medium mb-1 capitalize">{taskType}</p>
-        <p className="text-blue-800">{TASK_DESCRIPTIONS[taskType]}</p>
+        <p className="text-xs text-gray-500">{TASK_DESCRIPTIONS[taskType]}</p>
       </div>
 
       {/* List controls */}
