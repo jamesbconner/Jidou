@@ -193,6 +193,7 @@ export default function ShowDetail() {
 
   useEffect(() => {
     setRematchOpen(false)
+    setPathModalOpen(false)
     syncEpisodes.reset()
     updatePaths.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
