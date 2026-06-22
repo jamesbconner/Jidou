@@ -362,7 +362,7 @@ async def test_run_llm_outage_falls_back_to_heuristic():
 
 
 async def test_resolve_local_path_anime():
-    """Anime content type routes to local_anime_path / sys_name."""
+    """show.content_type=anime routes to local_anime_path / sys_name."""
     session = _make_session()
     orch = ParseOrchestrator(
         session,
@@ -373,15 +373,15 @@ async def test_resolve_local_path_anime():
     )
     show = _make_show(show_id=1, title="Attack on Titan")
     show.sys_name = "Attack on Titan"
-    show.content_type = None
+    show.content_type = "anime"
     show.media_type = "tv"
 
-    path = orch._resolve_local_path(show, "anime")
+    path = orch._resolve_local_path(show)
     assert path == "/media/anime/Attack on Titan"
 
 
 async def test_resolve_local_path_movie():
-    """Movie content type routes to local_movie_path / sys_name."""
+    """show.content_type=movie routes to local_movie_path / sys_name."""
     session = _make_session()
     orch = ParseOrchestrator(
         session,
@@ -395,12 +395,12 @@ async def test_resolve_local_path_movie():
     show.content_type = "movie"
     show.media_type = "movie"
 
-    path = orch._resolve_local_path(show, "movie")
+    path = orch._resolve_local_path(show)
     assert path == "/media/movies/Spirited Away"
 
 
-async def test_resolve_local_path_falls_back_to_show_content_type():
-    """Parsed content_type=None falls back to show.content_type."""
+async def test_resolve_local_path_falls_back_to_media_type():
+    """show.content_type=None falls back to show.media_type."""
     session = _make_session()
     orch = ParseOrchestrator(
         session,
@@ -411,11 +411,32 @@ async def test_resolve_local_path_falls_back_to_show_content_type():
     )
     show = _make_show(show_id=3, title="Naruto")
     show.sys_name = "Naruto"
-    show.content_type = "anime"
+    show.content_type = None
+    show.media_type = "anime"
+
+    path = orch._resolve_local_path(show)
+    assert path == "/media/anime/Naruto"
+
+
+async def test_resolve_local_path_show_content_type_wins_over_parsed():
+    """A show already labeled anime stays in the anime library even if one file parses as tv."""
+    session = _make_session()
+    orch = ParseOrchestrator(
+        session,
+        llm=None,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    show = _make_show(show_id=4, title="One Piece")
+    show.sys_name = "One Piece"
+    show.content_type = "anime"  # already set
     show.media_type = "tv"
 
-    path = orch._resolve_local_path(show, None)
-    assert path == "/media/anime/Naruto"
+    # Simulate a file that parsed as "tv" — show.content_type should win.
+    # (caller backfills content_type only when unset, then calls _resolve_local_path)
+    path = orch._resolve_local_path(show)
+    assert path == "/media/anime/One Piece"
 
 
 async def test_run_auto_sets_local_path_on_match():

@@ -196,20 +196,20 @@ class ParseOrchestrator:
             "llm_ok": True,
         }
 
-    def _resolve_local_path(self, show: Show, parsed_content_type: str | None) -> str:
+    def _resolve_local_path(self, show: Show) -> str:
         """Compute ``show.local_path`` from the show's sys_name and content type.
 
-        Priority for content type: parsed file value → existing show value →
-        show media_type → default to TV.
+        Call this *after* backfilling ``show.content_type`` so the show's own
+        classification is always authoritative.  Priority: ``show.content_type``
+        → ``show.media_type`` → default TV.
 
         Args:
-            show: The matched show record.
-            parsed_content_type: Content type extracted from the filename by LLM.
+            show: The matched show record (content_type should already be set).
 
         Returns:
             Absolute path string for the show's root directory.
         """
-        ct = parsed_content_type or show.content_type or show.media_type or "tv"
+        ct = show.content_type or show.media_type or "tv"
         if ct == "movie":
             base = self.local_movie_path
         elif ct == "anime":
@@ -400,7 +400,7 @@ class ParseOrchestrator:
                     # Auto-populate show.local_path so RouteOrchestrator can
                     # move the file without manual intervention
                     if show.local_path is None:
-                        show.local_path = self._resolve_local_path(show, content_type)
+                        show.local_path = self._resolve_local_path(show)
                         logger.debug(
                             "Auto-set local_path=%r for show id=%d",
                             show.local_path,
