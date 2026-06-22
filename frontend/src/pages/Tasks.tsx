@@ -12,6 +12,14 @@ function LiveTask({ taskId }: { taskId: number }) {
 
 const SHOW_ID_TYPES = new Set<TaskType>(['download', 'match'])
 
+const TASK_DESCRIPTIONS: Record<TaskType, string> = {
+  scan: 'Connects to the SFTP server and lists remote files. New files are recorded in the database with status DISCOVERED. No files are downloaded.',
+  download: 'Downloads all DISCOVERED files from the SFTP server to the local staging directory. Optionally scope to a single show.',
+  match: 'Parses filenames of DOWNLOADED files using regex and (optionally) LLM, then matches them to shows and episodes in the database. Optionally scope to a single show.',
+  route: 'Moves all MATCHED files from the staging directory to their final media library path. Creates season subdirectories as needed.',
+  sync: 'Runs the full pipeline in sequence: Scan → Download → Match → Route.',
+}
+
 export default function Tasks() {
   const { data: tasks = [], isLoading } = useTasks()
   const triggerTask = useTriggerTask()
@@ -44,7 +52,7 @@ export default function Tasks() {
             onChange={(e) => { setTaskType(e.target.value as TaskType); setShowIdInput('') }}
             className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {(['scan', 'download', 'match', 'sync'] as TaskType[]).map((t) => (
+            {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
@@ -85,6 +93,11 @@ export default function Tasks() {
         {triggerTask.isError && (
           <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
         )}
+      </div>
+
+      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-900">
+        <p className="font-medium mb-1 capitalize">{taskType}</p>
+        <p className="text-blue-800">{TASK_DESCRIPTIONS[taskType]}</p>
       </div>
 
       {isLoading ? (
