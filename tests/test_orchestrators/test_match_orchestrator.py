@@ -153,8 +153,9 @@ async def test_run_with_llm_and_matched_show():
     llm.is_available.return_value = True
     llm_response = MagicMock()
     llm_response.content = (
-        '{"show": "Attack on Titan", "season": 1, "episode": 1, '
-        '"content_type": "anime", "confidence": 0.95}'
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
     )
     llm.complete = AsyncMock(return_value=llm_response)
 
@@ -168,6 +169,71 @@ async def test_run_with_llm_and_matched_show():
     assert file1.parsed_season == 1
     assert file1.parsed_episode == 1
     assert file1.parsed_content_type == "anime"
+
+
+async def test_run_llm_receives_regex_hint():
+    """LLM prompt includes the regex anchor when S/E pattern is found."""
+    file1 = _make_file(filename="Show.Name.S02E05.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(return_value=file_result)
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    # Low confidence so it won't proceed to DB lookup — we only care about the call
+    llm_response.content = (
+        '{"show_name": "Show Name", "season": 2, "episode": 5, '
+        '"crc32": null, "content_type": "tv", "confidence": 0.3, '
+        '"reasoning": "test"}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    await orch.run()
+
+    call_args = llm.complete.call_args
+    prompt = call_args.kwargs.get("prompt") or call_args.args[0]
+    assert "season=2" in prompt
+    assert "episode=5" in prompt
+
+
+async def test_run_low_confidence_marks_unmatched():
+    """LLM result below confidence threshold is flagged UNMATCHED without DB lookup."""
+    file1 = _make_file(filename="Ambiguous.Title.09.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(return_value=file_result)
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Ambiguous Title", "season": null, "episode": 9, '
+        '"crc32": null, "content_type": null, "confidence": 0.45, '
+        '"reasoning": "Bare episode number, uncertain show name."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_unmatched == 1
+    assert result.files_matched == 0
+    assert file1.status == FileStatus.UNMATCHED
+    assert "confidence" in (file1.error_message or "")
+    # DB lookup should not have been attempted — only the file list query
+    assert session.execute.call_count == 1
 
 
 async def test_run_exception_marks_error():
@@ -186,7 +252,8 @@ async def test_run_exception_marks_error():
     llm.is_available.return_value = True
     llm_response = MagicMock()
     llm_response.content = (
-        '{"show": "Some Show", "season": 1, "episode": 1, "content_type": "tv", "confidence": 0.9}'
+        '{"show_name": "Some Show", "season": 1, "episode": 1, "crc32": null, '
+        '"content_type": "tv", "confidence": 0.9, "reasoning": "test"}'
     )
     llm.complete = AsyncMock(return_value=llm_response)
 
