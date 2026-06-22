@@ -126,16 +126,19 @@ class ParseOrchestrator:
             Dict with keys ``show_name``, ``season``, ``episode``,
             ``content_type``, ``confidence``; values may be None.
         """
-        empty: dict[str, object] = {
-            "show_name": None,
-            "season": None,
-            "episode": None,
-            "content_type": None,
-            "confidence": 0.0,
-        }
+
+        def _heuristic_result() -> dict[str, object]:
+            return {
+                "show_name": _heuristic_show_name(filename),
+                "season": None,
+                "episode": None,
+                "content_type": None,
+                "confidence": 0.0,
+                "llm_ok": False,
+            }
+
         if self.llm is None or not self.llm.is_available():
-            heuristic = _heuristic_show_name(filename)
-            return {**empty, "show_name": heuristic}
+            return _heuristic_result()
 
         hint_line = ""
         if regex_hint is not None:
@@ -146,7 +149,8 @@ class ParseOrchestrator:
             system=_PARSE_SYSTEM,
         )
         if response is None:
-            return empty
+            logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
+            return _heuristic_result()
 
         text = response.content.strip()
         if text.startswith("```"):
@@ -155,8 +159,12 @@ class ParseOrchestrator:
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON for %r: %r", filename, text)
-            return empty
+            logger.warning(
+                "LLM returned invalid JSON for %r: %r; falling back to heuristic",
+                filename,
+                text,
+            )
+            return _heuristic_result()
 
         if reasoning := parsed.get("reasoning"):
             logger.debug("LLM reasoning for %r: %s", filename, reasoning)
@@ -169,6 +177,7 @@ class ParseOrchestrator:
             "episode": int(raw_episode) if raw_episode is not None else None,
             "content_type": parsed.get("content_type"),
             "confidence": float(parsed.get("confidence") or 0.0),
+            "llm_ok": True,
         }
 
     async def _find_show(self, parsed_name: str) -> Show | None:
@@ -277,6 +286,11 @@ class ParseOrchestrator:
                 show_name: str | None = parsed.get("show_name")  # type: ignore[assignment]
                 confidence: float = float(parsed.get("confidence") or 0.0)  # type: ignore[arg-type]
                 content_type: str | None = parsed.get("content_type")  # type: ignore[assignment]
+                llm_ok: bool = bool(parsed.get("llm_ok", False))
+
+                # Gate applies only when LLM produced a result and content is not a
+                # movie (movie prompts always score low due to null-episode penalty).
+                apply_gate = llm_active and llm_ok and content_type != "movie"
 
                 if dry_run:
                     dry_show = await self._find_show(show_name) if show_name else None
@@ -289,7 +303,7 @@ class ParseOrchestrator:
                         confidence,
                         dry_show.title if dry_show is not None else "none",
                     )
-                    gate_passes = not llm_active or confidence >= _CONFIDENCE_THRESHOLD
+                    gate_passes = not apply_gate or confidence >= _CONFIDENCE_THRESHOLD
                     if dry_show is not None and gate_passes:
                         files_matched += 1
                     else:
@@ -303,9 +317,9 @@ class ParseOrchestrator:
                 file.parsed_confidence = confidence
                 file.parsed_content_type = content_type
 
-                # Stage 2: confidence gate — only applies when LLM was used;
-                # heuristic-only path always proceeds to DB lookup.
-                if llm_active and confidence < _CONFIDENCE_THRESHOLD:
+                # Stage 2: confidence gate — skipped for heuristic results (llm_ok=False)
+                # and for movies (null episode is expected, not a sign of uncertainty).
+                if apply_gate and confidence < _CONFIDENCE_THRESHOLD:
                     file.status = FileStatus.UNMATCHED
                     file.error_message = (
                         f"Parse confidence {confidence:.2f} below threshold "

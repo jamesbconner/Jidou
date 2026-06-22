@@ -282,15 +282,83 @@ async def test_run_no_llm_heuristic_proceeds_to_db_lookup():
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
-    session.execute = AsyncMock(
-        side_effect=[file_result, show_result, show_result, ep_result]
-    )
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
 
     orch = ParseOrchestrator(session, llm=None)
     result = await orch.run()
 
     assert result.files_matched == 1
     assert file1.status == FileStatus.MATCHED
+
+
+async def test_run_movie_bypasses_confidence_gate():
+    """Movie files reach DB lookup even though null-episode scores confidence ~0.1."""
+    show = _make_show(title="Spirited Away")
+    file1 = _make_file(filename="Spirited.Away.2001.1080p.BluRay.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    # Movie: episode=null → confidence ~0.1 by scoring rules, but gate must not fire
+    llm_response.content = (
+        '{"show_name": "Spirited Away", "season": null, "episode": null, '
+        '"crc32": null, "content_type": "movie", "confidence": 0.10, '
+        '"reasoning": "No episode marker; this is a movie."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+
+
+async def test_run_llm_outage_falls_back_to_heuristic():
+    """When LLM returns None the file uses heuristic matching, not a confidence error."""
+    show = _make_show(title="Show Name")
+    file1 = _make_file(filename="Show.Name.S01E01.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=None)  # simulates outage
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+    assert "confidence" not in (file1.error_message or "")
 
 
 async def test_run_on_progress_called_per_file():
