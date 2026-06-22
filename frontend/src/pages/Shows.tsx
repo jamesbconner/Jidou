@@ -14,6 +14,7 @@ function applyFilters(
   language: string,
   upcoming: boolean,
   localPath: string,
+  minRating: string,
 ): ShowList[] {
   return shows.filter((s) => {
     if (contentType === '__unset__') { if (s.content_type != null) return false }
@@ -30,6 +31,11 @@ function applyFilters(
     if (localPath === 'set' && !s.local_path) return false
     if (localPath === 'missing' && s.local_path) return false
 
+    if (minRating) {
+      const min = Number(minRating)
+      if (!s.vote_average || s.vote_average < min) return false
+    }
+
     return true
   })
 }
@@ -45,6 +51,7 @@ export default function Shows() {
   const [filterLanguage, setFilterLanguage] = useState('')
   const [filterUpcoming, setFilterUpcoming] = useState(false)
   const [filterLocalPath, setFilterLocalPath] = useState('')
+  const [filterMinRating, setFilterMinRating] = useState('')
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -76,12 +83,12 @@ export default function Shows() {
   }, [shows])
 
   const filtered = useMemo(
-    () => applyFilters(shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath),
-    [shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath],
+    () => applyFilters(shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath, filterMinRating),
+    [shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath, filterMinRating],
   )
 
   const activeFilterCount = [
-    filterContentType, filterStatus, filterGenre, filterLanguage, filterLocalPath,
+    filterContentType, filterStatus, filterGenre, filterLanguage, filterLocalPath, filterMinRating,
   ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
 
   function clearFilters() {
@@ -91,6 +98,7 @@ export default function Shows() {
     setFilterLanguage('')
     setFilterUpcoming(false)
     setFilterLocalPath('')
+    setFilterMinRating('')
   }
 
   function handleTrack(r: TmdbResult) {
@@ -166,6 +174,14 @@ export default function Shows() {
           <option value="">Any path</option>
           <option value="set">Path set</option>
           <option value="missing">Path missing</option>
+        </select>
+
+        <select value={filterMinRating} onChange={(e) => setFilterMinRating(e.target.value)} className={selectCls}>
+          <option value="">Any rating</option>
+          <option value="6">6+</option>
+          <option value="7">7+</option>
+          <option value="8">8+</option>
+          <option value="9">9+</option>
         </select>
 
         <label className="flex items-center gap-1.5 text-sm cursor-pointer">
