@@ -1,6 +1,5 @@
-import { useMemo } from 'react'
 import { api } from '@/api/client'
-import { useTasks, useTask, useCancelTask } from '@/hooks/useTasks'
+import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { useQuery } from '@tanstack/react-query'
@@ -13,17 +12,12 @@ function LiveTask({ taskId }: { taskId: number }) {
 }
 
 export default function Dashboard() {
-  const { data: tasks = [] } = useTasks({ limit: 20, offset: 0 })
+  const { data: activeTasks = [] } = useActiveTasks()
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: () => api.get<AdminStats>('/admin/stats'),
   })
   const cancelTask = useCancelTask()
-
-  const activeTasks = useMemo(
-    () => tasks.filter((t) => t.status === 'pending' || t.status === 'running'),
-    [tasks],
-  )
 
   return (
     <div className="space-y-8">

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useTasks, useTaskCount, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
+import { useState, useEffect } from 'react'
+import { useTasks, useTaskCount, useActiveTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import type { TaskType } from '@/types/api'
@@ -35,17 +35,21 @@ export default function Tasks() {
 
   const { data: tasks = [], isLoading } = useTasks(params)
   const { data: countData } = useTaskCount(filterType || undefined)
-  const total = countData?.total ?? 0
-  const effectiveTotal = maxRecords !== null ? Math.min(total, maxRecords) : total
-  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize))
+  const total = countData?.total
+  const effectiveTotal = total !== undefined
+    ? (maxRecords !== null ? Math.min(total, maxRecords) : total)
+    : undefined
+  const totalPages = Math.max(1, Math.ceil((effectiveTotal ?? 1) / pageSize))
+
+  // Clamp page when total shrinks (e.g. after cancel or refetch)
+  useEffect(() => {
+    if (page >= totalPages) setPage(Math.max(0, totalPages - 1))
+  }, [totalPages, page])
 
   const triggerTask = useTriggerTask()
   const cancelTask = useCancelTask()
 
-  const activeTasks = useMemo(
-    () => tasks.filter((t) => t.status === 'pending' || t.status === 'running'),
-    [tasks],
-  )
+  const { data: activeTasks = [] } = useActiveTasks()
 
   function handleFilterChange(type: TaskType | '') {
     setFilterType(type)
@@ -148,9 +152,11 @@ export default function Tasks() {
           </select>
         </div>
         <span className="text-xs text-gray-500 ml-auto">
-          {maxRecords !== null && total > maxRecords
-            ? `${maxRecords} of ${total} task${total !== 1 ? 's' : ''}`
-            : `${total} task${total !== 1 ? 's' : ''}`}
+          {total === undefined ? '—' : (
+            maxRecords !== null && total > maxRecords
+              ? `${maxRecords} of ${total} task${total !== 1 ? 's' : ''}`
+              : `${total} task${total !== 1 ? 's' : ''}`
+          )}
           {filterType ? ` · ${filterType}` : ''}
         </span>
       </div>

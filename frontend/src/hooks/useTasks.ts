@@ -28,6 +28,14 @@ export function useTasks(params: TaskListParams) {
   })
 }
 
+export function useActiveTasks() {
+  return useQuery({
+    queryKey: [...taskKeys.all, 'active'] as const,
+    queryFn: () => api.get<TaskList[]>('/tasks?active_only=true&limit=100'),
+    refetchInterval: 5000,
+  })
+}
+
 export function useTaskCount(taskType?: TaskType) {
   const qs = taskType ? `?task_type=${taskType}` : ''
   return useQuery({
