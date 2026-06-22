@@ -1,17 +1,52 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { ShowCard } from '@/components/ShowCard'
 import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
-import type { TmdbResult } from '@/types/api'
+import type { ShowList, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
+
+function applyFilters(
+  shows: ShowList[],
+  contentType: string,
+  status: string,
+  genre: string,
+  language: string,
+  upcoming: boolean,
+  localPath: string,
+): ShowList[] {
+  return shows.filter((s) => {
+    if (contentType === '__unset__') { if (s.content_type != null) return false }
+    else if (contentType && s.content_type !== contentType) return false
+
+    if (status && s.status !== status) return false
+
+    if (genre && !s.genres?.some((g) => g.name === genre)) return false
+
+    if (language && s.original_language !== language) return false
+
+    if (upcoming && !s.next_episode_to_air) return false
+
+    if (localPath === 'set' && !s.local_path) return false
+    if (localPath === 'missing' && s.local_path) return false
+
+    return true
+  })
+}
 
 export default function Shows() {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [filterContentType, setFilterContentType] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterGenre, setFilterGenre] = useState('')
+  const [filterLanguage, setFilterLanguage] = useState('')
+  const [filterUpcoming, setFilterUpcoming] = useState(false)
+  const [filterLocalPath, setFilterLocalPath] = useState('')
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => setDebouncedQuery(query), 300)
@@ -21,6 +56,42 @@ export default function Shows() {
   const { data: shows = [], isLoading } = useShows(sort)
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
+
+  const genreOptions = useMemo(() => {
+    const names = new Set<string>()
+    shows.forEach((s) => s.genres?.forEach((g) => { if (g.name) names.add(g.name as string) }))
+    return Array.from(names).sort()
+  }, [shows])
+
+  const languageOptions = useMemo(() => {
+    const langs = new Set<string>()
+    shows.forEach((s) => { if (s.original_language) langs.add(s.original_language) })
+    return Array.from(langs).sort()
+  }, [shows])
+
+  const statusOptions = useMemo(() => {
+    const statuses = new Set<string>()
+    shows.forEach((s) => { if (s.status) statuses.add(s.status) })
+    return Array.from(statuses).sort()
+  }, [shows])
+
+  const filtered = useMemo(
+    () => applyFilters(shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath),
+    [shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterLocalPath],
+  )
+
+  const activeFilterCount = [
+    filterContentType, filterStatus, filterGenre, filterLanguage, filterLocalPath,
+  ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
+
+  function clearFilters() {
+    setFilterContentType('')
+    setFilterStatus('')
+    setFilterGenre('')
+    setFilterLanguage('')
+    setFilterUpcoming(false)
+    setFilterLocalPath('')
+  }
 
   function handleTrack(r: TmdbResult) {
     createShow.mutate({
@@ -37,17 +108,16 @@ export default function Shows() {
     })
   }
 
+  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Header row */}
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold mr-auto">Shows</h1>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as ShowSortOrder)}
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {(Object.entries(SHOW_SORT_LABELS) as [ShowSortOrder, string][]).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
+        <select value={sort} onChange={(e) => setSort(e.target.value as ShowSortOrder)} className={selectCls}>
+          {(Object.entries(SHOW_SORT_LABELS) as [ShowSortOrder, string][]).map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
           ))}
         </select>
         <input
@@ -57,6 +127,65 @@ export default function Shows() {
           onChange={(e) => setQuery(e.target.value)}
           className="border rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
+        <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+
+        <select value={filterContentType} onChange={(e) => setFilterContentType(e.target.value)} className={selectCls}>
+          <option value="">All types</option>
+          <option value="anime">Anime</option>
+          <option value="tv">TV</option>
+          <option value="movie">Movie</option>
+          <option value="__unset__">Unset</option>
+        </select>
+
+        {statusOptions.length > 0 && (
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={selectCls}>
+            <option value="">All statuses</option>
+            {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
+
+        {genreOptions.length > 0 && (
+          <select value={filterGenre} onChange={(e) => setFilterGenre(e.target.value)} className={selectCls}>
+            <option value="">All genres</option>
+            {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
+
+        {languageOptions.length > 0 && (
+          <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} className={selectCls}>
+            <option value="">All languages</option>
+            {languageOptions.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+          </select>
+        )}
+
+        <select value={filterLocalPath} onChange={(e) => setFilterLocalPath(e.target.value)} className={selectCls}>
+          <option value="">Any path</option>
+          <option value="set">Path set</option>
+          <option value="missing">Path missing</option>
+        </select>
+
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={filterUpcoming}
+            onChange={(e) => setFilterUpcoming(e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-gray-700">Upcoming episode</span>
+        </label>
+
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearFilters}
+            className="ml-auto text-xs text-blue-600 hover:underline"
+          >
+            Clear filters ({activeFilterCount})
+          </button>
+        )}
       </div>
 
       {/* TMDB search results */}
@@ -90,15 +219,19 @@ export default function Shows() {
       {/* Tracked shows */}
       <section>
         <h2 className="text-sm font-medium text-gray-500 mb-2">
-          Tracked Shows ({shows.length})
+          {activeFilterCount > 0
+            ? `${filtered.length} of ${shows.length} shows`
+            : `${shows.length} show${shows.length !== 1 ? 's' : ''}`}
         </h2>
         {isLoading ? (
           <p className="text-gray-400 text-sm">Loading…</p>
-        ) : shows.length === 0 ? (
-          <p className="text-gray-500 text-sm">No shows tracked yet. Search above to add one.</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-gray-500 text-sm">
+            {shows.length === 0 ? 'No shows tracked yet. Search above to add one.' : 'No shows match the current filters.'}
+          </p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {shows.map((s) => (
+            {filtered.map((s) => (
               <ShowCard key={s.id} show={s} />
             ))}
           </div>
