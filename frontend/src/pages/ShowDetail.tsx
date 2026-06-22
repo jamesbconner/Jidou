@@ -153,7 +153,8 @@ function EditPathModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
+              disabled={isPending}
+              className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -190,6 +191,7 @@ export default function ShowDetail() {
 
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     setRematchOpen(false)
@@ -212,8 +214,12 @@ export default function ShowDetail() {
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
 
   function handleDelete() {
-    if (window.confirm(`Remove "${show!.title}" and all its episode data? This cannot be undone.`))
-      deleteShow.mutate(showId, { onSuccess: () => navigate('/shows') })
+    if (!window.confirm(`Remove "${show!.title}" and all its episode data? This cannot be undone.`)) return
+    setIsDeleting(true)
+    deleteShow.mutate(showId, {
+      onSuccess: () => navigate('/shows'),
+      onSettled: () => setIsDeleting(false),
+    })
   }
 
   function handleSavePath(path: string | null) {
@@ -276,10 +282,10 @@ export default function ShowDetail() {
               </button>
               <button
                 onClick={handleDelete}
-                disabled={deleteShow.isPending}
+                disabled={isDeleting}
                 className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
               >
-                {deleteShow.isPending ? 'Removing…' : 'Remove Show'}
+                {isDeleting ? 'Removing…' : 'Remove Show'}
               </button>
             </div>
           </div>
