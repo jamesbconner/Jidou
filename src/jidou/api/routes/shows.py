@@ -341,7 +341,7 @@ async def rematch_show(
             )
 
     try:
-        data = await tmdb.get_details(payload.tmdb_id, media_type="tv")
+        data = await tmdb.get_details(payload.tmdb_id, media_type=payload.media_type)
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
 
@@ -382,11 +382,15 @@ async def rematch_show(
     await db_session.flush()
     logger.info("Re-matched show id=%d → tmdb_id=%d title=%r", show_id, payload.tmdb_id, title)
 
-    # Sync fresh episodes for the new TMDB show.
+    # Sync fresh episodes for the new TMDB show.  If sync fails we raise so
+    # the transaction rolls back, restoring the pre-rematch state.
     try:
         await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
-    except Exception:
+    except Exception as exc:
         logger.exception("Episode sync failed after rematch for show id=%d", show_id)
+        raise HTTPException(
+            status_code=502, detail="TMDB episode sync failed; rematch aborted"
+        ) from exc
 
     return show
 

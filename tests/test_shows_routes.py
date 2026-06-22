@@ -445,3 +445,253 @@ def test_get_tmdb_details_proxies_tmdb_service() -> None:
     body = response.json()
     assert body["id"] == 12345
     assert body["name"] == "Some Show"
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/shows/{show_id}/aliases
+# ---------------------------------------------------------------------------
+
+
+def test_update_aliases_returns_updated_show() -> None:
+    """PUT /api/shows/{id}/aliases normalises and stores aliases."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    show.aliases = None
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).put(
+            "/api/shows/1/aliases",
+            json={"aliases": ["  Alias One  ", "Alias Two", "alias two"]},
+        )
+        assert response.status_code == 200
+        # duplicates are deduplicated; values are lowercased
+        assert show.aliases == ["alias one", "alias two"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_aliases_returns_404_for_missing_show() -> None:
+    """PUT /api/shows/{id}/aliases returns 404 when the show doesn't exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).put("/api/shows/9999/aliases", json={"aliases": []})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/rematch
+# ---------------------------------------------------------------------------
+
+_TMDB_DETAIL = {
+    "name": "Correct Show",
+    "overview": "Right one",
+    "poster_path": None,
+    "backdrop_path": None,
+    "vote_average": 8.0,
+    "vote_count": 100,
+    "first_air_date": "2020-01-01",
+    "original_language": "en",
+    "genres": [],
+    "origin_country": ["JP"],
+    "last_air_date": None,
+    "last_episode_to_air": None,
+    "next_episode_to_air": None,
+    "homepage": None,
+    "status": "Ended",
+    "in_production": False,
+    "number_of_seasons": 1,
+    "number_of_episodes": 12,
+    "networks": [],
+    "type": "Scripted",
+    "episode_run_time": [24],
+    "tagline": "A great show",
+}
+
+
+def _rematch_session(show: MagicMock, conflict: MagicMock | None = None) -> "type[AsyncMock]":
+    """Return a session override for rematch tests.
+
+    Yields a session whose execute calls return:
+      1. show lookup
+      2. conflict check (only when show.tmdb_id differs from payload)
+      3. episode bulk-delete result (unused)
+    """
+
+    async def _mock() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        conflict_result = MagicMock()
+        conflict_result.scalar_one_or_none.return_value = conflict
+        delete_result = MagicMock()
+        session.execute = AsyncMock(side_effect=[show_result, conflict_result, delete_result])
+        session.flush = AsyncMock()
+        yield session
+
+    return _mock  # type: ignore[return-value]
+
+
+def test_rematch_show_returns_200_on_success() -> None:
+    """POST /{id}/rematch replaces metadata and syncs episodes; returns 200."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        assert response.json()["id"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_uses_payload_media_type() -> None:
+    """POST /{id}/rematch passes media_type from the payload to get_details."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
+            )
+        tmdb_mock.get_details.assert_awaited_once_with(200, media_type="movie")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_returns_404_when_show_not_found() -> None:
+    """POST /{id}/rematch returns 404 when the show does not exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).post("/api/shows/9999/rematch", json={"tmdb_id": 200})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_returns_409_on_tmdb_id_conflict() -> None:
+    """POST /{id}/rematch returns 409 when the target TMDB ID is already tracked."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    conflict = _make_show(id=2, tmdb_id=200, title="Other Show")
+    app.dependency_overrides[get_session] = _rematch_session(show, conflict=conflict)
+    try:
+        response = TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200})
+        assert response.status_code == 409
+        assert "Other Show" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_returns_502_when_tmdb_fetch_fails() -> None:
+    """POST /{id}/rematch returns 502 when TMDB details cannot be fetched."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(side_effect=Exception("TMDB unavailable"))
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200})
+        assert response.status_code == 502
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
+    """POST /{id}/rematch returns 502 when episode sync raises; transaction rolls back."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock(
+                side_effect=Exception("Sync failed")
+            )
+            response = TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200})
+        assert response.status_code == 502
+        assert "sync" in response.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/sync-episodes
+# ---------------------------------------------------------------------------
+
+
+def test_sync_episodes_returns_updated_episode_list() -> None:
+    """POST /{id}/sync-episodes returns the refreshed episode list."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    episode = _make_episode(id=10, show_id=1)
+
+    async def _sync_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = [episode]
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    tmdb_mock = AsyncMock()
+    app.dependency_overrides[get_session] = _sync_session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post("/api/shows/1/sync-episodes")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+        assert len(response.json()) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_sync_episodes_returns_404_when_show_not_found() -> None:
+    """POST /{id}/sync-episodes returns 404 when show doesn't exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).post("/api/shows/9999/sync-episodes")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()

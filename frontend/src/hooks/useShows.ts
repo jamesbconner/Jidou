@@ -85,8 +85,8 @@ export function useSyncEpisodes() {
 export function useRematchShow(showId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (tmdbId: number) =>
-      api.post<ShowRead>(`/shows/${showId}/rematch`, { tmdb_id: tmdbId }),
+    mutationFn: ({ tmdbId, mediaType }: { tmdbId: number; mediaType: string }) =>
+      api.post<ShowRead>(`/shows/${showId}/rematch`, { tmdb_id: tmdbId, media_type: mediaType }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })

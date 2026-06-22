@@ -125,6 +125,7 @@ class RematchRequest(BaseModel):
     """Payload for re-matching a show to a different TMDB entry."""
 
     tmdb_id: int
+    media_type: str = "tv"
 
 
 class ShowList(BaseModel):

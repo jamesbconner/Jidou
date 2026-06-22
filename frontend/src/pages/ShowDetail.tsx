@@ -37,7 +37,7 @@ function RematchPanel({ showId, currentTmdbId }: { showId: number; currentTmdbId
   function handlePick(r: TmdbResult) {
     if (r.id === currentTmdbId) return
     if (!window.confirm(`Re-match to "${r.name ?? r.title}"?\n\nThis will replace all episode data for this show.`)) return
-    rematch.mutate(r.id, {
+    rematch.mutate({ tmdbId: r.id, mediaType: r.media_type ?? 'tv' }, {
       onSuccess: () => { setOpen(false); setQuery('') },
     })
   }
