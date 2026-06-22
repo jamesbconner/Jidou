@@ -27,6 +27,7 @@ export default function Tasks() {
 
   const [filterType, setFilterType] = useState<TaskType | ''>('')
   const [pageSize, setPageSize] = useState(20)
+  const [maxRecords, setMaxRecords] = useState<number | null>(200)
   const [page, setPage] = useState(0)
 
   const offset = page * pageSize
@@ -35,7 +36,8 @@ export default function Tasks() {
   const { data: tasks = [], isLoading } = useTasks(params)
   const { data: countData } = useTaskCount(filterType || undefined)
   const total = countData?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const effectiveTotal = maxRecords !== null ? Math.min(total, maxRecords) : total
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize))
 
   const triggerTask = useTriggerTask()
   const cancelTask = useCancelTask()
@@ -52,6 +54,11 @@ export default function Tasks() {
 
   function handlePageSizeChange(size: number) {
     setPageSize(size)
+    setPage(0)
+  }
+
+  function handleMaxRecordsChange(val: string) {
+    setMaxRecords(val === 'all' ? null : Number(val))
     setPage(0)
   }
 
@@ -127,8 +134,23 @@ export default function Tasks() {
             ))}
           </select>
         </div>
+        <div>
+          <label className="text-xs text-gray-500 mr-2">Max records</label>
+          <select
+            value={maxRecords === null ? 'all' : String(maxRecords)}
+            onChange={(e) => handleMaxRecordsChange(e.target.value)}
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {[50, 100, 200, 500].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+            <option value="all">All</option>
+          </select>
+        </div>
         <span className="text-xs text-gray-500 ml-auto">
-          {total} task{total !== 1 ? 's' : ''}
+          {maxRecords !== null && total > maxRecords
+            ? `${maxRecords} of ${total} task${total !== 1 ? 's' : ''}`
+            : `${total} task${total !== 1 ? 's' : ''}`}
           {filterType ? ` · ${filterType}` : ''}
         </span>
       </div>
