@@ -534,6 +534,58 @@ async def test_run_does_not_overwrite_existing_local_path():
     assert show.local_path == "/custom/path/Some Show"
 
 
+async def test_run_no_content_type_skips_local_path_auto_set():
+    """show.local_path stays None when content_type is unknown (avoids wrong library root)."""
+    show = _make_show(title="Some Anime")
+    show.sys_name = "Some Anime"
+    show.content_type = None  # unknown — TMDB only gives media_type="tv"
+    show.media_type = "tv"
+    show.local_path = None
+
+    file1 = _make_file(filename="Some.Anime.S01E01.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    # LLM returns null content_type — insufficient to pick a library root
+    llm_response.content = (
+        '{"show_name": "Some Anime", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": null, "confidence": 0.85, '
+        '"reasoning": "Clear S01E01 but content type ambiguous."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(
+        session,
+        llm=llm,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    result = await orch.run()
+
+    # File is still matched — we just can't auto-route it
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+    # local_path must not be auto-set when content_type is unknown
+    assert show.local_path is None
+
+
 async def test_run_on_progress_called_per_file():
     """on_progress callback is called once per file."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")
