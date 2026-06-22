@@ -44,6 +44,9 @@ class SyncOrchestrator:
         llm: Optional LLMService for parse/match.
         remote_paths: SFTP remote paths to scan.
         local_staging_path: Local directory for staging downloaded files.
+        local_tv_path: Base directory for live-action TV series.
+        local_anime_path: Base directory for anime series.
+        local_movie_path: Base directory for movies.
     """
 
     def __init__(
@@ -54,6 +57,9 @@ class SyncOrchestrator:
         llm: LLMService | None = None,
         remote_paths: list[str] | None = None,
         local_staging_path: str = "/data/staging",
+        local_tv_path: str = "/data/media/tv",
+        local_anime_path: str = "/data/media/anime",
+        local_movie_path: str = "/data/media/movies",
     ) -> None:
         self.session = session
         self.sftp = sftp
@@ -61,6 +67,9 @@ class SyncOrchestrator:
         self.llm = llm
         self.remote_paths = remote_paths or ["/"]
         self.local_staging_path = local_staging_path
+        self.local_tv_path = local_tv_path
+        self.local_anime_path = local_anime_path
+        self.local_movie_path = local_movie_path
 
     async def run(
         self,
@@ -130,7 +139,13 @@ class SyncOrchestrator:
         # Phase 4: Parse filenames and match to shows
         if on_phase:
             await on_phase(4, _TOTAL_PHASES, "Parsing and matching files to shows")
-        parse_result = await ParseOrchestrator(self.session, self.llm).run(dry_run=dry_run)
+        parse_result = await ParseOrchestrator(
+            self.session,
+            self.llm,
+            local_tv_path=self.local_tv_path,
+            local_anime_path=self.local_anime_path,
+            local_movie_path=self.local_movie_path,
+        ).run(dry_run=dry_run)
 
         # Phase 5: Route MATCHED files to final local paths
         if on_phase:

@@ -1,4 +1,4 @@
-"""Celery tasks for parsing downloaded filenames and matching them to shows."""
+"""Celery tasks for routing MATCHED files from staging to their final paths."""
 
 import asyncio
 import logging
@@ -9,8 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import TaskStatus
-from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
-from jidou.services.llm_service import LLMService
+from jidou.orchestrators.route_orchestrator import RouteOrchestrator
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -24,38 +23,38 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
-def match_files_task(  # type: ignore[no-untyped-def]
+def route_files_task(  # type: ignore[no-untyped-def]
     self,
     dry_run: bool = False,
 ) -> str:
-    """Parse DOWNLOADED filenames and match them to shows.
+    """Move all MATCHED files from staging to their final local paths.
 
     Args:
         self: Celery request context for retries.
-        dry_run: Simulate without actually updating the DB.
+        dry_run: Simulate without actually moving files.
 
     Returns:
         The celery task ID.
     """
     try:
-        return asyncio.run(_match_files(self.request.id, dry_run))
+        return asyncio.run(_route_files(self.request.id, dry_run))
     except SoftTimeLimitExceeded:
         asyncio.run(mark_task_timed_out(self.request.id))
         raise
 
 
-async def _match_files(
+async def _route_files(
     celery_task_id: str,
     dry_run: bool = False,
 ) -> str:
-    """Async implementation of the parse/match task."""
+    """Async implementation of the route task."""
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     try:
         async with session_factory() as session:
             task = await create_task_record(
-                session, celery_task_id, "match", progress_total=0, dry_run=dry_run
+                session, celery_task_id, "route", progress_total=0, dry_run=dry_run
             )
             if task.status in {
                 TaskStatus.COMPLETED.value,
@@ -65,20 +64,8 @@ async def _match_files(
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
 
-            llm = LLMService(
-                provider=settings.llm_provider,
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model=settings.llm_model,
-                cache_ttl=settings.llm_cache_ttl,
-                timeout=settings.llm_timeout,
-            )
-
             await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.RUNNING,
-                progress_message="Parsing and matching files...",
+                session, celery_task_id, TaskStatus.RUNNING, progress_message="Starting route..."
             )
 
             async def on_progress(current: int, total: int, message: str) -> None:
@@ -99,26 +86,21 @@ async def _match_files(
                     }
                 )
 
-            result = await ParseOrchestrator(
-                session,
-                llm,
-                local_tv_path=settings.local_tv_path,
-                local_anime_path=settings.local_anime_path,
-                local_movie_path=settings.local_movie_path,
-            ).run(dry_run=dry_run, on_progress=on_progress)
+            result = await RouteOrchestrator(session).run(
+                dry_run=dry_run,
+                on_progress=on_progress,
+            )
 
-            total_processed = result.files_processed
+            total_processed = result.files_routed + result.files_failed
             completed = await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.COMPLETED,
                 progress_current=total_processed,
                 progress_total=total_processed,
-                progress_message=f"Parse complete: {result.files_matched} matched",
+                progress_message=f"Route complete: {result.files_routed} files",
                 result_summary={
-                    "files_processed": result.files_processed,
-                    "files_matched": result.files_matched,
-                    "files_unmatched": result.files_unmatched,
+                    "files_routed": result.files_routed,
                     "files_failed": result.files_failed,
                     "dry_run": dry_run,
                 },
@@ -130,7 +112,7 @@ async def _match_files(
                         "type": "complete",
                         "data": {
                             "summary": {
-                                "files_matched": result.files_matched,
+                                "files_routed": result.files_routed,
                                 "dry_run": dry_run,
                             }
                         },
@@ -140,7 +122,7 @@ async def _match_files(
         return celery_task_id
 
     except TaskCancelledError:
-        logger.info("Match task cancelled")
+        logger.info("Route task cancelled")
         async with session_factory() as session:
             await update_task_status(
                 session,
@@ -157,7 +139,7 @@ async def _match_files(
             )
         return celery_task_id
     except Exception as exc:
-        logger.exception("Match task failed")
+        logger.exception("Route task failed")
         async with session_factory() as session:
             await update_task_status(
                 session,

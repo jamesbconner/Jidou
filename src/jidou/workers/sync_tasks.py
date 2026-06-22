@@ -121,6 +121,9 @@ async def _sync_all(
                 llm,
                 remote_paths=settings.sftp_remote_paths_list,
                 local_staging_path=settings.local_staging_path,
+                local_tv_path=settings.local_tv_path,
+                local_anime_path=settings.local_anime_path,
+                local_movie_path=settings.local_movie_path,
             ).run(dry_run=dry_run, on_phase=on_phase)
 
             # Mark complete — gate the WebSocket event on the DB update landing.

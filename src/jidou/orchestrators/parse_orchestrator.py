@@ -5,7 +5,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -32,6 +32,9 @@ _SE_PATTERNS: list[re.Pattern[str]] = [
 # Used to derive a heuristic show name when no LLM is available.
 _SHOW_NAME_STRIP = re.compile(r"[\.\s_-]*(?:[Ss]\d{1,2}[Ee]\d{1,3}|\d{1,2}[xX]\d{1,3}).*$")
 _SHOW_NAME_CLEAN = re.compile(r"[\._]+")
+
+# Strips characters that are invalid on common filesystems (Windows + Linux).
+_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
 def _heuristic_show_name(filename: str) -> str | None:
@@ -90,21 +93,34 @@ class ParseOrchestrator:
       2. DB lookup: ``show.aliases`` contains the parsed name (case-folded),
          or ``show.title ILIKE`` as a fallback.
 
-    On a successful match the parsed name is written back to
-    ``show.aliases`` so future matches skip the LLM entirely.
+    On a successful match:
+    - The parsed name is written back to ``show.aliases`` so future matches
+      skip the LLM entirely.
+    - If ``show.local_path`` is unset, it is auto-populated from
+      ``show.sys_name`` and the appropriate media base path so that
+      ``RouteOrchestrator`` can immediately move the file.
 
     Args:
         session: Active async SQLAlchemy session.
         llm: Optional LLMService; without it only the heuristic path runs.
+        local_tv_path: Base directory for live-action TV series.
+        local_anime_path: Base directory for anime series.
+        local_movie_path: Base directory for movies.
     """
 
     def __init__(
         self,
         session: AsyncSession,
         llm: LLMService | None = None,
+        local_tv_path: str = "/data/media/tv",
+        local_anime_path: str = "/data/media/anime",
+        local_movie_path: str = "/data/media/movies",
     ) -> None:
         self.session = session
         self.llm = llm
+        self.local_tv_path = local_tv_path
+        self.local_anime_path = local_anime_path
+        self.local_movie_path = local_movie_path
 
     async def _llm_parse(
         self,
@@ -179,6 +195,31 @@ class ParseOrchestrator:
             "confidence": float(parsed.get("confidence") or 0.0),
             "llm_ok": True,
         }
+
+    def _resolve_local_path(self, show: Show) -> str:
+        """Compute ``show.local_path`` from the show's sys_name and content type.
+
+        Call this *after* backfilling ``show.content_type`` so the show's own
+        classification is always authoritative.  Priority: ``show.content_type``
+        → ``show.media_type`` → default TV.
+
+        Args:
+            show: The matched show record (content_type should already be set).
+
+        Returns:
+            Absolute path string for the show's root directory.
+        """
+        ct = show.content_type or show.media_type or "tv"
+        if ct == "movie":
+            base = self.local_movie_path
+        elif ct == "anime":
+            base = self.local_anime_path
+        else:
+            base = self.local_tv_path
+        # sys_name is pre-sanitized; fall back to title with invalid chars stripped.
+        dir_name = show.sys_name or _INVALID_FS_CHARS.sub("_", show.title).strip()
+        # PurePosixPath ensures forward slashes — these are always Linux container paths.
+        return str(PurePosixPath(base) / dir_name)
 
     async def _find_show(self, parsed_name: str) -> Show | None:
         """Look up a show by alias list containment or title match.
@@ -353,6 +394,28 @@ class ParseOrchestrator:
                     # Teach the alias index so future matches skip LLM
                     if show_name:
                         self._add_alias(show, show_name)
+                    # Backfill show.content_type from the parsed value if unset
+                    if content_type and not show.content_type:
+                        show.content_type = content_type
+                    # Auto-populate show.local_path when the content type is
+                    # unambiguous.  media_type="movie" is always safe; media_type="tv"
+                    # is not (TMDB uses "tv" for both TV series and anime), so for
+                    # that case we require content_type to be explicitly set.
+                    can_auto_path = bool(show.content_type) or show.media_type == "movie"
+                    if show.local_path is None and can_auto_path:
+                        show.local_path = self._resolve_local_path(show)
+                        logger.debug(
+                            "Auto-set local_path=%r for show id=%d",
+                            show.local_path,
+                            show.id,
+                        )
+                    elif show.local_path is None:
+                        logger.warning(
+                            "Cannot auto-set local_path for show id=%d: "
+                            "content_type unknown — set it manually via PATCH /shows/%d",
+                            show.id,
+                            show.id,
+                        )
                     files_matched += 1
                     logger.info(
                         "Matched %s → show_id=%d %s",
