@@ -104,12 +104,14 @@ services:
       # Set SFTP_KEY_FILE in .env to the host path of your private key.
       # The container path /run/secrets/sftp_key matches SFTP_KEY_PATH default.
       - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
-      # Media paths — must be mounted so files land on the host filesystem,
-      # not inside the ephemeral container layer.
-      - ${LOCAL_STAGING_PATH:-/data/staging}:${LOCAL_STAGING_PATH:-/data/staging}
-      - ${LOCAL_TV_PATH:-/data/media/tv}:${LOCAL_TV_PATH:-/data/media/tv}
-      - ${LOCAL_ANIME_PATH:-/data/media/anime}:${LOCAL_ANIME_PATH:-/data/media/anime}
-      - ${LOCAL_MOVIE_PATH:-/data/media/movies}:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      # Media paths — HOST_PATH is the source on the Docker host (supports Windows
+      # paths like D:\media\staging); LOCAL_*_PATH is the container-internal target
+      # used by the application.  Set both in .env; they may differ on Windows.
+      # HOST_PATH falls back to LOCAL_*_PATH so existing .env files keep working.
+      - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
+      - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
+      - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
     command: >
       uvicorn jidou.main:app
       --host 0.0.0.0
@@ -176,11 +178,11 @@ services:
       - ./src:/app/src
       # Mount SSH private key for SFTP key-based auth (optional).
       - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
-      # Media paths — must be mounted so files land on the host filesystem.
-      - ${LOCAL_STAGING_PATH:-/data/staging}:${LOCAL_STAGING_PATH:-/data/staging}
-      - ${LOCAL_TV_PATH:-/data/media/tv}:${LOCAL_TV_PATH:-/data/media/tv}
-      - ${LOCAL_ANIME_PATH:-/data/media/anime}:${LOCAL_ANIME_PATH:-/data/media/anime}
-      - ${LOCAL_MOVIE_PATH:-/data/media/movies}:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      # Media paths — see jidou-api volumes comment above for HOST vs container path split.
+      - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
+      - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
+      - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
     depends_on:
       postgres:
         condition: service_healthy
