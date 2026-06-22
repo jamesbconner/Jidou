@@ -179,7 +179,7 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled'
 
-export type TaskType = 'download' | 'scan' | 'match' | 'sync'
+export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync'
 
 export interface TaskList {
   id: number
