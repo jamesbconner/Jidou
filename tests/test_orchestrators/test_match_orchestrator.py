@@ -136,6 +136,26 @@ def test_heuristic_parse_content_type_always_none():
     assert r["content_type"] is None
 
 
+def test_heuristic_parse_resolution_not_treated_as_episode():
+    """720p and 480p are stripped before pattern matching — not parsed as episode."""
+    r = _heuristic_parse("Show.Name.S01E05.720p.BluRay.mkv")
+    assert r["episode"] == 5
+    assert r["show_name"] == "Show Name"
+
+
+def test_heuristic_parse_bare_resolution_not_episode():
+    """Bare 3-digit resolution (e.g. 720 without 'p') is stripped, not episode."""
+    r = _heuristic_parse("Show.Name.720.mkv")
+    assert r["episode"] is None
+
+
+def test_heuristic_parse_end_anchor_preferred_over_mid_string():
+    """End-anchored pattern wins over mid-string: 'Part 2 - 05' → episode=5."""
+    r = _heuristic_parse("Show Part 2 - 05.mkv")
+    assert r["episode"] == 5
+    assert r["show_name"] == "Show Part 2"
+
+
 # ---------------------------------------------------------------------------
 # ParseOrchestrator integration tests
 # ---------------------------------------------------------------------------

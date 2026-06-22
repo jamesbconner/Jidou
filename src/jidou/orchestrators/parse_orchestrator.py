@@ -32,6 +32,15 @@ _SE_PATTERNS: list[re.Pattern[str]] = [
 _CRC32_PAT = re.compile(r"\[([0-9A-Fa-f]{8})\]")
 _EXTENSION_PAT = re.compile(r"\.[a-z0-9]{2,4}$", re.IGNORECASE)
 _BRACKETS_PAT = re.compile(r"[\[\(].*?[\]\)]")
+# Strip common video quality/source/codec tokens that appear without brackets.
+# These are frequently 3-digit numbers (480, 720) that would otherwise be
+# misidentified as episode numbers by the bare-episode fallback patterns.
+_QUALITY_PAT = re.compile(
+    r"\b(?:480|576|720|1080|2160|4320)(?:p|i)?"
+    r"|\b(?:4K|UHD|FHD|HD|SD|BluRay|BDRip|BRRip|DVDRip|WEBRip|WEB-DL|HDTV"
+    r"|x264|x265|HEVC|AVC|AAC|AC3|DTS|FLAC|MP3|Remux|Repack|PROPER)\b",
+    re.IGNORECASE,
+)
 _DELIMITERS_PAT = re.compile(r"[_.]")
 _WHITESPACE_PAT = re.compile(r"\s+")
 
@@ -39,6 +48,9 @@ _WHITESPACE_PAT = re.compile(r"\s+")
 # Episode capture is capped at \d{1,3} (max 999) intentionally: 4-digit years
 # (1080, 2024, etc.) appear in filenames far more often than shows with 1000+
 # episodes, and false positives on years are worse than missing edge cases.
+# End-anchored bare-episode pattern runs BEFORE the mid-string one so that
+# the rightmost number is preferred over an earlier number in the show title
+# (e.g. "Show Part 2 - 05" → episode=5, not episode=2).
 _HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
     # "2nd Season 04" / "1st Season 01"
     re.compile(
@@ -53,10 +65,10 @@ _HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
     re.compile(
         r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,3})"
     ),
-    # bare episode number, optional v2 suffix
-    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})(?:v\d)?\b"),
-    # bare episode at end of string
+    # bare episode at end of string (end-anchored — more specific than mid-string)
     re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})$"),
+    # bare episode number anywhere, optional v2 suffix
+    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})(?:v\d)?\b"),
     # S01E02 with leading space only
     re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,3})"),
 ]
@@ -82,6 +94,7 @@ def _clean_filename(filename: str) -> tuple[str, str | None]:
     crc32 = crc32_m.group(1).upper() if crc32_m else None
     base = _EXTENSION_PAT.sub("", Path(filename).name)
     cleaned = _BRACKETS_PAT.sub("", base)
+    cleaned = _QUALITY_PAT.sub("", cleaned)
     cleaned = _DELIMITERS_PAT.sub(" ", cleaned)
     cleaned = _WHITESPACE_PAT.sub(" ", cleaned).strip()
     return cleaned, crc32
