@@ -123,6 +123,14 @@ export default function Shows() {
       {/* Header row */}
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold mr-auto">Shows</h1>
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearFilters}
+            className="text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
+          >
+            Clear filters ({activeFilterCount})
+          </button>
+        )}
         <select value={sort} onChange={(e) => setSort(e.target.value as ShowSortOrder)} className={selectCls}>
           {(Object.entries(SHOW_SORT_LABELS) as [ShowSortOrder, string][]).map(([v, l]) => (
             <option key={v} value={v}>{l}</option>
@@ -194,14 +202,6 @@ export default function Shows() {
           <span className="text-gray-700">Upcoming episode</span>
         </label>
 
-        {activeFilterCount > 0 && (
-          <button
-            onClick={clearFilters}
-            className="ml-auto text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
-          >
-            Clear filters ({activeFilterCount})
-          </button>
-        )}
       </div>
 
       {/* TMDB search results */}
