@@ -361,6 +361,86 @@ async def test_orchestrator_absolute_episode_fallback() -> None:
     assert episode.file_tracked is True
 
 
+@pytest.mark.asyncio
+async def test_orchestrator_sets_local_path_when_unset() -> None:
+    """show_root from entry is persisted to show.local_path when not already set."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.local_path = None  # explicitly unset
+
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute.return_value = ep_result
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    assert show.local_path == r"Z:\anime tv\Dorohedoro"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_overwrite_existing_local_path() -> None:
+    """A user-set local_path is not overwritten on re-import."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.local_path = r"D:\custom\path\Dorohedoro"  # already set by user
+
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute.return_value = ep_result
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    assert show.local_path == r"D:\custom\path\Dorohedoro"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/import/text — API route
 # ---------------------------------------------------------------------------
