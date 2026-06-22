@@ -5,7 +5,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -90,21 +90,34 @@ class ParseOrchestrator:
       2. DB lookup: ``show.aliases`` contains the parsed name (case-folded),
          or ``show.title ILIKE`` as a fallback.
 
-    On a successful match the parsed name is written back to
-    ``show.aliases`` so future matches skip the LLM entirely.
+    On a successful match:
+    - The parsed name is written back to ``show.aliases`` so future matches
+      skip the LLM entirely.
+    - If ``show.local_path`` is unset, it is auto-populated from
+      ``show.sys_name`` and the appropriate media base path so that
+      ``RouteOrchestrator`` can immediately move the file.
 
     Args:
         session: Active async SQLAlchemy session.
         llm: Optional LLMService; without it only the heuristic path runs.
+        local_tv_path: Base directory for live-action TV series.
+        local_anime_path: Base directory for anime series.
+        local_movie_path: Base directory for movies.
     """
 
     def __init__(
         self,
         session: AsyncSession,
         llm: LLMService | None = None,
+        local_tv_path: str = "/data/media/tv",
+        local_anime_path: str = "/data/media/anime",
+        local_movie_path: str = "/data/media/movies",
     ) -> None:
         self.session = session
         self.llm = llm
+        self.local_tv_path = local_tv_path
+        self.local_anime_path = local_anime_path
+        self.local_movie_path = local_movie_path
 
     async def _llm_parse(
         self,
@@ -179,6 +192,29 @@ class ParseOrchestrator:
             "confidence": float(parsed.get("confidence") or 0.0),
             "llm_ok": True,
         }
+
+    def _resolve_local_path(self, show: Show, parsed_content_type: str | None) -> str:
+        """Compute ``show.local_path`` from the show's sys_name and content type.
+
+        Priority for content type: parsed file value → existing show value →
+        show media_type → default to TV.
+
+        Args:
+            show: The matched show record.
+            parsed_content_type: Content type extracted from the filename by LLM.
+
+        Returns:
+            Absolute path string for the show's root directory.
+        """
+        ct = parsed_content_type or show.content_type or show.media_type or "tv"
+        if ct == "movie":
+            base = self.local_movie_path
+        elif ct == "anime":
+            base = self.local_anime_path
+        else:
+            base = self.local_tv_path
+        # PurePosixPath ensures forward slashes — these are always Linux container paths.
+        return str(PurePosixPath(base) / (show.sys_name or show.title))
 
     async def _find_show(self, parsed_name: str) -> Show | None:
         """Look up a show by alias list containment or title match.
@@ -353,6 +389,18 @@ class ParseOrchestrator:
                     # Teach the alias index so future matches skip LLM
                     if show_name:
                         self._add_alias(show, show_name)
+                    # Backfill show.content_type from the parsed value if unset
+                    if content_type and not show.content_type:
+                        show.content_type = content_type
+                    # Auto-populate show.local_path so RouteOrchestrator can
+                    # move the file without manual intervention
+                    if show.local_path is None:
+                        show.local_path = self._resolve_local_path(show, content_type)
+                        logger.debug(
+                            "Auto-set local_path=%r for show id=%d",
+                            show.local_path,
+                            show.id,
+                        )
                     files_matched += 1
                     logger.info(
                         "Matched %s → show_id=%d %s",

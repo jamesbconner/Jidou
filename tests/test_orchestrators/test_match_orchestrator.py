@@ -361,6 +361,158 @@ async def test_run_llm_outage_falls_back_to_heuristic():
     assert "confidence" not in (file1.error_message or "")
 
 
+async def test_resolve_local_path_anime():
+    """Anime content type routes to local_anime_path / sys_name."""
+    session = _make_session()
+    orch = ParseOrchestrator(
+        session,
+        llm=None,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    show = _make_show(show_id=1, title="Attack on Titan")
+    show.sys_name = "Attack on Titan"
+    show.content_type = None
+    show.media_type = "tv"
+
+    path = orch._resolve_local_path(show, "anime")
+    assert path == "/media/anime/Attack on Titan"
+
+
+async def test_resolve_local_path_movie():
+    """Movie content type routes to local_movie_path / sys_name."""
+    session = _make_session()
+    orch = ParseOrchestrator(
+        session,
+        llm=None,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    show = _make_show(show_id=2, title="Spirited Away")
+    show.sys_name = "Spirited Away"
+    show.content_type = "movie"
+    show.media_type = "movie"
+
+    path = orch._resolve_local_path(show, "movie")
+    assert path == "/media/movies/Spirited Away"
+
+
+async def test_resolve_local_path_falls_back_to_show_content_type():
+    """Parsed content_type=None falls back to show.content_type."""
+    session = _make_session()
+    orch = ParseOrchestrator(
+        session,
+        llm=None,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    show = _make_show(show_id=3, title="Naruto")
+    show.sys_name = "Naruto"
+    show.content_type = "anime"
+    show.media_type = "tv"
+
+    path = orch._resolve_local_path(show, None)
+    assert path == "/media/anime/Naruto"
+
+
+async def test_run_auto_sets_local_path_on_match():
+    """show.local_path is auto-populated when None after a successful match."""
+    show = _make_show(title="Attack on Titan")
+    show.sys_name = "Attack on Titan"
+    show.content_type = None
+    show.media_type = "tv"
+    show.local_path = None
+
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.1080p.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(
+        session,
+        llm=llm,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    await orch.run()
+
+    assert show.local_path == "/media/anime/Attack on Titan"
+    assert show.content_type == "anime"
+
+
+async def test_run_does_not_overwrite_existing_local_path():
+    """show.local_path is left untouched when already set."""
+    show = _make_show(title="Some Show")
+    show.sys_name = "Some Show"
+    show.content_type = "tv"
+    show.media_type = "tv"
+    show.local_path = "/custom/path/Some Show"
+
+    file1 = _make_file(filename="Some.Show.S01E01.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Some Show", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "tv", "confidence": 0.9, '
+        '"reasoning": "Clear S01E01."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(
+        session,
+        llm=llm,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    await orch.run()
+
+    assert show.local_path == "/custom/path/Some Show"
+
+
 async def test_run_on_progress_called_per_file():
     """on_progress callback is called once per file."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")

@@ -94,9 +94,9 @@ async def trigger_task(
 ) -> BackgroundTask:
     """Trigger a new background task.
 
-    Supported task types: ``download``, ``scan``, ``match``, ``sync``.
+    Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``.
     """
-    if payload.task_type not in {"download", "scan", "match", "sync"}:
+    if payload.task_type not in {"download", "scan", "match", "route", "sync"}:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown task type: {payload.task_type}",
@@ -106,6 +106,7 @@ async def trigger_task(
     from jidou.services.progress import create_task_record, update_task_status
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
+    from jidou.workers.route_tasks import route_files_task
     from jidou.workers.scan_tasks import scan_remote_task
     from jidou.workers.sync_tasks import sync_all_task
 
@@ -130,6 +131,8 @@ async def trigger_task(
             scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "match":
             match_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
+        elif payload.task_type == "route":
+            route_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "sync":
             sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
     except Exception as exc:
