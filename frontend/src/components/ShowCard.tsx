@@ -5,10 +5,9 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
 
 interface Props {
   show: ShowList
-  onDelete?: (id: number) => void
 }
 
-export function ShowCard({ show, onDelete }: Props) {
+export function ShowCard({ show }: Props) {
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       {show.poster_path ? (
@@ -31,14 +30,6 @@ export function ShowCard({ show, onDelete }: Props) {
           {show.release_date?.slice(0, 4) ?? '—'} · {show.media_type}
           {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
         </p>
-        {onDelete && (
-          <button
-            onClick={() => onDelete(show.id)}
-            className="mt-2 text-xs text-red-600 hover:underline"
-          >
-            Remove
-          </button>
-        )}
       </div>
     </div>
   )
