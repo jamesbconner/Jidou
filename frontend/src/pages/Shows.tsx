@@ -9,6 +9,46 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
 type Tab = 'library' | 'data'
 
+interface DqCheck {
+  key: string
+  label: string
+  description: string
+  test: (s: ShowList) => boolean
+}
+
+const DQ_CHECKS: DqCheck[] = [
+  {
+    key: 'no_path',
+    label: 'No local path',
+    description: 'Route task cannot place files without a destination path.',
+    test: (s) => s.local_path == null,
+  },
+  {
+    key: 'no_content_type',
+    label: 'Content type unset',
+    description: 'Routing category (Anime / TV / Movie) is required for correct folder placement.',
+    test: (s) => s.content_type == null,
+  },
+  {
+    key: 'no_local_episodes',
+    label: 'Episodes not synced',
+    description: 'No episode records in the local database — run Sync Episodes from the show detail page.',
+    test: (s) => s.episode_count === 0,
+  },
+  {
+    key: 'episodes_behind',
+    label: 'Episodes behind TMDB',
+    description: 'TMDB reports episodes exist but none are synced locally.',
+    test: (s) => s.episode_count === 0 && (s.number_of_episodes ?? 0) > 0,
+  },
+  {
+    key: 'no_tmdb_data',
+    label: 'No TMDB episode data',
+    description: 'TV show with no episode count from TMDB — TMDB metadata may be incomplete.',
+    test: (s) => s.media_type !== 'movie' && s.number_of_episodes == null,
+  },
+]
+
 function applyFilters(
   shows: ShowList[],
   contentType: string,
@@ -41,6 +81,7 @@ function applyFilters(
 
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
+  const [dqFilter, setDqFilter] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
@@ -86,10 +127,20 @@ export default function Shows() {
     [shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating],
   )
 
-  const dataIssues = useMemo(
-    () => shows.filter((s) => !s.local_path || s.episode_count === 0),
+  const dqCounts = useMemo(
+    () => Object.fromEntries(DQ_CHECKS.map((c) => [c.key, shows.filter(c.test).length])),
     [shows],
   )
+  const totalDqIssues = useMemo(
+    () => shows.filter((s) => DQ_CHECKS.some((c) => c.test(s))).length,
+    [shows],
+  )
+  const dqRows = useMemo(() => {
+    const check = dqFilter ? DQ_CHECKS.find((c) => c.key === dqFilter) : null
+    return check
+      ? shows.filter(check.test)
+      : shows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
+  }, [shows, dqFilter])
 
   const activeFilterCount = [
     filterContentType, filterStatus, filterGenre, filterLanguage, filterMinRating,
@@ -163,9 +214,9 @@ export default function Shows() {
         </button>
         <button className={tabCls('data')} onClick={() => setTab('data')}>
           Data Quality
-          {dataIssues.length > 0 && (
+          {totalDqIssues > 0 && (
             <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
-              {dataIssues.length}
+              {totalDqIssues}
             </span>
           )}
         </button>
@@ -276,36 +327,85 @@ export default function Shows() {
       )}
 
       {tab === 'data' && (
-        <section>
-          {dataIssues.length === 0 ? (
-            <p className="text-gray-500 text-sm">No data quality issues found.</p>
+        <section className="space-y-6">
+          {/* Metric summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {DQ_CHECKS.map((c) => {
+              const count = dqCounts[c.key] ?? 0
+              const active = dqFilter === c.key
+              return (
+                <button
+                  key={c.key}
+                  title={c.description}
+                  onClick={() => setDqFilter(active ? null : c.key)}
+                  className={`text-left rounded-lg border p-3 transition-colors ${
+                    active
+                      ? 'border-amber-400 bg-amber-50'
+                      : count > 0
+                        ? 'border-amber-200 bg-white hover:bg-amber-50'
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <p className={`text-2xl font-bold ${count > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                    {count}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5 leading-tight">{c.label}</p>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Active filter description */}
+          {dqFilter && (() => {
+            const check = DQ_CHECKS.find((c) => c.key === dqFilter)!
+            return (
+              <p className="text-xs text-gray-500 flex items-center gap-2">
+                <span className="font-medium text-gray-700">{check.label}:</span>
+                {check.description}
+                <button onClick={() => setDqFilter(null)} className="ml-2 text-blue-600 hover:underline">
+                  Show all issues
+                </button>
+              </p>
+            )
+          })()}
+
+          {/* Issue table */}
+          {dqRows.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              {dqFilter
+                ? `No shows with this issue.`
+                : `No data quality issues found across ${shows.length} show${shows.length !== 1 ? 's' : ''}.`}
+            </p>
           ) : (
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b">
                   <th className="pb-2 pr-4 font-medium">Title</th>
-                  <th className="pb-2 pr-4 font-medium">Issues</th>
+                  <th className="pb-2 font-medium">Issues</th>
                 </tr>
               </thead>
               <tbody>
-                {dataIssues.map((s) => {
-                  const issues: string[] = []
-                  if (!s.local_path) issues.push('No local path')
-                  if (s.episode_count === 0) issues.push('No episodes synced')
+                {dqRows.map((s) => {
+                  const issues = DQ_CHECKS.filter((c) => c.test(s))
                   return (
                     <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-4 whitespace-nowrap">
                         <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
                           {s.title}
                         </Link>
-                        <span className="ml-2 text-xs text-gray-400 capitalize">{s.media_type}</span>
+                        <span className="ml-2 text-xs text-gray-400 capitalize">{s.content_type ?? s.media_type}</span>
                       </td>
                       <td className="py-2">
                         <div className="flex gap-2 flex-wrap">
-                          {issues.map((issue) => (
-                            <span key={issue} className="bg-amber-100 text-amber-700 text-xs rounded px-1.5 py-0.5">
-                              {issue}
-                            </span>
+                          {issues.map((c) => (
+                            <button
+                              key={c.key}
+                              title={c.description}
+                              onClick={() => setDqFilter(c.key)}
+                              className="bg-amber-100 text-amber-700 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200"
+                            >
+                              {c.label}
+                            </button>
                           ))}
                         </div>
                       </td>
