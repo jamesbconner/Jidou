@@ -2,19 +2,42 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import type { ShowList, ShowRead, ShowCreate, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
 
+export type ShowSortOrder =
+  | 'title_asc'
+  | 'title_desc'
+  | 'added_desc'
+  | 'added_asc'
+  | 'release_desc'
+  | 'release_asc'
+  | 'last_aired_desc'
+  | 'rating_desc'
+  | 'episodes_desc'
+
+export const SHOW_SORT_LABELS: Record<ShowSortOrder, string> = {
+  title_asc: 'Title A → Z',
+  title_desc: 'Title Z → A',
+  added_desc: 'Recently Added',
+  added_asc: 'Oldest Added',
+  release_desc: 'Newest Release',
+  release_asc: 'Oldest Release',
+  last_aired_desc: 'Recently Aired',
+  rating_desc: 'Highest Rated',
+  episodes_desc: 'Most Episodes',
+}
+
 export const showKeys = {
   all: ['shows'] as const,
-  list: () => [...showKeys.all, 'list'] as const,
+  list: (sort?: ShowSortOrder) => [...showKeys.all, 'list', sort ?? 'title_asc'] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string) => ['tmdb', 'search', q] as const,
 }
 
-export function useShows() {
+export function useShows(sort: ShowSortOrder = 'title_asc') {
   return useQuery({
-    queryKey: showKeys.list(),
-    queryFn: () => api.get<ShowList[]>('/shows'),
+    queryKey: showKeys.list(sort),
+    queryFn: () => api.get<ShowList[]>(`/shows?sort=${sort}`),
   })
 }
 
@@ -51,7 +74,7 @@ export function useCreateShow() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: ShowCreate) => api.post<ShowRead>('/shows', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.list() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.all }),
   })
 }
 
@@ -61,7 +84,7 @@ export function useUpdateShowPaths(showId: number) {
     mutationFn: (paths: ShowPaths) => api.put<ShowRead>(`/shows/${showId}/paths`, paths),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.list() })
+      qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
 }
@@ -70,7 +93,7 @@ export function useDeleteShow() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.delete<void>(`/shows/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.list() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.all }),
   })
 }
 
@@ -90,7 +113,7 @@ export function useRematchShow(showId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.list() })
+      qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
 }

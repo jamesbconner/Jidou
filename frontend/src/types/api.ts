@@ -38,6 +38,7 @@ export interface ShowList {
   show_type: string | null
   runtime: number | null
   tagline: string | null
+  original_language: string | null
   local_path: string | null
   created_at: string
 }
@@ -46,7 +47,6 @@ export interface ShowRead extends ShowList {
   overview: string | null
   backdrop_path: string | null
   vote_count: number
-  original_language: string | null
   cached: boolean
   aliases: string[] | null
   updated_at: string

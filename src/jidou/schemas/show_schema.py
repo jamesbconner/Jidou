@@ -140,6 +140,7 @@ class ShowList(BaseModel):
     poster_path: str | None = None
     vote_average: float | None = None
     release_date: str | None = None
+    original_language: str | None = None
     content_type: str | None = None
     sys_name: str | None = None
     genres: list[dict[str, object]] | None = None
