@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { showKeys } from '@/hooks/useShows'
 import type { FileRead, FileMatchRequest, FileStatus, TmdbSuggestionsResponse } from '@/types/api'
 
 export const fileKeys = {
@@ -38,6 +39,7 @@ export function useRematchFile() {
     onSuccess: (data) => {
       qc.setQueryData(fileKeys.detail(data.id), data)
       qc.invalidateQueries({ queryKey: fileKeys.all })
+      qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
 }
