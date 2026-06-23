@@ -38,8 +38,8 @@ const DQ_CHECKS: DqCheck[] = [
   {
     key: 'orphan',
     label: 'No files tracked',
-    description: 'TV or anime show with no downloaded files ever matched to it — may be an unused library entry.',
-    test: (s) => (s.media_type === 'tv' || s.content_type === 'anime') && s.matched_file_count === 0,
+    description: 'TV or anime show with no episodes and no downloaded files — nothing from either the download or import pipeline. May be a stale or accidental library entry.',
+    test: (s) => (s.media_type === 'tv' || s.content_type === 'anime') && s.episode_count === 0 && s.matched_file_count === 0,
   },
 ]
 
