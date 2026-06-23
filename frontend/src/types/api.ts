@@ -41,6 +41,7 @@ export interface ShowList {
   original_language: string | null
   local_path: string | null
   episode_count: number
+  matched_file_count: number
   created_at: string
 }
 

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
+from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import EpisodeList
@@ -153,17 +154,24 @@ async def list_shows(
         .correlate(Show)
         .scalar_subquery()
     )
+    file_count_sq = (
+        select(func.count(DownloadedFile.id))
+        .where(DownloadedFile.show_id == Show.id)
+        .correlate(Show)
+        .scalar_subquery()
+    )
     stmt = (
-        select(Show, ep_count_sq.label("episode_count"))
+        select(Show, ep_count_sq.label("episode_count"), file_count_sq.label("matched_file_count"))
         .order_by(_SORT_MAP[sort])
         .offset(offset)
         .limit(limit)
     )
     rows = (await db_session.execute(stmt)).all()
     shows: list[ShowList] = []
-    for show, ep_count in rows:
+    for show, ep_count, file_count in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
+        data.matched_file_count = file_count
         shows.append(data)
     return shows
 
