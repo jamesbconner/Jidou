@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useFiles, useRematchFile, fileKeys } from '@/hooks/useFiles'
+import { showKeys } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { api } from '@/api/client'
@@ -27,7 +28,10 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
   const patch = useMutation({
     mutationFn: (newShowId: number | null) =>
       api.patch<FileRead>(`/files/${fileId}`, { show_id: newShowId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: fileKeys.all })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+    },
   })
 
   function commit() {
