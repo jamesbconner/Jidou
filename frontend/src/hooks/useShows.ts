@@ -113,7 +113,7 @@ export function useRematchShow(showId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.list() })
+      qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
 }

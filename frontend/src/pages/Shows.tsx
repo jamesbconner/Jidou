@@ -33,7 +33,7 @@ function applyFilters(
 
     if (minRating) {
       const min = Number(minRating)
-      if (!s.vote_average || s.vote_average < min) return false
+      if (s.vote_average == null || s.vote_average < min) return false
     }
 
     return true
