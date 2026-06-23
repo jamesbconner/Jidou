@@ -266,10 +266,24 @@ export interface ConnectionTestResult {
 
 export interface AdminStats {
   shows: number
-  episodes: number
-  downloaded_files: number
+  episodes_tracked: number
+  episodes_total: number
+  files_needs_attention: number
+  files_added_1d: number
+  files_added_7d: number
+  files_added_30d: number
   watchlist: number
   background_tasks: number
+}
+
+export interface FileTimelineEntry {
+  date: string
+  count: number
+}
+
+export interface PipelineStatusEntry {
+  status: string
+  count: number
 }
 
 export interface ServiceHealth {
