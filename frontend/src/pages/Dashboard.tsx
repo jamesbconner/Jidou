@@ -105,10 +105,10 @@ export default function Dashboard() {
             tooltip="Episodes with a local file tracked. Denominator is the total number of episodes synced from TMDB metadata."
           />
           <StatCard
-            label="Files Added"
+            label="Episodes Tracked"
             value={stats.files_added_1d}
             sub={`${stats.files_added_7d} past 7d · ${stats.files_added_30d} past 30d`}
-            tooltip="Count of DownloadedFile records created in the past 1 day (header), 7 days, and 30 days. Includes both SFTP downloads and batch imports."
+            tooltip="Episodes newly marked as tracked in the past 1 day (header), 7 days, and 30 days. Counts both SFTP-routed files and path imports."
           />
           <StatCard
             label="Needs Attention"
@@ -124,7 +124,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Files added — bar chart */}
         <div className="bg-white rounded-lg shadow p-4">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">Files Added (past 30 days)</h2>
+          <h2 className="text-sm font-medium text-gray-700 mb-3">Episodes Tracked (past 30 days)</h2>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={timelineData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <XAxis

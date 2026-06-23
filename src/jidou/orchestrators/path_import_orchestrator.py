@@ -18,6 +18,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -234,6 +235,7 @@ class PathImportOrchestrator:
                 if not ep.file_tracked:
                     if not self.dry_run:
                         ep.file_tracked = True
+                        ep.file_tracked_at = datetime.now(UTC)
                     show_result.episodes_tracked += 1
                 # Already tracked — count as matched but don't increment episodes_tracked.
             else:

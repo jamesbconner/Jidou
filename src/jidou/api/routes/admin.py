@@ -51,18 +51,18 @@ async def get_stats(
 
     files_added_1d = await db_session.scalar(
         select(func.count())
-        .select_from(DownloadedFile)
-        .where(DownloadedFile.created_at >= now - timedelta(days=1))
+        .select_from(Episode)
+        .where(Episode.file_tracked_at >= now - timedelta(days=1))
     )
     files_added_7d = await db_session.scalar(
         select(func.count())
-        .select_from(DownloadedFile)
-        .where(DownloadedFile.created_at >= now - timedelta(days=7))
+        .select_from(Episode)
+        .where(Episode.file_tracked_at >= now - timedelta(days=7))
     )
     files_added_30d = await db_session.scalar(
         select(func.count())
-        .select_from(DownloadedFile)
-        .where(DownloadedFile.created_at >= now - timedelta(days=30))
+        .select_from(Episode)
+        .where(Episode.file_tracked_at >= now - timedelta(days=30))
     )
 
     shows = await db_session.scalar(select(func.count()).select_from(Show))
@@ -99,12 +99,12 @@ async def get_files_timeline(
 
     stmt = (
         select(
-            cast(DownloadedFile.created_at, Date).label("day"),
+            cast(Episode.file_tracked_at, Date).label("day"),
             func.count().label("count"),
         )
-        .where(DownloadedFile.created_at >= cutoff)
-        .group_by(cast(DownloadedFile.created_at, Date))
-        .order_by(cast(DownloadedFile.created_at, Date))
+        .where(Episode.file_tracked_at >= cutoff)
+        .group_by(cast(Episode.file_tracked_at, Date))
+        .order_by(cast(Episode.file_tracked_at, Date))
     )
     rows = (await db_session.execute(stmt)).all()
     return [{"date": str(row.day), "count": row.count} for row in rows]

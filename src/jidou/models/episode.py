@@ -1,8 +1,8 @@
 """Episode model for TV show episodes."""
 
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from jidou.models.base import Base, TimestampMixin
@@ -13,7 +13,10 @@ class Episode(TimestampMixin, Base):
 
     Episodes are populated by the sync worker when it fetches season details
     from TMDB.  The ``file_tracked`` flag is set to ``True`` once a matching
-    :class:`DownloadedFile` has been linked to this episode.
+    :class:`DownloadedFile` has been linked to this episode, and
+    ``file_tracked_at`` records exactly when that transition occurred so
+    activity dashboards can track intake volume over time regardless of
+    whether the file arrived via SFTP download or path import.
     """
 
     __tablename__ = "episodes"
@@ -31,6 +34,7 @@ class Episode(TimestampMixin, Base):
     episode_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     still_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_tracked: Mapped[bool] = mapped_column(Boolean, default=False)
+    file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the Episode."""
