@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -187,6 +187,21 @@ class PathImportOrchestrator:
         else:
             show_result.action = "found"
             logger.info("Found existing show %r (id=%d) for dir %r", show.title, show.id, show_dir)
+            # If episodes haven't been synced yet, do it now so file matching can proceed.
+            if not self.dry_run:
+                ep_count = await self.session.scalar(
+                    select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+                )
+                if ep_count == 0:
+                    logger.info(
+                        "No episodes for show id=%d (%r); syncing from TMDB before matching",
+                        show.id,
+                        show.title,
+                    )
+                    try:
+                        await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
+                    except Exception:
+                        logger.exception("Episode sync failed for show id=%d", show.id)
 
         if show is None:
             logger.warning("Could not resolve show for directory %r", show_dir)
