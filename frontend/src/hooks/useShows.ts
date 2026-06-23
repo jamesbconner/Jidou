@@ -101,7 +101,10 @@ export function useSyncEpisodes() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (showId: number) => api.post<EpisodeList[]>(`/shows/${showId}/sync-episodes`),
-    onSuccess: (_data, showId) => qc.invalidateQueries({ queryKey: showKeys.episodes(showId) }),
+    onSuccess: (_data, showId) => {
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+    },
   })
 }
 

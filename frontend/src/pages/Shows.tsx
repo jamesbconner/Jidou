@@ -320,7 +320,11 @@ export default function Shows() {
         </>
       )}
 
-      {tab === 'data' && (
+      {tab === 'data' && isLoading && (
+        <p className="text-gray-400 text-sm">Loading…</p>
+      )}
+
+      {tab === 'data' && !isLoading && (
         <section className="space-y-6">
           {/* Metric summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
