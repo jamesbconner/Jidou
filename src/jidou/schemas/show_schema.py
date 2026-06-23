@@ -160,4 +160,5 @@ class ShowList(BaseModel):
     runtime: int | None = None
     tagline: str | None = None
     local_path: str | None = None
+    episode_count: int = 0
     created_at: datetime

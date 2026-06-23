@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import ColumnElement, nullslast, select
+from sqlalchemy import ColumnElement, func, nullslast, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,7 +133,7 @@ async def list_shows(
         ),
     ),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> list[Show]:
+) -> list[ShowList]:
     """List all shows stored in the database.
 
     Args:
@@ -145,11 +145,27 @@ async def list_shows(
         db_session: DB session (injected).
 
     Returns:
-        List of shows in the requested order.
+        List of shows in the requested order with local episode counts.
     """
-    stmt = select(Show).order_by(_SORT_MAP[sort]).offset(offset).limit(limit)
-    result = await db_session.execute(stmt)
-    return list(result.scalars().all())
+    ep_count_sq = (
+        select(func.count(Episode.id))
+        .where(Episode.show_id == Show.id)
+        .correlate(Show)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(Show, ep_count_sq.label("episode_count"))
+        .order_by(_SORT_MAP[sort])
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = (await db_session.execute(stmt)).all()
+    shows: list[ShowList] = []
+    for show, ep_count in rows:
+        data = ShowList.model_validate(show)
+        data.episode_count = ep_count
+        shows.append(data)
+    return shows
 
 
 @router.post("", response_model=ShowRead, status_code=201)

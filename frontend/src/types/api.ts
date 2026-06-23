@@ -40,6 +40,7 @@ export interface ShowList {
   tagline: string | null
   original_language: string | null
   local_path: string | null
+  episode_count: number
   created_at: string
 }
 

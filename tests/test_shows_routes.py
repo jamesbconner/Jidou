@@ -95,8 +95,11 @@ def _session_override(
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
         result = MagicMock()
+        items = many or ([single] if single else [])
         result.scalar_one_or_none.return_value = single
-        result.scalars.return_value.all.return_value = many or ([single] if single else [])
+        result.scalars.return_value.all.return_value = items
+        # list_shows returns (show, ep_count) tuples via .all()
+        result.all.return_value = [(item, 0) for item in items]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.delete = AsyncMock()
