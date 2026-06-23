@@ -2,10 +2,11 @@
 
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select, text
+from sqlalchemy import cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -20,31 +21,114 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+_NEEDS_ATTENTION = ("unmatched", "error")
+
 
 @router.get("/stats")
 async def get_stats(
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
-    """Return row counts for each major database table.
+    """Return dashboard statistics.
 
     Args:
         db_session: DB session (injected).
 
     Returns:
-        Dictionary mapping table name to row count.
+        Dictionary of labelled counts for the dashboard stat cards.
     """
-    counts: dict[str, int] = {}
-    for model, label in [
-        (Show, "shows"),
-        (Episode, "episodes"),
-        (DownloadedFile, "downloaded_files"),
-        (WatchlistEntry, "watchlist"),
-        (BackgroundTask, "background_tasks"),
-    ]:
-        result = await db_session.execute(select(func.count()).select_from(model))
-        counts[label] = result.scalar_one()
+    now = datetime.now(UTC)
 
-    return counts
+    episodes_tracked = await db_session.scalar(
+        select(func.count()).select_from(Episode).where(Episode.file_tracked.is_(True))
+    )
+    episodes_total = await db_session.scalar(select(func.count()).select_from(Episode))
+
+    files_needs_attention = await db_session.scalar(
+        select(func.count())
+        .select_from(DownloadedFile)
+        .where(DownloadedFile.status.in_(_NEEDS_ATTENTION))
+    )
+
+    files_added_1d = await db_session.scalar(
+        select(func.count())
+        .select_from(DownloadedFile)
+        .where(DownloadedFile.created_at >= now - timedelta(days=1))
+    )
+    files_added_7d = await db_session.scalar(
+        select(func.count())
+        .select_from(DownloadedFile)
+        .where(DownloadedFile.created_at >= now - timedelta(days=7))
+    )
+    files_added_30d = await db_session.scalar(
+        select(func.count())
+        .select_from(DownloadedFile)
+        .where(DownloadedFile.created_at >= now - timedelta(days=30))
+    )
+
+    shows = await db_session.scalar(select(func.count()).select_from(Show))
+    watchlist = await db_session.scalar(select(func.count()).select_from(WatchlistEntry))
+    background_tasks = await db_session.scalar(select(func.count()).select_from(BackgroundTask))
+
+    return {
+        "shows": shows or 0,
+        "episodes_tracked": episodes_tracked or 0,
+        "episodes_total": episodes_total or 0,
+        "files_needs_attention": files_needs_attention or 0,
+        "files_added_1d": files_added_1d or 0,
+        "files_added_7d": files_added_7d or 0,
+        "files_added_30d": files_added_30d or 0,
+        "watchlist": watchlist or 0,
+        "background_tasks": background_tasks or 0,
+    }
+
+
+@router.get("/stats/files-timeline")
+async def get_files_timeline(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return daily file counts for the past 30 days.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        List of ``{"date": "YYYY-MM-DD", "count": N}`` ordered ascending by date.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=30)
+    from sqlalchemy import Date
+
+    stmt = (
+        select(
+            cast(DownloadedFile.created_at, Date).label("day"),
+            func.count().label("count"),
+        )
+        .where(DownloadedFile.created_at >= cutoff)
+        .group_by(cast(DownloadedFile.created_at, Date))
+        .order_by(cast(DownloadedFile.created_at, Date))
+    )
+    rows = (await db_session.execute(stmt)).all()
+    return [{"date": str(row.day), "count": row.count} for row in rows]
+
+
+@router.get("/stats/pipeline-status")
+async def get_pipeline_status(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return current file counts grouped by pipeline status.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        List of ``{"status": str, "count": N}`` ordered by count descending.
+    """
+    stmt = (
+        select(DownloadedFile.status.label("status"), func.count().label("count"))
+        .group_by(DownloadedFile.status)
+        .order_by(func.count().desc())
+    )
+    rows = (await db_session.execute(stmt)).all()
+    return [{"status": row.status, "count": row.count} for row in rows]
 
 
 @router.get("/cache")

@@ -8,17 +8,16 @@ from fastapi.testclient import TestClient
 from jidou.main import app
 
 
-def _session_override_with_counts(counts: list[int]) -> "type[AsyncMock]":
-    """Return a session override that returns a sequence of scalar counts."""
+def _session_override_with_scalars(values: list[int]) -> "type[AsyncMock]":
+    """Return a session override whose scalar() calls return values in order."""
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
-        results = []
-        for count in counts:
-            r = MagicMock()
-            r.scalar_one.return_value = count
-            results.append(r)
-        session.execute = AsyncMock(side_effect=results)
+        session.scalar = AsyncMock(side_effect=values)
+        # execute() still needed by health checks
+        result = MagicMock()
+        result.scalar_one.return_value = 1
+        session.execute = AsyncMock(return_value=result)
         yield session
 
     return _mock_session  # type: ignore[return-value]
@@ -30,20 +29,27 @@ def _session_override_with_counts(counts: list[int]) -> "type[AsyncMock]":
 
 
 def test_get_stats_returns_table_counts() -> None:
-    """GET /api/admin/stats returns a dict of table row counts."""
+    """GET /api/admin/stats returns dashboard stat fields."""
     from jidou.database import get_session
 
-    # 5 tables queried in order: shows, episodes, downloaded_files, watchlist, background_tasks
-    app.dependency_overrides[get_session] = _session_override_with_counts([3, 12, 7, 2, 5])
+    # scalar() call order: episodes_tracked, episodes_total, files_needs_attention,
+    # files_added_1d, files_added_7d, files_added_30d, shows, watchlist, background_tasks
+    app.dependency_overrides[get_session] = _session_override_with_scalars(
+        [6, 369, 2, 1, 5, 12, 3, 4, 7]
+    )
     try:
         response = TestClient(app).get("/api/admin/stats")
         assert response.status_code == 200
         body = response.json()
         assert body["shows"] == 3
-        assert body["episodes"] == 12
-        assert body["downloaded_files"] == 7
-        assert body["watchlist"] == 2
-        assert body["background_tasks"] == 5
+        assert body["episodes_tracked"] == 6
+        assert body["episodes_total"] == 369
+        assert body["files_needs_attention"] == 2
+        assert body["files_added_1d"] == 1
+        assert body["files_added_7d"] == 5
+        assert body["files_added_30d"] == 12
+        assert body["watchlist"] == 4
+        assert body["background_tasks"] == 7
     finally:
         app.dependency_overrides.clear()
 
