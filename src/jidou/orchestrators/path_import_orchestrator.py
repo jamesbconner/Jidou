@@ -449,11 +449,24 @@ class PathImportOrchestrator:
         if ep:
             return ep
 
-        # Fall back to season 1 / episode N — wrong for multi-season absolute
-        # numbering but the best we can do without episode-group data.
-        stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.season_number == 1,
-            Episode.episode_number == entry.episode,
+        # Last resort: compute a sequential absolute number by ordering all
+        # non-special episodes by (season_number, episode_number) and matching
+        # on row position.  This handles shows like HxH where fansub filenames
+        # use a continuous count but TMDB stores episodes per-season and does
+        # not populate absolute_number.
+        numbered = (
+            select(
+                Episode.id,
+                func.row_number()
+                .over(order_by=[Episode.season_number, Episode.episode_number])
+                .label("row_num"),
+            )
+            .where(Episode.show_id == show_id, Episode.season_number > 0)
+            .subquery()
+        )
+        stmt = (
+            select(Episode)
+            .join(numbered, Episode.id == numbered.c.id)
+            .where(numbered.c.row_num == entry.episode)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
