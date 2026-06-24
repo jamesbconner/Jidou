@@ -161,6 +161,8 @@ export default function Shows() {
       vote_count: r.vote_count,
       release_date: r.first_air_date ?? r.release_date,
       original_language: r.original_language,
+      genre_ids: r.genre_ids ?? null,
+      origin_country: r.origin_country ?? null,
     })
   }
 
