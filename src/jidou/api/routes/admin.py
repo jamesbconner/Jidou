@@ -63,20 +63,20 @@ async def get_stats(
         .where(DownloadedFile.status.in_(_NEEDS_ATTENTION))
     )
 
+    # Use UTC calendar-day boundaries so stat cards align with the bar chart.
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     files_added_1d = await db_session.scalar(
-        select(func.count())
-        .select_from(Episode)
-        .where(Episode.file_tracked_at >= now - timedelta(days=1))
+        select(func.count()).select_from(Episode).where(Episode.file_tracked_at >= today_start)
     )
     files_added_7d = await db_session.scalar(
         select(func.count())
         .select_from(Episode)
-        .where(Episode.file_tracked_at >= now - timedelta(days=7))
+        .where(Episode.file_tracked_at >= today_start - timedelta(days=6))
     )
     files_added_30d = await db_session.scalar(
         select(func.count())
         .select_from(Episode)
-        .where(Episode.file_tracked_at >= now - timedelta(days=30))
+        .where(Episode.file_tracked_at >= today_start - timedelta(days=29))
     )
 
     shows = await db_session.scalar(select(func.count()).select_from(Show))

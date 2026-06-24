@@ -458,9 +458,10 @@ class PathImportOrchestrator:
             ep = (await self.session.execute(stmt)).scalar_one_or_none()
             if ep is not None:
                 return ep
-            # Season was explicit but no match found — fall through to LLM only;
-            # absolute lookups would produce wrong results for a known season context.
-            return await self._llm_match(show_id, show_title, entry)
+            # Season directory was found but no matching S##E## row — the episode
+            # number in the filename may still be an absolute count (e.g. a show
+            # stored under Season 01 with files numbered 1-148).  Fall through to
+            # the absolute-number lookups before escalating to the LLM.
 
         # No season info — this is an absolute episode number.
         # Try the absolute_episode_number column first (populated via episode groups).
