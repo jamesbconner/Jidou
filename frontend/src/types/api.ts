@@ -274,6 +274,11 @@ export interface AdminStats {
   files_added_30d: number
   watchlist: number
   background_tasks: number
+  dq_total: number
+  dq_no_path: number
+  dq_no_content_type: number
+  dq_no_episodes: number
+  dq_orphan: number
 }
 
 export interface FileTimelineEntry {

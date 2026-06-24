@@ -33,9 +33,10 @@ def test_get_stats_returns_table_counts() -> None:
     from jidou.database import get_session
 
     # scalar() call order: episodes_tracked, episodes_total, files_needs_attention,
-    # files_added_1d, files_added_7d, files_added_30d, shows, watchlist, background_tasks
+    # files_added_1d, files_added_7d, files_added_30d, shows, watchlist, background_tasks,
+    # dq_no_path, dq_no_content_type, dq_no_episodes, dq_orphan, dq_total
     app.dependency_overrides[get_session] = _session_override_with_scalars(
-        [6, 369, 2, 1, 5, 12, 3, 4, 7]
+        [6, 369, 2, 1, 5, 12, 3, 4, 7, 1, 2, 1, 0, 3]
     )
     try:
         response = TestClient(app).get("/api/admin/stats")
@@ -50,6 +51,11 @@ def test_get_stats_returns_table_counts() -> None:
         assert body["files_added_30d"] == 12
         assert body["watchlist"] == 4
         assert body["background_tasks"] == 7
+        assert body["dq_no_path"] == 1
+        assert body["dq_no_content_type"] == 2
+        assert body["dq_no_episodes"] == 1
+        assert body["dq_orphan"] == 0
+        assert body["dq_total"] == 3
     finally:
         app.dependency_overrides.clear()
 

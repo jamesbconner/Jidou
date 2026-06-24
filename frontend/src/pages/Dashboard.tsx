@@ -92,7 +92,7 @@ export default function Dashboard() {
 
       {/* Stat cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <StatCard
             label="Shows in Library"
             value={stats.shows}
@@ -105,17 +105,28 @@ export default function Dashboard() {
             tooltip="Episodes with a local file tracked. Denominator is the total number of episodes synced from TMDB metadata."
           />
           <StatCard
-            label="Episodes Tracked"
+            label="Newly Tracked"
             value={stats.files_added_1d}
             sub={`${stats.files_added_7d} past 7d · ${stats.files_added_30d} past 30d`}
             tooltip="Episodes newly marked as tracked in the past 1 day (header), 7 days, and 30 days. Counts both SFTP-routed files and path imports."
           />
           <StatCard
-            label="Needs Attention"
+            label="Files Need Attention"
             value={stats.files_needs_attention}
-            sub="unmatched or errored files"
+            sub="unmatched or errored"
             tooltip="Files in 'unmatched' or 'error' status that require manual review or re-processing."
             alert={stats.files_needs_attention > 0}
+          />
+          <StatCard
+            label="Shows Need Attention"
+            value={stats.dq_total}
+            sub={[
+              stats.dq_no_path > 0 && `${stats.dq_no_path} no path`,
+              stats.dq_no_content_type > 0 && `${stats.dq_no_content_type} no type`,
+              stats.dq_no_episodes > 0 && `${stats.dq_no_episodes} no episodes`,
+            ].filter(Boolean).join(' · ') || 'all clear'}
+            tooltip="Shows with data quality issues: missing local path, unset content type, or episodes not yet synced. See Shows → Data Quality for details."
+            alert={stats.dq_total > 0}
           />
         </div>
       )}
