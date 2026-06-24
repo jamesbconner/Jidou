@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, cast, func, or_, select, text
+from sqlalchemy import Date, and_, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -150,16 +150,15 @@ async def get_files_timeline(
     # Start of day 29 days ago UTC — aligns with the 30 calendar-day window the frontend builds.
     today_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     cutoff = today_utc - timedelta(days=29)
-    from sqlalchemy import Date
 
+    # func.timezone converts TIMESTAMPTZ to a UTC TIMESTAMP before DATE cast,
+    # so bucketing is always UTC regardless of the DB session timezone.
+    utc_day = cast(func.timezone("UTC", Episode.file_tracked_at), Date)
     stmt = (
-        select(
-            cast(Episode.file_tracked_at, Date).label("day"),
-            func.count().label("count"),
-        )
+        select(utc_day.label("day"), func.count().label("count"))
         .where(Episode.file_tracked_at >= cutoff)
-        .group_by(cast(Episode.file_tracked_at, Date))
-        .order_by(cast(Episode.file_tracked_at, Date))
+        .group_by(utc_day)
+        .order_by(utc_day)
     )
     rows = (await db_session.execute(stmt)).all()
     return [{"date": str(row.day), "count": row.count} for row in rows]
