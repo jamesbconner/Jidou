@@ -18,10 +18,10 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
 
 // ---------------------------------------------------------------------------
-// TMDB re-match panel (search UI only — trigger lives in the header)
+// TMDB re-match modal
 // ---------------------------------------------------------------------------
 
-function RematchPanel({
+function RematchModal({
   showId,
   currentTmdbId,
   onClose,
@@ -60,58 +60,121 @@ function RematchPanel({
   }
 
   return (
-    <div className="border rounded-lg p-4 bg-amber-50 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-amber-800">Search for the correct show on TMDB</p>
-        <button onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">
-          Cancel
-        </button>
-      </div>
-      <input
-        type="search"
-        placeholder="Search TMDB…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        autoFocus
-        className="border rounded px-2 py-1 text-sm w-full focus:outline-none focus:ring-2 focus:ring-amber-400"
-      />
-      {rematch.isError && (
-        <p className="text-xs text-red-600">{(rematch.error as Error).message}</p>
-      )}
-      {debouncedQuery.length >= 2 && searchData && searchData.results.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-          {searchData.results.slice(0, 12).map((r) => (
-            <button
-              key={`${r.media_type ?? 'unknown'}-${r.id}`}
-              onClick={() => handlePick(r)}
-              disabled={rematch.isPending || r.id === currentTmdbId}
-              className="text-left bg-white rounded shadow overflow-hidden hover:ring-2 hover:ring-amber-400 disabled:opacity-40 transition"
-            >
-              {r.poster_path ? (
-                <img
-                  src={`${TMDB_IMG}${r.poster_path}`}
-                  alt={r.name ?? r.title ?? ''}
-                  className="w-full h-28 object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
-                  No image
-                </div>
-              )}
-              <div className="p-1">
-                <p className="text-xs line-clamp-2 leading-tight">{r.name ?? r.title}</p>
-                {r.id === currentTmdbId && (
-                  <p className="text-xs text-green-600 font-medium">Current</p>
-                )}
-              </div>
-            </button>
-          ))}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Change TMDB Match</h3>
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
+            Cancel
+          </button>
         </div>
-      )}
-      {rematch.isPending && (
-        <p className="text-xs text-amber-700">Re-matching… episodes are being synced.</p>
-      )}
+        <input
+          type="search"
+          placeholder="Search TMDB…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoFocus
+          className="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {rematch.isError && (
+          <p className="text-xs text-red-600">{(rematch.error as Error).message}</p>
+        )}
+        {debouncedQuery.length >= 2 && searchData && searchData.results.length > 0 && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+            {searchData.results.slice(0, 12).map((r) => (
+              <button
+                key={`${r.media_type ?? 'unknown'}-${r.id}`}
+                onClick={() => handlePick(r)}
+                disabled={rematch.isPending || r.id === currentTmdbId}
+                className="text-left bg-white rounded shadow overflow-hidden hover:ring-2 hover:ring-blue-400 disabled:opacity-40 transition border"
+              >
+                {r.poster_path ? (
+                  <img
+                    src={`${TMDB_IMG}${r.poster_path}`}
+                    alt={r.name ?? r.title ?? ''}
+                    className="w-full h-28 object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                    No image
+                  </div>
+                )}
+                <div className="p-1">
+                  <p className="text-xs line-clamp-2 leading-tight">{r.name ?? r.title}</p>
+                  {r.id === currentTmdbId && (
+                    <p className="text-xs text-green-600 font-medium">Current</p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        {rematch.isPending && (
+          <p className="text-xs text-gray-500">Re-matching… episodes are being synced.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Set content type modal
+// ---------------------------------------------------------------------------
+
+function ContentTypeModal({
+  current,
+  onSave,
+  onClose,
+  isPending,
+}: {
+  current: string | null
+  onSave: (value: string | null) => void
+  onClose: () => void
+  isPending: boolean
+}) {
+  const [draft, setDraft] = useState(current ?? '')
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    onSave(draft || null)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
+        <h3 className="font-semibold mb-4">Set Content Type</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <select
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+            className="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">— clear —</option>
+            <option value="anime">anime</option>
+            <option value="tv">tv</option>
+            <option value="movie">movie</option>
+          </select>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -291,16 +354,6 @@ export default function ShowDetail() {
         </div>
       </div>
 
-      {/* Rematch panel (shown inline below header when open) */}
-      {rematchOpen && (
-        <RematchPanel
-          key={showId}
-          showId={showId}
-          currentTmdbId={show.tmdb_id}
-          onClose={() => setRematchOpen(false)}
-        />
-      )}
-
       {/* Local path */}
       <section className="bg-white rounded-lg shadow p-4">
         <h2 className="font-semibold mb-1">Local path</h2>
@@ -319,7 +372,7 @@ export default function ShowDetail() {
           <button
             onClick={() => syncEpisodes.mutate(showId)}
             disabled={syncEpisodes.isPending}
-            className="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50"
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
           >
             {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
           </button>
@@ -330,39 +383,17 @@ export default function ShowDetail() {
             Edit Path
           </button>
           <button
-            onClick={() => setRematchOpen((v) => !v)}
-            className="px-3 py-1 text-sm border border-amber-400 text-amber-700 rounded hover:bg-amber-50"
+            onClick={() => setRematchOpen(true)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
           >
             Change TMDB Match
           </button>
-          {contentTypeOpen ? (
-            <select
-              autoFocus
-              defaultValue={show.content_type ?? ''}
-              onBlur={(e) => {
-                const next = e.target.value || null
-                if (next !== show.content_type) patchShow.mutate({ id: showId, patch: { content_type: next } })
-                setContentTypeOpen(false)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur()
-                if (e.key === 'Escape') setContentTypeOpen(false)
-              }}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">— clear —</option>
-              <option value="anime">anime</option>
-              <option value="tv">tv</option>
-              <option value="movie">movie</option>
-            </select>
-          ) : (
-            <button
-              onClick={() => setContentTypeOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-            >
-              {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
-            </button>
-          )}
+          <button
+            onClick={() => setContentTypeOpen(true)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
+          </button>
           {syncEpisodes.isSuccess && <span className="text-xs text-green-600">Episodes synced</span>}
           {syncEpisodes.isError && (
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
@@ -462,13 +493,34 @@ export default function ShowDetail() {
         </section>
       )}
 
-      {/* Edit path modal */}
+      {/* Modals */}
       {pathModalOpen && (
         <EditPathModal
           current={show.local_path ?? null}
           onSave={handleSavePath}
           onClose={() => setPathModalOpen(false)}
           isPending={updatePaths.isPending}
+        />
+      )}
+      {rematchOpen && (
+        <RematchModal
+          key={showId}
+          showId={showId}
+          currentTmdbId={show.tmdb_id}
+          onClose={() => setRematchOpen(false)}
+        />
+      )}
+      {contentTypeOpen && (
+        <ContentTypeModal
+          current={show.content_type ?? null}
+          onSave={(value) => {
+            patchShow.mutate(
+              { id: showId, patch: { content_type: value } },
+              { onSuccess: () => setContentTypeOpen(false) },
+            )
+          }}
+          onClose={() => setContentTypeOpen(false)}
+          isPending={patchShow.isPending}
         />
       )}
     </div>
