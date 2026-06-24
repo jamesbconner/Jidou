@@ -27,6 +27,10 @@ class ShowCreate(BaseModel):
         default=None,
         description='TMDB genre objects: [{"id": 16, "name": "Animation"}]',
     )
+    genre_ids: list[int] | None = Field(
+        default=None,
+        description="TMDB genre ID list from search/trending cards: [16, 18]",
+    )
     origin_country: list[str] | None = Field(
         default=None,
         description='ISO 3166-1 country codes: ["JP", "US"]',

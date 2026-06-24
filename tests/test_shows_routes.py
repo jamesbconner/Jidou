@@ -744,27 +744,32 @@ import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize(
-    "media_type,genres,original_language,origin_country,expected",
+    "media_type,genres,genre_ids,original_language,origin_country,expected",
     [
         # Movies are always "movie" regardless of other fields.
-        ("movie", None, None, None, "movie"),
-        ("movie", [{"id": 16, "name": "Animation"}], "ja", ["JP"], "movie"),
-        # Anime: Animation genre + Japanese language.
-        ("tv", [{"id": 16, "name": "Animation"}], "ja", None, "anime"),
+        ("movie", None, None, None, None, "movie"),
+        ("movie", [{"id": 16, "name": "Animation"}], None, "ja", ["JP"], "movie"),
+        # Anime via genres objects: Animation genre + Japanese language.
+        ("tv", [{"id": 16, "name": "Animation"}], None, "ja", None, "anime"),
+        # Anime via genre_ids (search/trending card shape).
+        ("tv", None, [16], "ja", None, "anime"),
         # Anime: Animation genre + JP origin country (even without ja language).
-        ("tv", [{"id": 16, "name": "Animation"}], "en", ["JP"], "anime"),
+        ("tv", [{"id": 16, "name": "Animation"}], None, "en", ["JP"], "anime"),
+        # Anime via genre_ids + JP origin.
+        ("tv", None, [16, 18], "en", ["JP"], "anime"),
         # Not anime: Animation genre but not Japanese (e.g. Avatar).
-        ("tv", [{"id": 16, "name": "Animation"}], "en", ["US"], "tv"),
+        ("tv", [{"id": 16, "name": "Animation"}], None, "en", ["US"], "tv"),
         # Not anime: Japanese language but not animated (live action).
-        ("tv", [{"id": 18, "name": "Drama"}], "ja", ["JP"], "tv"),
+        ("tv", [{"id": 18, "name": "Drama"}], None, "ja", ["JP"], "tv"),
         # Default fallback.
-        ("tv", None, "en", ["US"], "tv"),
-        ("tv", [], None, None, "tv"),
+        ("tv", None, None, "en", ["US"], "tv"),
+        ("tv", [], [], None, None, "tv"),
     ],
 )
 def test_infer_content_type(
     media_type: str,
     genres: list[dict] | None,
+    genre_ids: list[int] | None,
     original_language: str | None,
     origin_country: list[str] | None,
     expected: str,
@@ -778,6 +783,7 @@ def test_infer_content_type(
         title="Test",
         media_type=media_type,
         genres=genres,
+        genre_ids=genre_ids,
         original_language=original_language,
         origin_country=origin_country,
     )
