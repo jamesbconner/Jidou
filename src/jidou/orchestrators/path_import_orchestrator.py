@@ -458,10 +458,14 @@ class PathImportOrchestrator:
             ep = (await self.session.execute(stmt)).scalar_one_or_none()
             if ep is not None:
                 return ep
-            # Season directory was found but no matching S##E## row — the episode
-            # number in the filename may still be an absolute count (e.g. a show
-            # stored under Season 01 with files numbered 1-148).  Fall through to
-            # the absolute-number lookups before escalating to the LLM.
+            # S##E## miss with an explicit season > 1 means the episode is
+            # genuinely absent — absolute/ROW_NUMBER fallbacks would map to the
+            # wrong episode in the overall sequence, so go straight to LLM.
+            if entry.season > 1:
+                return await self._llm_match(show_id, show_title, entry)
+            # Season 1 directory: the episode number may still be a continuous
+            # absolute count (e.g. a show with all 148 episodes in Season 01).
+            # Fall through to absolute-number lookups before the LLM.
 
         # No season info — this is an absolute episode number.
         # Try the absolute_episode_number column first (populated via episode groups).
