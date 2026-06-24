@@ -77,6 +77,7 @@ const CONTENT_TYPE_OPTIONS = ['anime', 'tv', 'movie'] as const
 
 function InlineContentType({ showId, value }: { showId: number; value: string | null }) {
   const [editing, setEditing] = useState(false)
+  const [selected, setSelected] = useState(value ?? '')
   const cancelRef = useRef(false)
   const patch = usePatchShow()
 
@@ -89,7 +90,7 @@ function InlineContentType({ showId, value }: { showId: number; value: string | 
   if (!editing) {
     return (
       <button
-        onClick={() => { cancelRef.current = false; setEditing(true) }}
+        onClick={() => { cancelRef.current = false; setSelected(value ?? ''); setEditing(true) }}
         className="text-xs text-gray-500 hover:text-blue-600 hover:underline capitalize"
         title="Click to set content type"
       >
@@ -101,13 +102,13 @@ function InlineContentType({ showId, value }: { showId: number; value: string | 
   return (
     <select
       autoFocus
-      defaultValue={value ?? ''}
-      onBlur={(e) => commit(e.target.value || null)}
+      value={selected}
+      onChange={(e) => setSelected(e.target.value)}
+      onBlur={() => commit(selected || null)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') { cancelRef.current = true; setEditing(false) }
       }}
-      onChange={(e) => { if (e.target.value !== undefined) commit(e.target.value || null) }}
       className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       <option value="">— clear —</option>
