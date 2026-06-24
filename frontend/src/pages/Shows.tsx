@@ -144,6 +144,8 @@ export default function Shows() {
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
 
+  const libraryTmdbIds = useMemo(() => new Set(shows.map((s) => s.tmdb_id)), [shows])
+
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
     shows.forEach((s) => s.genres?.forEach((g) => { if (g.name) names.add(g.name as string) }))
@@ -323,25 +325,45 @@ export default function Shows() {
             <section>
               <h2 className="text-sm font-medium text-gray-500 mb-2">TMDB Results</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {searchData.results.slice(0, 12).map((r) => (
-                  <div key={r.id} className="bg-white rounded-lg shadow overflow-hidden">
-                    {r.poster_path ? (
-                      <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
-                    ) : (
-                      <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
-                    )}
-                    <div className="p-2">
-                      <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
-                      <button
-                        onClick={() => handleTrack(r)}
-                        disabled={createShow.isPending}
-                        className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        Add to Library
-                      </button>
+                {searchData.results.slice(0, 12).map((r) => {
+                  const inLibrary = libraryTmdbIds.has(r.id)
+                  const libraryShow = inLibrary ? shows.find((s) => s.tmdb_id === r.id) : undefined
+                  return (
+                    <div key={r.id} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+                      <div className="relative">
+                        {r.poster_path ? (
+                          <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                        )}
+                        {inLibrary && (
+                          <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">
+                            In Library
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
+                        {inLibrary && libraryShow ? (
+                          <Link
+                            to={`/shows/${libraryShow.id}`}
+                            className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                          >
+                            View in Library
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => handleTrack(r)}
+                            disabled={createShow.isPending}
+                            className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Add to Library
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
           )}
