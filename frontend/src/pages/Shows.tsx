@@ -141,10 +141,17 @@ export default function Shows() {
   }, [query])
 
   const { data: shows = [], isLoading } = useShows(sort)
+  // High limit so the indicator set covers the full library, not just the first page.
+  const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
 
-  const libraryTmdbIds = useMemo(() => new Set(shows.map((s) => s.tmdb_id)), [shows])
+  // Key on tmdb_id:media_type — TMDB assigns IDs per media type so a TV show
+  // and a movie can share the same numeric ID in multi-search results.
+  const libraryKeys = useMemo(
+    () => new Set(allShows.map((s) => `${s.tmdb_id}:${s.media_type}`)),
+    [allShows],
+  )
 
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
@@ -326,8 +333,11 @@ export default function Shows() {
               <h2 className="text-sm font-medium text-gray-500 mb-2">TMDB Results</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {searchData.results.slice(0, 12).map((r) => {
-                  const inLibrary = libraryTmdbIds.has(r.id)
-                  const libraryShow = inLibrary ? shows.find((s) => s.tmdb_id === r.id) : undefined
+                  const mediaType = r.media_type ?? 'tv'
+                  const inLibrary = libraryKeys.has(`${r.id}:${mediaType}`)
+                  const libraryShow = inLibrary
+                    ? allShows.find((s) => s.tmdb_id === r.id && s.media_type === mediaType)
+                    : undefined
                   return (
                     <div key={r.id} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
                       <div className="relative">

@@ -34,10 +34,10 @@ export const showKeys = {
   search: (q: string) => ['tmdb', 'search', q] as const,
 }
 
-export function useShows(sort: ShowSortOrder = 'title_asc') {
+export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
   return useQuery({
     queryKey: showKeys.list(sort),
-    queryFn: () => api.get<ShowList[]>(`/shows?sort=${sort}`),
+    queryFn: () => api.get<ShowList[]>(`/shows?sort=${sort}&limit=${limit}`),
   })
 }
 
