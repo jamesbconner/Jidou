@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -218,7 +219,9 @@ class MatchOrchestrator:
                         file.episode_id = ep.id
                         file.matched_by = matched_by
                         file.status = FileStatus.ROUTED
-                        ep.file_tracked = True
+                        if not ep.file_tracked:
+                            ep.file_tracked = True
+                            ep.file_tracked_at = datetime.now(UTC)
                         files_matched += 1
                         if matched_by == MatchedBy.HEURISTIC:
                             matched_by_heuristic += 1

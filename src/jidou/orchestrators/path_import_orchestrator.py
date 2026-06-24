@@ -18,9 +18,10 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,12 +29,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
 _INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+_LLM_SYSTEM = (
+    "You are a filename-to-episode matcher. "
+    "Given a show title, a filename, and a numbered episode list, "
+    "identify which episode the file belongs to. "
+    "Reply with ONLY two integers: season_number episode_number (space-separated). "
+    "Example: 2 7\n"
+    "If you cannot determine the match, reply with exactly: UNKNOWN"
+)
 
 
 def _sanitize_sys_name(title: str) -> str:
@@ -113,11 +124,13 @@ class PathImportOrchestrator:
         tmdb: TMDBService,
         content_type: str = "anime",
         dry_run: bool = False,
+        llm: LLMService | None = None,
     ) -> None:
         self.session = session
         self.tmdb = tmdb
         self.content_type = content_type
         self.dry_run = dry_run
+        self.llm = llm
 
     async def run(
         self,
@@ -187,6 +200,21 @@ class PathImportOrchestrator:
         else:
             show_result.action = "found"
             logger.info("Found existing show %r (id=%d) for dir %r", show.title, show.id, show_dir)
+            # If episodes haven't been synced yet, do it now so file matching can proceed.
+            if not self.dry_run:
+                ep_count = await self.session.scalar(
+                    select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+                )
+                if ep_count == 0:
+                    logger.info(
+                        "No episodes for show id=%d (%r); syncing from TMDB before matching",
+                        show.id,
+                        show.title,
+                    )
+                    try:
+                        await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
+                    except Exception:
+                        logger.exception("Episode sync failed for show id=%d", show.id)
 
         if show is None:
             logger.warning("Could not resolve show for directory %r", show_dir)
@@ -214,11 +242,12 @@ class PathImportOrchestrator:
 
         # Match each file entry to an Episode row.
         for entry in entries:
-            ep = await self._find_episode(show.id, entry)
+            ep = await self._find_episode(show.id, show.title, entry)
             if ep is not None:
                 if not ep.file_tracked:
                     if not self.dry_run:
                         ep.file_tracked = True
+                        ep.file_tracked_at = datetime.now(UTC)
                     show_result.episodes_tracked += 1
                 # Already tracked — count as matched but don't increment episodes_tracked.
             else:
@@ -395,17 +424,23 @@ class PathImportOrchestrator:
     async def _find_episode(
         self,
         show_id: int,
+        show_title: str,
         entry: ParsedPathEntry,
     ) -> Episode | None:
         """Match a parsed path entry to an Episode row.
 
         Lookup priority:
-        1. Season + episode (standard).
-        2. Absolute episode number (``episode.absolute_episode_number``).
-        3. Season 1, episode N as a last resort for absolute-numbered entries.
+        1. Season + episode (standard S##E## match).
+        2. Absolute episode number column (populated via TMDB episode groups).
+        3. ROW_NUMBER() window — sequential position across all non-special episodes.
+        4. LLM fallback — filename + full episode list sent to the configured LLM.
+
+        Steps 2-4 are only reached when no season is known, or when the season-based
+        lookup (step 1) finds nothing.
 
         Args:
             show_id: Database ID of the parent show.
+            show_title: Show title for the LLM prompt context.
             entry: Parsed entry describing the file's position.
 
         Returns:
@@ -420,23 +455,130 @@ class PathImportOrchestrator:
                 Episode.season_number == entry.season,
                 Episode.episode_number == entry.episode,
             )
-            return (await self.session.execute(stmt)).scalar_one_or_none()
+            ep = (await self.session.execute(stmt)).scalar_one_or_none()
+            if ep is not None:
+                return ep
+            # S##E## miss with an explicit season > 1 means the episode is
+            # genuinely absent — absolute/ROW_NUMBER fallbacks would map to the
+            # wrong episode in the overall sequence, so go straight to LLM.
+            if entry.season > 1:
+                return await self._llm_match(show_id, show_title, entry)
+            # Season 1 directory: the episode number may still be a continuous
+            # absolute count (e.g. a show with all 148 episodes in Season 01).
+            # Fall through to absolute-number lookups before the LLM.
 
-        # No season info available — this is an absolute episode number.
+        # No season info — this is an absolute episode number.
         # Try the absolute_episode_number column first (populated via episode groups).
         stmt = select(Episode).where(
             Episode.show_id == show_id,
             Episode.absolute_episode_number == entry.episode,
         )
         ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep:
+        if ep is not None:
             return ep
 
-        # Fall back to season 1 / episode N — wrong for multi-season absolute
-        # numbering but the best we can do without episode-group data.
+        # Compute a sequential absolute number by ordering all non-special episodes
+        # by (season_number, episode_number) and matching on row position.  This
+        # handles shows like HxH where fansub filenames use a continuous count but
+        # TMDB stores episodes per-season and does not populate absolute_number.
+        numbered = (
+            select(
+                Episode.id,
+                func.row_number()
+                .over(order_by=[Episode.season_number, Episode.episode_number])
+                .label("row_num"),
+            )
+            .where(Episode.show_id == show_id, Episode.season_number > 0)
+            .subquery()
+        )
+        stmt = (
+            select(Episode)
+            .join(numbered, Episode.id == numbered.c.id)
+            .where(numbered.c.row_num == entry.episode)
+        )
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            return ep
+
+        return await self._llm_match(show_id, show_title, entry)
+
+    async def _llm_match(
+        self,
+        show_id: int,
+        show_title: str,
+        entry: ParsedPathEntry,
+    ) -> Episode | None:
+        """Ask the LLM to identify the episode from the filename.
+
+        Only called after all DB-based lookup strategies have failed.
+
+        Args:
+            show_id: Database ID of the parent show.
+            show_title: Show title for prompt context.
+            entry: Parsed entry with the raw file path.
+
+        Returns:
+            Matching :class:`Episode`, or None if LLM is unavailable or unconfident.
+        """
+        if self.llm is None or not self.llm.is_available():
+            return None
+
+        eps = list(
+            (
+                await self.session.execute(
+                    select(Episode)
+                    .where(Episode.show_id == show_id)
+                    .order_by(Episode.season_number, Episode.episode_number)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not eps:
+            return None
+
+        ep_list = "\n".join(
+            f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in eps[:500]
+        )
+        filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+        prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
+
+        try:
+            response = await self.llm.complete(prompt=prompt, system=_LLM_SYSTEM)
+        except Exception:
+            logger.warning("LLM match failed for %r in show %r", filename, show_title)
+            return None
+
+        if response is None:
+            return None
+
+        text = response.content.strip()
+        if text == "UNKNOWN":
+            return None
+
+        parts = text.split()
+        if len(parts) != 2:
+            logger.warning("LLM returned unexpected format %r for %r", text, filename)
+            return None
+
+        try:
+            season, episode_num = int(parts[0]), int(parts[1])
+        except ValueError:
+            logger.warning("LLM returned non-integer response %r for %r", text, filename)
+            return None
+
         stmt = select(Episode).where(
             Episode.show_id == show_id,
-            Episode.season_number == 1,
-            Episode.episode_number == entry.episode,
+            Episode.season_number == season,
+            Episode.episode_number == episode_num,
         )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            logger.info(
+                "LLM matched %r -> S%02dE%02d for show %r",
+                filename,
+                season,
+                episode_num,
+                show_title,
+            )
+        return ep
