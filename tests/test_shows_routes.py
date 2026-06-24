@@ -734,3 +734,134 @@ def test_sync_episodes_returns_404_when_show_not_found() -> None:
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# _infer_content_type helper
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "media_type,genres,original_language,origin_country,expected",
+    [
+        # Movies are always "movie" regardless of other fields.
+        ("movie", None, None, None, "movie"),
+        ("movie", [{"id": 16, "name": "Animation"}], "ja", ["JP"], "movie"),
+        # Anime: Animation genre + Japanese language.
+        ("tv", [{"id": 16, "name": "Animation"}], "ja", None, "anime"),
+        # Anime: Animation genre + JP origin country (even without ja language).
+        ("tv", [{"id": 16, "name": "Animation"}], "en", ["JP"], "anime"),
+        # Not anime: Animation genre but not Japanese (e.g. Avatar).
+        ("tv", [{"id": 16, "name": "Animation"}], "en", ["US"], "tv"),
+        # Not anime: Japanese language but not animated (live action).
+        ("tv", [{"id": 18, "name": "Drama"}], "ja", ["JP"], "tv"),
+        # Default fallback.
+        ("tv", None, "en", ["US"], "tv"),
+        ("tv", [], None, None, "tv"),
+    ],
+)
+def test_infer_content_type(
+    media_type: str,
+    genres: list[dict] | None,
+    original_language: str | None,
+    origin_country: list[str] | None,
+    expected: str,
+) -> None:
+    """_infer_content_type returns the correct routing category for each TMDB profile."""
+    from jidou.api.routes.shows import _infer_content_type
+    from jidou.schemas.show_schema import ShowCreate
+
+    payload = ShowCreate(
+        tmdb_id=1,
+        title="Test",
+        media_type=media_type,
+        genres=genres,
+        original_language=original_language,
+        origin_country=origin_country,
+    )
+    assert _infer_content_type(payload) == expected
+
+
+def test_create_show_infers_anime_content_type() -> None:
+    """POST /api/shows without content_type infers 'anime' for Japanese animation."""
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 42
+            from datetime import UTC, datetime
+
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _new_session
+    try:
+        response = TestClient(app).post(
+            "/api/shows",
+            json={
+                "tmdb_id": 1001,
+                "title": "Demon Slayer",
+                "media_type": "tv",
+                "genres": [{"id": 16, "name": "Animation"}],
+                "original_language": "ja",
+                "origin_country": ["JP"],
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["content_type"] == "anime"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_respects_explicit_content_type() -> None:
+    """POST /api/shows with an explicit content_type does not overwrite it."""
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 43
+            from datetime import UTC, datetime
+
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _new_session
+    try:
+        response = TestClient(app).post(
+            "/api/shows",
+            json={
+                "tmdb_id": 1002,
+                "title": "Avatar",
+                "media_type": "tv",
+                "genres": [{"id": 16, "name": "Animation"}],
+                "original_language": "en",
+                "origin_country": ["US"],
+                "content_type": "tv",  # user explicitly set this; must not be overwritten
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["content_type"] == "tv"
+    finally:
+        app.dependency_overrides.clear()
