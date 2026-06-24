@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -269,16 +269,22 @@ async def create_show(
 
     logger.info("Added show tmdb_id=%d title=%r (id=%d)", show.tmdb_id, show.title, show.id)
 
-    try:
-        await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
-        logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
-    except Exception:
-        logger.warning(
-            "Episode sync failed for new show id=%d tmdb_id=%d — user can retry via Sync Episodes",
-            show.id,
-            show.tmdb_id,
-            exc_info=True,
-        )
+    if show.media_type != "movie":
+        try:
+            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
+            logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
+        except SQLAlchemyError:
+            # DB failure during sync's internal commit — the show row was rolled
+            # back along with the episodes; propagate so the caller gets a 500.
+            raise
+        except Exception:
+            logger.warning(
+                "Episode sync failed for new show id=%d tmdb_id=%d"
+                " — user can retry via Sync Episodes",
+                show.id,
+                show.tmdb_id,
+                exc_info=True,
+            )
 
     return show
 

@@ -913,9 +913,7 @@ def test_create_show_syncs_episodes_for_new_show() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch(
-            "jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator"
-        ) as mock_orch_cls:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock()
             mock_orch_cls.return_value = mock_orch
@@ -959,9 +957,7 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch(
-            "jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator"
-        ) as mock_orch_cls:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock(side_effect=RuntimeError("TMDB down"))
             mock_orch_cls.return_value = mock_orch
@@ -971,6 +967,97 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
                 json={"tmdb_id": 2002, "title": "Another Show", "media_type": "tv"},
             )
         assert response.status_code == 201
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_skips_episode_sync_for_movies() -> None:
+    """POST /api/shows with media_type=movie must not call sync_show_episodes."""
+    from datetime import UTC, datetime
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 79
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.sync_show_episodes = AsyncMock()
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app).post(
+                "/api/shows",
+                json={"tmdb_id": 2003, "title": "Some Movie", "media_type": "movie"},
+            )
+        assert response.status_code == 201
+        mock_orch.sync_show_episodes.assert_not_awaited()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_db_error_during_sync_propagates() -> None:
+    """POST /api/shows propagates SQLAlchemyError from sync so the show is not silently lost."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy.exc import OperationalError
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 80
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.sync_show_episodes = AsyncMock(
+                side_effect=OperationalError("conn lost", None, None)
+            )
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app, raise_server_exceptions=False).post(
+                "/api/shows",
+                json={"tmdb_id": 2004, "title": "DB Fail Show", "media_type": "tv"},
+            )
+        assert response.status_code == 500
     finally:
         app.dependency_overrides.clear()
 
