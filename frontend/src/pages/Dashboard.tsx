@@ -77,7 +77,7 @@ export default function Dashboard() {
     const days: FileTimelineEntry[] = []
     for (let i = 29; i >= 0; i--) {
       const d = new Date()
-      d.setDate(d.getDate() - i)
+      d.setUTCDate(d.getUTCDate() - i)
       const key = d.toISOString().slice(0, 10)
       days.push({ date: key.slice(5), count: byDate[key] ?? 0 })
     }
