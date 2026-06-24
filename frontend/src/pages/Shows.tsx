@@ -146,10 +146,12 @@ export default function Shows() {
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
 
-  // Key on tmdb_id:media_type — TMDB assigns IDs per media type so a TV show
-  // and a movie can share the same numeric ID in multi-search results.
-  const libraryKeys = useMemo(
-    () => new Set(allShows.map((s) => `${s.tmdb_id}:${s.media_type}`)),
+  // The DB enforces uniqueness on tmdb_id alone (no media_type column in the
+  // constraint), so presence check uses tmdb_id only — matching what POST /shows
+  // does on upsert. React keys use tmdb_id:media_type to stay unique within a
+  // single multi-search result list that can contain both TV and movie hits.
+  const libraryTmdbIds = useMemo(
+    () => new Set(allShows.map((s) => s.tmdb_id)),
     [allShows],
   )
 
@@ -334,9 +336,9 @@ export default function Shows() {
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {searchData.results.slice(0, 12).map((r) => {
                   const mediaType = r.media_type ?? 'tv'
-                  const inLibrary = libraryKeys.has(`${r.id}:${mediaType}`)
+                  const inLibrary = libraryTmdbIds.has(r.id)
                   const libraryShow = inLibrary
-                    ? allShows.find((s) => s.tmdb_id === r.id && s.media_type === mediaType)
+                    ? allShows.find((s) => s.tmdb_id === r.id)
                     : undefined
                   return (
                     <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
