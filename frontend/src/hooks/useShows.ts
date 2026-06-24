@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { ShowList, ShowRead, ShowCreate, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
+import type { ShowList, ShowRead, ShowCreate, ShowPatch, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
 
 export type ShowSortOrder =
   | 'title_asc'
@@ -103,6 +103,18 @@ export function useSyncEpisodes() {
     mutationFn: (showId: number) => api.post<EpisodeList[]>(`/shows/${showId}/sync-episodes`),
     onSuccess: (_data, showId) => {
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+    },
+  })
+}
+
+export function usePatchShow() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: ShowPatch }) =>
+      api.patch<ShowRead>(`/shows/${id}`, patch),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: showKeys.detail(id) })
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })

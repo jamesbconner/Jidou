@@ -278,6 +278,59 @@ def test_get_show_returns_404_when_not_found() -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# PATCH /api/shows/{show_id}
+# ---------------------------------------------------------------------------
+
+
+def test_patch_show_sets_content_type() -> None:
+    """PATCH /api/shows/{id} updates content_type on the show object."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    show.content_type = None
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch("/api/shows/1", json={"content_type": "anime"})
+        assert response.status_code == 200
+        assert show.content_type == "anime"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_show_clears_content_type_with_null() -> None:
+    """PATCH /api/shows/{id} with null clears content_type."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    show.content_type = "tv"
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch("/api/shows/1", json={"content_type": None})
+        assert response.status_code == 200
+        assert show.content_type is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_show_returns_404_when_not_found() -> None:
+    """PATCH /api/shows/{id} returns 404 for an unknown show."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).patch("/api/shows/9999", json={"content_type": "movie"})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_show_rejects_invalid_content_type() -> None:
+    """PATCH /api/shows/{id} returns 422 for an invalid content_type value."""
+    response = TestClient(app).patch("/api/shows/1", json={"content_type": "cartoon"})
+    assert response.status_code == 422
+
+
 def test_update_paths_returns_updated_show() -> None:
     """PUT /api/shows/{id}/paths returns the show with updated local_path."""
     from jidou.database import get_session

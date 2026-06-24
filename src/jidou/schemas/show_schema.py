@@ -72,6 +72,20 @@ class ShowCreate(BaseModel):
     )
 
 
+class ShowPatch(BaseModel):
+    """Payload for partial updates to a show's user-managed fields.
+
+    Only fields present in the request body are applied; omitted fields are
+    left unchanged.  Use ``null`` to clear a field.
+    """
+
+    content_type: str | None = Field(
+        default=None, pattern="^(anime|tv|movie)$", description="Routing category"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class ShowPaths(BaseModel):
     """Payload for updating a show's local filesystem path."""
 
