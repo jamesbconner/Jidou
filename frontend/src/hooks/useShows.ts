@@ -27,7 +27,8 @@ export const SHOW_SORT_LABELS: Record<ShowSortOrder, string> = {
 
 export const showKeys = {
   all: ['shows'] as const,
-  list: (sort?: ShowSortOrder) => [...showKeys.all, 'list', sort ?? 'title_asc'] as const,
+  list: (sort?: ShowSortOrder, limit?: number) =>
+    [...showKeys.all, 'list', sort ?? 'title_asc', limit ?? 500] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
@@ -36,7 +37,7 @@ export const showKeys = {
 
 export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
   return useQuery({
-    queryKey: showKeys.list(sort),
+    queryKey: showKeys.list(sort, limit),
     queryFn: () => api.get<ShowList[]>(`/shows?sort=${sort}&limit=${limit}`),
   })
 }
