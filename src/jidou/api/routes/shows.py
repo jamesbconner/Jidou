@@ -37,6 +37,41 @@ def _sanitize_sys_name(title: str) -> str:
     return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
+# TMDB genre ID 16 = Animation
+_ANIMATION_GENRE_ID = 16
+
+
+def _infer_content_type(payload: ShowCreate) -> str:
+    """Infer routing content type from TMDB metadata.
+
+    Rules (applied in order):
+    - ``movie`` media type → ``"movie"``
+    - Animation genre AND (Japanese language OR JP origin) → ``"anime"``
+    - Everything else → ``"tv"``
+
+    Accepts both TMDB response shapes:
+    - Search/trending cards supply ``genre_ids: [16, 18]`` (flat int list).
+    - Detail endpoints supply ``genres: [{"id": 16, "name": "Animation"}]``.
+
+    Args:
+        payload: Show creation payload containing TMDB metadata.
+
+    Returns:
+        One of ``"movie"``, ``"anime"``, or ``"tv"``.
+    """
+    if payload.media_type == "movie":
+        return "movie"
+    # Collect genre IDs from whichever field the caller populated.
+    ids_from_objects = {g.get("id") for g in (payload.genres or [])}
+    ids_from_list = set(payload.genre_ids or [])
+    all_genre_ids = ids_from_objects | ids_from_list
+    is_animated = _ANIMATION_GENRE_ID in all_genre_ids
+    is_japanese = payload.original_language == "ja" or "JP" in (payload.origin_country or [])
+    if is_animated and is_japanese:
+        return "anime"
+    return "tv"
+
+
 # ---------------------------------------------------------------------------
 # TMDB discovery endpoints (literal paths — must come before /{show_id})
 # ---------------------------------------------------------------------------
@@ -202,6 +237,10 @@ async def create_show(
     data = payload.model_dump()
     if not data.get("sys_name"):
         data["sys_name"] = _sanitize_sys_name(payload.title)
+    if not data.get("content_type"):
+        data["content_type"] = _infer_content_type(payload)
+    # genre_ids is a ShowCreate-only field (search card shape); Show has no such column.
+    data.pop("genre_ids", None)
 
     show = Show(**data, cached=False)
     db_session.add(show)

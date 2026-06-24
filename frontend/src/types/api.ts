@@ -81,6 +81,8 @@ export interface ShowCreate {
   show_type?: string | null
   runtime?: number | null
   tagline?: string | null
+  genre_ids?: number[] | null
+  content_type?: string | null
 }
 
 export interface ShowPaths {
@@ -376,6 +378,8 @@ export interface TmdbResult {
   first_air_date?: string
   media_type?: string
   original_language: string
+  genre_ids?: number[] | null
+  origin_country?: string[] | null
 }
 
 export interface TmdbSearchResponse {
