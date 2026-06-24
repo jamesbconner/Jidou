@@ -884,6 +884,97 @@ def test_create_show_infers_anime_content_type() -> None:
         app.dependency_overrides.clear()
 
 
+def test_create_show_syncs_episodes_for_new_show() -> None:
+    """POST /api/shows calls TMDBOrchestrator.sync_show_episodes for a newly created show."""
+    from datetime import UTC, datetime
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 77
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with patch(
+            "jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.sync_show_episodes = AsyncMock()
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app).post(
+                "/api/shows",
+                json={"tmdb_id": 2001, "title": "New Show", "media_type": "tv"},
+            )
+        assert response.status_code == 201
+        mock_orch.sync_show_episodes.assert_awaited_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
+    """POST /api/shows returns 201 even when episode sync raises an exception."""
+    from datetime import UTC, datetime
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 78
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with patch(
+            "jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.sync_show_episodes = AsyncMock(side_effect=RuntimeError("TMDB down"))
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app).post(
+                "/api/shows",
+                json={"tmdb_id": 2002, "title": "Another Show", "media_type": "tv"},
+            )
+        assert response.status_code == 201
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_create_show_respects_explicit_content_type() -> None:
     """POST /api/shows with an explicit content_type does not overwrite it."""
     from jidou.database import get_session
