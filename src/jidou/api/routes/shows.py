@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -216,19 +216,26 @@ async def list_shows(
 async def create_show(
     payload: ShowCreate,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
 ) -> Show:
     """Add a show to the database (upsert by TMDB ID).
 
     If the show already exists it is returned unchanged.  ``sys_name`` is
-    auto-derived from the title if not provided.
+    auto-derived from the title if not provided.  For newly created shows a
+    TMDB episode sync is attempted inline so the show detail page shows
+    episodes immediately.  TMDB failures are logged but do not abort the
+    response — the show is still returned.
 
     Args:
         payload: Show data from a TMDB search/trending result.
         db_session: DB session (injected).
+        tmdb: TMDB service (injected).
 
     Returns:
         The created or existing :class:`Show` record.
     """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
     stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
     existing = (await db_session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
@@ -261,6 +268,24 @@ async def create_show(
         raise
 
     logger.info("Added show tmdb_id=%d title=%r (id=%d)", show.tmdb_id, show.title, show.id)
+
+    if show.media_type != "movie":
+        try:
+            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
+            logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
+        except SQLAlchemyError:
+            # DB failure during sync's internal commit — the show row was rolled
+            # back along with the episodes; propagate so the caller gets a 500.
+            raise
+        except Exception:
+            logger.warning(
+                "Episode sync failed for new show id=%d tmdb_id=%d"
+                " — user can retry via Sync Episodes",
+                show.id,
+                show.tmdb_id,
+                exc_info=True,
+            )
+
     return show
 
 
