@@ -512,6 +512,7 @@ export default function ShowDetail() {
       )}
       {contentTypeOpen && (
         <ContentTypeModal
+          key={showId}
           current={show.content_type ?? null}
           onSave={(value) => {
             patchShow.mutate(
