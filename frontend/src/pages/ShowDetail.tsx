@@ -8,6 +8,7 @@ import {
   useRematchShow,
   useDeleteShow,
   useSearchShows,
+  usePatchShow,
 } from '@/hooks/useShows'
 import { useFilesByShow, useRematchFile } from '@/hooks/useFiles'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
@@ -189,13 +190,17 @@ export default function ShowDetail() {
   const { data: showFiles = [] } = useFilesByShow(showId)
   const rematchFile = useRematchFile()
 
+  const patchShow = usePatchShow()
+
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
+  const [contentTypeOpen, setContentTypeOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     setRematchOpen(false)
     setPathModalOpen(false)
+    setContentTypeOpen(false)
     syncEpisodes.reset()
     updatePaths.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -272,14 +277,8 @@ export default function ShowDetail() {
               </p>
             </div>
 
-            {/* Rare actions — upper right */}
-            <div className="flex flex-col gap-2 items-end flex-shrink-0">
-              <button
-                onClick={() => setRematchOpen((v) => !v)}
-                className="px-3 py-1.5 text-xs border border-amber-400 text-amber-700 rounded hover:bg-amber-50 whitespace-nowrap"
-              >
-                Change TMDB Match
-              </button>
+            {/* Destructive action — upper right */}
+            <div className="flex-shrink-0">
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
@@ -304,15 +303,7 @@ export default function ShowDetail() {
 
       {/* Local path */}
       <section className="bg-white rounded-lg shadow p-4">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="font-semibold">Local path</h2>
-          <button
-            onClick={() => setPathModalOpen(true)}
-            className="px-3 py-1 text-xs border rounded hover:bg-gray-50"
-          >
-            Edit Path
-          </button>
-        </div>
+        <h2 className="font-semibold mb-1">Local path</h2>
         {show.local_path ? (
           <p className="font-mono text-sm text-gray-700 break-all">{show.local_path}</p>
         ) : (
@@ -332,6 +323,46 @@ export default function ShowDetail() {
           >
             {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
           </button>
+          <button
+            onClick={() => setPathModalOpen(true)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            Edit Path
+          </button>
+          <button
+            onClick={() => setRematchOpen((v) => !v)}
+            className="px-3 py-1 text-sm border border-amber-400 text-amber-700 rounded hover:bg-amber-50"
+          >
+            Change TMDB Match
+          </button>
+          {contentTypeOpen ? (
+            <select
+              autoFocus
+              defaultValue={show.content_type ?? ''}
+              onBlur={(e) => {
+                const next = e.target.value || null
+                if (next !== show.content_type) patchShow.mutate({ id: showId, patch: { content_type: next } })
+                setContentTypeOpen(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setContentTypeOpen(false)
+              }}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">— clear —</option>
+              <option value="anime">anime</option>
+              <option value="tv">tv</option>
+              <option value="movie">movie</option>
+            </select>
+          ) : (
+            <button
+              onClick={() => setContentTypeOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
+            </button>
+          )}
           {syncEpisodes.isSuccess && <span className="text-xs text-green-600">Episodes synced</span>}
           {syncEpisodes.isError && (
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
-import { useShows, useSearchShows, useCreateShow, usePatchShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import type { ShowList, TmdbResult } from '@/types/api'
 
@@ -73,51 +73,6 @@ function applyFilters(
   })
 }
 
-const CONTENT_TYPE_OPTIONS = ['anime', 'tv', 'movie'] as const
-
-function InlineContentType({ showId, value }: { showId: number; value: string | null }) {
-  const [editing, setEditing] = useState(false)
-  const [selected, setSelected] = useState(value ?? '')
-  const cancelRef = useRef(false)
-  const patch = usePatchShow()
-
-  function commit(next: string | null) {
-    if (cancelRef.current) { cancelRef.current = false; return }
-    setEditing(false)
-    if (next !== value) patch.mutate({ id: showId, patch: { content_type: next } })
-  }
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { cancelRef.current = false; setSelected(value ?? ''); setEditing(true) }}
-        className="text-xs text-gray-500 hover:text-blue-600 hover:underline capitalize"
-        title="Click to set content type"
-      >
-        {value ?? '—'}
-      </button>
-    )
-  }
-
-  return (
-    <select
-      autoFocus
-      value={selected}
-      onChange={(e) => setSelected(e.target.value)}
-      onBlur={() => commit(selected || null)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') { cancelRef.current = true; setEditing(false) }
-      }}
-      className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-    >
-      <option value="">— clear —</option>
-      {CONTENT_TYPE_OPTIONS.map((ct) => (
-        <option key={ct} value={ct}>{ct}</option>
-      ))}
-    </select>
-  )
-}
 
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
@@ -473,9 +428,6 @@ export default function Shows() {
                         <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
                           {s.title}
                         </Link>
-                        <span className="ml-2">
-                          <InlineContentType showId={s.id} value={s.content_type} />
-                        </span>
                       </td>
                       <td className="py-2">
                         <div className="flex gap-2 flex-wrap">
