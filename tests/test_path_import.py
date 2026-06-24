@@ -64,6 +64,28 @@ class TestParseLine:
         assert entry.season == 2
         assert entry.episode == 6
 
+    def test_predash_episode_with_season_dir(self) -> None:
+        # "Show NN - Episode Title [hash]" — episode number before the dash
+        line = (
+            r"Z:\anime tv\Cowboy Bebop\Season 01"
+            r"\Cowboy Bebop 01 - Asteroid Blues [A8550EBD].mkv"
+        )
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.show_dir == "Cowboy Bebop"
+        assert entry.season == 1
+        assert entry.episode == 1
+        assert not entry.is_absolute
+
+    def test_predash_episode_higher_number(self) -> None:
+        line = (
+            r"Z:\anime tv\Cowboy Bebop\Season 01"
+            r"\Cowboy Bebop 25 - The Real Folk Blues Part I [ABCDEF01].mkv"
+        )
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode == 25
+
     def test_ep_word_style(self) -> None:
         line = r"Z:\anime tv\Yawara\Yawara - Ep 64.mkv"
         entry = parse_line(line)

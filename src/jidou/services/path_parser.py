@@ -26,6 +26,12 @@ _EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,3})\b", re.IGNORECASE)
 # Handles SubsPlease, HorribleSubs, and plain "Show - 06".
 _DASH_EP = re.compile(r"[-–]\s*(\d{1,3})\s*(?:$|[\(\[])")  # noqa: RUF001
 
+# "N - Title" where N is the episode number *before* a title separator.
+# Handles encoders that use "Show 01 - Episode Title [hash]" naming.
+# Requires a letter immediately after the separator to avoid matching
+# resolution strings or hashes that contain "NN - NN".
+_PREDASH_EP = re.compile(r"(?<!\d)(\d{1,3})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
+
 _MEDIA_EXTENSIONS = frozenset(
     {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
 )
@@ -190,6 +196,10 @@ def _parse_episode(stem: str) -> tuple[int | None, int | None]:
         return None, int(m.group(1))
 
     m = _DASH_EP.search(stem)
+    if m:
+        return None, int(m.group(1))
+
+    m = _PREDASH_EP.search(stem)
     if m:
         return None, int(m.group(1))
 
