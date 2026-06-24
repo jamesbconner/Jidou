@@ -91,10 +91,14 @@ function InlineContentType({ showId, value }: { showId: number; value: string | 
     return (
       <button
         onClick={() => { cancelRef.current = false; setSelected(value ?? ''); setEditing(true) }}
-        className="text-xs text-gray-500 hover:text-blue-600 hover:underline capitalize"
+        className={`text-xs rounded px-1.5 py-0.5 capitalize ${
+          value
+            ? 'text-gray-500 hover:text-blue-600 hover:underline'
+            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+        }`}
         title="Click to set content type"
       >
-        {value ?? '—'}
+        {value ?? 'Content type unset'}
       </button>
     )
   }
@@ -473,22 +477,23 @@ export default function Shows() {
                         <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
                           {s.title}
                         </Link>
-                        <span className="ml-2">
-                          <InlineContentType showId={s.id} value={s.content_type} />
-                        </span>
                       </td>
                       <td className="py-2">
-                        <div className="flex gap-2 flex-wrap">
-                          {issues.map((c) => (
-                            <button
-                              key={c.key}
-                              title={c.description}
-                              onClick={() => setDqFilter(c.key)}
-                              className="bg-amber-100 text-amber-700 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200"
-                            >
-                              {c.label}
-                            </button>
-                          ))}
+                        <div className="flex gap-2 flex-wrap items-center">
+                          {issues.map((c) =>
+                            c.key === 'no_content_type' ? (
+                              <InlineContentType key={c.key} showId={s.id} value={s.content_type} />
+                            ) : (
+                              <button
+                                key={c.key}
+                                title={c.description}
+                                onClick={() => setDqFilter(c.key)}
+                                className="bg-amber-100 text-amber-700 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200"
+                              >
+                                {c.label}
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                     </tr>
