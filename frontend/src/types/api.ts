@@ -89,6 +89,10 @@ export interface ShowPaths {
   local_path?: string | null
 }
 
+export interface ShowPatch {
+  content_type?: string | null
+}
+
 // ─── Episodes ─────────────────────────────────────────────────────────────
 
 export interface EpisodeList {

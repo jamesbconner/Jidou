@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
-import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow, usePatchShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import type { ShowList, TmdbResult } from '@/types/api'
 
@@ -71,6 +71,51 @@ function applyFilters(
 
     return true
   })
+}
+
+const CONTENT_TYPE_OPTIONS = ['anime', 'tv', 'movie'] as const
+
+function InlineContentType({ showId, value }: { showId: number; value: string | null }) {
+  const [editing, setEditing] = useState(false)
+  const cancelRef = useRef(false)
+  const patch = usePatchShow()
+
+  function commit(next: string | null) {
+    if (cancelRef.current) { cancelRef.current = false; return }
+    setEditing(false)
+    if (next !== value) patch.mutate({ id: showId, patch: { content_type: next } })
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { cancelRef.current = false; setEditing(true) }}
+        className="text-xs text-gray-500 hover:text-blue-600 hover:underline capitalize"
+        title="Click to set content type"
+      >
+        {value ?? '—'}
+      </button>
+    )
+  }
+
+  return (
+    <select
+      autoFocus
+      defaultValue={value ?? ''}
+      onBlur={(e) => commit(e.target.value || null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') { cancelRef.current = true; setEditing(false) }
+      }}
+      onChange={(e) => { if (e.target.value !== undefined) commit(e.target.value || null) }}
+      className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+    >
+      <option value="">— clear —</option>
+      {CONTENT_TYPE_OPTIONS.map((ct) => (
+        <option key={ct} value={ct}>{ct}</option>
+      ))}
+    </select>
+  )
 }
 
 export default function Shows() {
@@ -393,7 +438,9 @@ export default function Shows() {
                         <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
                           {s.title}
                         </Link>
-                        <span className="ml-2 text-xs text-gray-400 capitalize">{s.content_type ?? s.media_type}</span>
+                        <span className="ml-2">
+                          <InlineContentType showId={s.id} value={s.content_type} />
+                        </span>
                       </td>
                       <td className="py-2">
                         <div className="flex gap-2 flex-wrap">

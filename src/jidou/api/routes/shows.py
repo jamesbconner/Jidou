@@ -19,6 +19,7 @@ from jidou.schemas.show_schema import (
     ShowAliasesUpdate,
     ShowCreate,
     ShowList,
+    ShowPatch,
     ShowPaths,
     ShowRead,
 )
@@ -375,6 +376,41 @@ async def delete_show(
 
     await db_session.delete(show)
     logger.info("Deleted show id=%d title=%r", show_id, show.title)
+
+
+@router.patch("/{show_id}", response_model=ShowRead)
+async def patch_show(
+    show_id: int,
+    payload: ShowPatch,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Show:
+    """Partially update user-managed fields on a show.
+
+    Only fields explicitly included in the request body are applied.
+    Pass ``null`` for a field to clear it.
+
+    Args:
+        show_id: Database primary key.
+        payload: Partial update with the fields to change.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    for field in payload.model_fields_set:
+        setattr(show, field, getattr(payload, field))
+
+    await db_session.flush()
+    logger.info("Patched show id=%d fields=%r", show_id, list(payload.model_fields_set))
+    return show
 
 
 @router.post("/{show_id}/rematch", response_model=ShowRead)
