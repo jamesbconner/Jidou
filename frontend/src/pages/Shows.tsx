@@ -339,7 +339,7 @@ export default function Shows() {
                     ? allShows.find((s) => s.tmdb_id === r.id && s.media_type === mediaType)
                     : undefined
                   return (
-                    <div key={r.id} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+                    <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
                       <div className="relative">
                         {r.poster_path ? (
                           <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
