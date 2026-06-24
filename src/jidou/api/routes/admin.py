@@ -147,7 +147,9 @@ async def get_files_timeline(
     Returns:
         List of ``{"date": "YYYY-MM-DD", "count": N}`` ordered ascending by date.
     """
-    cutoff = datetime.now(UTC) - timedelta(days=30)
+    # Start of day 29 days ago UTC — aligns with the 30 calendar-day window the frontend builds.
+    today_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = today_utc - timedelta(days=29)
     from sqlalchemy import Date
 
     stmt = (

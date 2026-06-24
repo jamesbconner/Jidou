@@ -562,16 +562,18 @@ class PathImportOrchestrator:
             logger.warning("LLM returned non-integer response %r for %r", text, filename)
             return None
 
-        logger.info(
-            "LLM matched %r → S%02dE%02d for show %r",
-            filename,
-            season,
-            episode_num,
-            show_title,
-        )
         stmt = select(Episode).where(
             Episode.show_id == show_id,
             Episode.season_number == season,
             Episode.episode_number == episode_num,
         )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            logger.info(
+                "LLM matched %r -> S%02dE%02d for show %r",
+                filename,
+                season,
+                episode_num,
+                show_title,
+            )
+        return ep
