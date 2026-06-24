@@ -91,9 +91,7 @@ async def get_stats(
         select(func.count()).select_from(Show).where(Show.content_type.is_(None))
     )
     dq_no_episodes = await db_session.scalar(
-        select(func.count())
-        .select_from(Show)
-        .where(Show.media_type != "movie", ep_count_sq == 0)
+        select(func.count()).select_from(Show).where(Show.media_type != "movie", ep_count_sq == 0)
     )
     dq_orphan = await db_session.scalar(
         select(func.count())
