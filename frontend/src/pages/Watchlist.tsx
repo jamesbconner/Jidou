@@ -242,6 +242,10 @@ export default function Watchlist() {
         poster_path: result.poster_path,
         backdrop_path: result.backdrop_path,
         vote_average: result.vote_average,
+        vote_count: result.vote_count,
+        original_language: result.original_language,
+        genre_ids: result.genre_ids ?? null,
+        origin_country: result.origin_country ?? null,
         release_date: result.first_air_date ?? result.release_date,
       },
       {
