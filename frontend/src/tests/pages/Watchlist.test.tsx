@@ -29,15 +29,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function mockList(data: WatchlistList[]) {
+function mockWatchlistAndShows(watchlistData: WatchlistList[]) {
   vi.mocked(fetch).mockResolvedValue(
-    new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    new Response(JSON.stringify(watchlistData), { status: 200, headers: { 'Content-Type': 'application/json' } }),
   )
 }
 
 describe('Watchlist page', () => {
   test('renders heading and empty state when no entries', async () => {
-    mockList([])
+    mockWatchlistAndShows([])
     render(<Watchlist />, { wrapper: makeWrapper() })
     expect(screen.getByText('Watchlist')).toBeInTheDocument()
     await waitFor(() =>
@@ -46,19 +46,18 @@ describe('Watchlist page', () => {
   })
 
   test('renders table rows with show name and TMDB ID', async () => {
-    mockList(entries)
+    mockWatchlistAndShows(entries)
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
     expect(screen.getByText('Show Beta')).toBeInTheDocument()
     expect(screen.getByText('TMDB #110')).toBeInTheDocument()
     expect(screen.getByText('TMDB #120')).toBeInTheDocument()
-    // Status badges
     expect(screen.getAllByText('Watching').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Planned').length).toBeGreaterThanOrEqual(1)
   })
 
   test('show name links to show detail page', async () => {
-    mockList(entries)
+    mockWatchlistAndShows(entries)
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
     const link = screen.getByText('Show Alpha').closest('a')
@@ -66,14 +65,31 @@ describe('Watchlist page', () => {
   })
 
   test('status filter select is present with All statuses default', async () => {
-    mockList([])
+    mockWatchlistAndShows([])
     render(<Watchlist />, { wrapper: makeWrapper() })
     const select = screen.getAllByRole('combobox')[0]
     expect(select).toHaveValue('')
   })
 
+  test('search input and Library/TMDB toggle are present', async () => {
+    mockWatchlistAndShows([])
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    expect(screen.getByPlaceholderText('Search your library…')).toBeInTheDocument()
+    expect(screen.getByRole('switch')).toBeInTheDocument()
+  })
+
+  test('toggle switches between Library and TMDB mode', async () => {
+    mockWatchlistAndShows([])
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    const toggle = screen.getByRole('switch')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByPlaceholderText('Search TMDB…')).toBeInTheDocument()
+  })
+
   test('Remove button calls DELETE endpoint', async () => {
-    mockList(entries)
+    mockWatchlistAndShows(entries)
     vi.mocked(fetch)
       .mockResolvedValueOnce(
         new Response(JSON.stringify(entries), { status: 200, headers: { 'Content-Type': 'application/json' } }),
