@@ -69,7 +69,8 @@ export default function Shows() {
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
 
-  const { data: watchlistEntries = [] } = useWatchlist()
+  // High limit mirrors allShows — covers the full library without pagination gaps.
+  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
   const createWatchlistEntry = useCreateWatchlistEntry()
   const deleteWatchlistEntry = useDeleteWatchlistEntry()
 
