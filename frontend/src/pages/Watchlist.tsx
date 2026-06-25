@@ -245,8 +245,11 @@ export default function Watchlist() {
         release_date: result.first_air_date ?? result.release_date,
       },
       {
-        onSuccess: (show) => createWatchlistEntry.mutate({ show_id: show.id }),
-        onSettled: () => setPendingTmdbIds((s) => removeShowId(s, result.id)),
+        onSuccess: (show) => createWatchlistEntry.mutate(
+          { show_id: show.id },
+          { onSettled: () => setPendingTmdbIds((s) => removeShowId(s, result.id)) },
+        ),
+        onError: () => setPendingTmdbIds((s) => removeShowId(s, result.id)),
       },
     )
   }
