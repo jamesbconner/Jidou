@@ -92,19 +92,20 @@ describe('useReorderWatchlist', () => {
     }
   }
 
-  test('PATCHes only entries whose position changed', async () => {
+  test('PATCHes all entries with their new 1-based positions', async () => {
     const patchResponse = (id: number, pos: number) =>
       new Response(
         JSON.stringify({ ...makeEntry(id, pos), updated_at: new Date().toISOString() }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )
 
-    // Entry 1 is already at position 1, entry 2 moves from 3 → 2, entry 3 moves from 2 → 3
     vi.mocked(fetch)
+      .mockResolvedValueOnce(patchResponse(1, 1))
       .mockResolvedValueOnce(patchResponse(2, 2))
       .mockResolvedValueOnce(patchResponse(3, 3))
 
-    const items = [makeEntry(1, 1), makeEntry(2, 3), makeEntry(3, 2)]
+    // item.position values are intentionally stale to confirm they are not used
+    const items = [makeEntry(1, 99), makeEntry(2, 99), makeEntry(3, 99)]
     const { result } = renderHook(() => useReorderWatchlist(), { wrapper: makeWrapper() })
     result.current.mutate(items)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -112,16 +113,26 @@ describe('useReorderWatchlist', () => {
     const patchCalls = vi.mocked(fetch).mock.calls.filter(
       (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
     )
-    expect(patchCalls).toHaveLength(2)
-    expect(patchCalls[0][0]).toContain('/api/watchlist/2')
-    expect(patchCalls[1][0]).toContain('/api/watchlist/3')
+    expect(patchCalls).toHaveLength(3)
+    expect(patchCalls[0][0]).toContain('/api/watchlist/1')
+    expect(patchCalls[1][0]).toContain('/api/watchlist/2')
+    expect(patchCalls[2][0]).toContain('/api/watchlist/3')
   })
 
-  test('sends no requests when order is unchanged', async () => {
+  test('throws if any PATCH fails', async () => {
+    const patchResponse = (id: number, pos: number) =>
+      new Response(
+        JSON.stringify({ ...makeEntry(id, pos), updated_at: new Date().toISOString() }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(patchResponse(1, 1))
+      .mockResolvedValueOnce(new Response('Server error', { status: 500 }))
+
     const items = [makeEntry(1, 1), makeEntry(2, 2)]
     const { result } = renderHook(() => useReorderWatchlist(), { wrapper: makeWrapper() })
     result.current.mutate(items)
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+    await waitFor(() => expect(result.current.isError).toBe(true))
   })
 })

@@ -57,12 +57,14 @@ export function useReorderWatchlist() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (items: WatchlistRead[]) => {
-      const patches = items
-        .map((item, i) => ({ item, newPos: i + 1 }))
-        .filter(({ item, newPos }) => item.position !== newPos)
+      // Always PATCH every entry with its new 1-based position. Skipping entries
+      // whose item.position matches the new index is unsafe: orderedEntries carries
+      // stale position values until the post-drag refetch settles, so a second drag
+      // before that refetch can produce indices that match the stale values and
+      // silently skip all PATCHes while the server keeps the wrong order.
       const results = await Promise.allSettled(
-        patches.map(({ item, newPos }) =>
-          api.patch<WatchlistRead>(`/watchlist/${item.id}`, { position: newPos }),
+        items.map((item, i) =>
+          api.patch<WatchlistRead>(`/watchlist/${item.id}`, { position: i + 1 }),
         ),
       )
       const failures = results.filter((r) => r.status === 'rejected')
