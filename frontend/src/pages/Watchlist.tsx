@@ -304,13 +304,12 @@ export default function Watchlist() {
     // Drop rapid successive drags while a prior batch is in flight to prevent
     // interleaved PATCHes writing inconsistent positions to the server.
     if (reorderWatchlist.isPending) return
-    setOrderedEntries((prev) => {
-      const oldIndex = prev.findIndex((e) => e.id === active.id)
-      const newIndex = prev.findIndex((e) => e.id === over.id)
-      const reordered = arrayMove(prev, oldIndex, newIndex)
-      reorderWatchlist.mutate(reordered)
-      return reordered
-    })
+    const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
+    const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
+    setOrderedEntries(reordered)
+    reorderWatchlist.mutate(reordered)
   }
 
   // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
