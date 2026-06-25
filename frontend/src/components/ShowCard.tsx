@@ -8,6 +8,7 @@ interface Props {
   show: ShowList
   watchlistEntryId?: number | null
   onWatchlistToggle?: (showId: number, watchlistEntryId: number | null) => void
+  watchlistPending?: boolean
 }
 
 function EyeIcon({ filled }: { filled: boolean }) {
@@ -25,7 +26,7 @@ function EyeIcon({ filled }: { filled: boolean }) {
   )
 }
 
-export function ShowCard({ show, watchlistEntryId, onWatchlistToggle }: Props) {
+export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistPending = false }: Props) {
   const dqIssues = DQ_CHECKS.filter((c) => c.test(show))
   const inWatchlist = watchlistEntryId != null
 
@@ -52,7 +53,8 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle }: Props) {
               e.preventDefault()
               onWatchlistToggle(show.id, watchlistEntryId ?? null)
             }}
-            className={`absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors ${
+            disabled={watchlistPending}
+            className={`absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait ${
               inWatchlist
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'bg-black/40 text-white hover:bg-black/60'
