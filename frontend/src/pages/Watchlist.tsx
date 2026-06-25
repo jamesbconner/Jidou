@@ -315,7 +315,9 @@ export default function Watchlist() {
     if (oldIndex === -1 || newIndex === -1) return
     const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
     setOrderedEntries(reordered)
-    reorderWatchlist.mutate(reordered)
+    reorderWatchlist.mutate(reordered, {
+      onError: () => setOrderedEntries(entries as WatchlistRead[]),
+    })
   }
 
   // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
