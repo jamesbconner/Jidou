@@ -96,6 +96,7 @@ async def create_watchlist_entry(
         if "status" in payload.model_fields_set and existing.status != payload.status:
             existing.status = WatchlistStatus(payload.status)
             await db_session.flush()
+            await db_session.refresh(existing, ["show"])
             logger.debug(
                 "Show id=%d already on watchlist (entry id=%d); updated status to %s",
                 payload.show_id,
@@ -124,6 +125,7 @@ async def create_watchlist_entry(
             if "status" in payload.model_fields_set and existing.status != payload.status:
                 existing.status = WatchlistStatus(payload.status)
                 await db_session.flush()
+                await db_session.refresh(existing, ["show"])
             logger.debug(
                 "Show id=%d watchlist entry inserted concurrently (id=%d)",
                 payload.show_id,
@@ -209,6 +211,7 @@ async def update_watchlist_entry(
         entry.position = payload.position
 
     await db_session.flush()
+    await db_session.refresh(entry, ["show"])
     logger.info("Updated watchlist entry id=%d: %s", entry_id, payload.model_fields_set)
     return entry
 
