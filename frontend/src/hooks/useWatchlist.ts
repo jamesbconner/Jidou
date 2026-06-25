@@ -52,3 +52,22 @@ export function useDeleteWatchlistEntry() {
     },
   })
 }
+
+export function useReorderWatchlist() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: WatchlistRead[]) => {
+      const patches = items
+        .map((item, i) => ({ item, newPos: i + 1 }))
+        .filter(({ item, newPos }) => item.position !== newPos)
+      await Promise.all(
+        patches.map(({ item, newPos }) =>
+          api.patch<WatchlistRead>(`/watchlist/${item.id}`, { position: newPos }),
+        ),
+      )
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: watchlistKeys.all })
+    },
+  })
+}

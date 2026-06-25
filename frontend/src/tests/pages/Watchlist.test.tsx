@@ -88,6 +88,14 @@ describe('Watchlist page', () => {
     expect(screen.getByPlaceholderText('Search TMDB…')).toBeInTheDocument()
   })
 
+  test('renders drag handle cells for each row', async () => {
+    mockWatchlistAndShows(entries)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+    const handles = document.querySelectorAll('td[title="Drag to reorder"]')
+    expect(handles).toHaveLength(2)
+  })
+
   test('Remove button calls DELETE endpoint', async () => {
     mockWatchlistAndShows(entries)
     vi.mocked(fetch)
