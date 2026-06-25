@@ -45,7 +45,9 @@ export function useDeleteWatchlistEntry() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.delete<void>(`/watchlist/${id}`),
-    onSuccess: () => {
+    onSettled: () => {
+      // Invalidate on both success and error so stale "on watchlist" state
+      // clears if the entry was already removed on another client or tab.
       qc.invalidateQueries({ queryKey: watchlistKeys.all })
     },
   })
