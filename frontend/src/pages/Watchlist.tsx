@@ -291,12 +291,18 @@ export default function Watchlist() {
   const dragEnabled = statusFilter === ''
 
   useEffect(() => {
-    // Don't overwrite optimistic order while reorder PATCHes are still in flight;
-    // a concurrent status/notes mutation could invalidate the query and revert the UI.
-    if (!reorderWatchlist.isPending) {
-      setOrderedEntries(entries as WatchlistRead[])
-    }
-  }, [entries, reorderWatchlist.isPending])
+    // Merge server data into the current drag order: preserve the user's ordering
+    // for entries that still exist, drop removed entries (deletes, filter changes),
+    // and append any newly added entries at the end. This handles concurrent
+    // mutations (status/notes/delete) correctly even while a reorder is in flight.
+    setOrderedEntries((prev) => {
+      const serverMap = new Map((entries as WatchlistRead[]).map((e) => [e.id, e]))
+      const kept = prev.filter((e) => serverMap.has(e.id)).map((e) => serverMap.get(e.id)!)
+      const keptIds = new Set(kept.map((e) => e.id))
+      const added = (entries as WatchlistRead[]).filter((e) => !keptIds.has(e.id))
+      return [...kept, ...added]
+    })
+  }, [entries])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
