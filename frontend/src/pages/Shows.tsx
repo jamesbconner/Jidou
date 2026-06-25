@@ -49,7 +49,7 @@ export default function Shows() {
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
 
-  const [pendingWatchlistShowId, setPendingWatchlistShowId] = useState<number | null>(null)
+  const [pendingWatchlistShowIds, setPendingWatchlistShowIds] = useState<Set<number>>(new Set())
 
   const [filterContentType, setFilterContentType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -83,9 +83,14 @@ export default function Shows() {
   )
 
   function handleWatchlistToggle(showId: number, watchlistEntryId: number | null) {
-    if (pendingWatchlistShowId != null) return
-    setPendingWatchlistShowId(showId)
-    const settle = () => setPendingWatchlistShowId(null)
+    if (pendingWatchlistShowIds.has(showId)) return
+    setPendingWatchlistShowIds((prev) => new Set(prev).add(showId))
+    const settle = () =>
+      setPendingWatchlistShowIds((prev) => {
+        const next = new Set(prev)
+        next.delete(showId)
+        return next
+      })
     if (watchlistEntryId != null) {
       deleteWatchlistEntry.mutate(watchlistEntryId, { onSettled: settle })
     } else {
@@ -346,7 +351,7 @@ export default function Shows() {
                     show={s}
                     watchlistEntryId={watchlistByShowId.get(s.id) ?? null}
                     onWatchlistToggle={handleWatchlistToggle}
-                    watchlistPending={pendingWatchlistShowId === s.id}
+                    watchlistPending={pendingWatchlistShowIds.has(s.id)}
                   />
                 ))}
               </div>
