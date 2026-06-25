@@ -496,11 +496,38 @@ def test_match_file_no_show_id_resets_to_downloaded() -> None:
         app.dependency_overrides.clear()
 
 
-def test_match_file_routed_returns_409() -> None:
-    """POST /api/files/{id}/match on a ROUTED file must return 409."""
+def test_match_file_routed_resets_to_downloaded() -> None:
+    """POST /api/files/{id}/match on a ROUTED file with empty body resets it to DOWNLOADED."""
     from jidou.database import get_session
 
     f = _make_file(id=1, status=FileStatus.ROUTED)
+    f.show_id = 10
+
+    async def _single_query_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        session.execute = AsyncMock(return_value=file_result)
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _single_query_session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={})
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+        assert f.show_id is None
+        assert f.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_downloading_returns_409() -> None:
+    """POST /api/files/{id}/match on a DOWNLOADING file must return 409."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.DOWNLOADING)
 
     async def _single_query_session() -> AsyncMock:
         session = AsyncMock()

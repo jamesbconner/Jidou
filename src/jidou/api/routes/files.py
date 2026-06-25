@@ -269,7 +269,7 @@ async def manual_match_file(
 
     Raises:
         HTTPException: 404 if the file, show, or TMDB resource is not found.
-        HTTPException: 409 if the file is not in a re-matchable status.
+        HTTPException: 409 if the file is in a non-re-matchable status (e.g. DOWNLOADING).
         HTTPException: 422 if the show has no ``local_path`` or if both
             ``show_id`` and ``tmdb_id`` are supplied.
     """
@@ -284,7 +284,14 @@ async def manual_match_file(
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
 
-    matchable = {FileStatus.DOWNLOADED, FileStatus.UNMATCHED, FileStatus.ERROR}
+    matchable = {
+        FileStatus.DOWNLOADED,
+        FileStatus.UNMATCHED,
+        FileStatus.MATCHED,
+        FileStatus.ROUTING,
+        FileStatus.ROUTED,
+        FileStatus.ERROR,
+    }
     if file.status not in matchable:
         raise HTTPException(
             status_code=409,
