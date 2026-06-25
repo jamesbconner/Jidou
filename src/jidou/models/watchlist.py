@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from jidou.models.base import Base, TimestampMixin
 
@@ -33,6 +33,8 @@ class WatchlistEntry(TimestampMixin, Base):
     )
     notes: Mapped[str | None] = mapped_column(String(1000))
     position: Mapped[int] = mapped_column(default=0)
+
+    show: Mapped["Show"] = relationship("Show", lazy="raise")  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         """Return a concise representation of the WatchlistEntry."""

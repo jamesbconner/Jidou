@@ -332,9 +332,16 @@ export interface CacheStats {
 
 export type WatchlistStatus = 'planned' | 'watching' | 'completed' | 'on_hold' | 'dropped'
 
+export interface WatchlistShowBrief {
+  title: string
+  tmdb_id: number
+  poster_path: string | null
+}
+
 export interface WatchlistList {
   id: number
   show_id: number
+  show: WatchlistShowBrief
   status: WatchlistStatus
   position: number
   created_at: string

@@ -51,6 +51,7 @@ def _make_entry(
     e.position = position
     e.created_at = datetime.now(UTC)
     e.updated_at = datetime.now(UTC)
+    e.show = _make_show(id=show_id)
     return e
 
 
@@ -194,8 +195,13 @@ def test_create_watchlist_entry() -> None:
             obj.created_at = datetime.now(UTC)  # type: ignore[attr-defined]
             obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
 
+        def _refresh_with_show(obj: object, attrs: list[str]) -> None:
+            if "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
+
         session.add = MagicMock(side_effect=_add_with_defaults)
         session.flush = AsyncMock()
+        session.refresh = AsyncMock(side_effect=_refresh_with_show)
         yield session
 
     app.dependency_overrides[get_session] = _mock_session

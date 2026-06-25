@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
 from jidou.models.show import Show
@@ -42,7 +43,7 @@ async def list_watchlist(
     Raises:
         HTTPException: 400 if status is not a valid WatchlistStatus.
     """
-    stmt = select(WatchlistEntry)
+    stmt = select(WatchlistEntry).options(selectinload(WatchlistEntry.show))
 
     if status is not None:
         try:
@@ -85,7 +86,11 @@ async def create_watchlist_entry(
     if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    existing_stmt = select(WatchlistEntry).where(WatchlistEntry.show_id == payload.show_id)
+    existing_stmt = (
+        select(WatchlistEntry)
+        .where(WatchlistEntry.show_id == payload.show_id)
+        .options(selectinload(WatchlistEntry.show))
+    )
     existing = (await db_session.execute(existing_stmt)).scalar_one_or_none()
     if existing is not None:
         if "status" in payload.model_fields_set and existing.status != payload.status:
@@ -109,7 +114,11 @@ async def create_watchlist_entry(
         await db_session.flush()
     except IntegrityError:
         await db_session.rollback()
-        existing_stmt = select(WatchlistEntry).where(WatchlistEntry.show_id == payload.show_id)
+        existing_stmt = (
+            select(WatchlistEntry)
+            .where(WatchlistEntry.show_id == payload.show_id)
+            .options(selectinload(WatchlistEntry.show))
+        )
         existing = (await db_session.execute(existing_stmt)).scalar_one_or_none()
         if existing is not None:
             if "status" in payload.model_fields_set and existing.status != payload.status:
@@ -129,6 +138,7 @@ async def create_watchlist_entry(
         entry.id,
         entry.status,
     )
+    await db_session.refresh(entry, ["show"])
     return entry
 
 
@@ -149,7 +159,11 @@ async def get_watchlist_entry(
     Raises:
         HTTPException: 404 if the entry is not found.
     """
-    stmt = select(WatchlistEntry).where(WatchlistEntry.id == entry_id)
+    stmt = (
+        select(WatchlistEntry)
+        .where(WatchlistEntry.id == entry_id)
+        .options(selectinload(WatchlistEntry.show))
+    )
     entry = (await db_session.execute(stmt)).scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
@@ -178,7 +192,11 @@ async def update_watchlist_entry(
         HTTPException: 404 if the entry is not found.
         HTTPException: 400 if the status value is invalid.
     """
-    stmt = select(WatchlistEntry).where(WatchlistEntry.id == entry_id)
+    stmt = (
+        select(WatchlistEntry)
+        .where(WatchlistEntry.id == entry_id)
+        .options(selectinload(WatchlistEntry.show))
+    )
     entry = (await db_session.execute(stmt)).scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
@@ -214,5 +232,5 @@ async def delete_watchlist_entry(
     if entry is None:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
 
-    await db_session.delete(entry)
+    await db_session.delete(entry)  # no need to load show for DELETE
     logger.info("Removed show id=%d from watchlist (entry id=%d)", entry.show_id, entry_id)
