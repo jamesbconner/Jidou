@@ -189,9 +189,10 @@ interface SortableRowProps {
   index: number
   onDelete: (id: number) => void
   isDeletePending: boolean
+  dragEnabled: boolean
 }
 
-function SortableRow({ entry, index, onDelete, isDeletePending }: SortableRowProps) {
+function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: SortableRowProps) {
   const {
     attributes,
     listeners,
@@ -212,9 +213,9 @@ function SortableRow({ entry, index, onDelete, isDeletePending }: SortableRowPro
   return (
     <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
       <td
-        {...listeners}
-        className="px-2 py-2 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
-        title="Drag to reorder"
+        {...(dragEnabled ? listeners : {})}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
+        title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
         <GripIcon />
       </td>
@@ -285,13 +286,24 @@ export default function Watchlist() {
   const deleteEntry = useDeleteWatchlistEntry()
   const reorderWatchlist = useReorderWatchlist()
 
+  // Reordering within a filtered view would assign 1-based positions to a subset,
+  // colliding with hidden entries' positions after the filter is cleared.
+  const dragEnabled = statusFilter === ''
+
   useEffect(() => {
-    setOrderedEntries(entries as WatchlistRead[])
-  }, [entries])
+    // Don't overwrite optimistic order while reorder PATCHes are still in flight;
+    // a concurrent status/notes mutation could invalidate the query and revert the UI.
+    if (!reorderWatchlist.isPending) {
+      setOrderedEntries(entries as WatchlistRead[])
+    }
+  }, [entries, reorderWatchlist.isPending])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
+    // Drop rapid successive drags while a prior batch is in flight to prevent
+    // interleaved PATCHes writing inconsistent positions to the server.
+    if (reorderWatchlist.isPending) return
     setOrderedEntries((prev) => {
       const oldIndex = prev.findIndex((e) => e.id === active.id)
       const newIndex = prev.findIndex((e) => e.id === over.id)
@@ -501,6 +513,7 @@ export default function Watchlist() {
                       index={i}
                       onDelete={(id) => deleteEntry.mutate(id)}
                       isDeletePending={deleteEntry.isPending}
+                      dragEnabled={dragEnabled}
                     />
                   ))}
                 </tbody>
