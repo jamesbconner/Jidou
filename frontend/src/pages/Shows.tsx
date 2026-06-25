@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
 import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
+import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import type { ShowList, TmdbResult } from '@/types/api'
 
@@ -67,6 +68,24 @@ export default function Shows() {
   const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: searchData } = useSearchShows(debouncedQuery)
   const createShow = useCreateShow()
+
+  const { data: watchlistEntries = [] } = useWatchlist()
+  const createWatchlistEntry = useCreateWatchlistEntry()
+  const deleteWatchlistEntry = useDeleteWatchlistEntry()
+
+  // Map show_id → watchlist entry id for O(1) lookup on each card.
+  const watchlistByShowId = useMemo(
+    () => new Map(watchlistEntries.map((e) => [e.show_id, e.id])),
+    [watchlistEntries],
+  )
+
+  function handleWatchlistToggle(showId: number, watchlistEntryId: number | null) {
+    if (watchlistEntryId != null) {
+      deleteWatchlistEntry.mutate(watchlistEntryId)
+    } else {
+      createWatchlistEntry.mutate({ show_id: showId })
+    }
+  }
 
   // The DB enforces uniqueness on tmdb_id alone (no media_type column in the
   // constraint), so presence check uses tmdb_id only — matching what POST /shows
@@ -316,7 +335,12 @@ export default function Shows() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {filtered.map((s) => (
-                  <ShowCard key={s.id} show={s} />
+                  <ShowCard
+                    key={s.id}
+                    show={s}
+                    watchlistEntryId={watchlistByShowId.get(s.id) ?? null}
+                    onWatchlistToggle={handleWatchlistToggle}
+                  />
                 ))}
               </div>
             )}
