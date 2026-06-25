@@ -271,6 +271,7 @@ export default function ShowDetail() {
     setContentTypeOpen(false)
     syncEpisodes.reset()
     updatePaths.reset()
+    patchShow.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>
