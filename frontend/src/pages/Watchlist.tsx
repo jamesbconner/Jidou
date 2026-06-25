@@ -290,11 +290,18 @@ export default function Watchlist() {
   // colliding with hidden entries' positions after the filter is cleared.
   const dragEnabled = statusFilter === ''
 
+  const prevFilterRef = useRef(statusFilter)
   useEffect(() => {
-    // Merge server data into the current drag order: preserve the user's ordering
-    // for entries that still exist, drop removed entries (deletes, filter changes),
-    // and append any newly added entries at the end. This handles concurrent
-    // mutations (status/notes/delete) correctly even while a reorder is in flight.
+    const filterChanged = prevFilterRef.current !== statusFilter
+    prevFilterRef.current = statusFilter
+    if (filterChanged) {
+      // Filter changed — restore server position order so newly visible entries
+      // appear in their saved positions, not appended at the end of the old slice.
+      setOrderedEntries(entries as WatchlistRead[])
+      return
+    }
+    // Merge: preserve drag order for existing entries, drop removed ones,
+    // append new additions at the end.
     setOrderedEntries((prev) => {
       const serverMap = new Map((entries as WatchlistRead[]).map((e) => [e.id, e]))
       const kept = prev.filter((e) => serverMap.has(e.id)).map((e) => serverMap.get(e.id)!)
@@ -302,7 +309,7 @@ export default function Watchlist() {
       const added = (entries as WatchlistRead[]).filter((e) => !keptIds.has(e.id))
       return [...kept, ...added]
     })
-  }, [entries])
+  }, [entries, statusFilter])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -313,10 +320,13 @@ export default function Watchlist() {
     const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
     const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
+    const snapshot = orderedEntries.slice()
     const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
     setOrderedEntries(reordered)
     reorderWatchlist.mutate(reordered, {
-      onError: () => setOrderedEntries(entries as WatchlistRead[]),
+      // Roll back to the pre-drag order, not entries (API sort), which can
+      // diverge from orderedEntries after prior successful reorders.
+      onError: () => setOrderedEntries(snapshot),
     })
   }
 
