@@ -342,6 +342,7 @@ async def update_show_paths(
     if "local_path" in payload.model_fields_set:
         show.local_path = payload.local_path
     await db_session.flush()
+    await db_session.refresh(show)
     logger.info("Updated local_path for show id=%d: %r", show_id, show.local_path)
     return show
 
@@ -376,6 +377,7 @@ async def update_show_aliases(
     normalised = list(dict.fromkeys(a.strip().lower() for a in payload.aliases if a.strip()))
     show.aliases = normalised or None
     await db_session.flush()
+    await db_session.refresh(show)
     logger.info("Updated aliases for show id=%d: %r", show_id, show.aliases)
     return show
 
@@ -434,6 +436,7 @@ async def patch_show(
         setattr(show, field, getattr(payload, field))
 
     await db_session.flush()
+    await db_session.refresh(show)
     logger.info("Patched show id=%d fields=%r", show_id, list(payload.model_fields_set))
     return show
 
