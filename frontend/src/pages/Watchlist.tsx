@@ -1,8 +1,23 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
 import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
-import type { WatchlistStatus, ShowList, TmdbResult } from '@/types/api'
+import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
 const STATUS_OPTIONS: WatchlistStatus[] = ['planned', 'watching', 'completed', 'on_hold', 'dropped']
 
@@ -152,6 +167,90 @@ function SearchResultRow({
   )
 }
 
+// ─── Drag handle icon ─────────────────────────────────────────────────────────
+
+function GripIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+      <circle cx="4" cy="3" r="1.5" />
+      <circle cx="10" cy="3" r="1.5" />
+      <circle cx="4" cy="7" r="1.5" />
+      <circle cx="10" cy="7" r="1.5" />
+      <circle cx="4" cy="11" r="1.5" />
+      <circle cx="10" cy="11" r="1.5" />
+    </svg>
+  )
+}
+
+// ─── Sortable table row ───────────────────────────────────────────────────────
+
+interface SortableRowProps {
+  entry: WatchlistRead
+  index: number
+  onDelete: (id: number) => void
+  isDeletePending: boolean
+  dragEnabled: boolean
+}
+
+function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: entry.id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    position: isDragging ? 'relative' : undefined,
+    zIndex: isDragging ? 1 : undefined,
+  }
+
+  return (
+    <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
+      <td
+        {...(dragEnabled ? listeners : {})}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
+        title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
+      >
+        <GripIcon />
+      </td>
+      <td className="px-4 py-2 text-gray-400 text-xs">{index + 1}</td>
+      <td className="px-4 py-2">
+        <Link
+          to={`/shows/${entry.show_id}`}
+          className="font-medium hover:underline text-blue-700"
+        >
+          {entry.show.title}
+        </Link>
+        <span className="block text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
+      </td>
+      <td className="px-4 py-2">
+        <InlineStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
+      </td>
+      <td className="px-4 py-2">
+        <InlineNotes id={entry.id} notes={entry.notes} />
+      </td>
+      <td className="px-4 py-2 text-gray-400 text-xs">
+        {new Date(entry.created_at).toLocaleDateString()}
+      </td>
+      <td className="px-4 py-2 text-right">
+        <button
+          onClick={() => onDelete(entry.id)}
+          disabled={isDeletePending}
+          className="text-xs text-red-500 hover:underline disabled:opacity-50"
+        >
+          Remove
+        </button>
+      </td>
+    </tr>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Watchlist() {
@@ -162,6 +261,11 @@ export default function Watchlist() {
   // Per-item pending sets so concurrent adds don't clobber each other's loading state.
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
+  const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  )
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -180,6 +284,51 @@ export default function Watchlist() {
   const createWatchlistEntry = useCreateWatchlistEntry()
   const createShow = useCreateShow()
   const deleteEntry = useDeleteWatchlistEntry()
+  const reorderWatchlist = useReorderWatchlist()
+
+  // Reordering within a filtered view would assign 1-based positions to a subset,
+  // colliding with hidden entries' positions after the filter is cleared.
+  const dragEnabled = statusFilter === ''
+
+  const prevFilterRef = useRef(statusFilter)
+  useEffect(() => {
+    const filterChanged = prevFilterRef.current !== statusFilter
+    prevFilterRef.current = statusFilter
+    if (filterChanged) {
+      // Filter changed — restore server position order so newly visible entries
+      // appear in their saved positions, not appended at the end of the old slice.
+      setOrderedEntries(entries as WatchlistRead[])
+      return
+    }
+    // Merge: preserve drag order for existing entries, drop removed ones,
+    // append new additions at the end.
+    setOrderedEntries((prev) => {
+      const serverMap = new Map((entries as WatchlistRead[]).map((e) => [e.id, e]))
+      const kept = prev.filter((e) => serverMap.has(e.id)).map((e) => serverMap.get(e.id)!)
+      const keptIds = new Set(kept.map((e) => e.id))
+      const added = (entries as WatchlistRead[]).filter((e) => !keptIds.has(e.id))
+      return [...kept, ...added]
+    })
+  }, [entries, statusFilter])
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    // Drop rapid successive drags while a prior batch is in flight to prevent
+    // interleaved PATCHes writing inconsistent positions to the server.
+    if (reorderWatchlist.isPending) return
+    const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
+    const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const snapshot = orderedEntries.slice()
+    const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
+    setOrderedEntries(reordered)
+    reorderWatchlist.mutate(reordered, {
+      // Roll back to the pre-drag order, not entries (API sort), which can
+      // diverge from orderedEntries after prior successful reorders.
+      onError: () => setOrderedEntries(snapshot),
+    })
+  }
 
   // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
   const watchlistStatusByShowId = useMemo(
@@ -362,6 +511,7 @@ export default function Watchlist() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
+                <th className="px-2 py-2 w-6" />
                 <th className="px-4 py-2 text-left w-8">#</th>
                 <th className="px-4 py-2 text-left">Show</th>
                 <th className="px-4 py-2 text-left">Status</th>
@@ -370,40 +520,22 @@ export default function Watchlist() {
                 <th className="px-4 py-2" />
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {entries.map((e, i) => (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-400 text-xs">{i + 1}</td>
-                  <td className="px-4 py-2">
-                    <Link
-                      to={`/shows/${e.show_id}`}
-                      className="font-medium hover:underline text-blue-700"
-                    >
-                      {e.show.title}
-                    </Link>
-                    <span className="block text-xs text-gray-400">TMDB #{e.show.tmdb_id}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <InlineStatusSelect id={e.id} current={e.status} />
-                  </td>
-                  <td className="px-4 py-2">
-                    <InlineNotes id={e.id} notes={e.notes} />
-                  </td>
-                  <td className="px-4 py-2 text-gray-400 text-xs">
-                    {new Date(e.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={() => deleteEntry.mutate(e.id)}
-                      disabled={deleteEntry.isPending}
-                      className="text-xs text-red-500 hover:underline disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={orderedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+                <tbody className="divide-y">
+                  {orderedEntries.map((e, i) => (
+                    <SortableRow
+                      key={e.id}
+                      entry={e as WatchlistRead}
+                      index={i}
+                      onDelete={(id) => deleteEntry.mutate(id)}
+                      isDeletePending={deleteEntry.isPending}
+                      dragEnabled={dragEnabled}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </DndContext>
           </table>
         </div>
       )}

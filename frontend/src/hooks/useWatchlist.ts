@@ -52,3 +52,26 @@ export function useDeleteWatchlistEntry() {
     },
   })
 }
+
+export function useReorderWatchlist() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: WatchlistRead[]) => {
+      // Always PATCH every entry with its new 1-based position. Skipping entries
+      // whose item.position matches the new index is unsafe: orderedEntries carries
+      // stale position values until the post-drag refetch settles, so a second drag
+      // before that refetch can produce indices that match the stale values and
+      // silently skip all PATCHes while the server keeps the wrong order.
+      const results = await Promise.allSettled(
+        items.map((item, i) =>
+          api.patch<WatchlistRead>(`/watchlist/${item.id}`, { position: i + 1 }),
+        ),
+      )
+      const failures = results.filter((r) => r.status === 'rejected')
+      if (failures.length > 0) throw new Error(`${failures.length} position update(s) failed`)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: watchlistKeys.all })
+    },
+  })
+}
