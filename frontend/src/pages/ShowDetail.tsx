@@ -127,11 +127,13 @@ function ContentTypeModal({
   onSave,
   onClose,
   isPending,
+  error,
 }: {
   current: string | null
   onSave: (value: string | null) => void
   onClose: () => void
   isPending: boolean
+  error: Error | null
 }) {
   const [draft, setDraft] = useState(current ?? '')
 
@@ -156,6 +158,9 @@ function ContentTypeModal({
             <option value="tv">tv</option>
             <option value="movie">movie</option>
           </select>
+          {error && (
+            <p className="text-xs text-red-600">{error.message}</p>
+          )}
           <div className="flex gap-2 justify-end">
             <button
               type="button"
@@ -266,6 +271,7 @@ export default function ShowDetail() {
     setContentTypeOpen(false)
     syncEpisodes.reset()
     updatePaths.reset()
+    patchShow.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>
@@ -514,14 +520,20 @@ export default function ShowDetail() {
         <ContentTypeModal
           key={showId}
           current={show.content_type ?? null}
-          onSave={(value) => {
-            patchShow.mutate(
-              { id: showId, patch: { content_type: value } },
-              { onSuccess: () => setContentTypeOpen(false) },
-            )
+          onSave={async (value) => {
+            try {
+              await patchShow.mutateAsync({ id: showId, patch: { content_type: value } })
+              setContentTypeOpen(false)
+            } catch {
+              // error is surfaced via patchShow.error passed to the modal
+            }
           }}
-          onClose={() => setContentTypeOpen(false)}
+          onClose={() => {
+            setContentTypeOpen(false)
+            patchShow.reset()
+          }}
           isPending={patchShow.isPending}
+          error={patchShow.error as Error | null}
         />
       )}
     </div>
