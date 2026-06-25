@@ -159,7 +159,9 @@ export default function Watchlist() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [searchMode, setSearchMode] = useState<'library' | 'tmdb'>('library')
-  const [addingTmdbId, setAddingTmdbId] = useState<number | null>(null)
+  // Per-item pending sets so concurrent adds don't clobber each other's loading state.
+  const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
+  const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -202,17 +204,35 @@ export default function Watchlist() {
     [tmdbData, searchMode],
   )
 
+  function addShowId(set: Set<number>, id: number) {
+    return new Set(set).add(id)
+  }
+  function removeShowId(set: Set<number>, id: number) {
+    const next = new Set(set); next.delete(id); return next
+  }
+
   function handleAddFromLibrary(showId: number) {
-    createWatchlistEntry.mutate({ show_id: showId })
+    if (pendingLibraryIds.has(showId)) return
+    setPendingLibraryIds((s) => addShowId(s, showId))
+    createWatchlistEntry.mutate(
+      { show_id: showId },
+      { onSettled: () => setPendingLibraryIds((s) => removeShowId(s, showId)) },
+    )
   }
 
   function handleAddFromTmdb(result: TmdbResult) {
+    if (pendingTmdbIds.has(result.id)) return
     const existing = libraryByTmdbId.get(result.id)
     if (existing) {
-      createWatchlistEntry.mutate({ show_id: existing.id })
+      if (pendingLibraryIds.has(existing.id)) return
+      setPendingLibraryIds((s) => addShowId(s, existing.id))
+      createWatchlistEntry.mutate(
+        { show_id: existing.id },
+        { onSettled: () => setPendingLibraryIds((s) => removeShowId(s, existing.id)) },
+      )
       return
     }
-    setAddingTmdbId(result.id)
+    setPendingTmdbIds((s) => addShowId(s, result.id))
     createShow.mutate(
       {
         tmdb_id: result.id,
@@ -225,11 +245,8 @@ export default function Watchlist() {
         release_date: result.first_air_date ?? result.release_date,
       },
       {
-        onSuccess: (show) => {
-          createWatchlistEntry.mutate({ show_id: show.id })
-          setAddingTmdbId(null)
-        },
-        onError: () => setAddingTmdbId(null),
+        onSuccess: (show) => createWatchlistEntry.mutate({ show_id: show.id }),
+        onSettled: () => setPendingTmdbIds((s) => removeShowId(s, result.id)),
       },
     )
   }
@@ -301,7 +318,7 @@ export default function Watchlist() {
                   libraryShowId={s.id}
                   watchlistStatus={watchlistStatusByShowId.get(s.id) ?? null}
                   onAdd={() => handleAddFromLibrary(s.id)}
-                  isPending={createWatchlistEntry.isPending}
+                  isPending={pendingLibraryIds.has(s.id)}
                 />
               ))
             ) : (
@@ -317,7 +334,7 @@ export default function Watchlist() {
                     libraryShowId={libraryShow?.id ?? null}
                     watchlistStatus={wlStatus}
                     onAdd={() => handleAddFromTmdb(r)}
-                    isPending={addingTmdbId === r.id || createWatchlistEntry.isPending}
+                    isPending={pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))}
                   />
                 )
               })
