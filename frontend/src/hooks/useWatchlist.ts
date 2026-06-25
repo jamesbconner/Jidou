@@ -60,11 +60,13 @@ export function useReorderWatchlist() {
       const patches = items
         .map((item, i) => ({ item, newPos: i + 1 }))
         .filter(({ item, newPos }) => item.position !== newPos)
-      await Promise.all(
+      const results = await Promise.allSettled(
         patches.map(({ item, newPos }) =>
           api.patch<WatchlistRead>(`/watchlist/${item.id}`, { position: newPos }),
         ),
       )
+      const failures = results.filter((r) => r.status === 'rejected')
+      if (failures.length > 0) throw new Error(`${failures.length} position update(s) failed`)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: watchlistKeys.all })

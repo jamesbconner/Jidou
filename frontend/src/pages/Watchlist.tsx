@@ -486,7 +486,7 @@ export default function Watchlist() {
       {/* Entries table */}
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
-      ) : orderedEntries.length === 0 ? (
+      ) : entries.length === 0 ? (
         <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
