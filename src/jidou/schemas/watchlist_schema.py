@@ -5,6 +5,16 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ShowBrief(BaseModel):
+    """Minimal show info embedded in watchlist responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    title: str
+    tmdb_id: int
+    poster_path: str | None = None
+
+
 class WatchlistCreate(BaseModel):
     """Request body for adding a show to the watchlist."""
 
@@ -35,6 +45,7 @@ class WatchlistRead(BaseModel):
 
     id: int
     show_id: int
+    show: ShowBrief
     status: str
     notes: str | None = None
     position: int
@@ -49,6 +60,7 @@ class WatchlistList(BaseModel):
 
     id: int
     show_id: int
+    show: ShowBrief
     status: str
     position: int
     created_at: datetime

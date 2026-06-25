@@ -8,6 +8,7 @@ import type { WatchlistList } from '@/types/api'
 const sample: WatchlistList = {
   id: 1,
   show_id: 42,
+  show: { title: 'Test Show', tmdb_id: 100, poster_path: null },
   status: 'watching',
   position: 0,
   created_at: new Date().toISOString(),
