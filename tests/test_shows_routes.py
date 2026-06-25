@@ -102,6 +102,7 @@ def _session_override(
         result.all.return_value = [(item, 0, 0) for item in items]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
+        session.refresh = AsyncMock()
         session.delete = AsyncMock()
         yield session
 
