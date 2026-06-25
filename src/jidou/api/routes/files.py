@@ -307,6 +307,7 @@ async def manual_match_file(
         file.matched_by = None
         file.error_message = None
         await db_session.flush()
+        await db_session.refresh(file)
         await db_session.commit()
         logger.info("Reset file id=%d to downloaded for auto re-matching", file_id)
         return file
@@ -458,6 +459,7 @@ async def manual_match_file(
                 file.episode_id = ep.id
 
     await db_session.flush()
+    await db_session.refresh(file)
     await db_session.commit()
 
     logger.info(

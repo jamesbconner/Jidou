@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
-import { useFiles, useRematchFile, fileKeys } from '@/hooks/useFiles'
+import { useFiles, fileKeys } from '@/hooks/useFiles'
 import { showKeys } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
+import { RematchModal } from '@/components/RematchModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus } from '@/types/api'
@@ -87,8 +88,8 @@ function formatBytes(bytes: number): string {
 export default function Files() {
   const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
   const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
+  const [rematchFile, setRematchFile] = useState<FileRead | null>(null)
   const { data: files = [], isLoading } = useFiles(statusFilter || undefined)
-  const rematch = useRematchFile()
 
   return (
     <div className="space-y-4">
@@ -161,9 +162,8 @@ export default function Files() {
                     )}
                     {f.show_id != null && f.status !== 'unmatched' && (
                       <button
-                        onClick={() => rematch.mutate({ id: f.id, payload: {} })}
-                        disabled={rematch.isPending}
-                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={() => setRematchFile(f)}
+                        className="text-xs text-blue-600 hover:underline"
                       >
                         Re-match
                       </button>
@@ -180,6 +180,12 @@ export default function Files() {
         <ResolveFileModal
           file={resolveFile}
           onClose={() => setResolveFile(null)}
+        />
+      )}
+      {rematchFile && (
+        <RematchModal
+          file={rematchFile}
+          onClose={() => setRematchFile(null)}
         />
       )}
     </div>
