@@ -169,6 +169,9 @@ export default function Watchlist() {
   }, [searchQuery])
 
   const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
+  // Unfiltered full list for search cross-reference — independent of the status filter and
+  // the default limit=50 that powers the table, so search badges are always accurate.
+  const { data: allEntries = [] } = useWatchlist(undefined, 10000)
   const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: tmdbData } = useSearchShows(searchMode === 'tmdb' ? debouncedQuery : '')
 
@@ -176,10 +179,10 @@ export default function Watchlist() {
   const createShow = useCreateShow()
   const deleteEntry = useDeleteWatchlistEntry()
 
-  // Map show_id → watchlist status for result-row lookup
+  // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
   const watchlistStatusByShowId = useMemo(
-    () => new Map(entries.map((e) => [e.show_id, e.status as WatchlistStatus])),
-    [entries],
+    () => new Map(allEntries.map((e) => [e.show_id, e.status as WatchlistStatus])),
+    [allEntries],
   )
 
   // Map tmdb_id → library ShowList for TMDB result cross-reference
