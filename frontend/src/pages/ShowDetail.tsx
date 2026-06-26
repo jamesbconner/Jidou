@@ -248,7 +248,7 @@ function EditPathModal({
 function TrackedBadge({ ep, onFix }: { ep: EpisodeList; onFix: () => void }) {
   const label = ep.tracked_source === 'import' ? 'Imported' : 'Matched'
   const filename = ep.tracked_filename
-    ? ep.tracked_filename.replace(/\\/g, '/').split('/').at(-1) ?? ep.tracked_filename
+    ? ep.tracked_filename.replace(/\\/g, '/').split('/').pop() ?? ep.tracked_filename
     : null
 
   return (
