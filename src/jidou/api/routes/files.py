@@ -409,10 +409,11 @@ async def manual_match_file(
                 show = (await db_session.execute(show_stmt)).scalar_one_or_none()
                 if show is None:
                     raise
-                # Apply caller's path/type to the concurrently-created row
-                if payload.local_path:
+                # Apply caller's path/type only if the concurrently-created row
+                # doesn't already have values — never overwrite existing config.
+                if payload.local_path and not show.local_path:
                     show.local_path = payload.local_path
-                if payload.content_type:
+                if payload.content_type and not show.content_type:
                     show.content_type = payload.content_type
                 await db_session.flush()
             else:
@@ -423,10 +424,12 @@ async def manual_match_file(
                     show.id,
                 )
         else:
-            # Show exists — update local_path / content_type if caller provided them
-            if payload.local_path:
+            # Show exists — only fill in local_path / content_type if not already set.
+            # Never silently overwrite a configured path; the user should explicitly
+            # update it via the show detail page if they want to change it.
+            if payload.local_path and not show.local_path:
                 show.local_path = payload.local_path
-            if payload.content_type:
+            if payload.content_type and not show.content_type:
                 show.content_type = payload.content_type
             await db_session.flush()
 

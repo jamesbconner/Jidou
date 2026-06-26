@@ -13,7 +13,7 @@ import type {
   AppConfig,
 } from '@/types/api'
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w92'
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w300'
 
 interface Props {
   file: FileRead
@@ -189,7 +189,7 @@ export function RematchModal({ file, onClose }: Props) {
             <div className="text-xs text-zinc-400">File</div>
             <div className="font-mono text-xs text-zinc-200 truncate">{file.original_filename}</div>
             {file.show_id && (
-              <div className="text-xs text-zinc-500 mt-0.5">Currently assigned to show #{file.show_id}</div>
+              <div className="text-xs text-zinc-500 mt-0.5">Currently assigned to {file.show?.title ?? `show #${file.show_id}`}</div>
             )}
           </div>
 
