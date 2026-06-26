@@ -299,9 +299,11 @@ export function RematchModal({ file, onClose }: Props) {
                 const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
                 return (
                   <div className="border border-zinc-700 rounded p-3 space-y-3">
-                    <div className="text-xs font-medium text-zinc-300">
+                    <div className={`text-xs font-medium ${existing && existing.local_path == null ? 'text-amber-400' : 'text-zinc-300'}`}>
                       {existing
-                        ? `Already in library as show #${existing.id} — will use existing record`
+                        ? existing.local_path != null
+                          ? `Already in library as show #${existing.id} — will use existing record`
+                          : `Already in library as show #${existing.id} — no local path set, configure it in Shows first`
                         : 'Not in library — will create a new show'}
                     </div>
                     {!existing && (
