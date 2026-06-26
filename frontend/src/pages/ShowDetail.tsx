@@ -248,29 +248,20 @@ function EditPathModal({
 function FileChip({
   label,
   chipClass,
-  filename,
   onFix,
 }: {
   label: string
   chipClass: string
-  filename: string | null
   onFix: () => void
 }) {
   return (
-    <div className="flex flex-col items-end gap-0.5 min-w-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
-          {label}
-        </span>
-        <button onClick={onFix} className="shrink-0 text-xs text-blue-600 hover:underline">
-          Fix Match
-        </button>
-      </div>
-      {filename && (
-        <span className="text-xs text-gray-400 font-mono break-all">
-          {filename}
-        </span>
-      )}
+    <div className="flex items-center gap-2 shrink-0">
+      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
+        {label}
+      </span>
+      <button onClick={onFix} className="text-xs text-blue-600 hover:underline">
+        Fix Match
+      </button>
     </div>
   )
 }
@@ -282,16 +273,14 @@ function TrackedBadges({
   ep: EpisodeList
   onFix: (fileId?: number) => void
 }) {
-  // Episodes with backing DownloadedFile records show one chip per file.
   if (ep.backing_files.length > 0) {
     return (
-      <div className="flex flex-col items-end gap-1 min-w-0">
+      <div className="flex flex-col items-end gap-1 shrink-0">
         {ep.backing_files.map((bf) => (
           <FileChip
             key={bf.id}
             label="Matched"
             chipClass="bg-teal-100 text-teal-700"
-            filename={bf.filename || null}
             onFix={() => onFix(bf.id)}
           />
         ))}
@@ -299,20 +288,25 @@ function TrackedBadges({
     )
   }
 
-  // Imported or legacy episode — use episode-level tracked_filename.
   const isImport = ep.tracked_source === 'import'
-  const trackedPath = ep.tracked_filename
-  const filename = trackedPath
-    ? trackedPath.replace(/\\/g, '/').split('/').pop() ?? trackedPath
-    : null
   return (
     <FileChip
       label={isImport ? 'Imported' : 'Tracked'}
       chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
-      filename={filename}
       onFix={() => onFix()}
     />
   )
+}
+
+function episodeFilenames(ep: EpisodeList): string[] {
+  if (ep.backing_files.length > 0) {
+    return ep.backing_files.map((bf) => bf.filename).filter(Boolean)
+  }
+  if (ep.tracked_filename) {
+    const p = ep.tracked_filename.replace(/\\/g, '/')
+    return [p.split('/').pop() ?? p]
+  }
+  return []
 }
 
 // ---------------------------------------------------------------------------
@@ -518,15 +512,21 @@ export default function ShowDetail() {
                     .map((ep) => (
                       <div
                         key={ep.id}
-                        className="flex items-center justify-between px-3 py-2 text-sm gap-3"
+                        className="flex items-start justify-between px-3 py-2 text-sm gap-3"
                       >
-                        <span className="shrink-0 min-w-0">
+                        <div className="min-w-0">
                           <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
                           {ep.name}
                           {ep.air_date && (
                             <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
                           )}
-                        </span>
+                          {ep.file_tracked &&
+                            episodeFilenames(ep).map((name) => (
+                              <div key={name} className="text-xs text-gray-400 font-mono mt-0.5">
+                                {name}
+                              </div>
+                            ))}
+                        </div>
                         {ep.file_tracked ? (
                           <TrackedBadges
                             ep={ep}
