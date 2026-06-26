@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
@@ -52,7 +53,10 @@ async def list_files(
     Raises:
         HTTPException: 400 if *status* is not a valid :class:`FileStatus`.
     """
-    stmt = select(DownloadedFile)
+    stmt = select(DownloadedFile).options(
+        selectinload(DownloadedFile.show),
+        selectinload(DownloadedFile.episode),
+    )
 
     if status is not None:
         try:
@@ -120,7 +124,11 @@ async def get_file(
     Raises:
         HTTPException: 404 if the file is not found.
     """
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
+    stmt = (
+        select(DownloadedFile)
+        .where(DownloadedFile.id == file_id)
+        .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+    )
     file = (await db_session.execute(stmt)).scalar_one_or_none()
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")
@@ -239,6 +247,7 @@ async def patch_file(
                 detail="Referenced show_id or episode_id does not exist",
             ) from None
         raise
+    await db_session.refresh(file)
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return file
 
@@ -307,6 +316,7 @@ async def manual_match_file(
         file.matched_by = None
         file.error_message = None
         await db_session.flush()
+        await db_session.refresh(file)
         await db_session.commit()
         logger.info("Reset file id=%d to downloaded for auto re-matching", file_id)
         return file
@@ -399,10 +409,11 @@ async def manual_match_file(
                 show = (await db_session.execute(show_stmt)).scalar_one_or_none()
                 if show is None:
                     raise
-                # Apply caller's path/type to the concurrently-created row
-                if payload.local_path:
+                # Apply caller's path/type only if the concurrently-created row
+                # doesn't already have values — never overwrite existing config.
+                if payload.local_path and not show.local_path:
                     show.local_path = payload.local_path
-                if payload.content_type:
+                if payload.content_type and not show.content_type:
                     show.content_type = payload.content_type
                 await db_session.flush()
             else:
@@ -413,10 +424,12 @@ async def manual_match_file(
                     show.id,
                 )
         else:
-            # Show exists — update local_path / content_type if caller provided them
-            if payload.local_path:
+            # Show exists — only fill in local_path / content_type if not already set.
+            # Never silently overwrite a configured path; the user should explicitly
+            # update it via the show detail page if they want to change it.
+            if payload.local_path and not show.local_path:
                 show.local_path = payload.local_path
-            if payload.content_type:
+            if payload.content_type and not show.content_type:
                 show.content_type = payload.content_type
             await db_session.flush()
 
@@ -458,6 +471,7 @@ async def manual_match_file(
                 file.episode_id = ep.id
 
     await db_session.flush()
+    await db_session.refresh(file)
     await db_session.commit()
 
     logger.info(

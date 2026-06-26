@@ -1,12 +1,19 @@
 """DownloadedFile model for tracking SFTP-sourced media files."""
 
+from __future__ import annotations
+
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from jidou.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from jidou.models.episode import Episode
+    from jidou.models.show import Show
 
 
 class FileStatus(StrEnum):
@@ -73,6 +80,13 @@ class DownloadedFile(TimestampMixin, Base):
     parsed_episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
     parsed_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     parsed_content_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Relationships — use selectinload() in async queries; lazy="noload" prevents
+    # accidental synchronous lazy-load (MissingGreenlet) if not explicitly loaded.
+    show: Mapped[Show | None] = relationship("Show", foreign_keys=[show_id], lazy="noload")
+    episode: Mapped[Episode | None] = relationship(
+        "Episode", foreign_keys=[episode_id], lazy="noload"
+    )
 
     def __repr__(self) -> str:
         """Return a concise representation of the DownloadedFile."""

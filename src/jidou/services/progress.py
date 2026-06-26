@@ -55,12 +55,14 @@ async def update_task_status(
     Returns:
         The updated BackgroundTask, or None if not found or cancelled.
     """
-    # Expire to force a fresh read — the cancel endpoint updates the row via
-    # a different connection and the identity map would otherwise return stale
-    # data still marked "running".
-    session.expire_all()
-
-    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+    # populate_existing=True forces a fresh DB read for this row only, so we
+    # see changes made by the cancel endpoint on a separate connection — without
+    # expiring unrelated objects (files, shows) still held in the session.
+    stmt = (
+        select(BackgroundTask)
+        .where(BackgroundTask.celery_task_id == celery_task_id)
+        .execution_options(populate_existing=True)
+    )
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
     if task is None:
@@ -120,11 +122,14 @@ async def check_task_cancelled(
     Raises:
         TaskCancelledError: When the task status is ``CANCELLED``.
     """
-    # Expire to force a fresh read — the cancel endpoint updates the row via
-    # a different connection.
-    session.expire_all()
-
-    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+    # populate_existing=True forces a fresh DB read for this row only, so we
+    # see a CANCELLED status written by the cancel endpoint on a separate
+    # connection — without expiring unrelated objects in the session.
+    stmt = (
+        select(BackgroundTask)
+        .where(BackgroundTask.celery_task_id == celery_task_id)
+        .execution_options(populate_existing=True)
+    )
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
 

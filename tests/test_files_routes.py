@@ -36,6 +36,8 @@ def _make_file(
     f.parsed_content_type = None
     f.created_at = datetime.now(UTC)
     f.updated_at = datetime.now(UTC)
+    f.show = None
+    f.episode = None
     return f
 
 
@@ -50,6 +52,7 @@ def _session_override(
         result.scalars.return_value.all.return_value = many or ([single] if single else [])
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
+        session.refresh = AsyncMock()
         yield session
 
     return _mock_session  # type: ignore[return-value]

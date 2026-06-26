@@ -7,6 +7,26 @@ from pydantic import BaseModel, ConfigDict, Field
 _VALID_STATUSES = "discovered|downloading|downloaded|unmatched|matched|routing|routed|error|pending"
 
 
+class ShowBrief(BaseModel):
+    """Minimal show fields embedded in file responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+
+
+class EpisodeBrief(BaseModel):
+    """Minimal episode fields embedded in file responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    season_number: int
+    episode_number: int
+    name: str
+
+
 class FileRead(BaseModel):
     """Full downloaded-file record."""
 
@@ -30,6 +50,8 @@ class FileRead(BaseModel):
     parsed_content_type: str | None = None
     created_at: datetime
     updated_at: datetime
+    show: ShowBrief | None = None
+    episode: EpisodeBrief | None = None
 
 
 class FileList(BaseModel):

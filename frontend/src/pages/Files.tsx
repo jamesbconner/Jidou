@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react'
-import { useFiles, useRematchFile, fileKeys } from '@/hooks/useFiles'
+import { Link } from 'react-router-dom'
+import { useFiles, fileKeys } from '@/hooks/useFiles'
 import { showKeys } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
+import { RematchModal } from '@/components/RematchModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus } from '@/types/api'
@@ -87,8 +89,8 @@ function formatBytes(bytes: number): string {
 export default function Files() {
   const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
   const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
+  const [rematchFile, setRematchFile] = useState<FileRead | null>(null)
   const { data: files = [], isLoading } = useFiles(statusFilter || undefined)
-  const rematch = useRematchFile()
 
   return (
     <div className="space-y-4">
@@ -104,12 +106,6 @@ export default function Files() {
           ))}
         </select>
       </div>
-
-      {rematch.error && (
-        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-          Re-match failed: {(rematch.error as Error).message}
-        </p>
-      )}
 
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
@@ -148,7 +144,23 @@ export default function Files() {
                     <FileStatusBadge status={f.status} />
                   </td>
                   <td className="px-4 py-2">
-                    <InlineShowId fileId={f.id} showId={f.show_id} />
+                    {f.show ? (
+                      <div className="space-y-0.5">
+                        <Link
+                          to={`/shows/${f.show.id}`}
+                          className="text-sm font-medium text-indigo-400 hover:underline"
+                        >
+                          {f.show.title}
+                        </Link>
+                        {f.episode && (
+                          <div className="text-xs text-gray-500">
+                            {`S${String(f.episode.season_number).padStart(2, '0')}E${String(f.episode.episode_number).padStart(2, '0')} · ${f.episode.name}`}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <InlineShowId fileId={f.id} showId={f.show_id} />
+                    )}
                   </td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
                     {f.status === 'unmatched' && (
@@ -161,9 +173,8 @@ export default function Files() {
                     )}
                     {f.show_id != null && f.status !== 'unmatched' && (
                       <button
-                        onClick={() => rematch.mutate({ id: f.id, payload: {} })}
-                        disabled={rematch.isPending}
-                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={() => setRematchFile(f)}
+                        className="text-xs text-blue-600 hover:underline"
                       >
                         Re-match
                       </button>
@@ -180,6 +191,12 @@ export default function Files() {
         <ResolveFileModal
           file={resolveFile}
           onClose={() => setResolveFile(null)}
+        />
+      )}
+      {rematchFile && (
+        <RematchModal
+          file={rematchFile}
+          onClose={() => setRematchFile(null)}
         />
       )}
     </div>
