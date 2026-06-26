@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useFiles, fileKeys } from '@/hooks/useFiles'
 import { showKeys } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
@@ -143,7 +144,23 @@ export default function Files() {
                     <FileStatusBadge status={f.status} />
                   </td>
                   <td className="px-4 py-2">
-                    <InlineShowId fileId={f.id} showId={f.show_id} />
+                    {f.show ? (
+                      <div className="space-y-0.5">
+                        <Link
+                          to={`/shows/${f.show.id}`}
+                          className="text-sm font-medium text-indigo-400 hover:underline"
+                        >
+                          {f.show.title}
+                        </Link>
+                        {f.episode && (
+                          <div className="text-xs text-gray-500">
+                            {`S${String(f.episode.season_number).padStart(2, '0')}E${String(f.episode.episode_number).padStart(2, '0')} · ${f.episode.name}`}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <InlineShowId fileId={f.id} showId={f.show_id} />
+                    )}
                   </td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
                     {f.status === 'unmatched' && (

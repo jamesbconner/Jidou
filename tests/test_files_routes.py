@@ -36,6 +36,8 @@ def _make_file(
     f.parsed_content_type = None
     f.created_at = datetime.now(UTC)
     f.updated_at = datetime.now(UTC)
+    f.show = None
+    f.episode = None
     return f
 
 

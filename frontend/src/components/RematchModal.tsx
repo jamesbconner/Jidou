@@ -21,9 +21,10 @@ interface Props {
 }
 
 export function RematchModal({ file, onClose }: Props) {
-  const [mode, setMode] = useState<'library' | 'tmdb'>('library')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [mode, setMode] = useState<'library' | 'tmdb'>('tmdb')
+  const initialQuery = file.parsed_show_name ?? ''
+  const [searchQuery, setSearchQuery] = useState(initialQuery)
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery)
   const [selectedLibraryShow, setSelectedLibraryShow] = useState<ShowList | null>(null)
   const [selectedTmdb, setSelectedTmdb] = useState<TmdbResult | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')

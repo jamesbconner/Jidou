@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
@@ -52,7 +53,10 @@ async def list_files(
     Raises:
         HTTPException: 400 if *status* is not a valid :class:`FileStatus`.
     """
-    stmt = select(DownloadedFile)
+    stmt = select(DownloadedFile).options(
+        selectinload(DownloadedFile.show),
+        selectinload(DownloadedFile.episode),
+    )
 
     if status is not None:
         try:
@@ -120,7 +124,11 @@ async def get_file(
     Raises:
         HTTPException: 404 if the file is not found.
     """
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
+    stmt = (
+        select(DownloadedFile)
+        .where(DownloadedFile.id == file_id)
+        .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+    )
     file = (await db_session.execute(stmt)).scalar_one_or_none()
     if file is None:
         raise HTTPException(status_code=404, detail="File not found")

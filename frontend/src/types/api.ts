@@ -118,6 +118,18 @@ export interface EpisodeRead extends EpisodeList {
 
 // ─── Files ────────────────────────────────────────────────────────────────
 
+export interface ShowBrief {
+  id: number
+  title: string
+}
+
+export interface EpisodeBrief {
+  id: number
+  season_number: number
+  episode_number: number
+  name: string
+}
+
 export type FileStatus =
   | 'pending'
   | 'discovered'
@@ -151,6 +163,8 @@ export interface FileRead extends FileList {
   parsed_confidence: number | null
   parsed_content_type: string | null
   updated_at: string
+  show: ShowBrief | null
+  episode: EpisodeBrief | null
 }
 
 export type ContentType = 'tv' | 'anime' | 'movie'
