@@ -249,17 +249,15 @@ function FileChip({
   label,
   chipClass,
   filename,
-  fullPath,
   onFix,
 }: {
   label: string
   chipClass: string
   filename: string | null
-  fullPath: string | null
   onFix: () => void
 }) {
   return (
-    <div className="flex flex-col items-end gap-0.5 min-w-0">
+    <div className="flex flex-col items-start gap-0.5 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
           {label}
@@ -269,10 +267,7 @@ function FileChip({
         </button>
       </div>
       {filename && (
-        <span
-          className="text-xs text-gray-400 font-mono truncate max-w-[320px]"
-          title={fullPath ?? undefined}
-        >
+        <span className="text-xs text-gray-400 font-mono break-all">
           {filename}
         </span>
       )}
@@ -290,14 +285,13 @@ function TrackedBadges({
   // Episodes with backing DownloadedFile records show one chip per file.
   if (ep.backing_files.length > 0) {
     return (
-      <div className="flex flex-col items-end gap-1 min-w-0">
+      <div className="flex flex-col items-start gap-1 min-w-0">
         {ep.backing_files.map((bf) => (
           <FileChip
             key={bf.id}
             label="Matched"
             chipClass="bg-teal-100 text-teal-700"
             filename={bf.filename || null}
-            fullPath={bf.filename || null}
             onFix={() => onFix(bf.id)}
           />
         ))}
@@ -307,16 +301,15 @@ function TrackedBadges({
 
   // Imported or legacy episode — use episode-level tracked_filename.
   const isImport = ep.tracked_source === 'import'
-  const fullPath = ep.tracked_filename
-  const filename = fullPath
-    ? fullPath.replace(/\\/g, '/').split('/').pop() ?? fullPath
+  const trackedPath = ep.tracked_filename
+  const filename = trackedPath
+    ? trackedPath.replace(/\\/g, '/').split('/').pop() ?? trackedPath
     : null
   return (
     <FileChip
       label={isImport ? 'Imported' : 'Tracked'}
       chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
       filename={filename}
-      fullPath={fullPath}
       onFix={() => onFix()}
     />
   )
