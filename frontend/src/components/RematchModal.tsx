@@ -81,31 +81,41 @@ export function RematchModal({ file, onClose }: Props) {
     }
   }, [searchQuery])
 
-  // auto-fill local path when a new TMDB result is selected
+  // When a TMDB result is selected: derive content type from media_type and auto-fill path.
+  // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep
+  // (the first effect would read stale contentType before the second effect could update it).
   useEffect(() => {
-    if (!selectedTmdb || !config || pathEdited) return
+    if (!selectedTmdb || !config) return
+    const newType: ContentType = selectedTmdb.media_type === 'movie' ? 'movie' : 'tv'
+    setContentType(newType)
+    setPathEdited(false)
     const safeTitle = (selectedTmdb.name ?? selectedTmdb.title ?? '')
       .replace(/[\\/:*?"<>|]/g, '_')
       .trim()
-    const base =
-      contentType === 'anime'
-        ? config.local_anime_path
-        : contentType === 'movie'
-          ? config.local_movie_path
-          : config.local_tv_path
+    const base = newType === 'movie' ? config.local_movie_path : config.local_tv_path
     setLocalPath(`${base}/${safeTitle}`)
-  }, [selectedTmdb, contentType, config, pathEdited])
+  }, [selectedTmdb, config])
 
-  // sync content type from TMDB media_type on selection
-  useEffect(() => {
-    if (!selectedTmdb) return
-    setContentType(selectedTmdb.media_type === 'movie' ? 'movie' : 'tv')
-    setPathEdited(false)
-  }, [selectedTmdb])
+  function handleContentTypeChange(t: ContentType) {
+    setContentType(t)
+    if (!pathEdited && selectedTmdb && config) {
+      const safeTitle = (selectedTmdb.name ?? selectedTmdb.title ?? '')
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .trim()
+      const base =
+        t === 'anime'
+          ? config.local_anime_path
+          : t === 'movie'
+            ? config.local_movie_path
+            : config.local_tv_path
+      setLocalPath(`${base}/${safeTitle}`)
+    }
+  }
 
   function switchMode(next: 'library' | 'tmdb') {
     setMode(next)
     setSearchQuery('')
+    setDebouncedQuery('')
     setSelectedLibraryShow(null)
     setSelectedTmdb(null)
     rematch.reset()
@@ -150,7 +160,7 @@ export function RematchModal({ file, onClose }: Props) {
     }
     if (!selectedTmdb) return false
     const existing = libraryByTmdbId.get(selectedTmdb.id)
-    if (existing) return true
+    if (existing) return existing.local_path != null
     return localPath.trim().length > 0
   })()
 
@@ -308,7 +318,7 @@ export function RematchModal({ file, onClose }: Props) {
                                   name="rematch_content_type"
                                   value={t}
                                   checked={contentType === t}
-                                  onChange={() => { setContentType(t); setPathEdited(false) }}
+                                  onChange={() => handleContentTypeChange(t)}
                                   className="accent-indigo-500"
                                 />
                                 {t.charAt(0).toUpperCase() + t.slice(1)}

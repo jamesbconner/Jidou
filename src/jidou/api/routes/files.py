@@ -239,6 +239,7 @@ async def patch_file(
                 detail="Referenced show_id or episode_id does not exist",
             ) from None
         raise
+    await db_session.refresh(file)
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return file
 

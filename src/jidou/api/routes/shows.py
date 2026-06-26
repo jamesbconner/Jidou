@@ -286,6 +286,7 @@ async def create_show(
                 exc_info=True,
             )
 
+    await db_session.refresh(show)
     return show
 
 
@@ -552,6 +553,7 @@ async def rematch_show(
                 status_code=502, detail="TMDB episode sync failed; rematch aborted"
             ) from exc
 
+    await db_session.refresh(show)
     return show
 
 
