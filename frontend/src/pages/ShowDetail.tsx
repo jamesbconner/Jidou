@@ -257,7 +257,7 @@ function FileChip({
   onFix: () => void
 }) {
   return (
-    <div className="flex flex-col items-start gap-0.5 min-w-0">
+    <div className="flex flex-col items-end gap-0.5 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
           {label}
@@ -285,7 +285,7 @@ function TrackedBadges({
   // Episodes with backing DownloadedFile records show one chip per file.
   if (ep.backing_files.length > 0) {
     return (
-      <div className="flex flex-col items-start gap-1 min-w-0">
+      <div className="flex flex-col items-end gap-1 min-w-0">
         {ep.backing_files.map((bf) => (
           <FileChip
             key={bf.id}
@@ -399,7 +399,7 @@ export default function ShowDetail() {
           />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-end justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold">{show.title}</h1>
               <p className="text-gray-500 text-sm mt-1">
