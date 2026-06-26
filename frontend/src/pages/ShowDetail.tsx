@@ -245,36 +245,80 @@ function EditPathModal({
 // Episode row tracking info + Fix button
 // ---------------------------------------------------------------------------
 
-function TrackedBadge({ ep, onFix }: { ep: EpisodeList; onFix: () => void }) {
-  const isImport = ep.tracked_source === 'import'
-  const label = isImport ? 'Imported' : 'Matched'
-  const chipClass = isImport
-    ? 'bg-blue-100 text-blue-700'
-    : 'bg-teal-100 text-teal-700'
-  const filename = ep.tracked_filename
-    ? ep.tracked_filename.replace(/\\/g, '/').split('/').pop() ?? ep.tracked_filename
-    : null
-
+function FileChip({
+  label,
+  chipClass,
+  filename,
+  fullPath,
+  onFix,
+}: {
+  label: string
+  chipClass: string
+  filename: string | null
+  fullPath: string | null
+  onFix: () => void
+}) {
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
-        {label}
-      </span>
+    <div className="flex flex-col items-end gap-0.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
+          {label}
+        </span>
+        <button onClick={onFix} className="shrink-0 text-xs text-blue-600 hover:underline">
+          Fix Match
+        </button>
+      </div>
       {filename && (
         <span
-          className="text-xs text-gray-500 font-mono truncate max-w-[260px]"
-          title={ep.tracked_filename ?? undefined}
+          className="text-xs text-gray-400 font-mono truncate max-w-[320px]"
+          title={fullPath ?? undefined}
         >
           {filename}
         </span>
       )}
-      <button
-        onClick={onFix}
-        className="shrink-0 text-xs text-blue-600 hover:underline"
-      >
-        Fix Match
-      </button>
     </div>
+  )
+}
+
+function TrackedBadges({
+  ep,
+  onFix,
+}: {
+  ep: EpisodeList
+  onFix: (fileId?: number) => void
+}) {
+  // Episodes with backing DownloadedFile records show one chip per file.
+  if (ep.backing_files.length > 0) {
+    return (
+      <div className="flex flex-col items-end gap-1 min-w-0">
+        {ep.backing_files.map((bf) => (
+          <FileChip
+            key={bf.id}
+            label="Matched"
+            chipClass="bg-teal-100 text-teal-700"
+            filename={bf.filename || null}
+            fullPath={bf.filename || null}
+            onFix={() => onFix(bf.id)}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  // Imported or legacy episode — use episode-level tracked_filename.
+  const isImport = ep.tracked_source === 'import'
+  const fullPath = ep.tracked_filename
+  const filename = fullPath
+    ? fullPath.replace(/\\/g, '/').split('/').pop() ?? fullPath
+    : null
+  return (
+    <FileChip
+      label={isImport ? 'Imported' : 'Tracked'}
+      chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
+      filename={filename}
+      fullPath={fullPath}
+      onFix={() => onFix()}
+    />
   )
 }
 
@@ -337,9 +381,9 @@ export default function ShowDetail() {
     updatePaths.mutate({ local_path: path }, { onSuccess: () => setPathModalOpen(false) })
   }
 
-  async function handleEpisodeFix(ep: EpisodeList) {
+  async function handleEpisodeFix(ep: EpisodeList, fileId?: number) {
     try {
-      const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id })
+      const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
       setFileForRematch(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
@@ -491,9 +535,9 @@ export default function ShowDetail() {
                           )}
                         </span>
                         {ep.file_tracked ? (
-                          <TrackedBadge
+                          <TrackedBadges
                             ep={ep}
-                            onFix={() => handleEpisodeFix(ep)}
+                            onFix={(fileId) => handleEpisodeFix(ep, fileId)}
                           />
                         ) : (
                           <span className="shrink-0 text-xs text-zinc-600">—</span>

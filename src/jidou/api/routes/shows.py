@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import ColumnElement, func, nullslast, outerjoin, select
+from sqlalchemy import ColumnElement, func, nullslast, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,7 +14,7 @@ from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import Show
-from jidou.schemas.episode_schema import EpisodeList
+from jidou.schemas.episode_schema import BackingFile, EpisodeList
 from jidou.schemas.file_schema import FileRead
 from jidou.schemas.show_schema import (
     RematchRequest,
@@ -621,35 +621,36 @@ async def list_episodes(
     if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    # Subquery: first DownloadedFile.id per episode (one file per episode).
-    backing_subq = (
-        select(
-            DownloadedFile.episode_id,
-            func.min(DownloadedFile.id).label("backing_file_id"),
-        )
-        .where(DownloadedFile.episode_id.isnot(None))
-        .group_by(DownloadedFile.episode_id)
-        .subquery()
-    )
-
-    stmt = (
-        select(Episode, backing_subq.c.backing_file_id)
-        .select_from(
-            outerjoin(Episode, backing_subq, Episode.id == backing_subq.c.episode_id)
-        )
-        .where(Episode.show_id == show_id)
-    )
+    ep_stmt = select(Episode).where(Episode.show_id == show_id)
     if season is not None:
-        stmt = stmt.where(Episode.season_number == season)
-    stmt = stmt.order_by(Episode.season_number, Episode.episode_number)
+        ep_stmt = ep_stmt.where(Episode.season_number == season)
+    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
+    episodes = list((await db_session.execute(ep_stmt)).scalars().all())
 
-    rows = (await db_session.execute(stmt)).all()
-    return [
-        EpisodeList.model_validate(ep, from_attributes=True).model_copy(
-            update={"backing_file_id": backing_id}
+    # Fetch all DownloadedFiles linked to these episodes in one query.
+    episode_ids = [ep.id for ep in episodes]
+    files_by_episode: dict[int, list[BackingFile]] = {}
+    if episode_ids:
+        files_stmt = (
+            select(
+                DownloadedFile.episode_id,
+                DownloadedFile.id,
+                DownloadedFile.original_filename,
+            )
+            .where(DownloadedFile.episode_id.in_(episode_ids))
+            .order_by(DownloadedFile.id)
         )
-        for ep, backing_id in rows
-    ]
+        for ep_id, file_id, filename in (await db_session.execute(files_stmt)).all():
+            files_by_episode.setdefault(ep_id, []).append(
+                BackingFile(id=file_id, filename=filename or "")
+            )
+
+    result: list[EpisodeList] = []
+    for ep in episodes:
+        el = EpisodeList.model_validate(ep, from_attributes=True)
+        el.backing_files = files_by_episode.get(ep.id, [])
+        result.append(el)
+    return result
 
 
 @router.post(
@@ -659,31 +660,36 @@ async def list_episodes(
 async def begin_episode_rematch(
     show_id: int,
     episode_id: int,
+    file_id: int | None = Query(default=None),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DownloadedFile:
-    """Prepare a tracked episode for re-matching and return a FileRead.
+    """Prepare a tracked episode's file for re-matching and return a FileRead.
 
-    Clears the episode's tracking metadata immediately so the UI can reflect the
-    untracked state.  Returns a :class:`FileRead` that the caller can pass to
-    the re-match modal.
+    Episode tracking is **not** cleared here — it is only cleared once the
+    route task successfully completes, so cancelling the re-match modal leaves
+    the episode showing as tracked.
 
-    - **Downloaded** (``tracked_source='match'``): the backing
-      :class:`DownloadedFile` record is returned directly after clearing the
-      episode link.
-    - **Imported** (``tracked_source='import'``): a synthetic
-      :class:`DownloadedFile` row is created from the episode's stored path so
-      the same re-match / re-route flow applies.
+    - **Specific file** (``file_id`` supplied): resets that exact
+      :class:`DownloadedFile` to ``DOWNLOADED`` without touching its
+      ``episode_id``, so the auto-match task can transition it smoothly.
+    - **Single backing file** (no ``file_id``): the only file linked to this
+      episode is reset the same way.
+    - **Imported / no backing file**: a synthetic :class:`DownloadedFile` row
+      is created from the episode's stored path so the same re-match / re-route
+      flow applies.
 
     Args:
         show_id: Database primary key of the show.
         episode_id: Database primary key of the episode.
+        file_id: Optional ID of a specific backing file to re-match when the
+            episode has multiple tracked files.
         db_session: DB session (injected).
 
     Returns:
         A ``FileRead`` ready to be passed to the re-match modal.
 
     Raises:
-        HTTPException: 404 if the show or episode is not found.
+        HTTPException: 404 if the show, episode, or specified file is not found.
         HTTPException: 422 if the episode is not currently tracked.
     """
     show_stmt = select(Show).where(Show.id == show_id)
@@ -700,28 +706,49 @@ async def begin_episode_rematch(
     if not ep.file_tracked:
         raise HTTPException(status_code=422, detail="Episode is not tracked")
 
-    # Look for a backing DownloadedFile regardless of tracked_source — this
-    # handles pre-migration episodes where tracked_source is null.
-    file_stmt = (
-        select(DownloadedFile)
-        .where(DownloadedFile.episode_id == episode_id)
-        .options(
-            selectinload(DownloadedFile.show),
-            selectinload(DownloadedFile.episode),
+    backing: DownloadedFile | None = None
+
+    if file_id is not None:
+        # Caller specified which file to re-match (multiple-file episode).
+        specific_stmt = (
+            select(DownloadedFile)
+            .where(
+                DownloadedFile.id == file_id,
+                DownloadedFile.episode_id == episode_id,
+            )
+            .options(
+                selectinload(DownloadedFile.show),
+                selectinload(DownloadedFile.episode),
+            )
         )
-        .limit(1)
-    )
-    backing = (await db_session.execute(file_stmt)).scalar_one_or_none()
+        backing = (await db_session.execute(specific_stmt)).scalar_one_or_none()
+        if backing is None:
+            raise HTTPException(
+                status_code=404, detail="File not found for this episode"
+            )
+    else:
+        # Look for any backing DownloadedFile — handles downloaded and legacy
+        # pre-migration episodes where tracked_source is null.
+        any_stmt = (
+            select(DownloadedFile)
+            .where(DownloadedFile.episode_id == episode_id)
+            .options(
+                selectinload(DownloadedFile.show),
+                selectinload(DownloadedFile.episode),
+            )
+            .limit(1)
+        )
+        backing = (await db_session.execute(any_stmt)).scalar_one_or_none()
 
     if backing is not None:
-        # Downloaded path: detach and reset for re-matching.
-        file = backing
-        file.episode_id = None
-        file.status = FileStatus.DOWNLOADED
+        # Reset to DOWNLOADED so the auto-match task picks it up.
+        # Keep episode_id intact so the match orchestrator can detect the old
+        # episode and clear its tracking after successfully routing elsewhere.
+        backing.status = FileStatus.DOWNLOADED
+        file: DownloadedFile = backing
     else:
-        # Imported (or legacy pre-migration) path: create a synthetic
-        # DownloadedFile so the RematchModal + route flow works identically.
-        # remote_path uses a synthetic scheme to satisfy the unique constraint.
+        # Imported (or legacy) path: create a synthetic DownloadedFile so the
+        # RematchModal + route flow works identically to the downloaded case.
         tracked_path = ep.tracked_filename or ""
         basename = tracked_path.replace("\\", "/").rsplit("/", 1)[-1] or "unknown"
         synthetic_remote = f"synthetic-import://episode-{episode_id}/{basename}"
@@ -739,18 +766,14 @@ async def begin_episode_rematch(
         await db_session.flush()
         await db_session.refresh(file)
 
-    # Clear episode tracking immediately so the UI reflects untracked state.
-    ep.file_tracked = False
-    ep.file_tracked_at = None
-    ep.tracked_filename = None
-    ep.tracked_source = None
+    # Episode tracking stays untouched — it is cleared by the route task after
+    # successfully routing the file to its new destination.
 
     await db_session.flush()
     await db_session.refresh(file)
 
-    # Eagerly load show/episode relationships expected by FileRead.
-    # Re-fetch with relationships for synthetic files; downloaded path already
-    # loaded them via selectinload in the query above.
+    # Re-fetch with relationships for synthetic files (downloaded files had
+    # selectinload in the query above).
     if backing is None:
         reload_stmt = (
             select(DownloadedFile)

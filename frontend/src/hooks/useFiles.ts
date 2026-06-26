@@ -47,8 +47,21 @@ export function useRematchFile() {
 export function useBeginEpisodeRematch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
-      api.post<FileRead>(`/shows/${showId}/episodes/${episodeId}/begin-rematch`, {}),
+    mutationFn: ({
+      showId,
+      episodeId,
+      fileId,
+    }: {
+      showId: number
+      episodeId: number
+      fileId?: number
+    }) => {
+      const qs = fileId != null ? `?file_id=${fileId}` : ''
+      return api.post<FileRead>(
+        `/shows/${showId}/episodes/${episodeId}/begin-rematch${qs}`,
+        {},
+      )
+    },
     onSuccess: (_data, { showId }) => {
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
     },

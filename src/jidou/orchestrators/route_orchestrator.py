@@ -66,6 +66,46 @@ class RouteOrchestrator:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _update_episode_tracking(
+        self, file: DownloadedFile, show_id: int
+    ) -> None:
+        """Set the routed file's episode as tracked.
+
+        For manually-matched files (``episode_id=None`` after the match
+        endpoint clears it) we resolve the episode by parsed season/episode
+        numbers and write back ``file.episode_id``.
+
+        Args:
+            file: The just-routed DownloadedFile (episode_id may be None).
+            show_id: Show to search within when resolving by parsed numbers.
+        """
+        if file.episode_id is not None:
+            ep_result = await self.session.execute(
+                select(Episode).where(Episode.id == file.episode_id)
+            )
+            ep = ep_result.scalar_one_or_none()
+        elif file.parsed_season is not None and file.parsed_episode is not None:
+            ep_result = await self.session.execute(
+                select(Episode).where(
+                    Episode.show_id == show_id,
+                    Episode.season_number == file.parsed_season,
+                    Episode.episode_number == file.parsed_episode,
+                )
+            )
+            ep = ep_result.scalar_one_or_none()
+            if ep is not None:
+                file.episode_id = ep.id
+        else:
+            ep = None
+
+        if ep is None:
+            return
+
+        ep.file_tracked = True
+        ep.file_tracked_at = datetime.now(UTC)
+        ep.tracked_filename = file.original_filename
+        ep.tracked_source = "match"
+
     async def run(
         self,
         dry_run: bool = False,
@@ -191,15 +231,7 @@ class RouteOrchestrator:
                 files_routed += 1
                 logger.info("Routed %s → %s", source, dest)
 
-                # Mark the linked episode as tracked now that the file is in place.
-                if file.episode_id is not None:
-                    ep_stmt = select(Episode).where(Episode.id == file.episode_id)
-                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
-                    if ep is not None:
-                        ep.file_tracked = True
-                        ep.file_tracked_at = datetime.now(UTC)
-                        ep.tracked_filename = file.original_filename
-                        ep.tracked_source = "match"
+                await self._update_episode_tracking(file, show.id)
 
             except Exception as exc:
                 logger.error(

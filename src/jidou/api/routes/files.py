@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -449,11 +449,32 @@ async def manual_match_file(
             ),
         )
 
+    # If this file was previously linked to an episode on a different show,
+    # clear that episode's tracking now that the user has confirmed a new show.
+    # (Cancelling the re-match modal never calls this endpoint, so the old
+    # episode stays tracked until the user explicitly confirms.)
+    old_episode_id: int | None = file.episode_id if file.show_id != show.id else None
+
     file.show_id = show.id
-    file.episode_id = None  # clear stale episode from any previous match
+    file.episode_id = None  # cleared here; route task resolves and writes new ep
     file.matched_by = MatchedBy.MANUAL
     file.status = FileStatus.MATCHED
     file.error_message = None
+
+    if old_episode_id is not None:
+        count_result = await db_session.execute(
+            select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
+        )
+        if (count_result.scalar() or 0) == 0:
+            old_ep_result = await db_session.execute(
+                select(Episode).where(Episode.id == old_episode_id)
+            )
+            old_ep = old_ep_result.scalar_one_or_none()
+            if old_ep is not None:
+                old_ep.file_tracked = False
+                old_ep.file_tracked_at = None
+                old_ep.tracked_filename = None
+                old_ep.tracked_source = None
 
     # Populate parsed_season / parsed_episode from filename heuristic so
     # RouteOrchestrator can place the file in Season NN/ instead of show root.

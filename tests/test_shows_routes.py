@@ -425,15 +425,18 @@ def test_list_episodes_returns_episode_list() -> None:
     episode = _make_episode(id=10, show_id=1)
 
     async def _two_query_session() -> AsyncMock:
-        """First execute returns the show; second returns (episode, backing_id) tuples."""
+        """First execute returns the show, second episodes, third backing files."""
         session = AsyncMock()
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
 
         ep_result = MagicMock()
-        ep_result.all.return_value = [(episode, None)]
+        ep_result.scalars.return_value.all.return_value = [episode]
 
-        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        files_result = MagicMock()
+        files_result.all.return_value = []  # no backing files
+
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, files_result])
         session.flush = AsyncMock()
         yield session
 
@@ -444,6 +447,7 @@ def test_list_episodes_returns_episode_list() -> None:
         body = response.json()
         assert len(body) == 1
         assert body[0]["episode_number"] == 1
+        assert body[0]["backing_files"] == []
     finally:
         app.dependency_overrides.clear()
 
