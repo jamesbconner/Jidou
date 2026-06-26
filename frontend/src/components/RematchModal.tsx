@@ -66,9 +66,10 @@ export function RematchModal({ file, onClose }: Props) {
     [tmdbResults],
   )
 
-  // keyed by tmdb_id for cross-referencing
+  // keyed by "tmdb_id:media_type" — TMDB uses separate ID namespaces for tv and movie,
+  // so a numeric tmdb_id alone is not unique across types.
   const libraryByTmdbId = useMemo(
-    () => new Map(allShows.map((s) => [s.tmdb_id, s])),
+    () => new Map(allShows.map((s) => [`${s.tmdb_id}:${s.media_type}`, s])),
     [allShows],
   )
 
@@ -126,7 +127,7 @@ export function RematchModal({ file, onClose }: Props) {
       if (mode === 'library' && selectedLibraryShow) {
         await rematch.mutateAsync({ id: file.id, payload: { show_id: selectedLibraryShow.id } })
       } else if (mode === 'tmdb' && selectedTmdb) {
-        const existing = libraryByTmdbId.get(selectedTmdb.id)
+        const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
         if (existing) {
           await rematch.mutateAsync({ id: file.id, payload: { show_id: existing.id } })
         } else {
@@ -159,7 +160,7 @@ export function RematchModal({ file, onClose }: Props) {
       return selectedLibraryShow !== null && selectedLibraryShow.local_path != null
     }
     if (!selectedTmdb) return false
-    const existing = libraryByTmdbId.get(selectedTmdb.id)
+    const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
     if (existing) return existing.local_path != null
     return localPath.trim().length > 0
   })()
@@ -295,7 +296,7 @@ export function RematchModal({ file, onClose }: Props) {
 
               {/* TMDB selection details */}
               {selectedTmdb && (() => {
-                const existing = libraryByTmdbId.get(selectedTmdb.id)
+                const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
                 return (
                   <div className="border border-zinc-700 rounded p-3 space-y-3">
                     <div className="text-xs font-medium text-zinc-300">
