@@ -84,7 +84,9 @@ class DownloadedFile(TimestampMixin, Base):
     # Relationships — use selectinload() in async queries; lazy="noload" prevents
     # accidental synchronous lazy-load (MissingGreenlet) if not explicitly loaded.
     show: Mapped[Show | None] = relationship("Show", foreign_keys=[show_id], lazy="noload")
-    episode: Mapped[Episode | None] = relationship("Episode", foreign_keys=[episode_id], lazy="noload")
+    episode: Mapped[Episode | None] = relationship(
+        "Episode", foreign_keys=[episode_id], lazy="noload"
+        )
 
     def __repr__(self) -> str:
         """Return a concise representation of the DownloadedFile."""
