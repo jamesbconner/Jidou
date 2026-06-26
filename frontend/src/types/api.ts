@@ -105,6 +105,9 @@ export interface EpisodeList {
   episode_type: string | null
   absolute_episode_number: number | null
   file_tracked: boolean
+  tracked_filename: string | null
+  tracked_source: 'match' | 'import' | null
+  backing_file_id: number | null
 }
 
 export interface EpisodeRead extends EpisodeList {

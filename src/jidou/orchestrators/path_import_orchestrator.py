@@ -244,12 +244,12 @@ class PathImportOrchestrator:
         for entry in entries:
             ep = await self._find_episode(show.id, show.title, entry)
             if ep is not None:
-                if not ep.file_tracked:
-                    if not self.dry_run:
-                        ep.file_tracked = True
-                        ep.file_tracked_at = datetime.now(UTC)
-                    show_result.episodes_tracked += 1
-                # Already tracked — count as matched but don't increment episodes_tracked.
+                if not self.dry_run:
+                    ep.file_tracked = True
+                    ep.file_tracked_at = datetime.now(UTC)
+                    ep.tracked_filename = entry.raw_path
+                    ep.tracked_source = "import"
+                show_result.episodes_tracked += 1
             else:
                 show_result.episodes_unmatched += 1
                 logger.debug(

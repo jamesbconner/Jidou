@@ -41,3 +41,6 @@ class EpisodeList(BaseModel):
     episode_type: str | None = None
     absolute_episode_number: int | None = None
     file_tracked: bool
+    tracked_filename: str | None = None
+    tracked_source: str | None = None
+    backing_file_id: int | None = None

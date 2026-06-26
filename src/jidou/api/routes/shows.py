@@ -5,15 +5,17 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import ColumnElement, func, nullslast, select
+from sqlalchemy import ColumnElement, func, nullslast, outerjoin, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
-from jidou.models.downloaded_file import DownloadedFile
+from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import EpisodeList
+from jidou.schemas.file_schema import FileRead
 from jidou.schemas.show_schema import (
     RematchRequest,
     ShowAliasesUpdate,
@@ -600,7 +602,7 @@ async def list_episodes(
     show_id: int,
     season: int | None = None,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> list[Episode]:
+) -> list[EpisodeList]:
     """List episodes for a show, optionally filtered by season number.
 
     Args:
@@ -609,7 +611,8 @@ async def list_episodes(
         db_session: DB session (injected).
 
     Returns:
-        List of episodes ordered by season and episode number.
+        List of episodes ordered by season and episode number, each including
+        ``backing_file_id`` if a DownloadedFile is linked to that episode.
 
     Raises:
         HTTPException: 404 if the show is not found.
@@ -618,10 +621,150 @@ async def list_episodes(
     if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    stmt = select(Episode).where(Episode.show_id == show_id)
+    # Subquery: first DownloadedFile.id per episode (one file per episode).
+    backing_subq = (
+        select(
+            DownloadedFile.episode_id,
+            func.min(DownloadedFile.id).label("backing_file_id"),
+        )
+        .where(DownloadedFile.episode_id.isnot(None))
+        .group_by(DownloadedFile.episode_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Episode, backing_subq.c.backing_file_id)
+        .select_from(
+            outerjoin(Episode, backing_subq, Episode.id == backing_subq.c.episode_id)
+        )
+        .where(Episode.show_id == show_id)
+    )
     if season is not None:
         stmt = stmt.where(Episode.season_number == season)
     stmt = stmt.order_by(Episode.season_number, Episode.episode_number)
 
-    result = await db_session.execute(stmt)
-    return list(result.scalars().all())
+    rows = (await db_session.execute(stmt)).all()
+    return [
+        EpisodeList.model_validate(ep, from_attributes=True).model_copy(
+            update={"backing_file_id": backing_id}
+        )
+        for ep, backing_id in rows
+    ]
+
+
+@router.post(
+    "/{show_id}/episodes/{episode_id}/begin-rematch",
+    response_model=FileRead,
+)
+async def begin_episode_rematch(
+    show_id: int,
+    episode_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> DownloadedFile:
+    """Prepare a tracked episode for re-matching and return a FileRead.
+
+    Clears the episode's tracking metadata immediately so the UI can reflect the
+    untracked state.  Returns a :class:`FileRead` that the caller can pass to
+    the re-match modal.
+
+    - **Downloaded** (``tracked_source='match'``): the backing
+      :class:`DownloadedFile` record is returned directly after clearing the
+      episode link.
+    - **Imported** (``tracked_source='import'``): a synthetic
+      :class:`DownloadedFile` row is created from the episode's stored path so
+      the same re-match / re-route flow applies.
+
+    Args:
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+        db_session: DB session (injected).
+
+    Returns:
+        A ``FileRead`` ready to be passed to the re-match modal.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+        HTTPException: 422 if the episode is not currently tracked.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(
+        Episode.id == episode_id, Episode.show_id == show_id
+    )
+    ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+    if ep is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    if not ep.file_tracked:
+        raise HTTPException(status_code=422, detail="Episode is not tracked")
+
+    if ep.tracked_source == "import":
+        # Create a synthetic DownloadedFile so the re-match flow works identically
+        # to the downloaded-file path.  remote_path uses a synthetic scheme to
+        # satisfy the unique constraint without conflicting with real SFTP paths.
+        tracked_path = ep.tracked_filename or ""
+        basename = tracked_path.replace("\\", "/").rsplit("/", 1)[-1]
+        synthetic_remote = f"synthetic-import://episode-{episode_id}/{basename}"
+        file = DownloadedFile(
+            show_id=show_id,
+            episode_id=None,
+            original_filename=basename,
+            remote_path=synthetic_remote,
+            local_path=tracked_path or None,
+            file_size=0,
+            status=FileStatus.ROUTED,
+            matched_by=MatchedBy.MANUAL,
+        )
+        db_session.add(file)
+        await db_session.flush()
+        await db_session.refresh(file)
+    else:
+        # Find the existing backing DownloadedFile.
+        file_stmt = (
+            select(DownloadedFile)
+            .where(DownloadedFile.episode_id == episode_id)
+            .options(
+                selectinload(DownloadedFile.show),
+                selectinload(DownloadedFile.episode),
+            )
+            .limit(1)
+        )
+        file_or_none = (await db_session.execute(file_stmt)).scalar_one_or_none()
+        if file_or_none is None:
+            raise HTTPException(
+                status_code=422,
+                detail="No backing file found for this episode",
+            )
+        file = file_or_none
+        # Detach the file from this episode so it can be re-matched.
+        file.episode_id = None
+        file.status = FileStatus.DOWNLOADED
+
+    # Capture source before clearing (we need it to decide how to load the response).
+    source = ep.tracked_source
+
+    # Clear episode tracking immediately so the UI reflects untracked state.
+    ep.file_tracked = False
+    ep.file_tracked_at = None
+    ep.tracked_filename = None
+    ep.tracked_source = None
+
+    await db_session.flush()
+    await db_session.refresh(file)
+
+    # Eagerly load show/episode relationships expected by FileRead.
+    if source == "import" and file.show_id is not None:
+        stmt = (
+            select(DownloadedFile)
+            .where(DownloadedFile.id == file.id)
+            .options(
+                selectinload(DownloadedFile.show),
+                selectinload(DownloadedFile.episode),
+            )
+        )
+        file = (await db_session.execute(stmt)).scalar_one()
+    # For the downloaded path, relationships were already loaded via selectinload.
+
+    return file

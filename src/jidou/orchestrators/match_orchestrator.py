@@ -219,9 +219,10 @@ class MatchOrchestrator:
                         file.episode_id = ep.id
                         file.matched_by = matched_by
                         file.status = FileStatus.ROUTED
-                        if not ep.file_tracked:
-                            ep.file_tracked = True
-                            ep.file_tracked_at = datetime.now(UTC)
+                        ep.file_tracked = True
+                        ep.file_tracked_at = datetime.now(UTC)
+                        ep.tracked_filename = file.original_filename
+                        ep.tracked_source = "match"
                         files_matched += 1
                         if matched_by == MatchedBy.HEURISTIC:
                             matched_by_heuristic += 1

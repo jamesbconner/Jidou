@@ -76,6 +76,8 @@ def _make_episode(*, id: int = 10, show_id: int = 1) -> MagicMock:
     ep.episode_type = None
     ep.still_path = None
     ep.file_tracked = False
+    ep.tracked_filename = None
+    ep.tracked_source = None
     ep.created_at = datetime.now(UTC)
     ep.updated_at = datetime.now(UTC)
     return ep
@@ -423,13 +425,13 @@ def test_list_episodes_returns_episode_list() -> None:
     episode = _make_episode(id=10, show_id=1)
 
     async def _two_query_session() -> AsyncMock:
-        """First execute returns the show; second returns episodes."""
+        """First execute returns the show; second returns (episode, backing_id) tuples."""
         session = AsyncMock()
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
 
         ep_result = MagicMock()
-        ep_result.scalars.return_value.all.return_value = [episode]
+        ep_result.all.return_value = [(episode, None)]
 
         session.execute = AsyncMock(side_effect=[show_result, ep_result])
         session.flush = AsyncMock()

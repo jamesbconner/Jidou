@@ -10,18 +10,18 @@ import {
   useSearchShows,
   usePatchShow,
 } from '@/hooks/useShows'
-import { useFilesByShow, useRematchFile } from '@/hooks/useFiles'
-import { FileStatusBadge } from '@/components/FileStatusBadge'
-import type { TmdbResult } from '@/types/api'
+import { useBeginEpisodeRematch } from '@/hooks/useFiles'
+import { RematchModal } from '@/components/RematchModal'
+import type { EpisodeList, FileRead, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
 
 // ---------------------------------------------------------------------------
-// TMDB re-match modal
+// TMDB re-match modal (for changing the show's TMDB entry)
 // ---------------------------------------------------------------------------
 
-function RematchModal({
+function ShowRematchModal({
   showId,
   currentTmdbId,
   onClose,
@@ -242,6 +242,39 @@ function EditPathModal({
 }
 
 // ---------------------------------------------------------------------------
+// Episode row tracking info + Fix button
+// ---------------------------------------------------------------------------
+
+function TrackedBadge({ ep, onFix }: { ep: EpisodeList; onFix: () => void }) {
+  const label = ep.tracked_source === 'import' ? 'Imported' : 'Matched'
+  const filename = ep.tracked_filename
+    ? ep.tracked_filename.replace(/\\/g, '/').split('/').at(-1) ?? ep.tracked_filename
+    : null
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="shrink-0 text-xs bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded font-medium">
+        {label}
+      </span>
+      {filename && (
+        <span
+          className="text-xs text-zinc-400 font-mono truncate max-w-[260px]"
+          title={ep.tracked_filename ?? undefined}
+        >
+          {filename}
+        </span>
+      )}
+      <button
+        onClick={onFix}
+        className="shrink-0 text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
+      >
+        Fix
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -255,20 +288,20 @@ export default function ShowDetail() {
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
   const deleteShow = useDeleteShow()
-  const { data: showFiles = [] } = useFilesByShow(showId)
-  const rematchFile = useRematchFile()
-
+  const beginRematch = useBeginEpisodeRematch()
   const patchShow = usePatchShow()
 
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
 
   useEffect(() => {
     setRematchOpen(false)
     setPathModalOpen(false)
     setContentTypeOpen(false)
+    setFileForRematch(null)
     syncEpisodes.reset()
     updatePaths.reset()
     patchShow.reset()
@@ -298,6 +331,15 @@ export default function ShowDetail() {
 
   function handleSavePath(path: string | null) {
     updatePaths.mutate({ local_path: path }, { onSuccess: () => setPathModalOpen(false) })
+  }
+
+  async function handleEpisodeFix(ep: EpisodeList) {
+    try {
+      const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id })
+      setFileForRematch(file)
+    } catch {
+      // error surfaced via beginRematch.error — no additional handling needed
+    }
   }
 
   return (
@@ -410,6 +452,11 @@ export default function ShowDetail() {
       {/* Episodes */}
       <section>
         <h2 className="font-semibold mb-3">Episodes ({episodes.length})</h2>
+        {beginRematch.isError && (
+          <p className="text-xs text-red-500 mb-2">
+            {(beginRematch.error as Error).message}
+          </p>
+        )}
         {Object.entries(bySeason)
           .sort(([a], [b]) => Number(a) - Number(b))
           .map(([season, eps]) => {
@@ -430,19 +477,22 @@ export default function ShowDetail() {
                     .map((ep) => (
                       <div
                         key={ep.id}
-                        className="flex items-center justify-between px-3 py-2 text-sm"
+                        className="flex items-center justify-between px-3 py-2 text-sm gap-3"
                       >
-                        <span>
+                        <span className="shrink-0 min-w-0">
                           <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
                           {ep.name}
                           {ep.air_date && (
                             <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
                           )}
                         </span>
-                        {ep.file_tracked && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            Tracked
-                          </span>
+                        {ep.file_tracked ? (
+                          <TrackedBadge
+                            ep={ep}
+                            onFix={() => handleEpisodeFix(ep)}
+                          />
+                        ) : (
+                          <span className="shrink-0 text-xs text-zinc-600">—</span>
                         )}
                       </div>
                     ))}
@@ -451,53 +501,6 @@ export default function ShowDetail() {
             )
           })}
       </section>
-
-      {/* Files */}
-      {showFiles.length > 0 && (
-        <section>
-          <h2 className="font-semibold mb-3">Files ({showFiles.length})</h2>
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                <tr>
-                  <th className="px-4 py-2 text-left">Filename</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {showFiles.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 font-mono text-xs max-w-xs">
-                      <div className="truncate">{f.original_filename}</div>
-                      {f.error_message && (
-                        <div
-                          className="text-red-500 truncate mt-0.5"
-                          title={f.error_message}
-                        >
-                          {f.error_message}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <FileStatusBadge status={f.status} />
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <button
-                        onClick={() => rematchFile.mutate({ id: f.id, payload: {} })}
-                        disabled={rematchFile.isPending}
-                        className="text-xs text-blue-600 hover:underline disabled:opacity-50"
-                      >
-                        Re-match
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
 
       {/* Modals */}
       {pathModalOpen && (
@@ -509,7 +512,7 @@ export default function ShowDetail() {
         />
       )}
       {rematchOpen && (
-        <RematchModal
+        <ShowRematchModal
           key={showId}
           showId={showId}
           currentTmdbId={show.tmdb_id}
@@ -534,6 +537,12 @@ export default function ShowDetail() {
           }}
           isPending={patchShow.isPending}
           error={patchShow.error as Error | null}
+        />
+      )}
+      {fileForRematch && (
+        <RematchModal
+          file={fileForRematch}
+          onClose={() => setFileForRematch(null)}
         />
       )}
     </div>
