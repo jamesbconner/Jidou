@@ -700,12 +700,30 @@ async def begin_episode_rematch(
     if not ep.file_tracked:
         raise HTTPException(status_code=422, detail="Episode is not tracked")
 
-    if ep.tracked_source == "import":
-        # Create a synthetic DownloadedFile so the re-match flow works identically
-        # to the downloaded-file path.  remote_path uses a synthetic scheme to
-        # satisfy the unique constraint without conflicting with real SFTP paths.
+    # Look for a backing DownloadedFile regardless of tracked_source — this
+    # handles pre-migration episodes where tracked_source is null.
+    file_stmt = (
+        select(DownloadedFile)
+        .where(DownloadedFile.episode_id == episode_id)
+        .options(
+            selectinload(DownloadedFile.show),
+            selectinload(DownloadedFile.episode),
+        )
+        .limit(1)
+    )
+    backing = (await db_session.execute(file_stmt)).scalar_one_or_none()
+
+    if backing is not None:
+        # Downloaded path: detach and reset for re-matching.
+        file = backing
+        file.episode_id = None
+        file.status = FileStatus.DOWNLOADED
+    else:
+        # Imported (or legacy pre-migration) path: create a synthetic
+        # DownloadedFile so the RematchModal + route flow works identically.
+        # remote_path uses a synthetic scheme to satisfy the unique constraint.
         tracked_path = ep.tracked_filename or ""
-        basename = tracked_path.replace("\\", "/").rsplit("/", 1)[-1]
+        basename = tracked_path.replace("\\", "/").rsplit("/", 1)[-1] or "unknown"
         synthetic_remote = f"synthetic-import://episode-{episode_id}/{basename}"
         file = DownloadedFile(
             show_id=show_id,
@@ -720,30 +738,6 @@ async def begin_episode_rematch(
         db_session.add(file)
         await db_session.flush()
         await db_session.refresh(file)
-    else:
-        # Find the existing backing DownloadedFile.
-        file_stmt = (
-            select(DownloadedFile)
-            .where(DownloadedFile.episode_id == episode_id)
-            .options(
-                selectinload(DownloadedFile.show),
-                selectinload(DownloadedFile.episode),
-            )
-            .limit(1)
-        )
-        file_or_none = (await db_session.execute(file_stmt)).scalar_one_or_none()
-        if file_or_none is None:
-            raise HTTPException(
-                status_code=422,
-                detail="No backing file found for this episode",
-            )
-        file = file_or_none
-        # Detach the file from this episode so it can be re-matched.
-        file.episode_id = None
-        file.status = FileStatus.DOWNLOADED
-
-    # Capture source before clearing (we need it to decide how to load the response).
-    source = ep.tracked_source
 
     # Clear episode tracking immediately so the UI reflects untracked state.
     ep.file_tracked = False
@@ -755,8 +749,10 @@ async def begin_episode_rematch(
     await db_session.refresh(file)
 
     # Eagerly load show/episode relationships expected by FileRead.
-    if source == "import" and file.show_id is not None:
-        stmt = (
+    # Re-fetch with relationships for synthetic files; downloaded path already
+    # loaded them via selectinload in the query above.
+    if backing is None:
+        reload_stmt = (
             select(DownloadedFile)
             .where(DownloadedFile.id == file.id)
             .options(
@@ -764,7 +760,6 @@ async def begin_episode_rematch(
                 selectinload(DownloadedFile.episode),
             )
         )
-        file = (await db_session.execute(stmt)).scalar_one()
-    # For the downloaded path, relationships were already loaded via selectinload.
+        file = (await db_session.execute(reload_stmt)).scalar_one()
 
     return file

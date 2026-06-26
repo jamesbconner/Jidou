@@ -4,12 +4,14 @@ import logging
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.models.episode import Episode
 from jidou.models.show import Show
 
 logger = logging.getLogger(__name__)
@@ -188,6 +190,16 @@ class RouteOrchestrator:
                 file.error_message = None
                 files_routed += 1
                 logger.info("Routed %s → %s", source, dest)
+
+                # Mark the linked episode as tracked now that the file is in place.
+                if file.episode_id is not None:
+                    ep_stmt = select(Episode).where(Episode.id == file.episode_id)
+                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                    if ep is not None:
+                        ep.file_tracked = True
+                        ep.file_tracked_at = datetime.now(UTC)
+                        ep.tracked_filename = file.original_filename
+                        ep.tracked_source = "match"
 
             except Exception as exc:
                 logger.error(

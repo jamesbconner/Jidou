@@ -246,19 +246,23 @@ function EditPathModal({
 // ---------------------------------------------------------------------------
 
 function TrackedBadge({ ep, onFix }: { ep: EpisodeList; onFix: () => void }) {
-  const label = ep.tracked_source === 'import' ? 'Imported' : 'Matched'
+  const isImport = ep.tracked_source === 'import'
+  const label = isImport ? 'Imported' : 'Matched'
+  const chipClass = isImport
+    ? 'bg-blue-100 text-blue-700'
+    : 'bg-teal-100 text-teal-700'
   const filename = ep.tracked_filename
     ? ep.tracked_filename.replace(/\\/g, '/').split('/').pop() ?? ep.tracked_filename
     : null
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="shrink-0 text-xs bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded font-medium">
+      <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
         {label}
       </span>
       {filename && (
         <span
-          className="text-xs text-zinc-400 font-mono truncate max-w-[260px]"
+          className="text-xs text-gray-500 font-mono truncate max-w-[260px]"
           title={ep.tracked_filename ?? undefined}
         >
           {filename}
@@ -266,9 +270,9 @@ function TrackedBadge({ ep, onFix }: { ep: EpisodeList; onFix: () => void }) {
       )}
       <button
         onClick={onFix}
-        className="shrink-0 text-xs text-indigo-400 hover:text-indigo-300 hover:underline"
+        className="shrink-0 text-xs text-blue-600 hover:underline"
       >
-        Fix
+        Fix Match
       </button>
     </div>
   )
