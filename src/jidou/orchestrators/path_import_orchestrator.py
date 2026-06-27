@@ -144,12 +144,23 @@ class PathImportOrchestrator:
         content_type: str = "anime",
         dry_run: bool = False,
         llm: LLMService | None = None,
+        on_event: Callable[[str, str, dict[str, object] | None], Awaitable[None]] | None = None,
     ) -> None:
         self.session = session
         self.tmdb = tmdb
         self.content_type = content_type
         self.dry_run = dry_run
         self.llm = llm
+        self.on_event = on_event
+
+    async def _emit(
+        self,
+        level: str,
+        msg: str,
+        ctx: dict[str, object] | None = None,
+    ) -> None:
+        if self.on_event:
+            await self.on_event(level, msg, ctx)
 
     async def run(
         self,
@@ -214,10 +225,16 @@ class PathImportOrchestrator:
         show = await self._db_find_show(show_dir)
 
         if show is None:
+            await self._emit("info", f"Not in DB — searching TMDB for '{show_dir}'")
             show, action = await self._tmdb_create_show(show_dir)
             show_result.action = action
         else:
             show_result.action = "found"
+            await self._emit(
+                "info",
+                f"Found in DB: '{show.title}'",
+                {"show_id": show.id, "tmdb_id": show.tmdb_id},
+            )
             logger.info("Found existing show %r (id=%d) for dir %r", show.title, show.id, show_dir)
             # If episodes haven't been synced yet, do it now so file matching can proceed.
             if not self.dry_run:
@@ -225,17 +242,19 @@ class PathImportOrchestrator:
                     select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
                 )
                 if ep_count == 0:
-                    logger.info(
-                        "No episodes for show id=%d (%r); syncing from TMDB before matching",
-                        show.id,
-                        show.title,
+                    await self._emit(
+                        "info", f"No episodes synced yet — fetching from TMDB for '{show.title}'"
                     )
                     try:
                         await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
-                    except Exception:
+                    except Exception as exc:
+                        await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
                         logger.exception("Episode sync failed for show id=%d", show.id)
 
         if show is None:
+            await self._emit(
+                "warn", f"No TMDB match found for '{show_dir}' — {len(entries)} file(s) unmatched"
+            )
             logger.warning("Could not resolve show for directory %r", show_dir)
             show_result.episodes_unmatched = len(entries)
             return show_result
@@ -286,6 +305,21 @@ class PathImportOrchestrator:
                     entry.raw_path,
                 )
 
+        if show_result.episodes_unmatched:
+            await self._emit(
+                "warn",
+                f"{show_result.episodes_unmatched} unmatched file(s) for '{show.title}'",
+                {
+                    "episodes_tracked": show_result.episodes_tracked,
+                    "episodes_unmatched": show_result.episodes_unmatched,
+                },
+            )
+        else:
+            await self._emit(
+                "info",
+                f"Tracked {show_result.episodes_tracked} episode(s) for '{show.title}'",
+            )
+
         if not self.dry_run:
             await self.session.commit()
         return show_result
@@ -335,14 +369,17 @@ class PathImportOrchestrator:
             ``(show, action)`` where action is ``"created"`` or ``"not_found"``.
         """
         # Search TMDB.
+        await self._emit("info", f"Calling TMDB search for '{show_dir}'")
         try:
             results = await self.tmdb.search(show_dir, media_type="tv")
-        except Exception:
+        except Exception as exc:
+            await self._emit("error", f"TMDB search failed for '{show_dir}': {exc}")
             logger.warning("TMDB search failed for %r", show_dir)
             return None, "not_found"
 
         candidates = [r for r in results.get("results", []) if r.get("media_type") in ("tv", None)]
         if not candidates:
+            await self._emit("warn", f"TMDB returned no results for '{show_dir}'")
             logger.warning("No TMDB results for directory %r", show_dir)
             return None, "not_found"
 
@@ -357,11 +394,17 @@ class PathImportOrchestrator:
                 break
 
         tmdb_id: int = best["id"]
+        await self._emit(
+            "info",
+            f"TMDB selected '{best.get('name')}' (id={tmdb_id})",
+            {"tmdb_id": tmdb_id, "candidates": len(candidates)},
+        )
 
         # Fetch full show details.
         try:
             data = await self.tmdb.get_details(tmdb_id, media_type="tv")
-        except Exception:
+        except Exception as exc:
+            await self._emit("error", f"TMDB get_details failed for id={tmdb_id}: {exc}")
             logger.warning("TMDB get_details failed for tmdb_id=%d", tmdb_id)
             return None, "not_found"
 
@@ -420,7 +463,7 @@ class PathImportOrchestrator:
         )
 
         if self.dry_run:
-            # Report what would be created without touching the database.
+            await self._emit("info", f"[dry-run] Would create show '{title}' (tmdb_id={tmdb_id})")
             logger.info("[dry-run] Would create show %r (tmdb_id=%d)", title, tmdb_id)
             return show, "created"
 
@@ -432,15 +475,27 @@ class PathImportOrchestrator:
             # Race condition: another request created this show concurrently.
             fallback = await self._db_find_show(title)
             if fallback:
+                await self._emit("info", f"Show '{title}' already existed (concurrent create)")
                 return fallback, "found"
             return None, "not_found"
 
+        await self._emit(
+            "info",
+            f"Created show '{title}' (id={show.id}, tmdb_id={tmdb_id})",
+            {"show_id": show.id, "tmdb_id": tmdb_id},
+        )
         logger.info("Created show %r (tmdb_id=%d, id=%d)", title, tmdb_id, show.id)
 
         # Sync all episodes from TMDB so episode matching can proceed.
+        await self._emit("info", f"Syncing episodes for '{title}' from TMDB")
         try:
             await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
-        except Exception:
+            ep_count = await self.session.scalar(
+                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+            )
+            await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
+        except Exception as exc:
+            await self._emit("error", f"Episode sync failed for '{title}': {exc}")
             logger.exception("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id)
             # Show row exists; proceed to episode matching with whatever was synced.
 

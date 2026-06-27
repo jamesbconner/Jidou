@@ -14,6 +14,7 @@ from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import parse_file
 from jidou.services.progress import (
     TaskCancelledError,
+    append_task_event,
     check_task_cancelled,
     create_task_record,
     emit_progress,
@@ -126,8 +127,23 @@ async def _path_import(
                 cache_ttl=settings.llm_cache_ttl,
                 timeout=settings.llm_timeout,
             )
+
+            async def on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
+                # Use a separate session so the event commit does not flush
+                # pending show/episode state from the orchestrator's session.
+                # Without this, append_task_event's session.commit() would
+                # commit partially-created shows mid-import, preventing clean
+                # rollback on failure.
+                async with session_factory() as event_session:
+                    await append_task_event(event_session, celery_task_id, level, msg, ctx)
+
             orchestrator = PathImportOrchestrator(
-                session, tmdb, content_type=content_type, dry_run=dry_run, llm=llm
+                session,
+                tmdb,
+                content_type=content_type,
+                dry_run=dry_run,
+                llm=llm,
+                on_event=on_event,
             )
             import_result = await orchestrator.run(entries, on_progress=on_progress)
 
@@ -179,20 +195,22 @@ async def _path_import(
 
     except TaskCancelledError:
         logger.info("Path import task %s was cancelled", celery_task_id)
-    except Exception:
+    except Exception as exc:
         logger.exception("Path import task %s failed", celery_task_id)
+        error_msg = str(exc) or type(exc).__name__
         async with session_factory() as session:
+            await append_task_event(session, celery_task_id, "error", f"Task failed: {error_msg}")
             await update_task_status(
                 session,
                 celery_task_id,
                 TaskStatus.FAILED,
-                progress_message="Import failed — see logs",
+                progress_message=f"Failed: {error_msg}",
             )
         await emit_progress(
             {
                 "celery_task_id": celery_task_id,
                 "type": "error",
-                "data": {"error": "Path import failed"},
+                "data": {"error": error_msg},
             }
         )
         raise  # Let Celery record the job as failed and honour retry/DLQ policy.

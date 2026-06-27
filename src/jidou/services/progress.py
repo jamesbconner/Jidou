@@ -2,9 +2,11 @@
 
 import json
 import logging
+from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import cast, literal, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
@@ -88,8 +90,6 @@ async def update_task_status(
         return task
 
     if status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
-        from datetime import UTC, datetime
-
         task.completed_at = datetime.now(UTC)
 
     task.status = status
@@ -138,6 +138,51 @@ async def check_task_cancelled(
 
     if task.status == TaskStatus.CANCELLED.value:
         raise TaskCancelledError(f"Task {celery_task_id} was cancelled")
+
+
+async def append_task_event(
+    session: AsyncSession,
+    celery_task_id: str,
+    level: str,
+    message: str,
+    ctx: dict[str, object] | None = None,
+) -> None:
+    """Append a structured event to the task's event_log and publish it via WebSocket.
+
+    Uses a single SQL UPDATE with the JSONB ``||`` operator so no SELECT is
+    required and concurrent appends from different workers are safe.
+
+    Args:
+        session: Active database session.
+        celery_task_id: Celery task identifier.
+        level: Severity — ``"info"``, ``"warn"``, or ``"error"``.
+        message: Human-readable description of what happened.
+        ctx: Optional structured context dict (show name, file path, etc.).
+    """
+    event: dict[str, object] = {
+        "ts": datetime.now(UTC).isoformat(),
+        "level": level,
+        "msg": message,
+    }
+    if ctx is not None:
+        event["ctx"] = ctx
+
+    await session.execute(
+        update(BackgroundTask)
+        .where(BackgroundTask.celery_task_id == celery_task_id)
+        .values(
+            event_log=BackgroundTask.event_log.op("||")(cast(literal(json.dumps([event])), JSONB))
+        )
+    )
+    await session.commit()
+
+    await emit_progress(
+        {
+            "celery_task_id": celery_task_id,
+            "type": "event",
+            "data": event,
+        }
+    )
 
 
 class TaskCancelledError(Exception):

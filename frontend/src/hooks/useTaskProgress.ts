@@ -59,6 +59,9 @@ export function useTaskProgress(celeryTaskId: string | null) {
               status: 'running' as TaskStatus,
             }
           }
+          if (msg.type === 'event') {
+            return { ...old, event_log: [...(old.event_log ?? []), msg.data] }
+          }
           if (msg.type === 'complete') return { ...old, status: 'completed' as TaskStatus }
           if (msg.type === 'error') return { ...old, status: 'failed' as TaskStatus, progress_message: msg.data.error }
           if (msg.type === 'cancelled') return { ...old, status: 'cancelled' as TaskStatus }

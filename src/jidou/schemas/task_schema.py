@@ -57,9 +57,10 @@ class TaskList(BaseModel):
 
 
 class TaskRead(TaskList):
-    """Full task state for GET /tasks/{id} — extends TaskList with celery_task_id."""
+    """Full task state for GET /tasks/{id} — extends TaskList with celery_task_id and event_log."""
 
     celery_task_id: str
+    event_log: list[dict[str, object]] = []
 
 
 class TaskTrigger(BaseModel):
