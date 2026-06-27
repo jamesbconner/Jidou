@@ -576,13 +576,33 @@ _TMDB_DETAIL = {
 }
 
 
-def _rematch_session(show: MagicMock, conflict: MagicMock | None = None) -> "type[AsyncMock]":
+def _rematch_session(
+    show: MagicMock,
+    conflict: MagicMock | None = None,
+    tracked_episodes: list[MagicMock] | None = None,
+    new_episodes: list[MagicMock] | None = None,
+    orphaned_files: list[MagicMock] | None = None,
+    preserve_tracking: bool = True,
+    media_type: str = "tv",
+) -> "type[AsyncMock]":
     """Return a session override for rematch tests.
 
-    Yields a session whose execute calls return:
+    Execute call order varies by rematch type:
+
+    TV + preserve_tracking=True (default):
       1. show lookup
-      2. conflict check (only when show.tmdb_id differs from payload)
-      3. episode bulk-delete result (unused)
+      2. conflict check
+      3. tracked-episodes snapshot (Phase 1)
+      4. episode bulk-delete
+      5. new-episodes query (Phase 2)
+      6. orphaned-files query (Phase 3)
+
+    Movie or preserve_tracking=False:
+      1. show lookup
+      2. conflict check
+      3. episode bulk-delete
+
+    Unused entries at the end of the side_effect list are harmless.
     """
 
     async def _mock() -> AsyncMock:
@@ -592,7 +612,32 @@ def _rematch_session(show: MagicMock, conflict: MagicMock | None = None) -> "typ
         conflict_result = MagicMock()
         conflict_result.scalar_one_or_none.return_value = conflict
         delete_result = MagicMock()
-        session.execute = AsyncMock(side_effect=[show_result, conflict_result, delete_result])
+
+        if preserve_tracking and media_type != "movie":
+            tracked_result = MagicMock()
+            tracked_scalars = MagicMock()
+            tracked_scalars.all.return_value = tracked_episodes or []
+            tracked_result.scalars.return_value = tracked_scalars
+            new_eps_result = MagicMock()
+            new_eps_scalars = MagicMock()
+            new_eps_scalars.all.return_value = new_episodes or []
+            new_eps_result.scalars.return_value = new_eps_scalars
+            orphan_result = MagicMock()
+            orphan_scalars = MagicMock()
+            orphan_scalars.all.return_value = orphaned_files or []
+            orphan_result.scalars.return_value = orphan_scalars
+            side_effects = [
+                show_result,
+                conflict_result,
+                tracked_result,
+                delete_result,
+                new_eps_result,
+                orphan_result,
+            ]
+        else:
+            side_effects = [show_result, conflict_result, delete_result]
+
+        session.execute = AsyncMock(side_effect=side_effects)
         session.flush = AsyncMock()
         yield session
 
@@ -744,6 +789,199 @@ def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
             response = TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200})
         assert response.status_code == 502
         assert "sync" in response.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_migrates_tracking_to_new_episodes() -> None:
+    """Tracking state is restored on new episodes that share the same S/E key."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    old_ep = _make_episode(id=10, show_id=1)
+    old_ep.season_number = 1
+    old_ep.episode_number = 3
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.s01e03.mkv"
+    old_ep.tracked_source = "match"
+    old_ep.file_tracked_at = None
+
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 3
+    new_ep.file_tracked = False
+    new_ep.tracked_filename = None
+    new_ep.tracked_source = None
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        tracked_episodes=[old_ep],
+        new_episodes=[new_ep],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        assert new_ep.file_tracked is True
+        assert new_ep.tracked_filename == "/media/show.s01e03.mkv"
+        assert new_ep.tracked_source == "match"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_relinks_orphaned_downloaded_files() -> None:
+    """DownloadedFiles with episode_id=NULL are re-linked to the matching new episode."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import DownloadedFile
+
+    show = _make_show(id=1, tmdb_id=100)
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 2
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    orphan = MagicMock(spec=DownloadedFile)
+    orphan.show_id = 1
+    orphan.episode_id = None
+    orphan.parsed_season = 2
+    orphan.parsed_episode = 1
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        new_episodes=[new_ep],
+        orphaned_files=[orphan],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        assert orphan.episode_id == 50
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) -> None:
+    """A warning is logged when a tracked episode has no matching S/E in the new entry."""
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    old_ep = _make_episode(id=10, show_id=1)
+    old_ep.season_number = 3
+    old_ep.episode_number = 7
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.s03e07.mkv"
+    old_ep.tracked_source = "import"
+    old_ep.file_tracked_at = None
+
+    # New episode list has no S03E07
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        tracked_episodes=[old_ep],
+        new_episodes=[new_ep],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            with patch("jidou.api.routes.shows.logger") as mock_logger:
+                response = TestClient(app).post(
+                    "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+                )
+                warning_calls = [
+                    call
+                    for call in mock_logger.warning.call_args_list
+                    if "Unrecoverable" in str(call)
+                ]
+        assert response.status_code == 200
+        assert len(warning_calls) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
+    """When preserve_tracking=False, no snapshot or migration queries are issued."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show, preserve_tracking=False, media_type="tv"
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch",
+                json={"tmdb_id": 200, "media_type": "tv", "preserve_tracking": False},
+            )
+        assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_movie_skips_tracking_phases() -> None:
+    """Movie rematch skips Phase 1/2/3 entirely — no tracked-episode queries."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100, media_type="movie")
+    movie_data = {
+        "title": "Great Film",
+        "release_date": "2023-03-01",
+        "overview": None,
+        "poster_path": None,
+        "backdrop_path": None,
+        "vote_average": 7.0,
+        "vote_count": 50,
+        "original_language": "en",
+        "genres": [],
+        "runtime": 90,
+        "tagline": None,
+        "status": "Released",
+        "networks": [],
+    }
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=movie_data)
+
+    app.dependency_overrides[get_session] = _rematch_session(show, media_type="movie")
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
+        )
+        assert response.status_code == 200
     finally:
         app.dependency_overrides.clear()
 
