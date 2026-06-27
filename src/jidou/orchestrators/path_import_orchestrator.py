@@ -14,6 +14,7 @@ directory name is stored in ``show.aliases`` when it differs from the English
 title so future lookups (parse orchestrator, manual search) hit the GIN index.
 """
 
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -60,6 +61,14 @@ _LLM_SHOW_MATCH_SYSTEM = (
     "clearly refers to that specific entry. "
     'Example: "Daredevil" matches "Marvel\'s Daredevil" but NOT "Daredevil: Born Again". '
     "Reply with ONLY the candidate number (1, 2, 3, ...) or NONE if no candidate matches."
+)
+
+_LLM_EPISODE_PARSE_SYSTEM = (
+    "You are a TV episode filename parser. "
+    "Extract only the season and episode numbers from the filename. "
+    "Reply with ONLY a compact JSON object: "
+    '{"season": <integer or null>, "episode": <integer or null>} '
+    "No other text, no markdown, no explanation."
 )
 
 
@@ -562,6 +571,71 @@ class PathImportOrchestrator:
 
         return show, "created"
 
+    async def _llm_parse_episode(
+        self,
+        filename: str,
+        known_season: int | None = None,
+    ) -> tuple[int | None, int | None]:
+        """Use the LLM to extract season and episode numbers from a filename.
+
+        Called when regex parsing in :mod:`~jidou.services.path_parser` returns
+        ``episode=None``.  Uses a lightweight prompt that asks only for season
+        and episode — the show is already known from the directory.
+
+        Args:
+            filename: Basename of the episode file.
+            known_season: Season already inferred from the directory path, if any.
+                Passed as a grounding hint to reduce hallucination.
+
+        Returns:
+            ``(season, episode)`` tuple; either value may be None.
+        """
+        if self.llm is None or not self.llm.is_available():
+            return None, None
+
+        hint = (
+            f"\nKnown season from directory: {known_season}"
+            if known_season is not None
+            else ""
+        )
+        try:
+            response = await self.llm.complete(
+                prompt=f"Filename: {filename}{hint}",
+                system=_LLM_EPISODE_PARSE_SYSTEM,
+            )
+        except Exception:
+            logger.warning("LLM episode-parse failed for %r", filename)
+            return None, None
+
+        if response is None:
+            return None, None
+
+        text = response.content.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning(
+                "LLM returned invalid JSON for episode parse of %r: %r", filename, text
+            )
+            return None, None
+
+        raw_season = parsed.get("season")
+        raw_episode = parsed.get("episode")
+        try:
+            season = int(raw_season) if raw_season is not None else None
+            episode = int(raw_episode) if raw_episode is not None else None
+        except (TypeError, ValueError):
+            logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
+            return None, None
+
+        logger.debug(
+            "LLM episode-parse: %r → season=%s episode=%s", filename, season, episode
+        )
+        return season, episode
+
     async def _find_episode(
         self,
         show_id: int,
@@ -571,13 +645,15 @@ class PathImportOrchestrator:
         """Match a parsed path entry to an Episode row.
 
         Lookup priority:
-        1. Season + episode (standard S##E## match).
-        2. Absolute episode number column (populated via TMDB episode groups).
-        3. ROW_NUMBER() window — sequential position across all non-special episodes.
-        4. LLM fallback — filename + full episode list sent to the configured LLM.
+        1. If regex gave no episode, ask the LLM to parse season/episode from
+           the filename alone (lightweight prompt, no episode list needed).
+        2. Season + episode DB match (standard S##E## lookup).
+        3. Absolute episode number column (populated via TMDB episode groups).
+        4. ROW_NUMBER() window — sequential position across all non-special episodes.
+        5. LLM episode-list match — filename + full episode list sent to the LLM.
 
-        Steps 2-4 are only reached when no season is known, or when the season-based
-        lookup (step 1) finds nothing.
+        Steps 3-5 are only reached when no season is known, or when the season-based
+        lookup (step 2) finds nothing in a season-1 directory.
 
         Args:
             show_id: Database ID of the parent show.
@@ -587,14 +663,23 @@ class PathImportOrchestrator:
         Returns:
             Matching :class:`Episode`, or None.
         """
-        if entry.episode is None:
-            return None
+        season = entry.season
+        episode = entry.episode
 
-        if entry.season is not None:
+        if episode is None:
+            filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+            llm_season, llm_episode = await self._llm_parse_episode(filename, season)
+            if llm_episode is None:
+                return None
+            episode = llm_episode
+            if season is None:
+                season = llm_season
+
+        if season is not None:
             stmt = select(Episode).where(
                 Episode.show_id == show_id,
-                Episode.season_number == entry.season,
-                Episode.episode_number == entry.episode,
+                Episode.season_number == season,
+                Episode.episode_number == episode,
             )
             ep = (await self.session.execute(stmt)).scalar_one_or_none()
             if ep is not None:
@@ -602,7 +687,7 @@ class PathImportOrchestrator:
             # S##E## miss with an explicit season > 1 means the episode is
             # genuinely absent — absolute/ROW_NUMBER fallbacks would map to the
             # wrong episode in the overall sequence, so go straight to LLM.
-            if entry.season > 1:
+            if season > 1:
                 return await self._llm_match(show_id, show_title, entry)
             # Season 1 directory: the episode number may still be a continuous
             # absolute count (e.g. a show with all 148 episodes in Season 01).
@@ -612,7 +697,7 @@ class PathImportOrchestrator:
         # Try the absolute_episode_number column first (populated via episode groups).
         stmt = select(Episode).where(
             Episode.show_id == show_id,
-            Episode.absolute_episode_number == entry.episode,
+            Episode.absolute_episode_number == episode,
         )
         ep = (await self.session.execute(stmt)).scalar_one_or_none()
         if ep is not None:
@@ -635,7 +720,7 @@ class PathImportOrchestrator:
         stmt = (
             select(Episode)
             .join(numbered, Episode.id == numbered.c.id)
-            .where(numbered.c.row_num == entry.episode)
+            .where(numbered.c.row_num == episode)
         )
         ep = (await self.session.execute(stmt)).scalar_one_or_none()
         if ep is not None:
