@@ -516,6 +516,84 @@ async def test_tmdb_fallback_emits_warn_when_no_exact_match() -> None:
     assert fallback_events[0][0] == "warn"
 
 
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_resolves_article_mismatch() -> None:
+    """LLM is invoked when exact match fails and picks the right candidate.
+
+    "Daredevil" does not normalized-match "Marvel's Daredevil", so the LLM
+    must be consulted and its answer (candidate 2) must be selected.
+    """
+    from unittest.mock import MagicMock
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    born_again = {"id": 202555, "name": "Daredevil: Born Again", "media_type": "tv"}
+    original = {"id": 61889, "name": "Marvel's Daredevil", "media_type": "tv"}
+
+    mock_response = MagicMock()
+    mock_response.content = "2"  # LLM picks candidate 2 = original Daredevil
+    # is_available is sync; only complete is async.
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    tmdb.search.return_value = {"results": [born_again, original]}
+    tmdb.get_details.return_value = {"name": "Marvel's Daredevil", "id": 61889}
+    tmdb.get_external_ids.return_value = {}
+    tmdb.get_episode_groups.return_value = {"results": []}
+
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True, llm=llm)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+        show, action = await orch._tmdb_create_show("Daredevil")
+
+    assert action == "created"
+    assert show is not None
+    tmdb.get_details.assert_called_once_with(61889, media_type="tv")
+    llm.complete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_returns_none_falls_back() -> None:
+    """When LLM returns NONE the orchestrator falls back to candidates[0] with a warn."""
+    from unittest.mock import MagicMock
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    born_again = {"id": 202555, "name": "Daredevil: Born Again", "media_type": "tv"}
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    mock_response = MagicMock()
+    mock_response.content = "NONE"
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    tmdb.search.return_value = {"results": [born_again]}
+    tmdb.get_details.return_value = {"name": "Daredevil: Born Again", "id": 202555}
+    tmdb.get_external_ids.return_value = {}
+    tmdb.get_episode_groups.return_value = {"results": []}
+
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True, llm=llm, on_event=capture_event)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+        _, action = await orch._tmdb_create_show("Daredevil")
+
+    assert action == "created"
+    # Must have fallen back to candidates[0] with a warn.
+    fallback = [(lvl, msg) for lvl, msg in events if "falling back" in msg]
+    assert len(fallback) == 1
+    assert fallback[0][0] == "warn"
+
+
 def test_normalize_title_strips_punctuation() -> None:
     """_normalize_title makes 'Daredevil Born Again' match 'Daredevil: Born Again'."""
     from jidou.orchestrators.path_import_orchestrator import _normalize_title

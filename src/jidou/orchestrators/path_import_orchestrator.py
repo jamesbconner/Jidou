@@ -50,6 +50,18 @@ _LLM_SYSTEM = (
     "If you cannot determine the match, reply with exactly: UNKNOWN"
 )
 
+_LLM_SHOW_MATCH_SYSTEM = (
+    "You are a TV show title matcher. "
+    "Given a directory name and a numbered list of TMDB candidates, "
+    "identify which candidate is the same show as the directory. "
+    "Directories often omit articles (\"Marvel's\", \"The\") or franchise subtitles "
+    "(\"Born Again\") that appear in TMDB titles — treat those as matches. "
+    "A sequel or spin-off with a shared word is NOT a match unless the directory "
+    "clearly refers to that specific entry. "
+    'Example: "Daredevil" matches "Marvel\'s Daredevil" but NOT "Daredevil: Born Again". '
+    "Reply with ONLY the candidate number (1, 2, 3, ...) or NONE if no candidate matches."
+)
+
 
 def _sanitize_sys_name(title: str) -> str:
     return _INVALID_FS_CHARS.sub("_", title).strip()
@@ -407,19 +419,31 @@ class PathImportOrchestrator:
                 {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "exact"},
             )
         else:
-            await self._emit(
-                "warn",
-                (
-                    f"No exact TMDB match for '{show_dir}' in {len(candidates)} result(s) "
-                    f"— falling back to top result '{best.get('name')}' (id={tmdb_id})"
-                ),
-                {
-                    "tmdb_id": tmdb_id,
-                    "candidates": len(candidates),
-                    "match": "fallback",
-                    "top_candidates": top_names,
-                },
-            )
+            # No normalized exact match — ask the LLM to disambiguate before
+            # falling back to the top popularity result.
+            llm_pick = await self._llm_pick_candidate(show_dir, candidates)
+            if llm_pick is not None:
+                best = llm_pick
+                tmdb_id = best["id"]
+                await self._emit(
+                    "info",
+                    f"LLM matched '{best.get('name')}' (id={tmdb_id}) for '{show_dir}'",
+                    {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "llm"},
+                )
+            else:
+                await self._emit(
+                    "warn",
+                    (
+                        f"No exact TMDB match for '{show_dir}' in {len(candidates)} result(s) "
+                        f"— falling back to top result '{best.get('name')}' (id={tmdb_id})"
+                    ),
+                    {
+                        "tmdb_id": tmdb_id,
+                        "candidates": len(candidates),
+                        "match": "fallback",
+                        "top_candidates": top_names,
+                    },
+                )
 
         # Fetch full show details.
         try:
@@ -602,6 +626,60 @@ class PathImportOrchestrator:
             return ep
 
         return await self._llm_match(show_id, show_title, entry)
+
+    async def _llm_pick_candidate(
+        self,
+        show_dir: str,
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Ask the LLM to pick the best TMDB candidate for show_dir.
+
+        Only called when exact normalized matching fails across all candidates.
+        Handles cases like "Daredevil" → "Marvel's Daredevil" where the directory
+        omits a leading article or franchise tag that TMDB includes in the title.
+
+        Args:
+            show_dir: Show directory name to match.
+            candidates: TMDB search result dicts, each with at least ``"name"``.
+
+        Returns:
+            The chosen candidate dict, or None if the LLM is unavailable or
+            cannot determine a match.
+        """
+        if self.llm is None or not self.llm.is_available():
+            return None
+
+        shortlist = candidates[:10]
+        lines = [
+            f"{i + 1}. {c.get('name')} ({str(c.get('first_air_date') or '')[:4] or '?'})"
+            for i, c in enumerate(shortlist)
+        ]
+        prompt = f'Directory: "{show_dir}"\n\nCandidates:\n' + "\n".join(lines)
+
+        try:
+            response = await self.llm.complete(prompt=prompt, system=_LLM_SHOW_MATCH_SYSTEM)
+        except Exception:
+            logger.warning("LLM show-match failed for %r", show_dir)
+            return None
+
+        if response is None:
+            return None
+
+        text = response.content.strip()
+        if text == "NONE":
+            return None
+
+        try:
+            idx = int(text) - 1
+        except ValueError:
+            logger.warning("LLM returned unexpected format %r for show dir %r", text, show_dir)
+            return None
+
+        if 0 <= idx < len(shortlist):
+            return shortlist[idx]
+
+        logger.warning("LLM returned out-of-range index %d for show dir %r", idx + 1, show_dir)
+        return None
 
     async def _llm_match(
         self,
