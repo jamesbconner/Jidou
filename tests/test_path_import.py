@@ -212,6 +212,15 @@ class TestParseLine:
         assert entry is not None
         assert entry.episode != 20
 
+    def test_compact_skipped_when_season_disagrees_with_directory(self) -> None:
+        # "924" encodes S09E24 but the directory says Season 10 — must not
+        # produce S10E24 (wrong episode tracked); episode should be None.
+        line = r"Z:\tv\Criminal Minds\Season 10\criminal.minds.924.hdtv-lol.mp4"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 10
+        assert entry.episode is None
+
     # -- "Episode N" / "Season N Episode N" word patterns ---------------------
 
     def test_episode_word_label(self) -> None:
@@ -657,6 +666,207 @@ async def test_llm_pick_candidate_resolves_article_mismatch() -> None:
     assert show is not None
     tmdb.get_details.assert_called_once_with(61889, media_type="tv")
     llm.complete.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _llm_parse_episode — unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_unavailable_returns_none() -> None:
+    """When LLM is not configured, _llm_parse_episode returns (None, None)."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)  # no llm kwarg
+
+    season, episode = await orch._llm_parse_episode("criminal.minds.201.hdtv-lol.avi")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_valid_json() -> None:
+    """LLM returning valid JSON yields the correct (season, episode) pair."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 2, "episode": 1}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("criminal.minds.201.hdtv-lol.avi")
+    assert season == 2
+    assert episode == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_null_season() -> None:
+    """LLM may return season=null when only episode can be determined."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": null, "episode": 7}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("Show.Episode.07.mkv")
+    assert season is None
+    assert episode == 7
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_invalid_json_returns_none() -> None:
+    """Malformed LLM response is handled gracefully; (None, None) is returned."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = "I cannot determine the episode number."
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.unusual.filename.mkv")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_non_dict_json_returns_none() -> None:
+    """Bare JSON null (valid JSON but not a dict) must not crash with AttributeError."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = "null"
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.unusual.filename.mkv")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_sends_known_season_hint() -> None:
+    """known_season is included in the prompt when supplied."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 6, "episode": 11}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    await orch._llm_parse_episode("Episode 11 - 25 to Life.avi", known_season=6)
+
+    call_kwargs = llm.complete.call_args
+    prompt_text = call_kwargs.kwargs.get("prompt") or call_kwargs.args[0]
+    assert "Known season from directory: 6" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_markdown_fence_stripped() -> None:
+    """JSON wrapped in a code fence is still parsed correctly."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '```json\n{"season": 3, "episode": 5}\n```'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("Show.S03E05.mkv")
+    assert season == 3
+    assert episode == 5
+
+
+# ---------------------------------------------------------------------------
+# _find_episode — LLM filename-parse fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_episode_uses_llm_when_episode_none() -> None:
+    """When regex gives episode=None, the LLM parses the filename and hits the DB."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    episode = _make_episode(id=10, show_id=1, season=6, episode=11)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute.return_value = ep_result
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 6, "episode": 11}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Criminal Minds\Season 6\Episode 11 - 25 to Life.avi",
+        show_dir="Criminal Minds",
+        show_root=r"Z:\tv\Criminal Minds",
+        season=6,
+        episode=None,  # regex could not parse
+        is_absolute=False,
+    )
+
+    result = await orch._find_episode(show_id=1, show_title="Criminal Minds", entry=entry)
+    assert result is episode
+    llm.complete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_find_episode_returns_none_when_llm_also_fails() -> None:
+    """If episode is None and LLM also returns None, _find_episode returns None."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    session = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=MagicMock(content='{"season": null, "episode": null}'))
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\SomeShow\Season 1\SomeShow.Extras.mkv",
+        show_dir="SomeShow",
+        show_root=r"Z:\tv\SomeShow",
+        season=1,
+        episode=None,
+        is_absolute=False,
+    )
+
+    result = await orch._find_episode(show_id=1, show_title="SomeShow", entry=entry)
+    assert result is None
 
 
 @pytest.mark.asyncio
