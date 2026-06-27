@@ -451,6 +451,11 @@ async def test_tmdb_candidate_scan_finds_exact_match_beyond_top5() -> None:
     original = {"id": 61889, "name": "Daredevil", "media_type": "tv"}
     tmdb_results = [born_again] * 5 + [original]
 
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
     session = AsyncMock()
     tmdb = AsyncMock()
     tmdb.search.return_value = {"results": tmdb_results}
@@ -458,7 +463,7 @@ async def test_tmdb_candidate_scan_finds_exact_match_beyond_top5() -> None:
     tmdb.get_external_ids.return_value = {}
     tmdb.get_episode_groups.return_value = {"results": []}
 
-    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True, on_event=capture_event)
 
     with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
         show, action = await orch._tmdb_create_show("Daredevil")
@@ -467,6 +472,48 @@ async def test_tmdb_candidate_scan_finds_exact_match_beyond_top5() -> None:
     assert action == "created"
     assert show is not None
     tmdb.get_details.assert_called_once_with(61889, media_type="tv")
+
+    # The selection event must be "info" (exact match), not "warn" (fallback).
+    match_events = [(lvl, msg) for lvl, msg in events if "matched" in msg or "falling back" in msg]
+    assert len(match_events) == 1
+    assert match_events[0][0] == "info", "exact match should emit info, not warn"
+    assert "Daredevil" in match_events[0][1]
+
+
+@pytest.mark.asyncio
+async def test_tmdb_fallback_emits_warn_when_no_exact_match() -> None:
+    """When no candidate matches the directory name exactly, emit a warn-level event.
+
+    This makes it immediately visible in the event log that the import used a
+    best-guess rather than a confirmed match, prompting the user to verify.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    # All candidates are "Daredevil: Born Again" — no exact match for "Daredevil".
+    born_again = {"id": 202555, "name": "Daredevil: Born Again", "media_type": "tv"}
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    tmdb.search.return_value = {"results": [born_again]}
+    tmdb.get_details.return_value = {"name": "Daredevil: Born Again", "id": 202555}
+    tmdb.get_external_ids.return_value = {}
+    tmdb.get_episode_groups.return_value = {"results": []}
+
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True, on_event=capture_event)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+        show, action = await orch._tmdb_create_show("Daredevil")
+
+    assert action == "created"
+    # The fallback selection must surface as a warning so the user sees it.
+    fallback_events = [(lvl, msg) for lvl, msg in events if "falling back" in msg]
+    assert len(fallback_events) == 1
+    assert fallback_events[0][0] == "warn"
 
 
 def test_normalize_title_strips_punctuation() -> None:

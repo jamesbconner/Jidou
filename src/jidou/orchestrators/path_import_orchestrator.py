@@ -391,17 +391,35 @@ class PathImportOrchestrator:
         # exact match (e.g. the 2015 "Daredevil") when both appear in the results.
         show_dir_norm = _normalize_title(show_dir)
         best = candidates[0]
+        exact_match = False
         for c in candidates:
             if _normalize_title(c.get("name", "")) == show_dir_norm:
                 best = c
+                exact_match = True
                 break
 
         tmdb_id: int = best["id"]
-        await self._emit(
-            "info",
-            f"TMDB selected '{best.get('name')}' (id={tmdb_id})",
-            {"tmdb_id": tmdb_id, "candidates": len(candidates)},
-        )
+        top_names: list[str | None] = [c.get("name") for c in candidates[:5]]
+        if exact_match:
+            await self._emit(
+                "info",
+                f"TMDB matched '{best.get('name')}' (id={tmdb_id})",
+                {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "exact"},
+            )
+        else:
+            await self._emit(
+                "warn",
+                (
+                    f"No exact TMDB match for '{show_dir}' in {len(candidates)} result(s) "
+                    f"— falling back to top result '{best.get('name')}' (id={tmdb_id})"
+                ),
+                {
+                    "tmdb_id": tmdb_id,
+                    "candidates": len(candidates),
+                    "match": "fallback",
+                    "top_candidates": top_names,
+                },
+            )
 
         # Fetch full show details.
         try:
