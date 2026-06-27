@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
@@ -225,6 +226,13 @@ async def patch_file(
                 file.error_message = None
     if "episode_id" in payload.model_fields_set:
         file.episode_id = payload.episode_id
+        if payload.episode_id is not None:
+            # Auto-dismiss any orphan record that was waiting for this file to be re-linked.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.downloaded_file_id == file.id
+                )
+            )
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:

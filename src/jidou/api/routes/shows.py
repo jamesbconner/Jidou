@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import BackingFile, EpisodeList
 from jidou.schemas.file_schema import FileRead
@@ -612,37 +613,63 @@ async def rematch_show(
                 DownloadedFile.parsed_season.is_not(None),
                 DownloadedFile.parsed_episode.is_not(None),
             )
-            orphans = (await db_session.execute(orphan_stmt)).scalars().all()
+            orphaned_files = (await db_session.execute(orphan_stmt)).scalars().all()
             relinked = 0
-            for file in orphans:
+            orphan_records_created = 0
+            for file in orphaned_files:
                 if file.parsed_season is not None and file.parsed_episode is not None:
                     new_ep = ep_by_se.get((file.parsed_season, file.parsed_episode))
                     if new_ep is not None:
                         file.episode_id = new_ep.id
                         relinked += 1
+                    else:
+                        # Downloaded file with no matching new episode — persist as orphan.
+                        db_session.add(
+                            OrphanedTrackingRecord(
+                                show_id=show_id,
+                                tracked_filename=file.original_filename,
+                                tracked_source="match",
+                                old_season_number=file.parsed_season,
+                                old_episode_number=file.parsed_episode,
+                                downloaded_file_id=file.id,
+                            )
+                        )
+                        orphan_records_created += 1
 
+            # Imported orphans: tracked_source="import" entries whose S/E key has no
+            # match. "match" entries are handled above via the file query.
             unrecoverable_keys = set(old_tracking.keys()) - set(ep_by_se.keys())
+            for key in unrecoverable_keys:
+                state = old_tracking[key]
+                if state["tracked_source"] == "import":
+                    db_session.add(
+                        OrphanedTrackingRecord(
+                            show_id=show_id,
+                            tracked_filename=state["tracked_filename"],
+                            tracked_source="import",
+                            old_season_number=key[0],
+                            old_episode_number=key[1],
+                            downloaded_file_id=None,
+                        )
+                    )
+                    orphan_records_created += 1
+
             if unrecoverable_keys:
-                unrecoverable_names = [
-                    old_tracking[k]["tracked_filename"] or f"S{k[0]:02d}E{k[1]:02d}"
-                    for k in unrecoverable_keys
-                ]
                 logger.warning(
-                    "Unrecoverable tracking records after rematch of show id=%d: %s",
+                    "Unrecoverable tracking records after rematch of show id=%d: %d persisted",
                     show_id,
-                    ", ".join(str(n) for n in unrecoverable_names),
+                    orphan_records_created,
                 )
 
             logger.info(
-                "Tracking migration: show id=%d migrated=%d relinked=%d unrecoverable=%d",
+                "Tracking migration: show id=%d migrated=%d relinked=%d orphans_created=%d",
                 show_id,
                 migrated,
                 relinked,
-                len(unrecoverable_keys),
+                orphan_records_created,
             )
 
-            if migrated or relinked:
-                await db_session.flush()
+            await db_session.flush()
 
     await db_session.refresh(show)
     return show

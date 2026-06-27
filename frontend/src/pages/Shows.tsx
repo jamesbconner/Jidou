@@ -4,8 +4,10 @@ import { ShowCard } from '@/components/ShowCard'
 import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
+import { useOrphans } from '@/hooks/useOrphans'
+import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { DQ_CHECKS } from '@/utils/dqChecks'
-import type { ShowList, TmdbResult } from '@/types/api'
+import type { ShowList, TmdbResult, OrphanedTrackingRecord } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
@@ -48,6 +50,7 @@ export default function Shows() {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
+  const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
 
   const [pendingWatchlistShowIds, setPendingWatchlistShowIds] = useState<Set<number>>(new Set())
 
@@ -69,6 +72,7 @@ export default function Shows() {
   // High limit so the indicator set covers the full library, not just the first page.
   const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: searchData } = useSearchShows(debouncedQuery)
+  const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
 
   // High limit mirrors allShows — covers the full library without pagination gaps.
@@ -452,7 +456,76 @@ export default function Shows() {
               </tbody>
             </table>
           )}
+
+          {/* Orphaned tracking records */}
+          {orphans.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">Unresolved tracking records</h3>
+                <span className="bg-red-100 text-red-700 text-xs rounded-full px-1.5 py-0.5 font-medium">
+                  {orphans.length}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                These episodes could not be migrated during a show rematch because their season/episode
+                number has no match in the new TMDB entry. Select <strong>Manual Match</strong> to link
+                each file to the correct episode.
+              </p>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b">
+                    <th className="pb-2 pr-4 font-medium">Show</th>
+                    <th className="pb-2 pr-4 font-medium">File</th>
+                    <th className="pb-2 pr-4 font-medium">Old S/E</th>
+                    <th className="pb-2 pr-4 font-medium">Source</th>
+                    <th className="pb-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orphans.map((o) => {
+                    const se = `S${String(o.old_season_number).padStart(2, '0')}E${String(o.old_episode_number).padStart(2, '0')}`
+                    const filename = o.tracked_filename
+                      ? o.tracked_filename.replace(/\\/g, '/').split('/').pop() ?? o.tracked_filename
+                      : '—'
+                    return (
+                      <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="py-2 pr-4 whitespace-nowrap">
+                          <Link to={`/shows/${o.show_id}`} className="text-blue-600 hover:underline font-medium text-xs">
+                            {o.show_title}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-600 max-w-xs truncate">
+                          {filename}
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-500">{se}</td>
+                        <td className="py-2 pr-4">
+                          <span className={`text-xs font-medium ${o.tracked_source === 'import' ? 'text-blue-600' : 'text-green-600'}`}>
+                            {o.tracked_source === 'import' ? 'import' : 'download'}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <button
+                            onClick={() => setResolvingOrphan(o)}
+                            className="text-xs bg-indigo-600 text-white rounded px-2 py-0.5 hover:bg-indigo-500 transition-colors"
+                          >
+                            Manual Match
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
+      )}
+
+      {resolvingOrphan && (
+        <OrphanResolveModal
+          orphan={resolvingOrphan}
+          onClose={() => setResolvingOrphan(null)}
+        />
       )}
     </div>
   )

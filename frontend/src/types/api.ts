@@ -387,6 +387,20 @@ export interface WatchlistUpdate {
   position?: number | null
 }
 
+// ─── Orphaned Tracking Records ────────────────────────────────────────────
+
+export interface OrphanedTrackingRecord {
+  id: number
+  show_id: number
+  show_title: string
+  tracked_filename: string | null
+  tracked_source: 'match' | 'import'
+  old_season_number: number
+  old_episode_number: number
+  downloaded_file_id: number | null
+  created_at: string
+}
+
 // ─── File PATCH ───────────────────────────────────────────────────────────
 
 export interface FilePatch {
