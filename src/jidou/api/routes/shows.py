@@ -697,9 +697,7 @@ async def begin_episode_rematch(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    ep_stmt = select(Episode).where(
-        Episode.id == episode_id, Episode.show_id == show_id
-    )
+    ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
     ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
     if ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -723,9 +721,7 @@ async def begin_episode_rematch(
         )
         backing = (await db_session.execute(specific_stmt)).scalar_one_or_none()
         if backing is None:
-            raise HTTPException(
-                status_code=404, detail="File not found for this episode"
-            )
+            raise HTTPException(status_code=404, detail="File not found for this episode")
     else:
         # Look for any backing DownloadedFile — handles downloaded and legacy
         # pre-migration episodes where tracked_source is null.

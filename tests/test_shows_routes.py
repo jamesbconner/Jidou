@@ -1109,3 +1109,238 @@ def test_create_show_respects_explicit_content_type() -> None:
         assert response.json()["content_type"] == "tv"
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/episodes/{episode_id}/begin-rematch
+# ---------------------------------------------------------------------------
+
+
+def _make_tracked_episode(*, id: int = 10, show_id: int = 1) -> MagicMock:
+    ep = _make_episode(id=id, show_id=show_id)
+    ep.file_tracked = True
+    ep.tracked_filename = "/media/shows/show/Season 01/show.s01e01.mkv"
+    ep.tracked_source = "match"
+    ep.file_tracked_at = None
+    return ep
+
+
+def test_begin_episode_rematch_returns_404_when_show_missing() -> None:
+    """Returns 404 when the show does not exist."""
+    from jidou.database import get_session
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        no_hit = MagicMock()
+        no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=no_hit)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/9999/episodes/1/begin-rematch")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_begin_episode_rematch_returns_404_when_episode_missing() -> None:
+    """Returns 404 when the episode does not exist."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/9999/begin-rematch")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_begin_episode_rematch_returns_422_when_not_tracked() -> None:
+    """Returns 422 when the episode is not tracked."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    ep.file_tracked = False
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch")
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_begin_episode_rematch_resets_backing_file() -> None:
+    """With a backing DownloadedFile, returns it with status DOWNLOADED."""
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import DownloadedFile, FileStatus
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+    backing = MagicMock(spec=DownloadedFile)
+    backing.id = 99
+    backing.show_id = 1
+    backing.episode_id = 10
+    backing.original_filename = "show.s01e01.mkv"
+    backing.remote_path = "/path/show.s01e01.mkv"
+    backing.local_path = "/staging/show.s01e01.mkv"
+    backing.file_size = 1_000_000
+    backing.hash_sha256 = None
+    backing.status = FileStatus.ROUTED
+    backing.matched_by = None
+    backing.error_message = None
+    backing.parsed_show_name = None
+    backing.parsed_season = 1
+    backing.parsed_episode = 1
+    backing.parsed_confidence = None
+    backing.parsed_content_type = None
+    from datetime import UTC, datetime
+    backing.created_at = datetime.now(UTC)
+    backing.updated_at = datetime.now(UTC)
+    backing.show = None
+    backing.episode = None
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = backing
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, file_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch")
+        assert response.status_code == 200
+        # Episode tracking must NOT be cleared by begin-rematch
+        assert ep.file_tracked is True
+        # File must be reset to DOWNLOADED
+        assert backing.status == FileStatus.DOWNLOADED
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
+    """With no backing file, creates a synthetic DownloadedFile for imports."""
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import DownloadedFile, FileStatus
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+    ep.tracked_source = "import"
+
+    synthetic = MagicMock(spec=DownloadedFile)
+    synthetic.id = 200
+    synthetic.show_id = 1
+    synthetic.episode_id = None
+    synthetic.original_filename = "show.s01e01.mkv"
+    synthetic.remote_path = "synthetic-import://episode-10/show.s01e01.mkv"
+    synthetic.local_path = "/media/shows/show/Season 01/show.s01e01.mkv"
+    synthetic.file_size = 0
+    synthetic.hash_sha256 = None
+    synthetic.status = FileStatus.ROUTED
+    synthetic.matched_by = None
+    synthetic.error_message = None
+    synthetic.parsed_show_name = None
+    synthetic.parsed_season = None
+    synthetic.parsed_episode = None
+    synthetic.parsed_confidence = None
+    synthetic.parsed_content_type = None
+    from datetime import UTC, datetime
+    synthetic.created_at = datetime.now(UTC)
+    synthetic.updated_at = datetime.now(UTC)
+    synthetic.show = None
+    synthetic.episode = None
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        no_backing = MagicMock()
+        no_backing.scalar_one_or_none.return_value = None
+        reload_result = MagicMock()
+        reload_result.scalar_one.return_value = synthetic
+
+        async def _flush() -> None:
+            synthetic.id = 200
+
+        session.execute = AsyncMock(
+            side_effect=[show_result, ep_result, no_backing, reload_result]
+        )
+        session.flush = AsyncMock(side_effect=_flush)
+        session.refresh = AsyncMock()
+
+        def _add(obj: object) -> None:
+            pass
+
+        session.add = MagicMock(side_effect=_add)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch")
+        assert response.status_code == 200
+        # Episode tracking must NOT be cleared
+        assert ep.file_tracked is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_begin_episode_rematch_with_file_id_returns_404_when_not_found() -> None:
+    """Returns 404 when the specified file_id is not linked to the episode."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, file_result])
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/begin-rematch?file_id=999"
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()

@@ -66,9 +66,7 @@ class RouteOrchestrator:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def _update_episode_tracking(
-        self, file: DownloadedFile, show_id: int
-    ) -> None:
+    async def _update_episode_tracking(self, file: DownloadedFile, show_id: int) -> None:
         """Set the routed file's episode as tracked.
 
         For manually-matched files (``episode_id=None`` after the match
