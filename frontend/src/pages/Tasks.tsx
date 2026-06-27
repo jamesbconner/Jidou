@@ -16,10 +16,12 @@ const TASK_DESCRIPTIONS: Record<TaskType, string> = {
   match: 'Parses filenames of DOWNLOADED files using regex and (optionally) LLM, then matches them to shows and episodes in the database.',
   route: 'Moves all MATCHED files from the staging directory to their final media library path. Creates season subdirectories as needed.',
   sync: 'Runs the full pipeline in sequence: Scan → Download → Match → Route.',
+  import: 'Imports episode file paths from a text file, matching them to shows and episodes via TMDB lookup.',
+  db_import: 'Imports show and episode metadata from a structured CSV or database export.',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
-const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync']
+const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import']
 
 export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('scan')

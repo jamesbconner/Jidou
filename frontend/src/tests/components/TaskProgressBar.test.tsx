@@ -10,6 +10,8 @@ const baseTask: TaskList = {
   progress_current: 5,
   progress_total: 20,
   progress_message: 'Scanning remote…',
+  result_summary: null,
+  dry_run: false,
   created_at: new Date().toISOString(),
   completed_at: null,
 }
