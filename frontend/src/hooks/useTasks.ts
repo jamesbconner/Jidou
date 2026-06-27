@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { TaskList, TaskRead, TaskTrigger, TaskType } from '@/types/api'
+import type { TaskEvent, TaskList, TaskRead, TaskTrigger, TaskType } from '@/types/api'
 
 export const taskKeys = {
   all: ['tasks'] as const,
@@ -45,19 +45,45 @@ export function useTaskCount(taskType?: TaskType) {
   })
 }
 
+/**
+ * Merge a fresh server response with any WS events accumulated in the cache.
+ *
+ * Deduplicates by composite key (ts|level|msg) rather than ts alone so that
+ * two distinct events emitted within the same millisecond are both preserved.
+ * Any event in the cache whose key is absent from the server response is
+ * appended — those are WS events that arrived during the network round-trip
+ * and have not yet been persisted when the HTTP response was generated.
+ */
+function mergeEventLog(fresh: TaskRead, cached: TaskRead | undefined): TaskRead {
+  if (!cached?.event_log?.length) return fresh
+  const eventKey = (e: TaskEvent) => `${e.ts}|${e.level}|${e.msg}`
+  const freshKeys = new Set((fresh.event_log ?? []).map(eventKey))
+  const liveOnly = cached.event_log.filter((e) => !freshKeys.has(eventKey(e)))
+  return { ...fresh, event_log: [...(fresh.event_log ?? []), ...liveOnly] }
+}
+
+/**
+ * Fetch task detail. Merges the HTTP response with any WS events already in
+ * the cache so refetches (e.g. on window focus from LiveTask) do not drop
+ * events that arrived via WebSocket since the last server response.
+ */
 export function useTask(id: number) {
+  const qc = useQueryClient()
   return useQuery({
     queryKey: taskKeys.detail(id),
-    queryFn: () => api.get<TaskRead>(`/tasks/${id}`),
+    queryFn: async () => {
+      const fresh = await api.get<TaskRead>(`/tasks/${id}`)
+      return mergeEventLog(fresh, qc.getQueryData<TaskRead>(taskKeys.detail(id)))
+    },
     enabled: id > 0,
   })
 }
 
 /**
- * Fetches a task detail and merges the response event_log with any live
- * WebSocket events already accumulated in the cache.  Without the merge a
- * stale HTTP response that started before newer WS events were persisted
- * would overwrite those events, making the live log jump backwards.
+ * Fetch task detail for the log panel. Uses staleTime:0 so the merge queryFn
+ * always runs when the panel opens, even if useTask cached the row recently.
+ * refetchOnWindowFocus is disabled to avoid redundant refetches while the
+ * panel is open.
  */
 export function useTaskDetail(id: number) {
   const qc = useQueryClient()
@@ -65,23 +91,18 @@ export function useTaskDetail(id: number) {
     queryKey: taskKeys.detail(id),
     queryFn: async () => {
       const fresh = await api.get<TaskRead>(`/tasks/${id}`)
-      const cached = qc.getQueryData<TaskRead>(taskKeys.detail(id))
-      if (!cached?.event_log?.length) return fresh
-      // Keep any WS events that arrived after the fetch started and are not
-      // yet in the server response.
-      const freshTs = new Set((fresh.event_log ?? []).map((e) => e.ts))
-      const liveOnly = cached.event_log.filter((e) => !freshTs.has(e.ts))
-      return { ...fresh, event_log: [...(fresh.event_log ?? []), ...liveOnly] }
+      return mergeEventLog(fresh, qc.getQueryData<TaskRead>(taskKeys.detail(id)))
     },
     enabled: id > 0,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
   })
 }
 
 /**
  * Subscribes to an already-cached task detail without triggering a fetch.
- * Use this to reactively read event_log length for the count badge while
- * the log panel is closed.
+ * Used by TaskLogPanel to reactively read event_log.length for the count
+ * badge while the panel is closed.
  */
 export function useTaskDetailCache(id: number) {
   return useQuery({
