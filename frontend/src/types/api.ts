@@ -226,6 +226,7 @@ export interface TaskList {
 
 export interface TaskRead extends TaskList {
   celery_task_id: string
+  event_log: TaskEvent[]
 }
 
 export interface TaskTrigger {
@@ -236,7 +237,14 @@ export interface TaskTrigger {
 
 // ─── WebSocket messages ───────────────────────────────────────────────────
 
-export type WsMessageType = 'progress' | 'file_update' | 'complete' | 'error' | 'cancelled'
+export type WsMessageType = 'progress' | 'file_update' | 'complete' | 'error' | 'cancelled' | 'event'
+
+export interface TaskEvent {
+  ts: string
+  level: 'info' | 'warn' | 'error'
+  msg: string
+  ctx?: Record<string, unknown>
+}
 
 export interface WsProgressData {
   current: number
@@ -263,6 +271,7 @@ export type WsMessage =
   | { type: 'complete'; data: WsCompleteData }
   | { type: 'error'; data: WsErrorData }
   | { type: 'cancelled'; data: Record<string, never> }
+  | { type: 'event'; data: TaskEvent }
 
 // ─── Config ───────────────────────────────────────────────────────────────
 

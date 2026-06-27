@@ -49,6 +49,7 @@ export function useTask(id: number) {
   return useQuery({
     queryKey: taskKeys.detail(id),
     queryFn: () => api.get<TaskRead>(`/tasks/${id}`),
+    enabled: id > 0,
   })
 }
 

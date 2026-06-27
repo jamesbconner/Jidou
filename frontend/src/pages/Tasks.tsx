@@ -2,12 +2,36 @@ import { useState, useEffect } from 'react'
 import { useTasks, useTaskCount, useActiveTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
-import type { TaskType } from '@/types/api'
+import { TaskEventLog } from '@/components/TaskEventLog'
+import type { TaskList, TaskType } from '@/types/api'
 
 function LiveTask({ taskId }: { taskId: number }) {
   const { data: task } = useTask(taskId)
   useTaskProgress(task?.celery_task_id ?? null)
   return null
+}
+
+function TaskLogPanel({ task }: { task: TaskList }) {
+  const [open, setOpen] = useState(false)
+  const { data: detail } = useTask(open ? task.id : 0)
+  const isLive = task.status === 'pending' || task.status === 'running'
+  const events = detail?.event_log ?? []
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-blue-500 hover:underline"
+      >
+        {open ? 'Hide log' : `View log${events.length ? ` (${events.length})` : ''}`}
+      </button>
+      {open && (
+        <div className="mt-2 bg-gray-50 rounded p-2 border border-gray-100">
+          <TaskEventLog events={events} live={isLive} />
+        </div>
+      )}
+    </div>
+  )
 }
 
 const TASK_DESCRIPTIONS: Record<TaskType, string> = {
@@ -184,6 +208,7 @@ export default function Tasks() {
                 Started {new Date(t.created_at).toLocaleString()}
                 {t.completed_at && ` · Finished ${new Date(t.completed_at).toLocaleString()}`}
               </p>
+              <TaskLogPanel task={t} />
             </div>
           ))}
         </div>
