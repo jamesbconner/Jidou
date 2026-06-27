@@ -2,7 +2,8 @@
 
 import logging
 import re
-from typing import Any
+from datetime import datetime
+from typing import Any, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
@@ -30,6 +31,16 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/shows", tags=["shows"])
+
+
+class _TrackingSnapshot(TypedDict):
+    """Tracking state captured from an Episode before the rematch bulk-delete."""
+
+    tracked_filename: str | None
+    tracked_source: str | None
+    file_tracked_at: datetime | None
+
+
 _tmdb = TMDBService()
 
 _INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -537,6 +548,27 @@ async def rematch_show(
     show.external_ids = data.get("external_ids")
     show.episode_groups = data.get("episode_groups") or []
 
+    # Phase 1: Snapshot tracked episodes before the bulk delete so tracking state
+    # can be restored after the new TMDB episodes are synced.
+    old_tracking: dict[tuple[int, int], _TrackingSnapshot] = {}
+    if payload.preserve_tracking and payload.media_type != "movie":
+        tracked_stmt = select(Episode).where(
+            Episode.show_id == show_id,
+            Episode.file_tracked.is_(True),
+        )
+        tracked_eps = (await db_session.execute(tracked_stmt)).scalars().all()
+        for ep in tracked_eps:
+            old_tracking[(ep.season_number, ep.episode_number)] = _TrackingSnapshot(
+                tracked_filename=ep.tracked_filename,
+                tracked_source=ep.tracked_source,
+                file_tracked_at=ep.file_tracked_at,
+            )
+        logger.debug(
+            "Tracking snapshot: show id=%d captured %d tracked episode(s)",
+            show_id,
+            len(old_tracking),
+        )
+
     # Purge episodes from the old match — they belong to a different show.
     await db_session.execute(
         Episode.__table__.delete().where(Episode.show_id == show_id)  # type: ignore[attr-defined]
@@ -554,6 +586,63 @@ async def rematch_show(
             raise HTTPException(
                 status_code=502, detail="TMDB episode sync failed; rematch aborted"
             ) from exc
+
+        # Phase 2: Restore tracking on new episodes matching by (season, episode) key.
+        # Phase 3: Re-link DownloadedFile rows whose episode_id was SET NULL by cascade.
+        if payload.preserve_tracking:
+            new_eps_stmt = select(Episode).where(Episode.show_id == show_id)
+            new_eps = (await db_session.execute(new_eps_stmt)).scalars().all()
+            ep_by_se: dict[tuple[int, int], Episode] = {
+                (e.season_number, e.episode_number): e for e in new_eps
+            }
+
+            migrated = 0
+            for key, state in old_tracking.items():
+                matched_ep = ep_by_se.get(key)
+                if matched_ep is not None:
+                    matched_ep.file_tracked = True
+                    matched_ep.file_tracked_at = state["file_tracked_at"]
+                    matched_ep.tracked_filename = state["tracked_filename"]
+                    matched_ep.tracked_source = state["tracked_source"]
+                    migrated += 1
+
+            orphan_stmt = select(DownloadedFile).where(
+                DownloadedFile.show_id == show_id,
+                DownloadedFile.episode_id.is_(None),
+                DownloadedFile.parsed_season.is_not(None),
+                DownloadedFile.parsed_episode.is_not(None),
+            )
+            orphans = (await db_session.execute(orphan_stmt)).scalars().all()
+            relinked = 0
+            for file in orphans:
+                if file.parsed_season is not None and file.parsed_episode is not None:
+                    new_ep = ep_by_se.get((file.parsed_season, file.parsed_episode))
+                    if new_ep is not None:
+                        file.episode_id = new_ep.id
+                        relinked += 1
+
+            unrecoverable_keys = set(old_tracking.keys()) - set(ep_by_se.keys())
+            if unrecoverable_keys:
+                unrecoverable_names = [
+                    old_tracking[k]["tracked_filename"] or f"S{k[0]:02d}E{k[1]:02d}"
+                    for k in unrecoverable_keys
+                ]
+                logger.warning(
+                    "Unrecoverable tracking records after rematch of show id=%d: %s",
+                    show_id,
+                    ", ".join(str(n) for n in unrecoverable_names),
+                )
+
+            logger.info(
+                "Tracking migration: show id=%d migrated=%d relinked=%d unrecoverable=%d",
+                show_id,
+                migrated,
+                relinked,
+                len(unrecoverable_keys),
+            )
+
+            if migrated or relinked:
+                await db_session.flush()
 
     await db_session.refresh(show)
     return show

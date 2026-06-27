@@ -144,6 +144,14 @@ class RematchRequest(BaseModel):
 
     tmdb_id: int
     media_type: str = "tv"
+    preserve_tracking: bool = Field(
+        default=True,
+        description=(
+            "When True (default), tracked episode data is migrated to the new TMDB entry "
+            "by matching on (season_number, episode_number). Set to False for a clean-slate "
+            "rematch that discards all existing tracking state."
+        ),
+    )
 
 
 class ShowList(BaseModel):
