@@ -227,9 +227,12 @@ def test_match_file_sets_matched_status() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
+        orphan_delete_result = MagicMock()
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = None  # no episode in DB
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, show_result, orphan_delete_result, ep_result]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session
@@ -730,9 +733,12 @@ def test_match_file_flushes_then_commits() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
+        orphan_delete_result = MagicMock()
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, show_result, orphan_delete_result, ep_result]
+        )
         session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
         session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
         yield session
@@ -871,10 +877,13 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
         # show lookup by tmdb_id → not found (triggers creation)
         no_show_result = MagicMock()
         no_show_result.scalar_one_or_none.return_value = None
+        orphan_delete_result = MagicMock()
         # episode lookup → not found
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, no_show_result, orphan_delete_result, ep_result]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
 
@@ -1060,6 +1069,7 @@ def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
+        orphan_delete_result = MagicMock()
         # heuristic runs FIRST (no matching episode on the new show)
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = None
@@ -1072,6 +1082,7 @@ def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
             side_effect=[
                 file_result,
                 show_result,
+                orphan_delete_result,
                 ep_heuristic_result,
                 count_result,
                 old_ep_result,
@@ -1121,6 +1132,7 @@ def test_match_file_clears_old_episode_tracking_same_show() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
+        orphan_delete_result = MagicMock()
         # heuristic runs FIRST (resolves to None so episode stays cleared)
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = None
@@ -1132,6 +1144,7 @@ def test_match_file_clears_old_episode_tracking_same_show() -> None:
             side_effect=[
                 file_result,
                 show_result,
+                orphan_delete_result,
                 ep_heuristic_result,
                 count_result,
                 old_ep_result,
@@ -1182,11 +1195,14 @@ def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
+        orphan_delete_result = MagicMock()
         # heuristic resolves back to the SAME episode (id=10)
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = same_ep
         # count/old_ep queries must NOT run (old_episode_id == file.episode_id)
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_heuristic_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, show_result, orphan_delete_result, ep_heuristic_result]
+        )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
         session.commit = AsyncMock()

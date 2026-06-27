@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.llm_service import LLMService
 
@@ -473,6 +474,12 @@ class ParseOrchestrator:
                     file.show_id = show.id
                     ep = await self._find_episode(show.id, season, episode)
                     file.episode_id = ep.id if ep is not None else None
+                    if ep is not None:
+                        await self.session.execute(
+                            OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                                OrphanedTrackingRecord.downloaded_file_id == file.id
+                            )
+                        )
                     file.matched_by = (
                         MatchedBy.LLM
                         if (self.llm is not None and self.llm.is_available())

@@ -503,6 +503,11 @@ async def manual_match_file(
     file.show_id = show.id
     file.episode_id = None  # cleared here; route task resolves and writes new ep
     file.matched_by = MatchedBy.MANUAL
+    await db_session.execute(
+        OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+            OrphanedTrackingRecord.downloaded_file_id == file.id
+        )
+    )
     file.status = FileStatus.MATCHED
     file.error_message = None
 
