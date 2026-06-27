@@ -162,6 +162,7 @@ async def _path_import(
                         "action": r.action,
                         "episodes_tracked": r.episodes_tracked,
                         "episodes_unmatched": r.episodes_unmatched,
+                        "unmatched_paths": r.unmatched_paths,
                     }
                     for r in import_result.show_results
                 ],
