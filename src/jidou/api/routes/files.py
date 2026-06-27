@@ -245,6 +245,11 @@ async def patch_file(
                         status_code=422,
                         detail="Episode does not belong to the file's show",
                     )
+                if ep.file_tracked and old_episode_id != payload.episode_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Episode is already tracked by another file",
+                    )
                 ep.file_tracked = True
                 ep.file_tracked_at = datetime.now(UTC)
                 ep.tracked_filename = file.local_path or file.original_filename

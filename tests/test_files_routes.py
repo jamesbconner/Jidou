@@ -363,12 +363,35 @@ def test_patch_file_show_id_same_value_preserves_episode() -> None:
 def test_patch_file_explicit_episode_wins_over_show_clear() -> None:
     """PATCH show_id with explicit episode_id keeps the caller-provided episode."""
     from jidou.database import get_session
+    from jidou.models.episode import Episode
 
     f = _make_file(id=1, show_id=5)
-    f.episode_id = 99
+    f.episode_id = 99  # old episode
     f.matched_by = "llm"
 
-    app.dependency_overrides[get_session] = _session_override(single=f)
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 10
+    ep.file_tracked = False
+
+    async def _explicit_ep_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        # count for old ep (99→42 change); return 1 so old-ep clearing is skipped
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, ep_result, count_result]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _explicit_ep_session
     try:
         response = TestClient(app).patch("/api/files/1", json={"show_id": 10, "episode_id": 42})
         assert response.status_code == 200
@@ -413,17 +436,26 @@ def test_patch_file_fk_violation_returns_422() -> None:
     from sqlalchemy.exc import IntegrityError
 
     from jidou.database import get_session
+    from jidou.models.episode import Episode
 
     f = _make_file(id=1, show_id=5)
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 9999
+    ep.show_id = 5
+    ep.file_tracked = False
 
     orig = Exception("foreign key constraint violated")
     orig.pgcode = "23503"  # type: ignore[attr-defined]
 
     async def _fk_session() -> AsyncMock:
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=result)
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
         session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
         session.rollback = AsyncMock()
         yield session
@@ -604,6 +636,75 @@ def test_patch_file_episode_id_returns_422_for_wrong_show() -> None:
         response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
         assert response.status_code == 422
         assert "does not belong" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_returns_409_when_already_tracked() -> None:
+    """PATCH episode_id returns 409 when the target episode is already tracked by another file."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = None  # file not yet linked — so old_episode_id != new episode_id
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 5  # correct show
+    ep.file_tracked = True  # already tracked by another file
+
+    async def _already_tracked_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _already_tracked_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 409
+        assert "already tracked" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_allows_same_episode_relink() -> None:
+    """PATCH episode_id to the same episode the file is already on does not raise 409."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 42  # already on this episode
+    f.local_path = "/media/show.s01e01.mkv"
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 5
+    ep.file_tracked = True  # tracked by THIS file — should not raise 409
+
+    async def _same_episode_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _same_episode_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert ep.file_tracked is True  # tracking not disturbed
     finally:
         app.dependency_overrides.clear()
 

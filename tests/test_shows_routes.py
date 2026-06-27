@@ -608,6 +608,7 @@ def _rematch_session(
       1. show lookup
       2. conflict check
       3. episode bulk-delete
+      4. orphan dedup-delete (unconditional for all media types)
 
     Unused entries at the end of the side_effect list are harmless.
     """
@@ -619,15 +620,15 @@ def _rematch_session(
         conflict_result = MagicMock()
         conflict_result.scalar_one_or_none.return_value = conflict
         delete_result = MagicMock()
+        dedup_delete_result = MagicMock()
 
         if media_type == "movie":
-            side_effects = [show_result, conflict_result, delete_result]
+            side_effects = [show_result, conflict_result, delete_result, dedup_delete_result]
         elif preserve_tracking:
             tracked_result = MagicMock()
             tracked_scalars = MagicMock()
             tracked_scalars.all.return_value = tracked_episodes or []
             tracked_result.scalars.return_value = tracked_scalars
-            dedup_delete_result = MagicMock()
             new_eps_result = MagicMock()
             new_eps_scalars = MagicMock()
             new_eps_scalars.all.return_value = new_episodes or []
@@ -647,7 +648,6 @@ def _rematch_session(
             ]
         else:
             # TV + preserve_tracking=False: clean-slate still runs the dedup delete
-            dedup_delete_result = MagicMock()
             side_effects = [show_result, conflict_result, delete_result, dedup_delete_result]
 
         session.execute = AsyncMock(side_effect=side_effects)
@@ -1029,6 +1029,51 @@ def test_rematch_show_movie_skips_tracking_phases() -> None:
             "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
         )
         assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_movie_purges_orphan_rows() -> None:
+    """Movie rematch still purges stale orphan rows even though it has no episodes."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100, media_type="movie")
+    movie_data = {
+        "title": "Great Film",
+        "release_date": "2023-03-01",
+        "overview": None,
+        "poster_path": None,
+        "backdrop_path": None,
+        "vote_average": 7.0,
+        "vote_count": 50,
+        "original_language": "en",
+        "genres": [],
+        "runtime": 90,
+        "tagline": None,
+        "status": "Released",
+        "networks": [],
+    }
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=movie_data)
+
+    captured: list[AsyncMock] = []
+    base_session = _rematch_session(show, media_type="movie")
+
+    async def _capturing():
+        async for s in base_session():
+            captured.append(s)
+            yield s
+
+    app.dependency_overrides[get_session] = _capturing
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
+        )
+        assert response.status_code == 200
+        # 4 execute calls: show lookup, conflict check, episode delete, orphan dedup delete
+        assert captured[0].execute.call_count == 4
     finally:
         app.dependency_overrides.clear()
 
