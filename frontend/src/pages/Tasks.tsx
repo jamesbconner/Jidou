@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useTasks, useTaskCount, useActiveTasks, useTask, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
+import { useTasks, useTaskCount, useActiveTasks, useTask, useTaskDetail, useTaskDetailCache, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { TaskEventLog } from '@/components/TaskEventLog'
@@ -13,9 +13,17 @@ function LiveTask({ taskId }: { taskId: number }) {
 
 function TaskLogPanel({ task }: { task: TaskList }) {
   const [open, setOpen] = useState(false)
-  const { data: detail } = useTask(open ? task.id : 0)
+  // useTaskDetail fetches on open and merges the response with any live WS
+  // events already in the cache, preventing stale HTTP responses from
+  // overwriting events that arrived during the network round-trip.
+  const { data: detail } = useTaskDetail(open ? task.id : 0)
+  // Subscribe to the cache without fetching so the count badge stays accurate
+  // while the panel is closed (populated by LiveTask for active tasks, or
+  // after the first time the panel is opened for completed tasks).
+  const { data: cached } = useTaskDetailCache(task.id)
+
   const isLive = task.status === 'pending' || task.status === 'running'
-  const events = detail?.event_log ?? []
+  const events = detail?.event_log ?? cached?.event_log ?? []
 
   return (
     <div className="mt-2">

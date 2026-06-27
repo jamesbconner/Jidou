@@ -53,6 +53,45 @@ export function useTask(id: number) {
   })
 }
 
+/**
+ * Fetches a task detail and merges the response event_log with any live
+ * WebSocket events already accumulated in the cache.  Without the merge a
+ * stale HTTP response that started before newer WS events were persisted
+ * would overwrite those events, making the live log jump backwards.
+ */
+export function useTaskDetail(id: number) {
+  const qc = useQueryClient()
+  return useQuery({
+    queryKey: taskKeys.detail(id),
+    queryFn: async () => {
+      const fresh = await api.get<TaskRead>(`/tasks/${id}`)
+      const cached = qc.getQueryData<TaskRead>(taskKeys.detail(id))
+      if (!cached?.event_log?.length) return fresh
+      // Keep any WS events that arrived after the fetch started and are not
+      // yet in the server response.
+      const freshTs = new Set((fresh.event_log ?? []).map((e) => e.ts))
+      const liveOnly = cached.event_log.filter((e) => !freshTs.has(e.ts))
+      return { ...fresh, event_log: [...(fresh.event_log ?? []), ...liveOnly] }
+    },
+    enabled: id > 0,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Subscribes to an already-cached task detail without triggering a fetch.
+ * Use this to reactively read event_log length for the count badge while
+ * the log panel is closed.
+ */
+export function useTaskDetailCache(id: number) {
+  return useQuery({
+    queryKey: taskKeys.detail(id),
+    queryFn: () => api.get<TaskRead>(`/tasks/${id}`),
+    enabled: false,
+    staleTime: Infinity,
+  })
+}
+
 export function useTriggerTask() {
   const qc = useQueryClient()
   return useMutation({
