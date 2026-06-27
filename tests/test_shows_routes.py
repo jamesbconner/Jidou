@@ -622,6 +622,7 @@ def _rematch_session(
             new_eps_scalars = MagicMock()
             new_eps_scalars.all.return_value = new_episodes or []
             new_eps_result.scalars.return_value = new_eps_scalars
+            dedup_delete_result = MagicMock()
             orphan_result = MagicMock()
             orphan_scalars = MagicMock()
             orphan_scalars.all.return_value = orphaned_files or []
@@ -632,6 +633,7 @@ def _rematch_session(
                 tracked_result,
                 delete_result,
                 new_eps_result,
+                dedup_delete_result,
                 orphan_result,
             ]
         else:

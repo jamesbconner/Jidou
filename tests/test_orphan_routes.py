@@ -46,9 +46,10 @@ def _make_show_mock(*, id: int = 1, title: str = "Test Show") -> MagicMock:
     return s
 
 
-def _make_episode_mock(*, id: int = 10) -> MagicMock:
+def _make_episode_mock(*, id: int = 10, show_id: int = 1) -> MagicMock:
     ep = MagicMock(spec=Episode)
     ep.id = id
+    ep.show_id = show_id
     ep.file_tracked = False
     ep.tracked_filename = None
     ep.tracked_source = None
@@ -270,7 +271,7 @@ def test_resolve_import_orphan_sets_episode_tracking() -> None:
 
 
 def test_resolve_download_orphan_links_file_to_episode() -> None:
-    """POST /api/orphans/{id}/resolve links the DownloadedFile for download orphans."""
+    """POST /api/orphans/{id}/resolve links the DownloadedFile and marks Episode tracked."""
     from jidou.database import get_session
 
     orphan = _make_orphan(tracked_source="match", downloaded_file_id=50)
@@ -281,6 +282,25 @@ def test_resolve_download_orphan_links_file_to_episode() -> None:
         response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
         assert response.status_code == 204
         assert file.episode_id == 10
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "match"
+        assert ep.tracked_filename == "/media/show.s01e05.mkv"
+        assert ep.file_tracked_at is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resolve_orphan_returns_422_when_episode_belongs_to_wrong_show() -> None:
+    """POST /api/orphans/{id}/resolve returns 422 when the episode is from a different show."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(show_id=1)
+    ep = _make_episode_mock(show_id=99)  # wrong show
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 422
+        assert "does not belong" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

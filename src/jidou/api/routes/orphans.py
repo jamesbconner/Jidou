@@ -76,9 +76,7 @@ async def list_orphans_for_show(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show = (
-        await db_session.execute(select(Show).where(Show.id == show_id))
-    ).scalar_one_or_none()
+    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
@@ -156,17 +154,21 @@ async def resolve_orphan(
     if ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
 
+    if ep.show_id != record.show_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Episode does not belong to the show associated with this orphan record",
+        )
+
     if record.downloaded_file_id is None:
         # Imported orphan: write tracking directly onto the Episode row.
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
         ep.tracked_filename = record.tracked_filename
         ep.tracked_source = "import"
-        logger.info(
-            "Resolved import orphan id=%d → episode id=%d", orphan_id, payload.episode_id
-        )
+        logger.info("Resolved import orphan id=%d → episode id=%d", orphan_id, payload.episode_id)
     else:
-        # Downloaded orphan: link the DownloadedFile to the target episode.
+        # Downloaded orphan: link the DownloadedFile to the target episode and mark it tracked.
         file = (
             await db_session.execute(
                 select(DownloadedFile).where(DownloadedFile.id == record.downloaded_file_id)
@@ -174,6 +176,10 @@ async def resolve_orphan(
         ).scalar_one_or_none()
         if file is not None:
             file.episode_id = payload.episode_id
+        ep.file_tracked = True
+        ep.file_tracked_at = datetime.now(UTC)
+        ep.tracked_filename = record.tracked_filename
+        ep.tracked_source = "match"
         logger.info(
             "Resolved download orphan id=%d → file id=%d episode id=%d",
             orphan_id,

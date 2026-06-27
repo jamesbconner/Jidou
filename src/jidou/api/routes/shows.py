@@ -607,6 +607,14 @@ async def rematch_show(
                     matched_ep.tracked_source = state["tracked_source"]
                     migrated += 1
 
+            # Remove stale orphan records for this show before inserting fresh ones
+            # so that repeated rematches don't stack duplicate DQ entries.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.show_id == show_id
+                )
+            )
+
             orphan_stmt = select(DownloadedFile).where(
                 DownloadedFile.show_id == show_id,
                 DownloadedFile.episode_id.is_(None),
