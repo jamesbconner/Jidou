@@ -757,7 +757,11 @@ def test_tmdb_suggestions_file_not_found_returns_404() -> None:
 
 
 def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
-    """Moving a file to a different show clears stale tracking on the old episode."""
+    """Moving a file to a different show clears stale tracking on the old episode.
+
+    Stale-episode clearing is now unconditional: it fires whenever the file had
+    an episode_id before match, regardless of whether the show changes.
+    """
     from jidou.database import get_session
     from jidou.models.episode import Episode
     from jidou.models.show import Show
@@ -809,6 +813,65 @@ def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
     app.dependency_overrides[get_session] = _session
     try:
         response = TestClient(app).post("/api/files/1/match", json={"show_id": 7})
+        assert response.status_code == 200
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert old_ep.tracked_source is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_clears_old_episode_tracking_same_show() -> None:
+    """Moving a file between episodes on the SAME show also clears the old tracking."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
+    f.episode_id = 10  # old episode on the same show
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    show = MagicMock(spec=Show)
+    show.id = 5  # SAME show
+    show.title = "Same Show"
+    show.local_path = "/media/same-show"
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "old.s01e01.mkv"
+    old_ep.tracked_source = "match"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        ep_heuristic_result = MagicMock()
+        ep_heuristic_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(
+            side_effect=[
+                file_result,
+                show_result,
+                count_result,
+                old_ep_result,
+                ep_heuristic_result,
+            ]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
         assert response.status_code == 200
         assert old_ep.file_tracked is False
         assert old_ep.tracked_filename is None

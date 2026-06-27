@@ -1195,7 +1195,11 @@ def test_begin_episode_rematch_returns_422_when_not_tracked() -> None:
 
 
 def test_begin_episode_rematch_resets_backing_file() -> None:
-    """With a backing DownloadedFile, returns it with status DOWNLOADED."""
+    """With a backing DownloadedFile, returns it without changing its status.
+
+    Status is intentionally NOT reset to DOWNLOADED — doing so would enrol the
+    file in the match-orchestrator before the user confirms, creating a race.
+    """
     from jidou.database import get_session
     from jidou.models.downloaded_file import DownloadedFile, FileStatus
 
@@ -1219,6 +1223,7 @@ def test_begin_episode_rematch_resets_backing_file() -> None:
     backing.parsed_confidence = None
     backing.parsed_content_type = None
     from datetime import UTC, datetime
+
     backing.created_at = datetime.now(UTC)
     backing.updated_at = datetime.now(UTC)
     backing.show = None
@@ -1243,14 +1248,20 @@ def test_begin_episode_rematch_resets_backing_file() -> None:
         assert response.status_code == 200
         # Episode tracking must NOT be cleared by begin-rematch
         assert ep.file_tracked is True
-        # File must be reset to DOWNLOADED
-        assert backing.status == FileStatus.DOWNLOADED
+        # Status must NOT be changed — keep ROUTED to avoid auto-match race
+        assert backing.status == FileStatus.ROUTED
     finally:
         app.dependency_overrides.clear()
 
 
 def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
-    """With no backing file, creates a synthetic DownloadedFile for imports."""
+    """With no backing file, creates a synthetic DownloadedFile for imports.
+
+    The synthetic must have episode_id set (not None) so a second Fix Match
+    click finds it via the backing-file query rather than inserting a duplicate.
+    It must also carry parsed_season/parsed_episode so the route orchestrator
+    can place the file in the correct season folder.
+    """
     from jidou.database import get_session
     from jidou.models.downloaded_file import DownloadedFile, FileStatus
 
@@ -1261,7 +1272,7 @@ def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
     synthetic = MagicMock(spec=DownloadedFile)
     synthetic.id = 200
     synthetic.show_id = 1
-    synthetic.episode_id = None
+    synthetic.episode_id = 10  # must NOT be None — prevents duplicate inserts
     synthetic.original_filename = "show.s01e01.mkv"
     synthetic.remote_path = "synthetic-import://episode-10/show.s01e01.mkv"
     synthetic.local_path = "/media/shows/show/Season 01/show.s01e01.mkv"
@@ -1271,15 +1282,18 @@ def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
     synthetic.matched_by = None
     synthetic.error_message = None
     synthetic.parsed_show_name = None
-    synthetic.parsed_season = None
-    synthetic.parsed_episode = None
+    synthetic.parsed_season = 1  # from ep.season_number
+    synthetic.parsed_episode = 1  # from ep.episode_number
     synthetic.parsed_confidence = None
     synthetic.parsed_content_type = None
     from datetime import UTC, datetime
+
     synthetic.created_at = datetime.now(UTC)
     synthetic.updated_at = datetime.now(UTC)
     synthetic.show = None
     synthetic.episode = None
+
+    added_files: list[object] = []
 
     async def _session() -> AsyncMock:
         session = AsyncMock()
@@ -1295,16 +1309,10 @@ def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
         async def _flush() -> None:
             synthetic.id = 200
 
-        session.execute = AsyncMock(
-            side_effect=[show_result, ep_result, no_backing, reload_result]
-        )
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, no_backing, reload_result])
         session.flush = AsyncMock(side_effect=_flush)
         session.refresh = AsyncMock()
-
-        def _add(obj: object) -> None:
-            pass
-
-        session.add = MagicMock(side_effect=_add)
+        session.add = MagicMock(side_effect=lambda obj: added_files.append(obj))
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -1313,6 +1321,16 @@ def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
         assert response.status_code == 200
         # Episode tracking must NOT be cleared
         assert ep.file_tracked is True
+        # Exactly one synthetic file created
+        assert len(added_files) == 1
+        created = added_files[0]
+        assert hasattr(created, "episode_id")
+        from jidou.models.downloaded_file import DownloadedFile as DLFile
+
+        assert isinstance(created, DLFile)
+        assert created.episode_id == 10
+        assert created.parsed_season == ep.season_number
+        assert created.parsed_episode == ep.episode_number
     finally:
         app.dependency_overrides.clear()
 
@@ -1338,9 +1356,7 @@ def test_begin_episode_rematch_with_file_id_returns_404_when_not_found() -> None
 
     app.dependency_overrides[get_session] = _session
     try:
-        response = TestClient(app).post(
-            "/api/shows/1/episodes/10/begin-rematch?file_id=999"
-        )
+        response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch?file_id=999")
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()

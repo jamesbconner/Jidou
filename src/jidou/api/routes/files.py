@@ -449,11 +449,12 @@ async def manual_match_file(
             ),
         )
 
-    # If this file was previously linked to an episode on a different show,
-    # clear that episode's tracking now that the user has confirmed a new show.
+    # Capture the previously linked episode before clearing it.  We always
+    # capture regardless of whether the show changes so that same-show
+    # different-episode rematch also clears stale tracking.
     # (Cancelling the re-match modal never calls this endpoint, so the old
     # episode stays tracked until the user explicitly confirms.)
-    old_episode_id: int | None = file.episode_id if file.show_id != show.id else None
+    old_episode_id: int | None = file.episode_id
 
     file.show_id = show.id
     file.episode_id = None  # cleared here; route task resolves and writes new ep

@@ -191,6 +191,7 @@ class RouteOrchestrator:
                     file.status = FileStatus.ROUTED
                     file.error_message = None
                     files_routed += 1
+                    await self._update_episode_tracking(file, show.id)
                     await self.session.flush()
                     await self.session.commit()
                     continue

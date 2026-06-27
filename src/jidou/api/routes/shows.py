@@ -737,26 +737,31 @@ async def begin_episode_rematch(
         backing = (await db_session.execute(any_stmt)).scalar_one_or_none()
 
     if backing is not None:
-        # Reset to DOWNLOADED so the auto-match task picks it up.
-        # Keep episode_id intact so the match orchestrator can detect the old
-        # episode and clear its tracking after successfully routing elsewhere.
-        backing.status = FileStatus.DOWNLOADED
+        # Leave status unchanged — resetting to DOWNLOADED would enroll the file
+        # in the match orchestrator while the RematchModal is still open, creating
+        # a race where auto-match re-links the episode before the user confirms.
+        # The user's confirmation (POST /files/{id}/match) sets status=MATCHED,
+        # which the route orchestrator picks up to move the file.
         file: DownloadedFile = backing
     else:
         # Imported (or legacy) path: create a synthetic DownloadedFile so the
         # RematchModal + route flow works identically to the downloaded case.
+        # Set episode_id so a second Fix Match click finds this row instead of
+        # inserting a duplicate (unique remote_path would otherwise conflict).
         tracked_path = ep.tracked_filename or ""
         basename = tracked_path.replace("\\", "/").rsplit("/", 1)[-1] or "unknown"
         synthetic_remote = f"synthetic-import://episode-{episode_id}/{basename}"
         file = DownloadedFile(
             show_id=show_id,
-            episode_id=None,
+            episode_id=episode_id,
             original_filename=basename,
             remote_path=synthetic_remote,
             local_path=tracked_path or None,
             file_size=0,
             status=FileStatus.ROUTED,
             matched_by=MatchedBy.MANUAL,
+            parsed_season=ep.season_number,
+            parsed_episode=ep.episode_number,
         )
         db_session.add(file)
         await db_session.flush()
