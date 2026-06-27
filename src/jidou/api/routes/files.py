@@ -240,20 +240,30 @@ async def patch_file(
                 await db_session.execute(select(Episode).where(Episode.id == payload.episode_id))
             ).scalar_one_or_none()
             if ep is not None:
+                if file.show_id is not None and ep.show_id != file.show_id:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Episode does not belong to the file's show",
+                    )
                 ep.file_tracked = True
                 ep.file_tracked_at = datetime.now(UTC)
                 ep.tracked_filename = file.local_path or file.original_filename
                 ep.tracked_source = "match"
-        # Clear stale tracking on the previous episode when the file is re-assigned.
+        # Clear stale tracking on the previous episode only when no other file
+        # still points to it — mirrors the guard in manual_match_file.
         if old_episode_id is not None and old_episode_id != payload.episode_id:
-            old_ep = (
-                await db_session.execute(select(Episode).where(Episode.id == old_episode_id))
-            ).scalar_one_or_none()
-            if old_ep is not None:
-                old_ep.file_tracked = False
-                old_ep.file_tracked_at = None
-                old_ep.tracked_filename = None
-                old_ep.tracked_source = None
+            count_result = await db_session.execute(
+                select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
+            )
+            if (count_result.scalar() or 0) == 0:
+                old_ep = (
+                    await db_session.execute(select(Episode).where(Episode.id == old_episode_id))
+                ).scalar_one_or_none()
+                if old_ep is not None:
+                    old_ep.file_tracked = False
+                    old_ep.file_tracked_at = None
+                    old_ep.tracked_filename = None
+                    old_ep.tracked_source = None
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:
