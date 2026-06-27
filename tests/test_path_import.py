@@ -141,6 +141,110 @@ class TestParseLine:
     def test_posix_path_skips_short(self) -> None:
         assert parse_line("/Show/ep.mkv") is None
 
+    # -- NxNN release-group format ---------------------------------------------
+
+    def test_nxnn_format_with_season_dir(self) -> None:
+        line = r"Z:\tv\Criminal Minds\Season 1\Criminal.Minds.01x01.Extreme.Aggressor.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 1
+        assert entry.episode == 1
+
+    def test_nxnn_format_single_digit_season(self) -> None:
+        line = r"Z:\tv\Downton Abbey\Season 1\Downton Abbey 1x01 Hdtv [mkv] X264 -mr12.mp4"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 1
+        assert entry.episode == 1
+
+    def test_nxnn_format_higher_episode(self) -> None:
+        line = r"Z:\tv\Criminal Minds\Season 1\Criminal.Minds.01x22.The.Fisher.King.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 1
+        assert entry.episode == 22
+
+    def test_nxnn_format_not_confused_by_show_title(self) -> None:
+        # "Hunter x Hunter" — the x in the title must NOT match
+        line = r"Z:\anime tv\Hunter x Hunter\[HorribleSubs] Hunter x Hunter - 146 [1080p].mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode == 146
+        assert entry.season is None
+
+    # -- Compact SEEE format ---------------------------------------------------
+
+    def test_compact_3digit_season2(self) -> None:
+        # criminal.minds.201 → S02E01
+        line = r"Z:\tv\Criminal Minds\Season 2\criminal.minds.201.hdtv-lol.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 2
+        assert entry.episode == 1
+
+    def test_compact_3digit_season9(self) -> None:
+        line = r"Z:\tv\Criminal Minds\Season 9\criminal.minds.924.hdtv-lol.mp4"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 9
+        assert entry.episode == 24
+
+    def test_compact_4digit_season10(self) -> None:
+        # criminal.minds.1001 → S10E01
+        line = r"Z:\tv\Criminal Minds\Season 10\criminal.minds.1001.hdtv-lol.mp4"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 10
+        assert entry.episode == 1
+
+    def test_compact_4digit_season12(self) -> None:
+        line = r"Z:\tv\Criminal Minds\Season 12\criminal.minds.1203.hdtv-lol.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 12
+        assert entry.episode == 3
+
+    def test_compact_not_matched_for_quality_number(self) -> None:
+        # 720 is a quality token — must not be parsed as S07E20
+        line = r"Z:\tv\Show\Season 7\Show.720p.BluRay.mkv"
+        entry = parse_line(line)
+        # Season from directory, but episode should NOT be 20
+        assert entry is not None
+        assert entry.episode != 20
+
+    # -- "Episode N" / "Season N Episode N" word patterns ---------------------
+
+    def test_episode_word_label(self) -> None:
+        line = r"Z:\tv\Criminal Minds\Season 6\Episode 11 - 25 to Life.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 6
+        assert entry.episode == 11
+
+    def test_season_episode_word_labels(self) -> None:
+        line = r"Z:\tv\Breaking Bad\Season 2\Breaking Bad Season 2 Episode 09 - 4 Days Out.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 2
+        assert entry.episode == 9
+
+    # -- Leading number + digit-starting title --------------------------------
+
+    def test_leading_ep_digit_title(self) -> None:
+        # "32 - 100th Dirty Job Special" — title starts with digit
+        line = r"Z:\tv\Dirty Jobs\Season 2\32 - 100th Dirty Job Special.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 2
+        assert entry.episode == 32
+
+    def test_leading_ep_digit_title_season4(self) -> None:
+        line = r"Z:\tv\Dirty Jobs\Season 4\19 - 200 Jobs Look-Back.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 4
+        assert entry.episode == 19
+
 
 # ---------------------------------------------------------------------------
 # path_parser — parse_file and group_by_show
