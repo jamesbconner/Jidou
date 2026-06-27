@@ -354,6 +354,23 @@ def test_resolve_download_orphan_returns_422_when_file_belongs_to_wrong_show() -
         app.dependency_overrides.clear()
 
 
+def test_resolve_download_orphan_assigns_show_id_when_file_has_none() -> None:
+    """POST /api/orphans/{id}/resolve sets file.show_id from the orphan when file has no show."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(show_id=1, downloaded_file_id=50)
+    ep = _make_episode_mock(show_id=1)
+    file = _make_file_mock(show_id=None)  # file not yet associated with any show
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep, file)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 204
+        assert file.show_id == 1
+        assert file.episode_id == 10
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_resolve_orphan_returns_422_when_episode_belongs_to_wrong_show() -> None:
     """POST /api/orphans/{id}/resolve returns 422 when the episode is from a different show."""
     from jidou.database import get_session

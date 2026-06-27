@@ -197,6 +197,7 @@ async def resolve_orphan(
                 status_code=422,
                 detail="The downloaded file linked to this orphan belongs to a different show",
             )
+        file.show_id = record.show_id
         file.episode_id = payload.episode_id
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
