@@ -637,7 +637,12 @@ async def list_episodes(
                 DownloadedFile.id,
                 DownloadedFile.original_filename,
             )
-            .where(DownloadedFile.episode_id.in_(episode_ids))
+            .where(
+                DownloadedFile.episode_id.in_(episode_ids),
+                # Exclude pending synthetic rows so a cancelled Fix Match on an
+                # imported episode doesn't flip the chip from Imported → Matched.
+                ~DownloadedFile.remote_path.like("synthetic-import://%"),
+            )
             .order_by(DownloadedFile.id)
         )
         for ep_id, file_id, filename in (await db_session.execute(files_stmt)).all():

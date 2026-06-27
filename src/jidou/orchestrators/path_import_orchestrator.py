@@ -247,9 +247,12 @@ class PathImportOrchestrator:
                 newly_tracked = not ep.file_tracked
                 if not self.dry_run:
                     ep.file_tracked = True
-                    ep.file_tracked_at = datetime.now(UTC)
-                    ep.tracked_filename = entry.raw_path
-                    ep.tracked_source = "import"
+                    # Only overwrite tracking metadata on first track; preserve
+                    # match/download metadata from later non-import tracking.
+                    if newly_tracked:
+                        ep.file_tracked_at = datetime.now(UTC)
+                        ep.tracked_filename = entry.raw_path
+                        ep.tracked_source = "import"
                 if newly_tracked:
                     show_result.episodes_tracked += 1
             else:

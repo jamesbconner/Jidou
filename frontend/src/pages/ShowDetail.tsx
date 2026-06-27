@@ -298,17 +298,6 @@ function TrackedBadges({
   )
 }
 
-function episodeFilenames(ep: EpisodeList): string[] {
-  if (ep.backing_files.length > 0) {
-    return ep.backing_files.map((bf) => bf.filename).filter(Boolean)
-  }
-  if (ep.tracked_filename) {
-    const p = ep.tracked_filename.replace(/\\/g, '/')
-    return [p.split('/').pop() ?? p]
-  }
-  return []
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -521,11 +510,22 @@ export default function ShowDetail() {
                             <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
                           )}
                           {ep.file_tracked &&
-                            episodeFilenames(ep).map((name) => (
-                              <div key={name} className="text-xs text-gray-400 font-mono mt-0.5">
-                                {name}
-                              </div>
-                            ))}
+                            (ep.backing_files.length > 0
+                              ? ep.backing_files.map((bf) => (
+                                  <div
+                                    key={bf.id}
+                                    className="text-xs text-gray-400 font-mono mt-0.5"
+                                  >
+                                    {bf.filename.replace(/\\/g, '/').split('/').pop() ??
+                                      bf.filename}
+                                  </div>
+                                ))
+                              : ep.tracked_filename && (
+                                  <div className="text-xs text-gray-400 font-mono mt-0.5">
+                                    {ep.tracked_filename.replace(/\\/g, '/').split('/').pop() ??
+                                      ep.tracked_filename}
+                                  </div>
+                                ))}
                         </div>
                         {ep.file_tracked ? (
                           <TrackedBadges
