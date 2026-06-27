@@ -218,14 +218,14 @@ export interface TaskList {
   progress_current: number
   progress_total: number
   progress_message: string | null
+  result_summary: Record<string, unknown> | null
+  dry_run: boolean
   created_at: string
   completed_at: string | null
 }
 
 export interface TaskRead extends TaskList {
   celery_task_id: string
-  result_summary: Record<string, unknown> | null
-  dry_run: boolean
 }
 
 export interface TaskTrigger {

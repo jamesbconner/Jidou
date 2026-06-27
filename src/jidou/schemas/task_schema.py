@@ -15,30 +15,6 @@ def _coerce_task_status(value: object) -> TaskStatus:
         return TaskStatus.PENDING
 
 
-class TaskRead(BaseModel):
-    """Full task state for GET /tasks/{id}."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    celery_task_id: str
-    task_type: str
-    status: TaskStatus
-    progress_current: int
-    progress_total: int
-    progress_message: str | None
-    result_summary: dict[str, object] | None
-    dry_run: bool
-    created_at: datetime
-    completed_at: datetime | None
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _validate_status(cls, value: object) -> TaskStatus:
-        """Convert raw DB string to TaskStatus enum."""
-        return _coerce_task_status(value)
-
-
 class TaskProgress(BaseModel):
     """Slim progress snapshot for WebSocket messages."""
 
@@ -58,7 +34,7 @@ class TaskProgress(BaseModel):
 
 
 class TaskList(BaseModel):
-    """List view with only essential fields."""
+    """List view with fields sufficient to render outcome details in the UI."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +44,8 @@ class TaskList(BaseModel):
     progress_current: int
     progress_total: int
     progress_message: str | None
+    result_summary: dict[str, object] | None
+    dry_run: bool
     created_at: datetime
     completed_at: datetime | None
 
@@ -76,6 +54,12 @@ class TaskList(BaseModel):
     def _validate_status(cls, value: object) -> TaskStatus:
         """Convert raw DB string to TaskStatus enum."""
         return _coerce_task_status(value)
+
+
+class TaskRead(TaskList):
+    """Full task state for GET /tasks/{id} — extends TaskList with celery_task_id."""
+
+    celery_task_id: str
 
 
 class TaskTrigger(BaseModel):
