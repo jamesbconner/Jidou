@@ -37,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 _INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
+# Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
+# comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
+_PUNCT = re.compile(r"[^\w\s]")
+
 _LLM_SYSTEM = (
     "You are a filename-to-episode matcher. "
     "Given a show title, a filename, and a numbered episode list, "
@@ -49,6 +53,21 @@ _LLM_SYSTEM = (
 
 def _sanitize_sys_name(title: str) -> str:
     return _INVALID_FS_CHARS.sub("_", title).strip()
+
+
+def _normalize_title(s: str) -> str:
+    """Lowercase and strip punctuation for loose title comparison.
+
+    Allows directory names like "Daredevil Born Again" to match TMDB titles
+    like "Daredevil: Born Again" without false-positives from shorter prefixes.
+
+    Args:
+        s: Title string to normalize.
+
+    Returns:
+        Normalized string with punctuation removed and whitespace collapsed.
+    """
+    return re.sub(r"\s+", " ", _PUNCT.sub(" ", s).lower()).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +291,10 @@ class PathImportOrchestrator:
         return show_result
 
     async def _db_find_show(self, name: str) -> Show | None:
-        """Look up a show in the database by title (ILIKE) or alias containment.
+        """Look up a show in the database by title or alias.
+
+        Uses exact case-insensitive equality (not substring matching) so that
+        "Daredevil" cannot accidentally resolve to "Daredevil: Born Again".
 
         Args:
             name: Show directory name to search for.
@@ -293,14 +315,9 @@ class PathImportOrchestrator:
         if show:
             return show
 
-        # Case-insensitive title fallback.
-        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        stmt = (
-            select(Show)
-            .where(Show.title.ilike(f"%{escaped}%", escape="\\"))
-            .order_by(Show.id)
-            .limit(1)
-        )
+        # Exact case-insensitive title match.  Substring matching (ILIKE '%x%')
+        # would cause "Daredevil" to match "Daredevil: Born Again".
+        stmt = select(Show).where(func.lower(Show.title) == normalised).order_by(Show.id).limit(1)
         return (await self.session.execute(stmt)).scalars().first()
 
     async def _tmdb_create_show(self, show_dir: str) -> tuple[Show | None, str]:
@@ -329,10 +346,13 @@ class PathImportOrchestrator:
             logger.warning("No TMDB results for directory %r", show_dir)
             return None, "not_found"
 
-        # Exact name match wins; otherwise take the top relevance result.
+        # Normalized exact match wins; otherwise take the top relevance result.
+        # Normalization strips punctuation so "Daredevil Born Again" matches
+        # TMDB's "Daredevil: Born Again" without matching the shorter "Daredevil".
+        show_dir_norm = _normalize_title(show_dir)
         best = candidates[0]
         for c in candidates[:5]:
-            if c.get("name", "").lower() == show_dir.lower():
+            if _normalize_title(c.get("name", "")) == show_dir_norm:
                 best = c
                 break
 

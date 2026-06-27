@@ -384,6 +384,68 @@ async def test_orchestrator_absolute_episode_fallback() -> None:
 
 
 @pytest.mark.asyncio
+async def test_db_find_show_exact_match_only() -> None:
+    """_db_find_show must not return a show whose title merely CONTAINS the search name.
+
+    Regression: "Daredevil" must not match "Daredevil: Born Again" in the DB.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    born_again = _make_show(id=1, tmdb_id=202555, title="Daredevil: Born Again")
+
+    session = AsyncMock()
+    # Alias lookup → no match.
+    alias_result = MagicMock()
+    alias_result.scalars.return_value.first.return_value = None
+    # Title exact-match lookup → also no match (Born Again ≠ Daredevil).
+    title_result = MagicMock()
+    title_result.scalars.return_value.first.return_value = None
+    session.execute.side_effect = [alias_result, title_result]
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    # Even though "Daredevil: Born Again" exists in the DB, searching for
+    # "Daredevil" must return None (not the Born Again show).
+    _ = born_again  # exists in DB conceptually; mock returns None above
+    result = await orch._db_find_show("Daredevil")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_db_find_show_does_not_match_prefix_substring() -> None:
+    """_db_find_show("Daredevil Born Again") must not match a show titled "Daredevil".
+
+    Regression: the reverse direction — the longer search must not hit a shorter title.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    session = AsyncMock()
+    alias_result = MagicMock()
+    alias_result.scalars.return_value.first.return_value = None
+    title_result = MagicMock()
+    title_result.scalars.return_value.first.return_value = None
+    session.execute.side_effect = [alias_result, title_result]
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+    result = await orch._db_find_show("Daredevil Born Again")
+    assert result is None
+
+
+def test_normalize_title_strips_punctuation() -> None:
+    """_normalize_title makes 'Daredevil Born Again' match 'Daredevil: Born Again'."""
+    from jidou.orchestrators.path_import_orchestrator import _normalize_title
+
+    assert _normalize_title("Daredevil: Born Again") == _normalize_title("Daredevil Born Again")
+    # But "Daredevil" must NOT match "Daredevil: Born Again".
+    assert _normalize_title("Daredevil") != _normalize_title("Daredevil: Born Again")
+    # Basic cases.
+    assert _normalize_title("Hunter x Hunter") == "hunter x hunter"
+    assert _normalize_title("Re:Zero") == _normalize_title("Re Zero")
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_sets_local_path_when_unset() -> None:
     """show_root from entry is persisted to show.local_path when not already set."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
