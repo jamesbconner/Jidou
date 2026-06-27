@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -449,14 +449,23 @@ async def manual_match_file(
             ),
         )
 
+    # Capture the previously linked episode before clearing it.  We always
+    # capture regardless of whether the show changes so that same-show
+    # different-episode rematch also clears stale tracking.
+    # (Cancelling the re-match modal never calls this endpoint, so the old
+    # episode stays tracked until the user explicitly confirms.)
+    old_episode_id: int | None = file.episode_id
+
     file.show_id = show.id
-    file.episode_id = None  # clear stale episode from any previous match
+    file.episode_id = None  # cleared here; route task resolves and writes new ep
     file.matched_by = MatchedBy.MANUAL
     file.status = FileStatus.MATCHED
     file.error_message = None
 
     # Populate parsed_season / parsed_episode from filename heuristic so
     # RouteOrchestrator can place the file in Season NN/ instead of show root.
+    # Run BEFORE stale-episode clearing so we know the new episode_id and can
+    # skip the clear when the file stays on the same episode.
     if file.parsed_season is None and file.parsed_episode is None:
         se = _heuristic_se(file.original_filename)
         if se is not None:
@@ -469,6 +478,24 @@ async def manual_match_file(
             ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
             if ep is not None:
                 file.episode_id = ep.id
+
+    # Clear stale tracking on the old episode only when the episode actually
+    # changed.  Running this after the heuristic avoids falsely clearing
+    # tracking when the file resolves back to the same episode it was on.
+    if old_episode_id is not None and old_episode_id != file.episode_id:
+        count_result = await db_session.execute(
+            select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
+        )
+        if (count_result.scalar() or 0) == 0:
+            old_ep_result = await db_session.execute(
+                select(Episode).where(Episode.id == old_episode_id)
+            )
+            old_ep = old_ep_result.scalar_one_or_none()
+            if old_ep is not None:
+                old_ep.file_tracked = False
+                old_ep.file_tracked_at = None
+                old_ep.tracked_filename = None
+                old_ep.tracked_source = None
 
     await db_session.flush()
     await db_session.refresh(file)

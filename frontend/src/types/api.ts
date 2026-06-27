@@ -95,6 +95,11 @@ export interface ShowPatch {
 
 // ─── Episodes ─────────────────────────────────────────────────────────────
 
+export interface BackingFile {
+  id: number
+  filename: string
+}
+
 export interface EpisodeList {
   id: number
   show_id: number
@@ -105,6 +110,9 @@ export interface EpisodeList {
   episode_type: string | null
   absolute_episode_number: number | null
   file_tracked: boolean
+  tracked_filename: string | null
+  tracked_source: 'match' | 'import' | null
+  backing_files: BackingFile[]
 }
 
 export interface EpisodeRead extends EpisodeList {

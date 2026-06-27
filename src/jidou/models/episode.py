@@ -35,6 +35,8 @@ class Episode(TimestampMixin, Base):
     still_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_tracked: Mapped[bool] = mapped_column(Boolean, default=False)
     file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tracked_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the Episode."""

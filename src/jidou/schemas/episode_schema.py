@@ -27,6 +27,13 @@ class EpisodeRead(BaseModel):
     updated_at: datetime
 
 
+class BackingFile(BaseModel):
+    """A DownloadedFile record linked to an episode, for the episode list."""
+
+    id: int
+    filename: str
+
+
 class EpisodeList(BaseModel):
     """Slim episode record returned by list endpoints."""
 
@@ -41,3 +48,6 @@ class EpisodeList(BaseModel):
     episode_type: str | None = None
     absolute_episode_number: int | None = None
     file_tracked: bool
+    tracked_filename: str | None = None
+    tracked_source: str | None = None
+    backing_files: list[BackingFile] = []

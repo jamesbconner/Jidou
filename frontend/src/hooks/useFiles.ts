@@ -44,6 +44,30 @@ export function useRematchFile() {
   })
 }
 
+export function useBeginEpisodeRematch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      showId,
+      episodeId,
+      fileId,
+    }: {
+      showId: number
+      episodeId: number
+      fileId?: number
+    }) => {
+      const qs = fileId != null ? `?file_id=${fileId}` : ''
+      return api.post<FileRead>(
+        `/shows/${showId}/episodes/${episodeId}/begin-rematch${qs}`,
+        {},
+      )
+    },
+    onSuccess: (_data, { showId }) => {
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    },
+  })
+}
+
 export function useTmdbSuggestions(fileId: number | null) {
   return useQuery({
     queryKey: [...fileKeys.all, 'tmdb-suggestions', fileId] as const,

@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
@@ -216,12 +216,34 @@ class MatchOrchestrator:
                         None,
                     )
                     if ep is not None:
+                        old_episode_id = (
+                            file.episode_id
+                            if file.episode_id is not None and file.episode_id != ep.id
+                            else None
+                        )
                         file.episode_id = ep.id
                         file.matched_by = matched_by
                         file.status = FileStatus.ROUTED
-                        if not ep.file_tracked:
-                            ep.file_tracked = True
-                            ep.file_tracked_at = datetime.now(UTC)
+                        ep.file_tracked = True
+                        ep.file_tracked_at = datetime.now(UTC)
+                        ep.tracked_filename = file.original_filename
+                        ep.tracked_source = "match"
+                        if old_episode_id is not None:
+                            count_result = await self.session.execute(
+                                select(func.count()).where(
+                                    DownloadedFile.episode_id == old_episode_id
+                                )
+                            )
+                            if (count_result.scalar() or 0) == 0:
+                                old_ep_result = await self.session.execute(
+                                    select(Episode).where(Episode.id == old_episode_id)
+                                )
+                                old_ep = old_ep_result.scalar_one_or_none()
+                                if old_ep is not None:
+                                    old_ep.file_tracked = False
+                                    old_ep.file_tracked_at = None
+                                    old_ep.tracked_filename = None
+                                    old_ep.tracked_source = None
                         files_matched += 1
                         if matched_by == MatchedBy.HEURISTIC:
                             matched_by_heuristic += 1

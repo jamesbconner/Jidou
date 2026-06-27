@@ -754,3 +754,178 @@ def test_tmdb_suggestions_file_not_found_returns_404() -> None:
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
+    """Moving a file to a different show clears stale tracking on the old episode.
+
+    The heuristic episode lookup runs first; stale-episode clearing only fires
+    when old_episode_id differs from the newly resolved file.episode_id.
+    """
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
+    f.episode_id = 10  # previously matched to episode 10 on show 5
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    show = MagicMock(spec=Show)
+    show.id = 7
+    show.title = "New Show"
+    show.local_path = "/media/new-show"
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "old.s01e01.mkv"
+    old_ep.tracked_source = "match"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        # heuristic runs FIRST (no matching episode on the new show)
+        ep_heuristic_result = MagicMock()
+        ep_heuristic_result.scalar_one_or_none.return_value = None
+        # count of remaining files for old episode → 0 means clear
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session.execute = AsyncMock(
+            side_effect=[
+                file_result,
+                show_result,
+                ep_heuristic_result,
+                count_result,
+                old_ep_result,
+            ]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 7})
+        assert response.status_code == 200
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert old_ep.tracked_source is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_clears_old_episode_tracking_same_show() -> None:
+    """Moving a file between episodes on the SAME show also clears the old tracking."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
+    f.episode_id = 10  # old episode on the same show
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    show = MagicMock(spec=Show)
+    show.id = 5  # SAME show
+    show.title = "Same Show"
+    show.local_path = "/media/same-show"
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "old.s01e01.mkv"
+    old_ep.tracked_source = "match"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        # heuristic runs FIRST (resolves to None so episode stays cleared)
+        ep_heuristic_result = MagicMock()
+        ep_heuristic_result.scalar_one_or_none.return_value = None
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session.execute = AsyncMock(
+            side_effect=[
+                file_result,
+                show_result,
+                ep_heuristic_result,
+                count_result,
+                old_ep_result,
+            ]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 200
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert old_ep.tracked_source is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
+    """Stale-episode clear is skipped when the heuristic re-links the same episode."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+    from jidou.models.show import Show
+
+    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
+    f.episode_id = 10  # already linked to episode 10 on show 5
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    show = MagicMock(spec=Show)
+    show.id = 5
+    show.title = "Same Show"
+    show.local_path = "/media/same-show"
+
+    # Episode 10 is S1E1 on show 5 — same episode the heuristic resolves to
+    same_ep = MagicMock(spec=Episode)
+    same_ep.id = 10
+    same_ep.file_tracked = True
+    same_ep.tracked_filename = "show.s01e01.mkv"
+    same_ep.tracked_source = "match"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        # heuristic resolves back to the SAME episode (id=10)
+        ep_heuristic_result = MagicMock()
+        ep_heuristic_result.scalar_one_or_none.return_value = same_ep
+        # count/old_ep queries must NOT run (old_episode_id == file.episode_id)
+        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_heuristic_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
+        assert response.status_code == 200
+        # Tracking must NOT be cleared — the episode didn't change
+        assert same_ep.file_tracked is True
+        assert same_ep.tracked_filename == "show.s01e01.mkv"
+    finally:
+        app.dependency_overrides.clear()
