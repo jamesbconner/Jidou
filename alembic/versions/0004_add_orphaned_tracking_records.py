@@ -15,6 +15,9 @@ depends_on: None = None
 
 
 def upgrade() -> None:
+    # alembic_version.version_num defaults to VARCHAR(32); our revision ID is
+    # 35 chars so widen the column before Alembic writes the new version string.
+    op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
     op.create_table(
         "orphaned_tracking_records",
         sa.Column("id", sa.Integer, primary_key=True),
