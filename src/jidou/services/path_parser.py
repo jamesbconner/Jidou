@@ -19,6 +19,17 @@ _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 # Standard SxxExx notation — always carries both season and episode.
 _SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})")
 
+# NxNN / NNxNN — common release-group format (e.g. Criminal.Minds.01x01).
+_SxE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,2})(?!\d)")
+
+# "Season N Episode N" — long-form text label (e.g. "Breaking Bad Season 2 Episode 09").
+_SEASON_EPISODE_WORD = re.compile(
+    r"\bSeason\s+(\d{1,2})\b.*?\bEpisode\s+(\d{1,3})\b", re.IGNORECASE
+)
+
+# "Episode N" — standalone episode label (e.g. "Episode 11 - 25 to Life").
+_EPISODE_WORD = re.compile(r"\bEpisode\s+(\d{1,3})\b", re.IGNORECASE)
+
 # "Ep N" or "Ep. N" (Yawara-style).
 _EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,3})\b", re.IGNORECASE)
 
@@ -31,6 +42,17 @@ _DASH_EP = re.compile(r"[-–]\s*(\d{1,3})\s*(?:$|[\(\[])")  # noqa: RUF001
 # Requires a letter immediately after the separator to avoid matching
 # resolution strings or hashes that contain "NN - NN".
 _PREDASH_EP = re.compile(r"(?<!\d)(\d{1,3})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
+
+# "N - Title" at start of stem where the title begins with a digit or word
+# (e.g. "32 - 100th Dirty Job Special", "19 - 200 Jobs Look-Back").
+# More permissive than _PREDASH_EP; anchored to ^ to limit false positives.
+_LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
+
+# Compact SEEE / SSEEE — episode and season run together without a delimiter
+# (e.g. criminal.minds.201 → S02E01, criminal.minds.1001 → S10E01).
+# Applied last because it is the most ambiguous pattern.
+_COMPACT_EP = re.compile(r"\b(\d{3,4})\b")
+_COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
 
 _MEDIA_EXTENSIONS = frozenset(
     {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
@@ -176,10 +198,16 @@ def group_by_show(
 def _parse_episode(stem: str) -> tuple[int | None, int | None]:
     """Extract (season, episode) from a filename stem (no extension).
 
-    Priority:
-    1. Standard ``SxxExx`` notation — returns both season and episode.
-    2. ``Ep N`` / ``Ep. N`` word-boundary pattern.
-    3. ``- N`` followed by end-of-string or a quality bracket.
+    Priority order (first match wins):
+    1. ``SxxExx`` / ``SxxEyyy`` standard notation.
+    2. ``NNxNN`` release-group notation (e.g. ``01x01``).
+    3. ``Season N … Episode N`` long-form text.
+    4. ``Episode N`` standalone label.
+    5. ``Ep N`` / ``Ep. N`` short label.
+    6. ``- N`` at end-of-string or before a bracket.
+    7. ``N - Title`` where title starts with a letter.
+    8. ``N - Title`` at start of stem (title may start with a digit).
+    9. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
 
     Args:
         stem: Filename without extension.
@@ -190,6 +218,18 @@ def _parse_episode(stem: str) -> tuple[int | None, int | None]:
     m = _SE_PATTERN.search(stem)
     if m:
         return int(m.group(1)), int(m.group(2))
+
+    m = _SxE_PATTERN.search(stem)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+
+    m = _SEASON_EPISODE_WORD.search(stem)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+
+    m = _EPISODE_WORD.search(stem)
+    if m:
+        return None, int(m.group(1))
 
     m = _EP_WORD.search(stem)
     if m:
@@ -202,5 +242,21 @@ def _parse_episode(stem: str) -> tuple[int | None, int | None]:
     m = _PREDASH_EP.search(stem)
     if m:
         return None, int(m.group(1))
+
+    m = _LEADING_EP.search(stem)
+    if m:
+        return None, int(m.group(1))
+
+    for cm in _COMPACT_EP.finditer(stem):
+        raw = cm.group(1)
+        if raw in _COMPACT_QUALITY:
+            continue
+        n = int(raw)
+        if 1900 <= n <= 2030:
+            continue
+        s_num = int(raw[:-2])
+        e_num = int(raw[-2:])
+        if s_num >= 1 and e_num >= 1:
+            return s_num, e_num
 
     return None, None
