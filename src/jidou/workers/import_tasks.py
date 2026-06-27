@@ -129,7 +129,13 @@ async def _path_import(
             )
 
             async def on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
-                await append_task_event(session, celery_task_id, level, msg, ctx)
+                # Use a separate session so the event commit does not flush
+                # pending show/episode state from the orchestrator's session.
+                # Without this, append_task_event's session.commit() would
+                # commit partially-created shows mid-import, preventing clean
+                # rollback on failure.
+                async with session_factory() as event_session:
+                    await append_task_event(event_session, celery_task_id, level, msg, ctx)
 
             orchestrator = PathImportOrchestrator(
                 session,
