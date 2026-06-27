@@ -106,6 +106,7 @@ class ShowImportResult:
     action: str = "not_found"
     episodes_tracked: int = 0
     episodes_unmatched: int = 0
+    unmatched_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -306,7 +307,20 @@ class PathImportOrchestrator:
                 if newly_tracked:
                     show_result.episodes_tracked += 1
             else:
+                filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+                s_label = f"S{entry.season:02d}" if entry.season is not None else "S?"
+                e_label = f"E{entry.episode:02d}" if entry.episode is not None else "E?"
                 show_result.episodes_unmatched += 1
+                show_result.unmatched_paths.append(entry.raw_path)
+                await self._emit(
+                    "warn",
+                    f"No match: {filename} ({s_label}{e_label})",
+                    {
+                        "path": entry.raw_path,
+                        "season": entry.season,
+                        "episode": entry.episode,
+                    },
+                )
                 logger.debug(
                     "No episode match: show=%r dir=%r season=%s episode=%s abs=%s path=%r",
                     show.title,

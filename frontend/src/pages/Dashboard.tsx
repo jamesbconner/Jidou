@@ -101,8 +101,8 @@ export default function Dashboard() {
           <StatCard
             label="Episodes Tracked"
             value={stats.episodes_tracked}
-            sub={`of ${stats.episodes_total} synced from TMDB`}
-            tooltip="Episodes with a local file tracked. Denominator is the total number of episodes synced from TMDB metadata."
+            sub={`of ${stats.episodes_total} synced from TMDB · ${stats.episodes_total - stats.episodes_tracked} missing`}
+            tooltip="Episodes with a local file tracked. 'Missing' is the gap between TMDB metadata and tracked files — import unmatched files contribute to this count."
           />
           <StatCard
             label="Newly Tracked"

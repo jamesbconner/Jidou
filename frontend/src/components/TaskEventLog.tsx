@@ -46,7 +46,17 @@ export function TaskEventLog({ events, live = false }: Props) {
         <div key={i} className="flex items-start gap-2">
           <span className="text-gray-400 shrink-0 tabular-nums">{formatTs(ev.ts)}</span>
           <span className={clsx('mt-1 w-1.5 h-1.5 rounded-full shrink-0', LEVEL_DOT[ev.level])} />
-          <span className={clsx('break-words min-w-0', LEVEL_STYLES[ev.level])}>{ev.msg}</span>
+          <span className="break-words min-w-0">
+            <span className={LEVEL_STYLES[ev.level]}>{ev.msg}</span>
+            {typeof ev.ctx?.path === 'string' && (
+              <span
+                className="block text-gray-400 text-[10px] pl-0 truncate"
+                title={ev.ctx.path}
+              >
+                {ev.ctx.path}
+              </span>
+            )}
+          </span>
         </div>
       ))}
       <div ref={bottomRef} />
