@@ -593,11 +593,7 @@ class PathImportOrchestrator:
         if self.llm is None or not self.llm.is_available():
             return None, None
 
-        hint = (
-            f"\nKnown season from directory: {known_season}"
-            if known_season is not None
-            else ""
-        )
+        hint = f"\nKnown season from directory: {known_season}" if known_season is not None else ""
         try:
             response = await self.llm.complete(
                 prompt=f"Filename: {filename}{hint}",
@@ -617,9 +613,7 @@ class PathImportOrchestrator:
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            logger.warning(
-                "LLM returned invalid JSON for episode parse of %r: %r", filename, text
-            )
+            logger.warning("LLM returned invalid JSON for episode parse of %r: %r", filename, text)
             return None, None
 
         raw_season = parsed.get("season")
@@ -631,9 +625,7 @@ class PathImportOrchestrator:
             logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
             return None, None
 
-        logger.debug(
-            "LLM episode-parse: %r → season=%s episode=%s", filename, season, episode
-        )
+        logger.debug("LLM episode-parse: %r → season=%s episode=%s", filename, season, episode)
         return season, episode
 
     async def _find_episode(
