@@ -537,6 +537,10 @@ async def manual_match_file(
                         OrphanedTrackingRecord.downloaded_file_id == file.id
                     )
                 )
+                ep.file_tracked = True
+                ep.file_tracked_at = datetime.now(UTC)
+                ep.tracked_filename = file.local_path or file.original_filename
+                ep.tracked_source = "match"
 
     # Clear stale tracking on the old episode only when the episode actually
     # changed.  Running this after the heuristic avoids falsely clearing

@@ -1170,6 +1170,8 @@ def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
     f.episode_id = 10  # already linked to episode 10 on show 5
     f.parsed_season = None
     f.parsed_episode = None
+    f.local_path = None
+    f.original_filename = "show.s01e01.mkv"
 
     show = MagicMock(spec=Show)
     show.id = 5
