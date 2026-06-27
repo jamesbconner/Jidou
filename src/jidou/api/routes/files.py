@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -233,6 +234,15 @@ async def patch_file(
                     OrphanedTrackingRecord.downloaded_file_id == file.id
                 )
             )
+            # Mark the target episode as tracked so the UI and stats reflect the link.
+            ep = (
+                await db_session.execute(select(Episode).where(Episode.id == payload.episode_id))
+            ).scalar_one_or_none()
+            if ep is not None:
+                ep.file_tracked = True
+                ep.file_tracked_at = datetime.now(UTC)
+                ep.tracked_filename = file.local_path or file.original_filename
+                ep.tracked_source = "match"
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:

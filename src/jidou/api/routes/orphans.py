@@ -167,12 +167,19 @@ async def resolve_orphan(
         )
 
     if record.downloaded_file_id is None:
-        # Imported orphan: write tracking directly onto the Episode row.
+        # No linked file: write tracking directly onto the Episode row using the
+        # source from the orphan record (may be "import" or "match" when the file
+        # was deleted or lacked parsed S/E numbers).
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
         ep.tracked_filename = record.tracked_filename
-        ep.tracked_source = "import"
-        logger.info("Resolved import orphan id=%d → episode id=%d", orphan_id, payload.episode_id)
+        ep.tracked_source = record.tracked_source
+        logger.info(
+            "Resolved %s orphan id=%d → episode id=%d",
+            record.tracked_source,
+            orphan_id,
+            payload.episode_id,
+        )
     else:
         # Downloaded orphan: link the DownloadedFile to the target episode and mark it tracked.
         file = (

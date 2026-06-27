@@ -270,6 +270,27 @@ def test_resolve_import_orphan_sets_episode_tracking() -> None:
         app.dependency_overrides.clear()
 
 
+def test_resolve_match_orphan_without_file_sets_match_source() -> None:
+    """POST /api/orphans/{id}/resolve uses record.tracked_source, not hardcoded 'import'.
+
+    A match-sourced orphan with downloaded_file_id=None (file deleted or lacked
+    parsed S/E) should resolve with tracked_source='match', not 'import'.
+    """
+    from jidou.database import get_session
+
+    orphan = _make_orphan(tracked_source="match", downloaded_file_id=None)
+    ep = _make_episode_mock()
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 204
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "match"
+        assert ep.tracked_filename == "/media/show.s01e05.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_resolve_download_orphan_links_file_to_episode() -> None:
     """POST /api/orphans/{id}/resolve links the DownloadedFile and marks Episode tracked."""
     from jidou.database import get_session

@@ -437,6 +437,46 @@ def test_patch_file_fk_violation_returns_422() -> None:
         app.dependency_overrides.clear()
 
 
+def test_patch_file_episode_id_marks_target_episode_tracked() -> None:
+    """PATCH /api/files/{id} with episode_id updates the target Episode's tracking fields."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.local_path = "/media/show.s01e01.mkv"
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.file_tracked = False
+    ep.tracked_filename = None
+    ep.tracked_source = None
+    ep.file_tracked_at = None
+
+    async def _episode_patch_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _episode_patch_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert f.episode_id == 42
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "match"
+        assert ep.tracked_filename == "/media/show.s01e01.mkv"
+        assert ep.file_tracked_at is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_match_file_flushes_then_commits() -> None:
     """Match endpoint must flush before commit so the DB state is visible."""
     from jidou.database import get_session
