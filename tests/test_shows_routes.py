@@ -594,13 +594,21 @@ def _rematch_session(
       2. conflict check
       3. tracked-episodes snapshot (Phase 1)
       4. episode bulk-delete
-      5. new-episodes query (Phase 2)
-      6. orphaned-files query (Phase 3)
+      5. orphan dedup-delete (always runs for TV)
+      6. new-episodes query (Phase 2)
+      7. orphaned-files query (Phase 3)
 
-    Movie or preserve_tracking=False:
+    TV + preserve_tracking=False:
       1. show lookup
       2. conflict check
       3. episode bulk-delete
+      4. orphan dedup-delete (clean-slate clears prior DQ rows)
+
+    Movie:
+      1. show lookup
+      2. conflict check
+      3. episode bulk-delete
+      4. orphan dedup-delete (unconditional for all media types)
 
     Unused entries at the end of the side_effect list are harmless.
     """
@@ -612,8 +620,11 @@ def _rematch_session(
         conflict_result = MagicMock()
         conflict_result.scalar_one_or_none.return_value = conflict
         delete_result = MagicMock()
+        dedup_delete_result = MagicMock()
 
-        if preserve_tracking and media_type != "movie":
+        if media_type == "movie":
+            side_effects = [show_result, conflict_result, delete_result, dedup_delete_result]
+        elif preserve_tracking:
             tracked_result = MagicMock()
             tracked_scalars = MagicMock()
             tracked_scalars.all.return_value = tracked_episodes or []
@@ -631,14 +642,17 @@ def _rematch_session(
                 conflict_result,
                 tracked_result,
                 delete_result,
+                dedup_delete_result,
                 new_eps_result,
                 orphan_result,
             ]
         else:
-            side_effects = [show_result, conflict_result, delete_result]
+            # TV + preserve_tracking=False: clean-slate still runs the dedup delete
+            side_effects = [show_result, conflict_result, delete_result, dedup_delete_result]
 
         session.execute = AsyncMock(side_effect=side_effects)
         session.flush = AsyncMock()
+        session.add = MagicMock()  # session.add is synchronous in SQLAlchemy
         yield session
 
     return _mock  # type: ignore[return-value]
@@ -951,6 +965,39 @@ def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
         app.dependency_overrides.clear()
 
 
+def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
+    """preserve_tracking=False still issues the orphan dedup delete so the DQ tab is cleared."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    captured: list[AsyncMock] = []
+    base_session = _rematch_session(show, preserve_tracking=False, media_type="tv")
+
+    async def _capturing():
+        async for s in base_session():
+            captured.append(s)
+            yield s
+
+    app.dependency_overrides[get_session] = _capturing
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch",
+                json={"tmdb_id": 200, "media_type": "tv", "preserve_tracking": False},
+            )
+        assert response.status_code == 200
+        # 4 execute calls: show lookup, conflict check, episode delete, orphan dedup delete
+        assert captured[0].execute.call_count == 4
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_rematch_show_movie_skips_tracking_phases() -> None:
     """Movie rematch skips Phase 1/2/3 entirely — no tracked-episode queries."""
     from jidou.api.routes.shows import get_tmdb
@@ -982,6 +1029,326 @@ def test_rematch_show_movie_skips_tracking_phases() -> None:
             "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
         )
         assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_movie_purges_orphan_rows() -> None:
+    """Movie rematch still purges stale orphan rows even though it has no episodes."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100, media_type="movie")
+    movie_data = {
+        "title": "Great Film",
+        "release_date": "2023-03-01",
+        "overview": None,
+        "poster_path": None,
+        "backdrop_path": None,
+        "vote_average": 7.0,
+        "vote_count": 50,
+        "original_language": "en",
+        "genres": [],
+        "runtime": 90,
+        "tagline": None,
+        "status": "Released",
+        "networks": [],
+    }
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=movie_data)
+
+    captured: list[AsyncMock] = []
+    base_session = _rematch_session(show, media_type="movie")
+
+    async def _capturing():
+        async for s in base_session():
+            captured.append(s)
+            yield s
+
+    app.dependency_overrides[get_session] = _capturing
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "movie"}
+        )
+        assert response.status_code == 200
+        # 4 execute calls: show lookup, conflict check, episode delete, orphan dedup delete
+        assert captured[0].execute.call_count == 4
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_creates_orphan_record_for_unresolvable_import() -> None:
+    """An import-sourced tracked episode with no matching new S/E is persisted as an orphan."""
+    from unittest.mock import patch as _patch
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.orphan import OrphanedTrackingRecord
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    old_ep = _make_episode(id=10, show_id=1)
+    old_ep.season_number = 5
+    old_ep.episode_number = 2
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.s05e02.mkv"
+    old_ep.tracked_source = "import"
+    old_ep.file_tracked_at = None
+
+    # New episodes have no S05E02
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    added_objects: list[object] = []
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        tracked_episodes=[old_ep],
+        new_episodes=[new_ep],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            # Intercept session.add to capture OrphanedTrackingRecord instances.
+            original_session_override = app.dependency_overrides[get_session]
+
+            async def _capturing_session() -> AsyncMock:  # type: ignore[return]
+                async for session in original_session_override():
+                    real_add = session.add
+
+                    def _add(obj: object, _orig: object = real_add) -> None:
+                        added_objects.append(obj)
+                        return _orig(obj)  # type: ignore[call-arg]
+
+                    session.add = _add
+                    yield session
+
+            app.dependency_overrides[get_session] = _capturing_session
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        orphans_created = [o for o in added_objects if isinstance(o, OrphanedTrackingRecord)]
+        assert len(orphans_created) == 1
+        assert orphans_created[0].old_season_number == 5
+        assert orphans_created[0].old_episode_number == 2
+        assert orphans_created[0].tracked_source == "import"
+        assert orphans_created[0].downloaded_file_id is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_creates_orphan_record_for_unresolvable_downloaded_file() -> None:
+    """A downloaded file that cannot be re-linked to a new episode is persisted as an orphan."""
+    from unittest.mock import patch as _patch
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import DownloadedFile
+    from jidou.models.orphan import OrphanedTrackingRecord
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    # Orphaned file whose parsed S/E (S02E03) doesn't appear in new episode list
+    orphaned_file = MagicMock(spec=DownloadedFile)
+    orphaned_file.id = 77
+    orphaned_file.show_id = 1
+    orphaned_file.episode_id = None
+    orphaned_file.parsed_season = 2
+    orphaned_file.parsed_episode = 3
+    orphaned_file.local_path = None  # must pin to avoid truthy MagicMock
+    orphaned_file.original_filename = "show.s02e03.mkv"
+
+    # New episodes: S01E01 only — no S02E03
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    added_objects: list[object] = []
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        new_episodes=[new_ep],
+        orphaned_files=[orphaned_file],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            original_session_override = app.dependency_overrides[get_session]
+
+            async def _capturing_session() -> AsyncMock:  # type: ignore[return]
+                async for session in original_session_override():
+                    real_add = session.add
+
+                    def _add(obj: object, _orig: object = real_add) -> None:
+                        added_objects.append(obj)
+                        return _orig(obj)  # type: ignore[call-arg]
+
+                    session.add = _add
+                    yield session
+
+            app.dependency_overrides[get_session] = _capturing_session
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        orphans_created = [o for o in added_objects if isinstance(o, OrphanedTrackingRecord)]
+        assert len(orphans_created) == 1
+        assert orphans_created[0].old_season_number == 2
+        assert orphans_created[0].old_episode_number == 3
+        assert orphans_created[0].tracked_source == "match"
+        assert orphans_created[0].downloaded_file_id == 77
+        # Phase 3 uses local_path or original_filename, matching what PATCH /files writes
+        assert orphans_created[0].tracked_filename == "show.s02e03.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_phase3_orphan_uses_local_path_when_set() -> None:
+    """Phase 3 stores local_path in tracked_filename when the file has a local path."""
+    from unittest.mock import patch as _patch
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import DownloadedFile
+    from jidou.models.orphan import OrphanedTrackingRecord
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    orphaned_file = MagicMock(spec=DownloadedFile)
+    orphaned_file.id = 77
+    orphaned_file.show_id = 1
+    orphaned_file.episode_id = None
+    orphaned_file.parsed_season = 2
+    orphaned_file.parsed_episode = 3
+    orphaned_file.local_path = "/media/library/show.s02e03.mkv"
+    orphaned_file.original_filename = "show.s02e03.mkv"
+
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    added_objects: list[object] = []
+
+    app.dependency_overrides[get_session] = _rematch_session(
+        show, new_episodes=[new_ep], orphaned_files=[orphaned_file]
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            original_session_override = app.dependency_overrides[get_session]
+
+            async def _capturing_session() -> AsyncMock:  # type: ignore[return]
+                async for session in original_session_override():
+                    real_add = session.add
+
+                    def _add(obj: object, _orig: object = real_add) -> None:
+                        added_objects.append(obj)
+                        return _orig(obj)  # type: ignore[call-arg]
+
+                    session.add = _add
+                    yield session
+
+            app.dependency_overrides[get_session] = _capturing_session
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        orphans_created = [o for o in added_objects if isinstance(o, OrphanedTrackingRecord)]
+        assert len(orphans_created) == 1
+        assert orphans_created[0].tracked_filename == "/media/library/show.s02e03.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> None:
+    """A match-sourced tracked episode with no parseable file is still persisted as an orphan.
+
+    Phase 3 only finds DownloadedFile rows with non-NULL parsed_season/episode.
+    A file with NULL parsed_season won't appear in the orphan_stmt query.
+    The unrecoverable_keys loop must catch and persist these match-sourced entries.
+    """
+    from unittest.mock import patch as _patch
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.orphan import OrphanedTrackingRecord
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    # A match-sourced tracked episode — the file has no parseable S/E numbers
+    old_ep = _make_episode(id=10, show_id=1)
+    old_ep.season_number = 5
+    old_ep.episode_number = 2
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.weird_name.mkv"
+    old_ep.tracked_source = "match"
+    old_ep.file_tracked_at = None
+
+    # New episodes have no S05E02
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    added_objects: list[object] = []
+
+    # orphaned_files=[] simulates the file not appearing in the Phase 3 query
+    # (e.g., parsed_season=NULL so it's excluded by the orphan_stmt WHERE clause)
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        tracked_episodes=[old_ep],
+        new_episodes=[new_ep],
+        orphaned_files=[],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            original_session_override = app.dependency_overrides[get_session]
+
+            async def _capturing_session() -> AsyncMock:  # type: ignore[return]
+                async for session in original_session_override():
+                    real_add = session.add
+
+                    def _add(obj: object, _orig: object = real_add) -> None:
+                        added_objects.append(obj)
+                        return _orig(obj)  # type: ignore[call-arg]
+
+                    session.add = _add
+                    yield session
+
+            app.dependency_overrides[get_session] = _capturing_session
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        orphans_created = [o for o in added_objects if isinstance(o, OrphanedTrackingRecord)]
+        assert len(orphans_created) == 1
+        assert orphans_created[0].old_season_number == 5
+        assert orphans_created[0].old_episode_number == 2
+        assert orphans_created[0].tracked_source == "match"
+        assert orphans_created[0].downloaded_file_id is None
     finally:
         app.dependency_overrides.clear()
 

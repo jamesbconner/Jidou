@@ -228,7 +228,7 @@ def test_match_file_sets_matched_status() -> None:
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
         ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None  # no episode in DB
+        ep_result.scalar_one_or_none.return_value = None  # no episode in DB → orphan not deleted
         session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
         session.flush = AsyncMock()
         session.commit = AsyncMock()
@@ -363,12 +363,42 @@ def test_patch_file_show_id_same_value_preserves_episode() -> None:
 def test_patch_file_explicit_episode_wins_over_show_clear() -> None:
     """PATCH show_id with explicit episode_id keeps the caller-provided episode."""
     from jidou.database import get_session
+    from jidou.models.episode import Episode
 
     f = _make_file(id=1, show_id=5)
-    f.episode_id = 99
+    f.episode_id = 99  # old episode
     f.matched_by = "llm"
 
-    app.dependency_overrides[get_session] = _session_override(single=f)
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 10
+    ep.file_tracked = False
+
+    async def _explicit_ep_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        show_orphan_delete_result = MagicMock()  # show_changed → purge old-show orphans
+        ep_orphan_delete_result = MagicMock()  # episode_id set → purge file orphans
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        # count for old ep (99→42 change); return 1 so old-ep clearing is skipped
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        session.execute = AsyncMock(
+            side_effect=[
+                file_result,
+                show_orphan_delete_result,
+                ep_orphan_delete_result,
+                ep_result,
+                count_result,
+            ]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _explicit_ep_session
     try:
         response = TestClient(app).patch("/api/files/1", json={"show_id": 10, "episode_id": 42})
         assert response.status_code == 200
@@ -413,17 +443,26 @@ def test_patch_file_fk_violation_returns_422() -> None:
     from sqlalchemy.exc import IntegrityError
 
     from jidou.database import get_session
+    from jidou.models.episode import Episode
 
     f = _make_file(id=1, show_id=5)
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 9999
+    ep.show_id = 5
+    ep.file_tracked = False
 
     orig = Exception("foreign key constraint violated")
     orig.pgcode = "23503"  # type: ignore[attr-defined]
 
     async def _fk_session() -> AsyncMock:
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=result)
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
         session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
         session.rollback = AsyncMock()
         yield session
@@ -433,6 +472,246 @@ def test_patch_file_fk_violation_returns_422() -> None:
         response = TestClient(app).patch("/api/files/1", json={"episode_id": 9999})
         assert response.status_code == 422
         assert "does not exist" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_marks_target_episode_tracked() -> None:
+    """PATCH /api/files/{id} with episode_id updates the target Episode's tracking fields."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.local_path = "/media/show.s01e01.mkv"
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 5  # matches file.show_id
+    ep.file_tracked = False
+    ep.tracked_filename = None
+    ep.tracked_source = None
+    ep.file_tracked_at = None
+
+    async def _episode_patch_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _episode_patch_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert f.episode_id == 42
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "match"
+        assert ep.tracked_filename == "/media/show.s01e01.mkv"
+        assert ep.file_tracked_at is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_reassign_episode_clears_stale_tracking() -> None:
+    """PATCH episode_id clears file_tracked on the old episode when no other file shares it."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.local_path = "/media/show.s01e01.mkv"
+    f.episode_id = 10  # old episode
+
+    new_ep = MagicMock(spec=Episode)
+    new_ep.id = 42
+    new_ep.show_id = 5  # same show as the file
+    new_ep.file_tracked = False
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.s01e01.mkv"
+    old_ep.tracked_source = "match"
+    old_ep.file_tracked_at = "2026-01-01"
+
+    async def _reassign_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        new_ep_result = MagicMock()
+        new_ep_result.scalar_one_or_none.return_value = new_ep
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0  # no other file points to old episode
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, new_ep_result, count_result, old_ep_result]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _reassign_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert f.episode_id == 42
+        assert new_ep.file_tracked is True
+        assert new_ep.tracked_source == "match"
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert old_ep.tracked_source is None
+        assert old_ep.file_tracked_at is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_reassign_skips_clear_when_other_file_shares_episode() -> None:
+    """PATCH episode_id does not clear old episode tracking when another file still points to it."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.local_path = "/media/show.s01e01.mkv"
+    f.episode_id = 10  # old episode
+
+    new_ep = MagicMock(spec=Episode)
+    new_ep.id = 42
+    new_ep.show_id = 5
+    new_ep.file_tracked = False
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True  # should remain True
+
+    async def _shared_episode_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        new_ep_result = MagicMock()
+        new_ep_result.scalar_one_or_none.return_value = new_ep
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1  # another file still references old episode
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, new_ep_result, count_result]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _shared_episode_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert old_ep.file_tracked is True  # not cleared — another file still points there
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_returns_422_for_wrong_show() -> None:
+    """PATCH episode_id returns 422 when the episode belongs to a different show."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = None
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 99  # wrong show
+
+    async def _wrong_show_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _wrong_show_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 422
+        assert "does not belong" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_returns_409_when_already_tracked() -> None:
+    """PATCH episode_id returns 409 when the target episode is already tracked by another file."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = None  # file not yet linked — so old_episode_id != new episode_id
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 5  # correct show
+    ep.file_tracked = True  # already tracked by another file
+
+    async def _already_tracked_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _already_tracked_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 409
+        assert "already tracked" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_episode_id_allows_same_episode_relink() -> None:
+    """PATCH episode_id to the same episode the file is already on does not raise 409."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = 42  # already on this episode
+    f.local_path = "/media/show.s01e01.mkv"
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 42
+    ep.show_id = 5
+    ep.file_tracked = True  # tracked by THIS file — should not raise 409
+
+    async def _same_episode_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result])
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _same_episode_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert ep.file_tracked is True  # tracking not disturbed
     finally:
         app.dependency_overrides.clear()
 
@@ -459,7 +738,7 @@ def test_match_file_flushes_then_commits() -> None:
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
         ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None
+        ep_result.scalar_one_or_none.return_value = None  # no ep → orphan not deleted
         session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
         session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
         session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
@@ -599,7 +878,7 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
         # show lookup by tmdb_id → not found (triggers creation)
         no_show_result = MagicMock()
         no_show_result.scalar_one_or_none.return_value = None
-        # episode lookup → not found
+        # episode lookup → not found → orphan is NOT deleted
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = None
         session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
@@ -788,7 +1067,7 @@ def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        # heuristic runs FIRST (no matching episode on the new show)
+        # heuristic runs FIRST (no matching episode on the new show) → orphan not deleted
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = None
         # count of remaining files for old episode → 0 means clear
@@ -849,7 +1128,7 @@ def test_match_file_clears_old_episode_tracking_same_show() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        # heuristic runs FIRST (resolves to None so episode stays cleared)
+        # heuristic runs FIRST (resolves to None so episode stays cleared) → orphan not deleted
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = None
         count_result = MagicMock()
@@ -891,6 +1170,8 @@ def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
     f.episode_id = 10  # already linked to episode 10 on show 5
     f.parsed_season = None
     f.parsed_episode = None
+    f.local_path = None
+    f.original_filename = "show.s01e01.mkv"
 
     show = MagicMock(spec=Show)
     show.id = 5
@@ -910,11 +1191,14 @@ def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
         file_result.scalar_one_or_none.return_value = f
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        # heuristic resolves back to the SAME episode (id=10)
+        # heuristic resolves back to the SAME episode (id=10) → ep found → orphan deleted after
         ep_heuristic_result = MagicMock()
         ep_heuristic_result.scalar_one_or_none.return_value = same_ep
+        orphan_delete_result = MagicMock()
         # count/old_ep queries must NOT run (old_episode_id == file.episode_id)
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_heuristic_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, show_result, ep_heuristic_result, orphan_delete_result]
+        )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
         session.commit = AsyncMock()

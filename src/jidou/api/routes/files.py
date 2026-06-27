@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
@@ -223,8 +225,57 @@ async def patch_file(
             file.matched_by = None
             if "error_message" not in payload.model_fields_set:
                 file.error_message = None
+            # Purge any orphan rows tied to this file — they reference the old
+            # show and resolving them after reassignment would corrupt show_id.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.downloaded_file_id == file.id
+                )
+            )
     if "episode_id" in payload.model_fields_set:
+        old_episode_id = file.episode_id
         file.episode_id = payload.episode_id
+        if payload.episode_id is not None:
+            # Auto-dismiss any orphan record that was waiting for this file to be re-linked.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.downloaded_file_id == file.id
+                )
+            )
+            # Mark the target episode as tracked so the UI and stats reflect the link.
+            ep = (
+                await db_session.execute(select(Episode).where(Episode.id == payload.episode_id))
+            ).scalar_one_or_none()
+            if ep is not None:
+                if file.show_id is not None and ep.show_id != file.show_id:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Episode does not belong to the file's show",
+                    )
+                if ep.file_tracked and old_episode_id != payload.episode_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Episode is already tracked by another file",
+                    )
+                ep.file_tracked = True
+                ep.file_tracked_at = datetime.now(UTC)
+                ep.tracked_filename = file.local_path or file.original_filename
+                ep.tracked_source = "match"
+        # Clear stale tracking on the previous episode only when no other file
+        # still points to it — mirrors the guard in manual_match_file.
+        if old_episode_id is not None and old_episode_id != payload.episode_id:
+            count_result = await db_session.execute(
+                select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
+            )
+            if (count_result.scalar() or 0) == 0:
+                old_ep = (
+                    await db_session.execute(select(Episode).where(Episode.id == old_episode_id))
+                ).scalar_one_or_none()
+                if old_ep is not None:
+                    old_ep.file_tracked = False
+                    old_ep.file_tracked_at = None
+                    old_ep.tracked_filename = None
+                    old_ep.tracked_source = None
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:
@@ -478,6 +529,18 @@ async def manual_match_file(
             ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
             if ep is not None:
                 file.episode_id = ep.id
+                # Only dismiss the orphan once an episode is confirmed; keeping it
+                # when episode_id stays None preserves DQ visibility until the
+                # route task resolves the link.
+                await db_session.execute(
+                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                        OrphanedTrackingRecord.downloaded_file_id == file.id
+                    )
+                )
+                ep.file_tracked = True
+                ep.file_tracked_at = datetime.now(UTC)
+                ep.tracked_filename = file.local_path or file.original_filename
+                ep.tracked_source = "match"
 
     # Clear stale tracking on the old episode only when the episode actually
     # changed.  Running this after the heuristic avoids falsely clearing

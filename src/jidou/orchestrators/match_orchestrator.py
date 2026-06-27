@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.llm_service import LLMService
 
@@ -224,6 +225,11 @@ class MatchOrchestrator:
                         file.episode_id = ep.id
                         file.matched_by = matched_by
                         file.status = FileStatus.ROUTED
+                        await self.session.execute(
+                            OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                                OrphanedTrackingRecord.downloaded_file_id == file.id
+                            )
+                        )
                         ep.file_tracked = True
                         ep.file_tracked_at = datetime.now(UTC)
                         ep.tracked_filename = file.original_filename
