@@ -25,9 +25,7 @@ class OrphanedTrackingRecord(TimestampMixin, Base):
     __tablename__ = "orphaned_tracking_records"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    show_id: Mapped[int] = mapped_column(
-        ForeignKey("shows.id", ondelete="CASCADE"), index=True
-    )
+    show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), index=True)
     tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tracked_source: Mapped[str] = mapped_column(String(20))
     old_season_number: Mapped[int] = mapped_column(Integer)

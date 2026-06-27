@@ -226,6 +226,7 @@ async def patch_file(
             if "error_message" not in payload.model_fields_set:
                 file.error_message = None
     if "episode_id" in payload.model_fields_set:
+        old_episode_id = file.episode_id
         file.episode_id = payload.episode_id
         if payload.episode_id is not None:
             # Auto-dismiss any orphan record that was waiting for this file to be re-linked.
@@ -243,6 +244,16 @@ async def patch_file(
                 ep.file_tracked_at = datetime.now(UTC)
                 ep.tracked_filename = file.local_path or file.original_filename
                 ep.tracked_source = "match"
+        # Clear stale tracking on the previous episode when the file is re-assigned.
+        if old_episode_id is not None and old_episode_id != payload.episode_id:
+            old_ep = (
+                await db_session.execute(select(Episode).where(Episode.id == old_episode_id))
+            ).scalar_one_or_none()
+            if old_ep is not None:
+                old_ep.file_tracked = False
+                old_ep.file_tracked_at = None
+                old_ep.tracked_filename = None
+                old_ep.tracked_source = None
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:

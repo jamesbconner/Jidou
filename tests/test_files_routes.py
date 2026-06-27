@@ -477,6 +477,57 @@ def test_patch_file_episode_id_marks_target_episode_tracked() -> None:
         app.dependency_overrides.clear()
 
 
+def test_patch_file_reassign_episode_clears_stale_tracking() -> None:
+    """PATCH episode_id reassignment clears file_tracked on the old episode."""
+    from jidou.database import get_session
+    from jidou.models.episode import Episode
+
+    f = _make_file(id=1, show_id=5)
+    f.local_path = "/media/show.s01e01.mkv"
+    f.episode_id = 10  # old episode
+
+    new_ep = MagicMock(spec=Episode)
+    new_ep.id = 42
+    new_ep.file_tracked = False
+
+    old_ep = MagicMock(spec=Episode)
+    old_ep.id = 10
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.s01e01.mkv"
+    old_ep.tracked_source = "match"
+    old_ep.file_tracked_at = "2026-01-01"
+
+    async def _reassign_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        new_ep_result = MagicMock()
+        new_ep_result.scalar_one_or_none.return_value = new_ep
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, new_ep_result, old_ep_result]
+        )
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _reassign_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 42})
+        assert response.status_code == 200
+        assert f.episode_id == 42
+        assert new_ep.file_tracked is True
+        assert new_ep.tracked_source == "match"
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert old_ep.tracked_source is None
+        assert old_ep.file_tracked_at is None
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_match_file_flushes_then_commits() -> None:
     """Match endpoint must flush before commit so the DB state is visible."""
     from jidou.database import get_session
