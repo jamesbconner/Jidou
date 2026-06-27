@@ -56,7 +56,11 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
       ? resolve.error.message
       : resolve.error
         ? 'Resolve failed'
-        : null
+        : dismiss.error instanceof Error
+          ? dismiss.error.message
+          : dismiss.error
+            ? 'Dismiss failed'
+            : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

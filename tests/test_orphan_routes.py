@@ -60,11 +60,13 @@ def _make_episode_mock(*, id: int = 10, show_id: int = 1) -> MagicMock:
 def _make_file_mock(
     *,
     id: int = 50,
+    show_id: int | None = 1,
     local_path: str | None = None,
     original_filename: str = "show.s01e05.mkv",
 ) -> MagicMock:
     f = MagicMock(spec=DownloadedFile)
     f.id = id
+    f.show_id = show_id
     f.episode_id = None
     f.local_path = local_path
     f.original_filename = original_filename
@@ -332,6 +334,22 @@ def test_resolve_download_orphan_uses_original_filename_when_no_local_path() -> 
         response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
         assert response.status_code == 204
         assert ep.tracked_filename == "show.s01e05.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resolve_download_orphan_returns_422_when_file_belongs_to_wrong_show() -> None:
+    """POST /api/orphans/{id}/resolve returns 422 when the linked file is from a different show."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(show_id=1, downloaded_file_id=50)
+    ep = _make_episode_mock(show_id=1)
+    file = _make_file_mock(show_id=99)  # wrong show
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep, file)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 422
+        assert "different show" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

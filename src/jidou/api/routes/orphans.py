@@ -192,6 +192,11 @@ async def resolve_orphan(
                 status_code=404,
                 detail="The downloaded file linked to this orphan record no longer exists",
             )
+        if file.show_id is not None and file.show_id != record.show_id:
+            raise HTTPException(
+                status_code=422,
+                detail="The downloaded file linked to this orphan belongs to a different show",
+            )
         file.episode_id = payload.episode_id
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
