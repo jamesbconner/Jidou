@@ -594,10 +594,17 @@ def _rematch_session(
       2. conflict check
       3. tracked-episodes snapshot (Phase 1)
       4. episode bulk-delete
-      5. new-episodes query (Phase 2)
-      6. orphaned-files query (Phase 3)
+      5. orphan dedup-delete (always runs for TV)
+      6. new-episodes query (Phase 2)
+      7. orphaned-files query (Phase 3)
 
-    Movie or preserve_tracking=False:
+    TV + preserve_tracking=False:
+      1. show lookup
+      2. conflict check
+      3. episode bulk-delete
+      4. orphan dedup-delete (clean-slate clears prior DQ rows)
+
+    Movie:
       1. show lookup
       2. conflict check
       3. episode bulk-delete
@@ -613,16 +620,18 @@ def _rematch_session(
         conflict_result.scalar_one_or_none.return_value = conflict
         delete_result = MagicMock()
 
-        if preserve_tracking and media_type != "movie":
+        if media_type == "movie":
+            side_effects = [show_result, conflict_result, delete_result]
+        elif preserve_tracking:
             tracked_result = MagicMock()
             tracked_scalars = MagicMock()
             tracked_scalars.all.return_value = tracked_episodes or []
             tracked_result.scalars.return_value = tracked_scalars
+            dedup_delete_result = MagicMock()
             new_eps_result = MagicMock()
             new_eps_scalars = MagicMock()
             new_eps_scalars.all.return_value = new_episodes or []
             new_eps_result.scalars.return_value = new_eps_scalars
-            dedup_delete_result = MagicMock()
             orphan_result = MagicMock()
             orphan_scalars = MagicMock()
             orphan_scalars.all.return_value = orphaned_files or []
@@ -632,12 +641,14 @@ def _rematch_session(
                 conflict_result,
                 tracked_result,
                 delete_result,
-                new_eps_result,
                 dedup_delete_result,
+                new_eps_result,
                 orphan_result,
             ]
         else:
-            side_effects = [show_result, conflict_result, delete_result]
+            # TV + preserve_tracking=False: clean-slate still runs the dedup delete
+            dedup_delete_result = MagicMock()
+            side_effects = [show_result, conflict_result, delete_result, dedup_delete_result]
 
         session.execute = AsyncMock(side_effect=side_effects)
         session.flush = AsyncMock()
@@ -950,6 +961,39 @@ def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
                 json={"tmdb_id": 200, "media_type": "tv", "preserve_tracking": False},
             )
         assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
+    """preserve_tracking=False still issues the orphan dedup delete so the DQ tab is cleared."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    captured: list[AsyncMock] = []
+    base_session = _rematch_session(show, preserve_tracking=False, media_type="tv")
+
+    async def _capturing():
+        async for s in base_session():
+            captured.append(s)
+            yield s
+
+    app.dependency_overrides[get_session] = _capturing
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post(
+                "/api/shows/1/rematch",
+                json={"tmdb_id": 200, "media_type": "tv", "preserve_tracking": False},
+            )
+        assert response.status_code == 200
+        # 4 execute calls: show lookup, conflict check, episode delete, orphan dedup delete
+        assert captured[0].execute.call_count == 4
     finally:
         app.dependency_overrides.clear()
 

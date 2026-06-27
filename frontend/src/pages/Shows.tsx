@@ -412,13 +412,13 @@ export default function Shows() {
           })()}
 
           {/* Issue table */}
-          {dqRows.length === 0 ? (
+          {dqRows.length === 0 && orphans.length === 0 ? (
             <p className="text-sm text-gray-500">
               {dqFilter
                 ? `No shows with this issue.`
                 : `No data quality issues found across ${shows.length} show${shows.length !== 1 ? 's' : ''}.`}
             </p>
-          ) : (
+          ) : dqRows.length > 0 ? (
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b">
@@ -455,7 +455,7 @@ export default function Shows() {
                 })}
               </tbody>
             </table>
-          )}
+          ) : null}
 
           {/* Orphaned tracking records */}
           {orphans.length > 0 && (

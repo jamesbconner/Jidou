@@ -588,6 +588,14 @@ async def rematch_show(
                 status_code=502, detail="TMDB episode sync failed; rematch aborted"
             ) from exc
 
+        # Always purge stale orphan rows for this show on any TV rematch so that
+        # clean-slate rematches (preserve_tracking=False) don't leave prior DQ entries.
+        await db_session.execute(
+            OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                OrphanedTrackingRecord.show_id == show_id
+            )
+        )
+
         # Phase 2: Restore tracking on new episodes matching by (season, episode) key.
         # Phase 3: Re-link DownloadedFile rows whose episode_id was SET NULL by cascade.
         if payload.preserve_tracking:
@@ -606,14 +614,6 @@ async def rematch_show(
                     matched_ep.tracked_filename = state["tracked_filename"]
                     matched_ep.tracked_source = state["tracked_source"]
                     migrated += 1
-
-            # Remove stale orphan records for this show before inserting fresh ones
-            # so that repeated rematches don't stack duplicate DQ entries.
-            await db_session.execute(
-                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-                    OrphanedTrackingRecord.show_id == show_id
-                )
-            )
 
             orphan_stmt = select(DownloadedFile).where(
                 DownloadedFile.show_id == show_id,
