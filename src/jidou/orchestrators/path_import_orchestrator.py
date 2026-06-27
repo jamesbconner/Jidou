@@ -386,9 +386,12 @@ class PathImportOrchestrator:
         # Normalized exact match wins; otherwise take the top relevance result.
         # Normalization strips punctuation so "Daredevil Born Again" matches
         # TMDB's "Daredevil: Born Again" without matching the shorter "Daredevil".
+        # Scan ALL candidates — not just the first five — because TMDB's recency
+        # bias can rank a newer show (e.g. "Daredevil: Born Again") above an older
+        # exact match (e.g. the 2015 "Daredevil") when both appear in the results.
         show_dir_norm = _normalize_title(show_dir)
         best = candidates[0]
-        for c in candidates[:5]:
+        for c in candidates:
             if _normalize_title(c.get("name", "")) == show_dir_norm:
                 best = c
                 break
