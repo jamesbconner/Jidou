@@ -215,22 +215,36 @@ class RouteOrchestrator:
                         dest,
                     )
 
-                dest.parent.mkdir(parents=True, exist_ok=True)
+                # Synthetic import files already live at their final path —
+                # skip the move to avoid shutil.Error(src == dst).
+                if str(source) == str(dest):
+                    logger.info(
+                        "File id=%d already at destination; no move needed: %s",
+                        file.id,
+                        dest,
+                    )
+                    file.status = FileStatus.ROUTED
+                    file.error_message = None
+                    files_routed += 1
+                    await self._update_episode_tracking(file, show.id)
+                else:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
 
-                # Write dest to DB *before* the filesystem move so a crash after
-                # the move still leaves the row pointing at the correct location.
-                file.local_path = str(dest)
-                await self.session.flush()
-                await self.session.commit()
+                    # Write dest to DB *before* the filesystem move so a crash
+                    # after the move still leaves the row pointing at the correct
+                    # location.
+                    file.local_path = str(dest)
+                    await self.session.flush()
+                    await self.session.commit()
 
-                shutil.move(str(source), str(dest))
+                    shutil.move(str(source), str(dest))
 
-                file.status = FileStatus.ROUTED
-                file.error_message = None
-                files_routed += 1
-                logger.info("Routed %s → %s", source, dest)
+                    file.status = FileStatus.ROUTED
+                    file.error_message = None
+                    files_routed += 1
+                    logger.info("Routed %s → %s", source, dest)
 
-                await self._update_episode_tracking(file, show.id)
+                    await self._update_episode_tracking(file, show.id)
 
             except Exception as exc:
                 logger.error(

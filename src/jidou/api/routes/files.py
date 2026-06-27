@@ -462,7 +462,27 @@ async def manual_match_file(
     file.status = FileStatus.MATCHED
     file.error_message = None
 
-    if old_episode_id is not None:
+    # Populate parsed_season / parsed_episode from filename heuristic so
+    # RouteOrchestrator can place the file in Season NN/ instead of show root.
+    # Run BEFORE stale-episode clearing so we know the new episode_id and can
+    # skip the clear when the file stays on the same episode.
+    if file.parsed_season is None and file.parsed_episode is None:
+        se = _heuristic_se(file.original_filename)
+        if se is not None:
+            file.parsed_season, file.parsed_episode = se
+            ep_stmt = select(Episode).where(
+                (Episode.show_id == show.id)
+                & (Episode.season_number == file.parsed_season)
+                & (Episode.episode_number == file.parsed_episode)
+            )
+            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+            if ep is not None:
+                file.episode_id = ep.id
+
+    # Clear stale tracking on the old episode only when the episode actually
+    # changed.  Running this after the heuristic avoids falsely clearing
+    # tracking when the file resolves back to the same episode it was on.
+    if old_episode_id is not None and old_episode_id != file.episode_id:
         count_result = await db_session.execute(
             select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
         )
@@ -476,21 +496,6 @@ async def manual_match_file(
                 old_ep.file_tracked_at = None
                 old_ep.tracked_filename = None
                 old_ep.tracked_source = None
-
-    # Populate parsed_season / parsed_episode from filename heuristic so
-    # RouteOrchestrator can place the file in Season NN/ instead of show root.
-    if file.parsed_season is None and file.parsed_episode is None:
-        se = _heuristic_se(file.original_filename)
-        if se is not None:
-            file.parsed_season, file.parsed_episode = se
-            ep_stmt = select(Episode).where(
-                (Episode.show_id == show.id)
-                & (Episode.season_number == file.parsed_season)
-                & (Episode.episode_number == file.parsed_episode)
-            )
-            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-            if ep is not None:
-                file.episode_id = ep.id
 
     await db_session.flush()
     await db_session.refresh(file)
