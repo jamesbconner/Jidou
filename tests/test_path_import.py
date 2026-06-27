@@ -507,7 +507,7 @@ async def test_tmdb_fallback_emits_warn_when_no_exact_match() -> None:
     orch = PathImportOrchestrator(session, tmdb, dry_run=True, on_event=capture_event)
 
     with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
-        show, action = await orch._tmdb_create_show("Daredevil")
+        _, action = await orch._tmdb_create_show("Daredevil")
 
     assert action == "created"
     # The fallback selection must surface as a warning so the user sees it.
