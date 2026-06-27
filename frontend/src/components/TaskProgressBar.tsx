@@ -26,6 +26,7 @@ function buildStats(task: TaskList): Stat[] {
     case 'scan':
       return [
         { label: 'paths scanned', value: n('paths_scanned') },
+        { label: 'found', value: n('files_found') },
         { label: 'new files', value: n('files_created'), highlight: n('files_created') > 0 },
         { label: 'skipped', value: n('files_skipped') },
       ]
@@ -54,6 +55,21 @@ function buildStats(task: TaskList): Stat[] {
         { label: 'matched', value: n('files_matched'), highlight: n('files_matched') > 0 },
         { label: 'routed', value: n('files_routed'), highlight: n('files_routed') > 0 },
         ...(n('episodes_upserted') > 0 ? [{ label: 'episodes synced', value: n('episodes_upserted') }] : []),
+      ]
+    case 'import':
+      return [
+        { label: 'shows created', value: n('shows_created'), highlight: n('shows_created') > 0 },
+        { label: 'shows found', value: n('shows_found') },
+        ...(n('shows_not_found') > 0 ? [{ label: 'not found', value: n('shows_not_found'), highlight: true }] : []),
+        { label: 'episodes tracked', value: n('episodes_tracked'), highlight: n('episodes_tracked') > 0 },
+        ...(n('episodes_unmatched') > 0 ? [{ label: 'unmatched', value: n('episodes_unmatched') }] : []),
+      ]
+    case 'db_import':
+      return [
+        { label: 'shows created', value: n('shows_created'), highlight: n('shows_created') > 0 },
+        { label: 'shows updated', value: n('shows_updated') },
+        { label: 'episodes created', value: n('episodes_created'), highlight: n('episodes_created') > 0 },
+        { label: 'episodes updated', value: n('episodes_updated') },
       ]
     default:
       return []
