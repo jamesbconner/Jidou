@@ -217,9 +217,11 @@ jidou/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/config` | View current application config |
-| POST | `/api/config/test-sftp` | Test SFTP connectivity |
-| POST | `/api/config/test-tmdb` | Test TMDB API key |
+| GET | `/api/config` | View current application config (secrets redacted) |
+| POST | `/api/config/test/tmdb` | Test TMDB API key |
+| POST | `/api/config/test/sftp` | Test SFTP connectivity |
+| POST | `/api/config/test/redis` | Test Redis connectivity |
+| POST | `/api/config/test/llm` | Test LLM provider connectivity |
 
 ### Shows
 
@@ -244,11 +246,17 @@ jidou/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/files` | List files (filter by status, show, filename) |
-| GET | `/api/files/unmatched` | List files needing manual review |
-| GET | `/api/files/{id}` | Get file detail |
-| GET | `/api/files/{id}/tmdb-suggestions` | TMDB show suggestions for an unmatched file |
 | PATCH | `/api/files/{id}` | Correct `show_id`, `episode_id`, `status`, or `error_message` |
-| POST | `/api/files/{id}/match` | Re-trigger episode matching |
+| POST | `/api/files/{id}/match` | Manually assign a show; runs heuristic S/E detection |
+
+### Data Quality — Orphaned Tracking Records
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/orphans` | List all orphaned tracking records |
+| GET | `/api/orphans/show/{show_id}` | List orphans for a specific show |
+| DELETE | `/api/orphans/{id}` | Dismiss (delete) an orphan without resolving it |
+| POST | `/api/orphans/{id}/resolve` | Resolve an orphan by linking to a specific episode |
 
 ### Watchlist
 
@@ -259,6 +267,7 @@ jidou/
 | GET | `/api/watchlist/{id}` | Get entry |
 | PATCH | `/api/watchlist/{id}` | Update status / notes / position |
 | DELETE | `/api/watchlist/{id}` | Remove entry |
+| PATCH | `/api/watchlist/reorder` | Bulk-update positions after drag-to-reorder |
 
 ### Tasks
 
@@ -266,9 +275,11 @@ jidou/
 |--------|------|-------------|
 | GET | `/api/tasks` | List background tasks |
 | GET | `/api/tasks/{id}` | Get task status + progress |
+| GET | `/api/tasks/count` | Count of tasks by status |
+| GET | `/api/tasks/active` | List currently running tasks |
 | POST | `/api/tasks/trigger` | Launch `scan` / `download` / `match` / `route` / `sync` |
-| POST | `/api/tasks/{id}/cancel` | Cancel a running task |
-| WS | `/ws/task-progress/{task_id}` | Real-time progress stream |
+| DELETE | `/api/tasks/{id}` | Cancel a running task |
+| WS | `/ws` | WebSocket endpoint for real-time task progress |
 
 ### Import / Export
 
@@ -298,6 +309,41 @@ discovered → downloading → downloaded → matched → routing → routed
 | `routing` | Being moved to final library path |
 | `routed` | In final location |
 | `error` | Terminal failure with error message |
+
+---
+
+## Data Quality Surface
+
+The Shows page has a **Data** tab that surfaces issues requiring human attention.
+
+### Per-show DQ checks
+
+Each show card shows an amber badge when any of the following checks fail:
+
+| Check | Condition |
+|-------|-----------|
+| Missing local path | `show.local_path` is `null` |
+| Unset content type | `show.content_type` is `null` |
+| No episodes synced | `show.episode_count == 0` (TV/anime only) |
+| Orphaned records | Show has one or more orphaned tracking records |
+
+### Orphaned Tracking Records
+
+When a show is **re-matched** to a different TMDB entry, the old episode list is replaced. Any episode whose `(season_number, episode_number)` had confirmed tracking data but has no equivalent in the new TMDB entry becomes an **orphaned tracking record**.
+
+Two categories exist:
+
+| Category | `tracked_source` | `downloaded_file_id` | Resolution |
+|----------|-----------------|---------------------|-----------|
+| Import-sourced | `import` | `null` | Resolve by writing tracking fields directly to a specific episode |
+| Match-sourced | `match` | _(points to the DownloadedFile)_ | Resolve by linking the file to the correct episode via the modal |
+
+Orphans are automatically dismissed when:
+- The file's `episode_id` is confirmed by `POST /files/{id}/match`
+- The file's `show_id` is changed via `PATCH /files/{id}` (stale orphans for the old show are purged)
+- The user explicitly dismisses via `DELETE /api/orphans/{id}`
+
+To resolve an orphan manually, use the Resolve modal on the Data Quality tab or `POST /api/orphans/{id}/resolve` with `{ "episode_id": <target_id> }`.
 
 ---
 
@@ -416,6 +462,8 @@ Migration history:
 |----------|-------------|
 | `0001` | Initial schema: `shows`, `episodes`, `downloaded_files`, `background_tasks`, `watchlist` |
 | `0002` | Add `file_tracked_at` to `episodes` |
+| `0003` | Add `tracked_filename` and `tracked_source` to `episodes` (full tracking metadata) |
+| `0004` | Add `orphaned_tracking_records` table for Data Quality surface |
 
 ---
 
