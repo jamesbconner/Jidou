@@ -616,6 +616,10 @@ class PathImportOrchestrator:
             logger.warning("LLM returned invalid JSON for episode parse of %r: %r", filename, text)
             return None, None
 
+        if not isinstance(parsed, dict):
+            logger.warning("LLM returned non-dict JSON for episode parse of %r: %r", filename, text)
+            return None, None
+
         raw_season = parsed.get("season")
         raw_episode = parsed.get("episode")
         try:

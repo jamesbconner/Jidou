@@ -212,6 +212,15 @@ class TestParseLine:
         assert entry is not None
         assert entry.episode != 20
 
+    def test_compact_skipped_when_season_disagrees_with_directory(self) -> None:
+        # "924" encodes S09E24 but the directory says Season 10 — must not
+        # produce S10E24 (wrong episode tracked); episode should be None.
+        line = r"Z:\tv\Criminal Minds\Season 10\criminal.minds.924.hdtv-lol.mp4"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 10
+        assert entry.episode is None
+
     # -- "Episode N" / "Season N Episode N" word patterns ---------------------
 
     def test_episode_word_label(self) -> None:
@@ -736,6 +745,25 @@ async def test_llm_parse_episode_invalid_json_returns_none() -> None:
 
 
 @pytest.mark.asyncio
+async def test_llm_parse_episode_non_dict_json_returns_none() -> None:
+    """Bare JSON null (valid JSON but not a dict) must not crash with AttributeError."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = "null"
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.unusual.filename.mkv")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
 async def test_llm_parse_episode_sends_known_season_hint() -> None:
     """known_season is included in the prompt when supplied."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
@@ -824,9 +852,7 @@ async def test_find_episode_returns_none_when_llm_also_fails() -> None:
     session = AsyncMock()
     llm = MagicMock()
     llm.is_available.return_value = True
-    llm.complete = AsyncMock(
-        return_value=MagicMock(content='{"season": null, "episode": null}')
-    )
+    llm.complete = AsyncMock(return_value=MagicMock(content='{"season": null, "episode": null}'))
 
     orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
 

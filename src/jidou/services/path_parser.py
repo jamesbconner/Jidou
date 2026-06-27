@@ -139,7 +139,7 @@ def parse_line(line: str) -> ParsedPathEntry | None:
         show_root = str(path.parent)
 
     stem = path.stem
-    fn_season, episode = _parse_episode(stem)
+    fn_season, episode = _parse_episode(stem, dir_season=dir_season)
 
     # Season from directory takes precedence over season from filename.
     season = dir_season if dir_season is not None else fn_season
@@ -195,7 +195,7 @@ def group_by_show(
 # ---------------------------------------------------------------------------
 
 
-def _parse_episode(stem: str) -> tuple[int | None, int | None]:
+def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None, int | None]:
     """Extract (season, episode) from a filename stem (no extension).
 
     Priority order (first match wins):
@@ -208,9 +208,14 @@ def _parse_episode(stem: str) -> tuple[int | None, int | None]:
     7. ``N - Title`` where title starts with a letter.
     8. ``N - Title`` at start of stem (title may start with a digit).
     9. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
+       Tokens whose encoded season disagrees with ``dir_season`` are skipped
+       to prevent cross-season mismatches (e.g. ``924`` under ``Season 10``
+       would otherwise yield S10E24 instead of remaining unmatched).
 
     Args:
         stem: Filename without extension.
+        dir_season: Season already known from the directory name, if any.
+            Used only to guard the ambiguous compact-code path.
 
     Returns:
         ``(season, episode)`` where either value may be ``None``.
@@ -257,6 +262,8 @@ def _parse_episode(stem: str) -> tuple[int | None, int | None]:
         s_num = int(raw[:-2])
         e_num = int(raw[-2:])
         if s_num >= 1 and e_num >= 1:
+            if dir_season is not None and s_num != dir_season:
+                continue
             return s_num, e_num
 
     return None, None
