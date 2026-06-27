@@ -378,14 +378,21 @@ def test_patch_file_explicit_episode_wins_over_show_clear() -> None:
         session = AsyncMock()
         file_result = MagicMock()
         file_result.scalar_one_or_none.return_value = f
-        delete_result = MagicMock()
+        show_orphan_delete_result = MagicMock()  # show_changed → purge old-show orphans
+        ep_orphan_delete_result = MagicMock()  # episode_id set → purge file orphans
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = ep
         # count for old ep (99→42 change); return 1 so old-ep clearing is skipped
         count_result = MagicMock()
         count_result.scalar.return_value = 1
         session.execute = AsyncMock(
-            side_effect=[file_result, delete_result, ep_result, count_result]
+            side_effect=[
+                file_result,
+                show_orphan_delete_result,
+                ep_orphan_delete_result,
+                ep_result,
+                count_result,
+            ]
         )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()

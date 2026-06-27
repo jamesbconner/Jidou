@@ -225,6 +225,13 @@ async def patch_file(
             file.matched_by = None
             if "error_message" not in payload.model_fields_set:
                 file.error_message = None
+            # Purge any orphan rows tied to this file — they reference the old
+            # show and resolving them after reassignment would corrupt show_id.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.downloaded_file_id == file.id
+                )
+            )
     if "episode_id" in payload.model_fields_set:
         old_episode_id = file.episode_id
         file.episode_id = payload.episode_id
