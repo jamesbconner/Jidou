@@ -160,6 +160,12 @@ async def resolve_orphan(
             detail="Episode does not belong to the show associated with this orphan record",
         )
 
+    if ep.file_tracked:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode is already tracked; dismiss the orphan record if this is intentional",
+        )
+
     if record.downloaded_file_id is None:
         # Imported orphan: write tracking directly onto the Episode row.
         ep.file_tracked = True
@@ -174,8 +180,12 @@ async def resolve_orphan(
                 select(DownloadedFile).where(DownloadedFile.id == record.downloaded_file_id)
             )
         ).scalar_one_or_none()
-        if file is not None:
-            file.episode_id = payload.episode_id
+        if file is None:
+            raise HTTPException(
+                status_code=404,
+                detail="The downloaded file linked to this orphan record no longer exists",
+            )
+        file.episode_id = payload.episode_id
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
         ep.tracked_filename = record.tracked_filename

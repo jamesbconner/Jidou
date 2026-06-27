@@ -1124,6 +1124,81 @@ def test_rematch_creates_orphan_record_for_unresolvable_downloaded_file() -> Non
         app.dependency_overrides.clear()
 
 
+def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> None:
+    """A match-sourced tracked episode with no parseable file is still persisted as an orphan.
+
+    Phase 3 only finds DownloadedFile rows with non-NULL parsed_season/episode.
+    A file with NULL parsed_season won't appear in the orphan_stmt query.
+    The unrecoverable_keys loop must catch and persist these match-sourced entries.
+    """
+    from unittest.mock import patch as _patch
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.models.orphan import OrphanedTrackingRecord
+
+    show = _make_show(id=1, tmdb_id=100)
+
+    # A match-sourced tracked episode — the file has no parseable S/E numbers
+    old_ep = _make_episode(id=10, show_id=1)
+    old_ep.season_number = 5
+    old_ep.episode_number = 2
+    old_ep.file_tracked = True
+    old_ep.tracked_filename = "/media/show.weird_name.mkv"
+    old_ep.tracked_source = "match"
+    old_ep.file_tracked_at = None
+
+    # New episodes have no S05E02
+    new_ep = _make_episode(id=50, show_id=1)
+    new_ep.season_number = 1
+    new_ep.episode_number = 1
+    new_ep.file_tracked = False
+
+    tmdb_mock = AsyncMock()
+    tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
+
+    added_objects: list[object] = []
+
+    # orphaned_files=[] simulates the file not appearing in the Phase 3 query
+    # (e.g., parsed_season=NULL so it's excluded by the orphan_stmt WHERE clause)
+    app.dependency_overrides[get_session] = _rematch_session(
+        show,
+        tracked_episodes=[old_ep],
+        new_episodes=[new_ep],
+        orphaned_files=[],
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            original_session_override = app.dependency_overrides[get_session]
+
+            async def _capturing_session() -> AsyncMock:  # type: ignore[return]
+                async for session in original_session_override():
+                    real_add = session.add
+
+                    def _add(obj: object, _orig: object = real_add) -> None:
+                        added_objects.append(obj)
+                        return _orig(obj)  # type: ignore[call-arg]
+
+                    session.add = _add
+                    yield session
+
+            app.dependency_overrides[get_session] = _capturing_session
+            response = TestClient(app).post(
+                "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
+            )
+        assert response.status_code == 200
+        orphans_created = [o for o in added_objects if isinstance(o, OrphanedTrackingRecord)]
+        assert len(orphans_created) == 1
+        assert orphans_created[0].old_season_number == 5
+        assert orphans_created[0].old_episode_number == 2
+        assert orphans_created[0].tracked_source == "match"
+        assert orphans_created[0].downloaded_file_id is None
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/shows/{show_id}/sync-episodes
 # ---------------------------------------------------------------------------

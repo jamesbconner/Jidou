@@ -328,3 +328,35 @@ def test_resolve_orphan_returns_404_when_episode_missing() -> None:
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_resolve_download_orphan_returns_404_when_file_missing() -> None:
+    """POST /api/orphans/{id}/resolve returns 404 when DownloadedFile no longer exists."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(tracked_source="match", downloaded_file_id=50)
+    ep = _make_episode_mock()
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep, None)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 404
+        assert "no longer exists" in response.json()["detail"]
+        assert ep.file_tracked is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resolve_orphan_returns_409_when_episode_already_tracked() -> None:
+    """POST /api/orphans/{id}/resolve returns 409 when target episode is already tracked."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(tracked_source="import")
+    ep = _make_episode_mock()
+    ep.file_tracked = True
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 409
+        assert "already tracked" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()

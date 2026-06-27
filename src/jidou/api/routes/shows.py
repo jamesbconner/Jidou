@@ -624,6 +624,9 @@ async def rematch_show(
             orphaned_files = (await db_session.execute(orphan_stmt)).scalars().all()
             relinked = 0
             orphan_records_created = 0
+            # Track which (season, episode) keys Phase 3 already persisted as orphans
+            # so the unrecoverable_keys loop below can skip them and avoid duplicates.
+            phase3_orphan_keys: set[tuple[int, int]] = set()
             for file in orphaned_files:
                 if file.parsed_season is not None and file.parsed_episode is not None:
                     new_ep = ep_by_se.get((file.parsed_season, file.parsed_episode))
@@ -642,25 +645,29 @@ async def rematch_show(
                                 downloaded_file_id=file.id,
                             )
                         )
+                        phase3_orphan_keys.add((file.parsed_season, file.parsed_episode))
                         orphan_records_created += 1
 
-            # Imported orphans: tracked_source="import" entries whose S/E key has no
-            # match. "match" entries are handled above via the file query.
+            # All unrecoverable tracking keys (both "import" and "match") need an orphan
+            # record. For "match" keys already handled by Phase 3 (file found via parsed
+            # S/E), skip to avoid duplicates. "match" keys whose files lack parsed S/E
+            # numbers only appear here and would otherwise be silently dropped.
             unrecoverable_keys = set(old_tracking.keys()) - set(ep_by_se.keys())
             for key in unrecoverable_keys:
+                if key in phase3_orphan_keys:
+                    continue
                 state = old_tracking[key]
-                if state["tracked_source"] == "import":
-                    db_session.add(
-                        OrphanedTrackingRecord(
-                            show_id=show_id,
-                            tracked_filename=state["tracked_filename"],
-                            tracked_source="import",
-                            old_season_number=key[0],
-                            old_episode_number=key[1],
-                            downloaded_file_id=None,
-                        )
+                db_session.add(
+                    OrphanedTrackingRecord(
+                        show_id=show_id,
+                        tracked_filename=state["tracked_filename"],
+                        tracked_source=state["tracked_source"] or "match",
+                        old_season_number=key[0],
+                        old_episode_number=key[1],
+                        downloaded_file_id=None,
                     )
-                    orphan_records_created += 1
+                )
+                orphan_records_created += 1
 
             if unrecoverable_keys:
                 logger.warning(
