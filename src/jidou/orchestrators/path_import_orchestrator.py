@@ -270,6 +270,7 @@ class PathImportOrchestrator:
             )
             logger.warning("Could not resolve show for directory %r", show_dir)
             show_result.episodes_unmatched = len(entries)
+            show_result.unmatched_paths = [e.raw_path for e in entries]
             return show_result
 
         show_result.tmdb_id = show.tmdb_id
@@ -289,6 +290,7 @@ class PathImportOrchestrator:
                     show_result.episodes_tracked += 1
                 else:
                     show_result.episodes_unmatched += 1
+                    show_result.unmatched_paths.append(entry.raw_path)
             return show_result
 
         # Match each file entry to an Episode row.
