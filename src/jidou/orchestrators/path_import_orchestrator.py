@@ -54,8 +54,8 @@ _LLM_SHOW_MATCH_SYSTEM = (
     "You are a TV show title matcher. "
     "Given a directory name and a numbered list of TMDB candidates, "
     "identify which candidate is the same show as the directory. "
-    "Directories often omit articles (\"Marvel's\", \"The\") or franchise subtitles "
-    "(\"Born Again\") that appear in TMDB titles — treat those as matches. "
+    'Directories often omit articles ("Marvel\'s", "The") or franchise subtitles '
+    '("Born Again") that appear in TMDB titles — treat those as matches. '
     "A sequel or spin-off with a shared word is NOT a match unless the directory "
     "clearly refers to that specific entry. "
     'Example: "Daredevil" matches "Marvel\'s Daredevil" but NOT "Daredevil: Born Again". '
