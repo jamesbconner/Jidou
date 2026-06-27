@@ -503,11 +503,6 @@ async def manual_match_file(
     file.show_id = show.id
     file.episode_id = None  # cleared here; route task resolves and writes new ep
     file.matched_by = MatchedBy.MANUAL
-    await db_session.execute(
-        OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-            OrphanedTrackingRecord.downloaded_file_id == file.id
-        )
-    )
     file.status = FileStatus.MATCHED
     file.error_message = None
 
@@ -527,6 +522,14 @@ async def manual_match_file(
             ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
             if ep is not None:
                 file.episode_id = ep.id
+                # Only dismiss the orphan once an episode is confirmed; keeping it
+                # when episode_id stays None preserves DQ visibility until the
+                # route task resolves the link.
+                await db_session.execute(
+                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                        OrphanedTrackingRecord.downloaded_file_id == file.id
+                    )
+                )
 
     # Clear stale tracking on the old episode only when the episode actually
     # changed.  Running this after the heuristic avoids falsely clearing
