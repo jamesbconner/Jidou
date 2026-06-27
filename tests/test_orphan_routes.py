@@ -57,10 +57,17 @@ def _make_episode_mock(*, id: int = 10, show_id: int = 1) -> MagicMock:
     return ep
 
 
-def _make_file_mock(*, id: int = 50) -> MagicMock:
+def _make_file_mock(
+    *,
+    id: int = 50,
+    local_path: str | None = None,
+    original_filename: str = "show.s01e05.mkv",
+) -> MagicMock:
     f = MagicMock(spec=DownloadedFile)
     f.id = id
     f.episode_id = None
+    f.local_path = local_path
+    f.original_filename = original_filename
     return f
 
 
@@ -297,7 +304,8 @@ def test_resolve_download_orphan_links_file_to_episode() -> None:
 
     orphan = _make_orphan(tracked_source="match", downloaded_file_id=50)
     ep = _make_episode_mock()
-    file = _make_file_mock()
+    # local_path takes precedence over original_filename when set
+    file = _make_file_mock(local_path="/local/show.s01e05.mkv", original_filename="show.s01e05.mkv")
     app.dependency_overrides[get_session] = _resolve_session(orphan, ep, file)
     try:
         response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
@@ -305,8 +313,25 @@ def test_resolve_download_orphan_links_file_to_episode() -> None:
         assert file.episode_id == 10
         assert ep.file_tracked is True
         assert ep.tracked_source == "match"
-        assert ep.tracked_filename == "/media/show.s01e05.mkv"
+        # tracked_filename uses file's current path, not stale orphan record filename
+        assert ep.tracked_filename == "/local/show.s01e05.mkv"
         assert ep.file_tracked_at is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_resolve_download_orphan_uses_original_filename_when_no_local_path() -> None:
+    """POST /api/orphans/{id}/resolve falls back to original_filename when local_path is None."""
+    from jidou.database import get_session
+
+    orphan = _make_orphan(tracked_source="match", downloaded_file_id=50)
+    ep = _make_episode_mock()
+    file = _make_file_mock(local_path=None, original_filename="show.s01e05.mkv")
+    app.dependency_overrides[get_session] = _resolve_session(orphan, ep, file)
+    try:
+        response = TestClient(app).post("/api/orphans/1/resolve", json={"episode_id": 10})
+        assert response.status_code == 204
+        assert ep.tracked_filename == "show.s01e05.mkv"
     finally:
         app.dependency_overrides.clear()
 

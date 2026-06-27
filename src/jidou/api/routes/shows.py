@@ -638,7 +638,7 @@ async def rematch_show(
                         db_session.add(
                             OrphanedTrackingRecord(
                                 show_id=show_id,
-                                tracked_filename=file.original_filename,
+                                tracked_filename=file.local_path or file.original_filename,
                                 tracked_source="match",
                                 old_season_number=file.parsed_season,
                                 old_episode_number=file.parsed_episode,

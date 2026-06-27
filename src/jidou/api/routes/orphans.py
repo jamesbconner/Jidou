@@ -195,7 +195,7 @@ async def resolve_orphan(
         file.episode_id = payload.episode_id
         ep.file_tracked = True
         ep.file_tracked_at = datetime.now(UTC)
-        ep.tracked_filename = record.tracked_filename
+        ep.tracked_filename = file.local_path or file.original_filename
         ep.tracked_source = "match"
         logger.info(
             "Resolved download orphan id=%d → file id=%d episode id=%d",
