@@ -133,11 +133,11 @@ class RssImportOrchestrator:
             )
 
         # 4. Upsert feeds
-        rssfeeds: dict[str, object] = body.get("rssfeeds", {})  # type: ignore[assignment]
+        rssfeeds: dict[str, object] = body.get("rssfeeds") or {}  # type: ignore[assignment]
         feed_key_to_id = await self._upsert_feeds(rssfeeds, result)
 
         # 5. Upsert subscriptions
-        remote_subs: dict[str, dict[str, object]] = body.get("subscriptions", {})  # type: ignore[assignment]
+        remote_subs: dict[str, dict[str, object]] = body.get("subscriptions") or {}  # type: ignore[assignment]
         await self._upsert_subscriptions(remote_subs, feed_key_to_id, result)
 
         await self._on_event(
@@ -189,10 +189,10 @@ class RssImportOrchestrator:
                 result.feeds_created += 1
                 logger.debug("Created RssFeed remote_key=%r name=%r", key, name)
             else:
-                existing.name = name
-                existing.url = url
-                existing.extra_config = extra
                 if not self._dry_run:
+                    existing.name = name
+                    existing.url = url
+                    existing.extra_config = extra
                     await self._session.flush()
                 key_to_id[key] = existing.id
                 result.feeds_updated += 1
@@ -257,27 +257,27 @@ class RssImportOrchestrator:
 
         # Update existing subscriptions
         for db_row, merged in delta.to_update:
-            for col in _SUBSCRIPTION_COLUMNS:
-                if col in merged:
-                    setattr(db_row, col, merged[col])
+            if not self._dry_run:
+                for col in _SUBSCRIPTION_COLUMNS:
+                    if col in merged:
+                        setattr(db_row, col, merged[col])
 
-            # Update feed linkage if we have a resolution
-            new_feed_id = self._resolve_feed_id(merged, feed_key_to_id)
-            if new_feed_id is not None:
-                db_row.feed_id = new_feed_id
+                new_feed_id = self._resolve_feed_id(merged, feed_key_to_id)
+                if new_feed_id is not None:
+                    db_row.feed_id = new_feed_id
 
-            # Auto-link show if not already linked
+                if "extra_config" in merged:
+                    raw_extra = merged["extra_config"]
+                    db_row.extra_config = raw_extra if isinstance(raw_extra, dict) else None
+
+            # Auto-link show: read db_row.show_id but only write in live run
             if db_row.show_id is None:
                 name = str(merged.get("name", db_row.name))
                 show_id = show_by_lower_title.get(name.lower())
                 if show_id:
-                    db_row.show_id = show_id
+                    if not self._dry_run:
+                        db_row.show_id = show_id
                     result.shows_linked += 1
-
-            # Preserve DB extra_config (already in merged from _db_row_fields)
-            if "extra_config" in merged:
-                raw_extra = merged["extra_config"]
-                db_row.extra_config = raw_extra if isinstance(raw_extra, dict) else None
 
             result.subscriptions_updated += 1
 

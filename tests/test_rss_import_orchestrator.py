@@ -267,6 +267,74 @@ async def test_remote_deleted_keys_logged() -> None:
     assert any("99" in e for e in events)
 
 
+@pytest.mark.asyncio
+async def test_dry_run_does_not_mutate_existing_feed() -> None:
+    """In dry_run mode, existing RssFeed ORM objects are not mutated."""
+    from jidou.models.rss import RssFeed
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _make_session()
+    existing_feed = MagicMock(spec=RssFeed)
+    existing_feed.id = 7
+    existing_feed.name = "OldName"
+    session.execute = AsyncMock(return_value=_exec_result(scalar=existing_feed))
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=True,
+        on_event=_noop_event,
+    )
+
+    rssfeeds = {"0": {"name": "NewName", "url": "https://showrss.info/feed"}}
+    result = RssImportResult()
+    await orc._upsert_feeds(rssfeeds, result)
+
+    assert result.feeds_updated == 1
+    # Name must NOT be changed in dry_run
+    assert existing_feed.name == "OldName"
+    session.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_null_rssfeeds_section_treated_as_empty() -> None:
+    """A JSON null value for rssfeeds/subscriptions is treated as empty, not crashed."""
+    import json as _json
+
+    body_with_nulls = {
+        "rssfeeds": None,
+        "subscriptions": None,
+        "cookies": {},
+        "email_messages": {},
+    }
+    raw = _json.dumps({"file": 1}, separators=(",", ":")) + _json.dumps(
+        body_with_nulls, separators=(",", ":")
+    )
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[
+            _exec_result(scalars_all=[]),  # db_subs select (subscriptions empty)
+            _exec_result(scalars_all=[]),  # shows select
+        ]
+    )
+    sftp = _make_sftp(raw.encode())
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+    result = await orc.run()
+
+    assert result.feeds_created == 0
+    assert result.subscriptions_created == 0
+    assert result.errors == []
+
+
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
