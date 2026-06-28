@@ -16,6 +16,7 @@ from jidou.api.routes import (
     files,
     import_routes,
     orphans,
+    rss,
     shows,
     tasks,
     watchlist,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router, prefix="/api")
     app.include_router(admin.router, prefix="/api")
     app.include_router(watchlist.router, prefix="/api")
+    app.include_router(rss.router, prefix="/api")
     app.include_router(import_routes.router, prefix="/api")
     app.include_router(export_routes.router, prefix="/api")
     app.include_router(ws_router)
