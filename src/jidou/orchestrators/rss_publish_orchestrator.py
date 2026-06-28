@@ -92,13 +92,15 @@ class RssPublishOrchestrator:
         """
         result = RssPublishResult(dry_run=self._dry_run)
 
-        # 1. Reconcile out-of-band changes and store a pre_publish snapshot
+        # 1. Reconcile out-of-band changes and store a pre_publish snapshot.
+        # Always run live (dry_run=False) so the DB reflects remote state before we
+        # build the publish payload. The dry_run flag only governs uploads (steps 3 & 7).
         await self._on_event("info", "Running pre-publish import reconciliation", None)
         import_orc = RssImportOrchestrator(
             session=self._session,
             sftp=self._sftp,
             remote_path=self._remote_path,
-            dry_run=self._dry_run,
+            dry_run=False,
             on_event=self._on_event,
             snapshot_type="pre_publish",
         )

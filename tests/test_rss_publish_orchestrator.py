@@ -454,6 +454,8 @@ async def test_publish_snapshot_type_passed_to_import_orc() -> None:
 
     _, kwargs = mock_orc_cls.call_args
     assert kwargs.get("snapshot_type") == "pre_publish"
+    # Always live so DB is reconciled before building publish payload
+    assert kwargs.get("dry_run") is False
 
 
 # ---------------------------------------------------------------------------
