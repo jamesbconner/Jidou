@@ -27,6 +27,10 @@ router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) -> None:
     """Create a disabled RssSubscription stub for show_id if one does not exist.
 
+    Uses a savepoint so a concurrent-insert IntegrityError does not roll back
+    the enclosing watchlist transaction.  The partial unique index on
+    ``(show_id) WHERE remote_key IS NULL`` enforces at most one stub per show.
+
     Args:
         session: Active async SQLAlchemy session.
         show_id: ID of the show to link the stub to.
@@ -41,7 +45,16 @@ async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str)
             active=True,
         )
         session.add(stub)
-        logger.debug("Created RSS subscription stub for show_id=%d name=%r", show_id, show_title)
+        try:
+            async with session.begin_nested():
+                await session.flush()
+            logger.debug(
+                "Created RSS subscription stub for show_id=%d name=%r", show_id, show_title
+            )
+        except IntegrityError:
+            logger.debug(
+                "RSS stub for show_id=%d already exists (concurrent insert ignored)", show_id
+            )
 
 
 @router.get("", response_model=list[WatchlistRead])

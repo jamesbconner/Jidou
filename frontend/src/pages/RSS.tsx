@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import {
   useRssFeeds,
@@ -285,10 +285,13 @@ function SubscriptionsTable({ subs }: { subs: RssSubscriptionRead[] }) {
   )
 }
 
+const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
+
 export default function RSS() {
   const [filter, setFilter] = useState<SubFilter>('all')
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
+  const qc = useQueryClient()
 
   const { data: feeds } = useRssFeeds()
   const { data: subs, isLoading } = useRssSubscriptions()
@@ -302,7 +305,7 @@ export default function RSS() {
     enabled: !!importTaskId,
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      return status === 'running' || status === 'pending' ? 3000 : false
+      return status && TERMINAL.has(status) ? false : 3000
     },
   })
   const { data: publishTask } = useQuery({
@@ -311,9 +314,24 @@ export default function RSS() {
     enabled: !!publishTaskId,
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      return status === 'running' || status === 'pending' ? 3000 : false
+      return status && TERMINAL.has(status) ? false : 3000
     },
   })
+
+  // Refresh feeds/subs once the import task completes
+  useEffect(() => {
+    if (importTask?.status === 'completed') {
+      qc.invalidateQueries({ queryKey: ['rss', 'feeds'] })
+      qc.invalidateQueries({ queryKey: ['rss', 'subscriptions'] })
+    }
+  }, [importTask?.status, qc])
+
+  // Refresh subs once the publish task completes (keys may have been assigned)
+  useEffect(() => {
+    if (publishTask?.status === 'completed') {
+      qc.invalidateQueries({ queryKey: ['rss', 'subscriptions'] })
+    }
+  }, [publishTask?.status, qc])
 
   const filteredSubs = (subs ?? []).filter((s) => {
     if (filter === 'stubs') return s.remote_key === null

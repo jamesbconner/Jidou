@@ -658,3 +658,37 @@ def test_suggest_regex_503_when_llm_returns_bad_json() -> None:
             assert "unparseable" in r.json()["detail"].lower()
         finally:
             app.dependency_overrides.clear()
+
+
+def test_suggest_regex_strips_markdown_fences() -> None:
+    """POST suggest-regex parses JSON wrapped in markdown code fences."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1)
+    sub.name = "My Show"
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    fenced_response = LLMResponse(
+        content='```json\n{"regex_include": "My.Show", "regex_exclude": "FRENCH"}\n```',
+        model="gpt-4o-mini",
+        provider=LLMProvider.OPENAI,
+        cached=False,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=fenced_response)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
+        try:
+            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+            assert r.status_code == 200
+            data = r.json()
+            assert data["regex_include"] == "My.Show"
+            assert data["regex_exclude"] == "FRENCH"
+        finally:
+            app.dependency_overrides.clear()

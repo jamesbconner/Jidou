@@ -410,9 +410,15 @@ async def suggest_regex(
         raise HTTPException(status_code=503, detail="LLM provider call failed.")
 
     import json
+    import re
+
+    # Strip markdown code fences that some models add despite the system prompt
+    raw = response.content.strip()
+    raw = re.sub(r"^```[a-z]*\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
 
     try:
-        parsed = json.loads(response.content)
+        parsed = json.loads(raw)
         regex_include = str(parsed["regex_include"])
         regex_exclude = str(parsed["regex_exclude"])
     except (json.JSONDecodeError, KeyError, TypeError) as exc:

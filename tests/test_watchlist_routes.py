@@ -55,6 +55,18 @@ def _make_entry(
     return e
 
 
+def _make_begin_nested(*, flush_side_effect: object = None) -> MagicMock:
+    """Return a mock for session.begin_nested() that works as an async context manager.
+
+    Args:
+        flush_side_effect: Optionally override session.flush side_effect inside the savepoint.
+    """
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=None)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=ctx)
+
+
 def _session_override(
     single: MagicMock | None = None,
     many: list[MagicMock] | None = None,
@@ -73,6 +85,7 @@ def _session_override(
         session.add = MagicMock()  # add() is not awaitable; must not be AsyncMock
         session.flush = AsyncMock()
         session.delete = AsyncMock()
+        session.begin_nested = _make_begin_nested()
 
         if execute_side_effect is not None:
             session.execute = AsyncMock(side_effect=execute_side_effect)
@@ -206,6 +219,7 @@ def test_create_watchlist_entry() -> None:
         session.add = MagicMock(side_effect=_add_with_defaults)
         session.flush = AsyncMock()
         session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        session.begin_nested = _make_begin_nested()
         yield session
 
     app.dependency_overrides[get_session] = _mock_session
@@ -295,6 +309,7 @@ def test_create_watchlist_entry_creates_rss_stub() -> None:
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
         session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        session.begin_nested = _make_begin_nested()
         yield session
 
     app.dependency_overrides[get_session] = _mock_session
@@ -347,6 +362,7 @@ def test_create_watchlist_entry_skips_stub_if_sub_exists() -> None:
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
         session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        session.begin_nested = _make_begin_nested()
         yield session
 
     app.dependency_overrides[get_session] = _mock_session
@@ -381,6 +397,7 @@ def test_create_watchlist_entry_idempotent_creates_rss_stub() -> None:
         session.execute = AsyncMock(side_effect=[show_result, existing_result, no_sub_result])
         session.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
         session.flush = AsyncMock()
+        session.begin_nested = _make_begin_nested()
         yield session
 
     app.dependency_overrides[get_session] = _mock_session
@@ -390,6 +407,58 @@ def test_create_watchlist_entry_idempotent_creates_rss_stub() -> None:
         rss_stubs = [o for o in added_objects if isinstance(o, RssSubscription)]
         assert len(rss_stubs) == 1
         assert rss_stubs[0].enabled_in_config is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
+    """POST /api/watchlist tolerates an IntegrityError on the stub insert (TOCTOU race)."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = None
+    no_sub_result = MagicMock()
+    no_sub_result.scalar_one_or_none.return_value = None  # both concurrent requests see no sub
+
+    call_count = 0
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[show_result, existing_result, no_sub_result])
+
+        def _add(obj: object) -> None:
+            obj.id = 10  # type: ignore[attr-defined]
+            obj.created_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
+
+        def _refresh_with_show(obj: object, attrs: list[str]) -> None:
+            if "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        # Flush #1 succeeds (WatchlistEntry); flush #2 (stub inside savepoint) raises
+        session.flush = AsyncMock(
+            side_effect=[None, IntegrityError("stmt", {}, Exception("duplicate key"))]
+        )
+        session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        session.begin_nested = _make_begin_nested()
+
+        nonlocal call_count
+        call_count += 1
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
+        assert response.status_code == 201
     finally:
         app.dependency_overrides.clear()
 
