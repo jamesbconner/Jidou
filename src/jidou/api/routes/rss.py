@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
+from jidou.models.show import Show
 from jidou.schemas.rss_schema import (
     RssFeedCreate,
     RssFeedRead,
@@ -120,7 +121,8 @@ async def delete_feed(
         HTTPException: 404 if the feed is not found.
         HTTPException: 400 if subscriptions reference the feed.
     """
-    stmt = select(RssFeed).where(RssFeed.id == feed_id)
+    # Lock the feed row first so no subscription can attach between the guard check and delete
+    stmt = select(RssFeed).where(RssFeed.id == feed_id).with_for_update()
     feed = (await db_session.execute(stmt)).scalar_one_or_none()
     if feed is None:
         raise HTTPException(status_code=404, detail="RSS feed not found")
@@ -204,6 +206,13 @@ async def create_subscription(
         if feed_exists is None:
             raise HTTPException(status_code=404, detail="RSS feed not found")
 
+    if payload.show_id is not None:
+        show_exists = (
+            await db_session.execute(select(Show).where(Show.id == payload.show_id))
+        ).scalar_one_or_none()
+        if show_exists is None:
+            raise HTTPException(status_code=404, detail="Show not found")
+
     new_sub = RssSubscription(**payload.model_dump())
     db_session.add(new_sub)
     await db_session.flush()
@@ -270,6 +279,13 @@ async def update_subscription(
         ).scalar_one_or_none()
         if feed_exists is None:
             raise HTTPException(status_code=404, detail="RSS feed not found")
+
+    if "show_id" in payload.model_fields_set and payload.show_id is not None:
+        show_exists = (
+            await db_session.execute(select(Show).where(Show.id == payload.show_id))
+        ).scalar_one_or_none()
+        if show_exists is None:
+            raise HTTPException(status_code=404, detail="Show not found")
 
     for field in payload.model_fields_set:
         setattr(sub, field, getattr(payload, field))

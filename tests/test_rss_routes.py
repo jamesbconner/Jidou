@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription
+from jidou.models.show import Show
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -15,6 +16,14 @@ from jidou.models.rss import RssFeed, RssSubscription
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _make_show(*, id: int = 1) -> MagicMock:
+    s = MagicMock(spec=Show)
+    s.id = id
+    s.title = f"Test Show {id}"
+    return s
+
 
 
 def _make_feed(
@@ -460,5 +469,55 @@ def test_delete_subscription_success() -> None:
     try:
         r = TestClient(app).delete("/api/rss/subscriptions/1")
         assert r.status_code == 204
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# show_id validation (Bugbot fix)
+# ---------------------------------------------------------------------------
+
+
+def test_create_subscription_bad_show_id_returns_404() -> None:
+    """A non-existent show_id on create returns 404, not 500."""
+    from jidou.database import get_session
+
+    feed = _make_feed()
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = feed
+    show_not_found = MagicMock()
+    show_not_found.scalar_one_or_none.return_value = None
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[feed_result, show_not_found]
+    )
+    try:
+        r = TestClient(app).post(
+            "/api/rss/subscriptions",
+            json={"name": "Test", "feed_id": 1, "show_id": 999},
+        )
+        assert r.status_code == 404
+        assert "Show" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_subscription_bad_show_id_returns_404() -> None:
+    """A non-existent show_id on update returns 404, not 500."""
+    from jidou.database import get_session
+
+    sub = _make_sub()
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    show_not_found = MagicMock()
+    show_not_found.scalar_one_or_none.return_value = None
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[sub_result, show_not_found]
+    )
+    try:
+        r = TestClient(app).patch("/api/rss/subscriptions/1", json={"show_id": 999})
+        assert r.status_code == 404
+        assert "Show" in r.json()["detail"]
     finally:
         app.dependency_overrides.clear()
