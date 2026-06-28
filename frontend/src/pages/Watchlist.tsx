@@ -2,11 +2,13 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -154,9 +156,7 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
-    position: isDragging ? 'relative' : undefined,
-    zIndex: isDragging ? 1 : undefined,
+    opacity: isDragging ? 0 : 1,
   }
 
   return (
@@ -200,6 +200,18 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   )
 }
 
+// ─── Drag overlay row (follows cursor during drag) ────────────────────────────
+
+function DragRow({ entry }: { entry: WatchlistRead }) {
+  return (
+    <div className="bg-white border-2 border-blue-400 rounded shadow-xl px-4 py-3 text-sm flex items-center gap-3 cursor-grabbing opacity-90">
+      <GripIcon />
+      <span className="font-medium">{entry.show.title}</span>
+      <span className="text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Watchlist() {
@@ -212,6 +224,7 @@ export default function Watchlist() {
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
+  const [activeEntry, setActiveEntry] = useState<WatchlistRead | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -270,7 +283,13 @@ export default function Watchlist() {
     })
   }, [entries, statusFilter])
 
+  function handleDragStart(event: DragStartEvent) {
+    const entry = orderedEntries.find((e) => e.id === event.active.id)
+    setActiveEntry(entry ?? null)
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveEntry(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
     // Drop rapid successive drags while a prior batch is in flight to prevent
@@ -287,6 +306,10 @@ export default function Watchlist() {
       // diverge from orderedEntries after prior successful reorders.
       onError: () => setOrderedEntries(snapshot),
     })
+  }
+
+  function handleDragCancel() {
+    setActiveEntry(null)
   }
 
   // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
@@ -545,20 +568,26 @@ export default function Watchlist() {
       ) : entries.length === 0 ? (
         <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-              <tr>
-                <th className="px-2 py-2 w-6" />
-                <th className="px-4 py-2 text-left w-8">#</th>
-                <th className="px-4 py-2 text-left">Show</th>
-                <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Notes</th>
-                <th className="px-4 py-2 text-left">Added</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="px-2 py-2 w-6" />
+                  <th className="px-4 py-2 text-left w-8">#</th>
+                  <th className="px-4 py-2 text-left">Show</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                  <th className="px-4 py-2 text-left">Notes</th>
+                  <th className="px-4 py-2 text-left">Added</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
               <SortableContext items={orderedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
                 <tbody className="divide-y">
                   {orderedEntries.map((e, i) => (
@@ -573,9 +602,12 @@ export default function Watchlist() {
                   ))}
                 </tbody>
               </SortableContext>
-            </DndContext>
-          </table>
-        </div>
+            </table>
+          </div>
+          <DragOverlay>
+            {activeEntry ? <DragRow entry={activeEntry} /> : null}
+          </DragOverlay>
+        </DndContext>
       )}
     </div>
   )
