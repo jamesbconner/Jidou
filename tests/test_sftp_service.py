@@ -606,9 +606,7 @@ class TestUploadBytes:
         assert isinstance(result, UploadResult)
 
     @pytest.mark.asyncio
-    async def test_upload_bytes_calls_sftp_open_and_write(
-        self, sftp_service: SFTPService
-    ) -> None:
+    async def test_upload_bytes_calls_sftp_open_and_write(self, sftp_service: SFTPService) -> None:
         """Non-dry-run must call sftp.open() in write mode and write the data."""
         payload = b"rss config content"
         mock_fh = AsyncMock()
