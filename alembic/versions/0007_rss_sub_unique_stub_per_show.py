@@ -13,6 +13,11 @@ Create Date: 2026-06-28
 import sqlalchemy as sa
 from alembic import op
 
+revision = "0007_rss_sub_unique_stub_per_show"
+down_revision = "0006_add_rss_tables"
+branch_labels = None
+depends_on = None
+
 
 def upgrade() -> None:
     op.create_index(
