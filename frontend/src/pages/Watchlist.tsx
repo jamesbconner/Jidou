@@ -116,57 +116,6 @@ function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   )
 }
 
-// ─── Search result row ────────────────────────────────────────────────────────
-
-interface SearchResultRowProps {
-  posterPath: string | null
-  title: string
-  year: string | undefined
-  libraryShowId: number | null
-  watchlistStatus: WatchlistStatus | null
-  onAdd: () => void
-  isPending: boolean
-}
-
-function SearchResultRow({
-  posterPath, title, year, libraryShowId, watchlistStatus, onAdd, isPending,
-}: SearchResultRowProps) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
-      {posterPath ? (
-        <img src={`${TMDB_IMG}${posterPath}`} alt={title} className="w-8 h-12 object-cover rounded flex-shrink-0" />
-      ) : (
-        <div className="w-8 h-12 bg-gray-200 rounded flex-shrink-0" />
-      )}
-      <div className="flex-1 min-w-0">
-        {libraryShowId ? (
-          <Link to={`/shows/${libraryShowId}`} className="text-sm font-medium hover:underline text-blue-700 truncate block">
-            {title}
-          </Link>
-        ) : (
-          <span className="text-sm font-medium truncate block">{title}</span>
-        )}
-        <span className="text-xs text-gray-400">{year ?? '—'}</span>
-      </div>
-      <div className="flex-shrink-0">
-        {watchlistStatus ? (
-          <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLOR[watchlistStatus]}`}>
-            {STATUS_LABEL[watchlistStatus]}
-          </span>
-        ) : (
-          <button
-            onClick={onAdd}
-            disabled={isPending}
-            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isPending ? 'Adding…' : 'Add'}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ─── Drag handle icon ─────────────────────────────────────────────────────────
 
 function GripIcon() {
@@ -497,43 +446,97 @@ export default function Watchlist() {
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="overflow-y-auto flex-1 divide-y">
+            <div className="overflow-y-auto flex-1 p-5">
               {searchQuery.trim().length < 2 ? (
-                <p className="px-5 py-3 text-sm text-gray-400">Type at least 2 characters to search.</p>
+                <p className="text-sm text-gray-400">Type at least 2 characters to search.</p>
               ) : searchMode === 'tmdb' && (tmdbLoading || debouncedQuery !== searchQuery) ? (
-                <p className="px-5 py-3 text-sm text-gray-400">Searching…</p>
+                <p className="text-sm text-gray-400">Searching…</p>
               ) : !hasResults ? (
-                <p className="px-5 py-3 text-sm text-gray-400">No results.</p>
-              ) : searchMode === 'library' ? (
-                libraryResults.map((s) => (
-                  <SearchResultRow
-                    key={s.id}
-                    posterPath={s.poster_path ?? null}
-                    title={s.title}
-                    year={s.release_date?.slice(0, 4)}
-                    libraryShowId={s.id}
-                    watchlistStatus={watchlistStatusByShowId.get(s.id) ?? null}
-                    onAdd={() => handleAddFromLibrary(s.id)}
-                    isPending={pendingLibraryIds.has(s.id)}
-                  />
-                ))
+                <p className="text-sm text-gray-400">No results.</p>
               ) : (
-                tmdbResults.map((r) => {
-                  const libraryShow = libraryByTmdbId.get(r.id)
-                  const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
-                  return (
-                    <SearchResultRow
-                      key={`${r.id}:${r.media_type}`}
-                      posterPath={r.poster_path ?? null}
-                      title={r.name ?? r.title ?? 'Unknown'}
-                      year={(r.first_air_date ?? r.release_date)?.slice(0, 4)}
-                      libraryShowId={libraryShow?.id ?? null}
-                      watchlistStatus={wlStatus}
-                      onAdd={() => handleAddFromTmdb(r)}
-                      isPending={pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))}
-                    />
-                  )
-                })
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {searchMode === 'library' ? (
+                    libraryResults.map((s) => {
+                      const wlStatus = watchlistStatusByShowId.get(s.id) ?? null
+                      return (
+                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                          <div className="relative">
+                            {s.poster_path ? (
+                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full h-36 object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                            )}
+                            {wlStatus && (
+                              <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
+                                {STATUS_LABEL[wlStatus]}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs font-medium line-clamp-2">{s.title}</p>
+                            {wlStatus ? (
+                              <Link
+                                to={`/shows/${s.id}`}
+                                className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                              >
+                                View in Library
+                              </Link>
+                            ) : (
+                              <button
+                                onClick={() => handleAddFromLibrary(s.id)}
+                                disabled={pendingLibraryIds.has(s.id)}
+                                className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add to Watchlist'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    tmdbResults.map((r) => {
+                      const libraryShow = libraryByTmdbId.get(r.id)
+                      const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
+                      const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
+                      return (
+                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                          <div className="relative">
+                            {r.poster_path ? (
+                              <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                            )}
+                            {wlStatus && (
+                              <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
+                                {STATUS_LABEL[wlStatus]}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
+                            {wlStatus && libraryShow ? (
+                              <Link
+                                to={`/shows/${libraryShow.id}`}
+                                className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                              >
+                                View in Library
+                              </Link>
+                            ) : (
+                              <button
+                                onClick={() => handleAddFromTmdb(r)}
+                                disabled={isPending}
+                                className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {isPending ? 'Adding…' : 'Add to Watchlist'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
               )}
             </div>
           </div>
