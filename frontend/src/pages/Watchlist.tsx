@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -157,13 +158,14 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
     opacity: isDragging ? 0.4 : 1,
     position: isDragging ? 'relative' : undefined,
     zIndex: isDragging ? 1 : undefined,
+    userSelect: 'none',
   }
 
   return (
     <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
       <td
         {...(dragEnabled ? listeners : {})}
-        className={`px-2 py-2 ${dragEnabled ? 'text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing' : 'text-gray-300 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
         <GripIcon />
@@ -214,7 +216,8 @@ export default function Watchlist() {
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
