@@ -13,6 +13,7 @@ from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.watchlist_schema import (
     WatchlistCreate,
+    WatchlistPositionItem,
     WatchlistRead,
     WatchlistUpdate,
 )
@@ -142,6 +143,44 @@ async def create_watchlist_entry(
     )
     await db_session.refresh(entry, ["show"])
     return entry
+
+
+@router.post("/reorder", status_code=204)
+async def reorder_watchlist(
+    payload: list[WatchlistPositionItem],
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> None:
+    """Update positions for multiple watchlist entries atomically.
+
+    All positions are updated in a single transaction. If any entry ID is not
+    found, the entire operation is rejected with 404.
+
+    Args:
+        payload: List of ``{id, position}`` pairs.
+        db_session: DB session (injected).
+
+    Raises:
+        HTTPException: 404 if any entry ID in the payload is not found.
+    """
+    if not payload:
+        return
+
+    ids = [item.id for item in payload]
+    stmt = select(WatchlistEntry).where(WatchlistEntry.id.in_(ids))
+    entries_by_id = {e.id: e for e in (await db_session.execute(stmt)).scalars().all()}
+
+    missing = [i for i in ids if i not in entries_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Watchlist entries not found: {missing}",
+        )
+
+    for item in payload:
+        entries_by_id[item.id].position = item.position
+
+    await db_session.flush()
+    logger.info("Reordered %d watchlist entries", len(payload))
 
 
 @router.get("/{entry_id}", response_model=WatchlistRead)

@@ -51,6 +51,8 @@ export default function Shows() {
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
+  const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState<'library' | 'tmdb'>('library')
 
   const [pendingWatchlistShowIds, setPendingWatchlistShowIds] = useState<Set<number>>(new Set())
 
@@ -68,10 +70,19 @@ export default function Shows() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [query])
 
+  useEffect(() => {
+    if (!tmdbModalOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery(''); setDebouncedQuery('') }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tmdbModalOpen])
+
   const { data: shows = [], isLoading } = useShows(sort)
   // High limit so the indicator set covers the full library, not just the first page.
   const { data: allShows = [] } = useShows('title_asc', 10000)
-  const { data: searchData } = useSearchShows(debouncedQuery)
+  const { data: searchData, isLoading: tmdbSearching } = useSearchShows(modalMode === 'tmdb' ? debouncedQuery : '')
   const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
 
@@ -110,6 +121,12 @@ export default function Shows() {
     () => new Set(allShows.map((s) => s.tmdb_id)),
     [allShows],
   )
+
+  const librarySearchResults = useMemo(() => {
+    if (query.trim().length < 2) return []
+    const q = query.toLowerCase()
+    return allShows.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 10)
+  }, [allShows, query])
 
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
@@ -162,6 +179,17 @@ export default function Shows() {
     setFilterMinRating('')
   }
 
+  function closeModal() {
+    setTmdbModalOpen(false)
+    setQuery('')
+    setDebouncedQuery('')
+  }
+
+  function switchModalMode(mode: 'library' | 'tmdb') {
+    setModalMode(mode)
+    setDebouncedQuery(query)
+  }
+
   function handleTrack(r: TmdbResult) {
     createShow.mutate({
       tmdb_id: r.id,
@@ -207,13 +235,12 @@ export default function Shows() {
             ))}
           </select>
         )}
-        <input
-          type="search"
-          placeholder="Search TMDB…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        <button
+          onClick={() => setTmdbModalOpen(true)}
+          className="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Search shows…
+        </button>
       </div>
 
       {/* Tabs */}
@@ -231,9 +258,10 @@ export default function Shows() {
         </button>
       </div>
 
-      {tab === 'library' && (
+      {(tab === 'library' || tmdbModalOpen) && (
         <>
-          {/* Filter bar */}
+          {/* Filter bar — shown only on library tab; modal overlay covers it on other tabs */}
+          {tab === 'library' && (
           <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
             <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
 
@@ -284,59 +312,141 @@ export default function Shows() {
               <span className="text-gray-700">Upcoming episode</span>
             </label>
           </div>
-
-          {/* TMDB search results */}
-          {debouncedQuery.length >= 2 && searchData && searchData.results.length > 0 && (
-            <section>
-              <h2 className="text-sm font-medium text-gray-500 mb-2">TMDB Results</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {searchData.results.slice(0, 12).map((r) => {
-                  const mediaType = r.media_type ?? 'tv'
-                  const inLibrary = libraryTmdbIds.has(r.id)
-                  const libraryShow = inLibrary
-                    ? allShows.find((s) => s.tmdb_id === r.id)
-                    : undefined
-                  return (
-                    <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
-                      <div className="relative">
-                        {r.poster_path ? (
-                          <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
-                        ) : (
-                          <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
-                        )}
-                        {inLibrary && (
-                          <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">
-                            In Library
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-2">
-                        <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
-                        {inLibrary && libraryShow ? (
-                          <Link
-                            to={`/shows/${libraryShow.id}`}
-                            className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
-                          >
-                            View in Library
-                          </Link>
-                        ) : (
-                          <button
-                            onClick={() => handleTrack(r)}
-                            disabled={createShow.isPending}
-                            className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
-                          >
-                            Add to Library
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
           )}
 
-          {/* Library grid */}
+          {/* Show search modal */}
+          {tmdbModalOpen && (
+            <div
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+              onClick={closeModal}
+            >
+              <div
+                className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-5 py-4 border-b">
+                  <h3 className="font-semibold">Search Shows</h3>
+                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 text-lg leading-none" aria-label="Close">✕</button>
+                </div>
+
+                {/* Library / TMDB pill toggle */}
+                <div className="px-5 pt-4">
+                  <div className="flex rounded-lg border text-sm overflow-hidden">
+                    {(['library', 'tmdb'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => switchModalMode(m)}
+                        className={`flex-1 py-2 font-medium transition-colors ${
+                          modalMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {m === 'library' ? 'Library' : 'TMDB'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="px-5 pt-3 pb-3 border-b">
+                  <input
+                    type="search"
+                    autoFocus
+                    placeholder={modalMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="overflow-y-auto flex-1 p-5">
+                  {modalMode === 'library' ? (
+                    query.trim().length < 2 ? (
+                      <p className="text-sm text-gray-400">Type at least 2 characters to search your library.</p>
+                    ) : librarySearchResults.length === 0 ? (
+                      <p className="text-sm text-gray-500">No shows found for "{query}".</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {librarySearchResults.map((s) => (
+                          <Link
+                            key={s.id}
+                            to={`/shows/${s.id}`}
+                            onClick={closeModal}
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+                          >
+                            {s.poster_path ? (
+                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded flex-shrink-0" loading="lazy" />
+                            ) : (
+                              <div className="w-8 h-12 bg-gray-100 rounded flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{s.title}</p>
+                              <p className="text-xs text-gray-400">
+                                {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
+                              </p>
+                            </div>
+                            <span className="text-xs text-blue-600 shrink-0">View →</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    query.trim().length < 2 ? (
+                      <p className="text-sm text-gray-400">Type at least 2 characters to search TMDB.</p>
+                    ) : tmdbSearching || debouncedQuery !== query ? (
+                      <p className="text-sm text-gray-400">Searching…</p>
+                    ) : !searchData || searchData.results.length === 0 ? (
+                      <p className="text-sm text-gray-500">No results for "{debouncedQuery}".</p>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {searchData.results.slice(0, 12).map((r) => {
+                          const mediaType = r.media_type ?? 'tv'
+                          const inLibrary = libraryTmdbIds.has(r.id)
+                          const libraryShow = inLibrary
+                            ? allShows.find((s) => s.tmdb_id === r.id)
+                            : undefined
+                          return (
+                            <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+                              <div className="relative">
+                                {r.poster_path ? (
+                                  <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                                ) : (
+                                  <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                                )}
+                                {inLibrary && (
+                                  <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
+                                )}
+                              </div>
+                              <div className="p-2 flex flex-col flex-1">
+                                <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
+                                {inLibrary && libraryShow ? (
+                                  <Link
+                                    to={`/shows/${libraryShow.id}`}
+                                    onClick={closeModal}
+                                    className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                  >
+                                    View in Library
+                                  </Link>
+                                ) : (
+                                  <button
+                                    onClick={() => handleTrack(r)}
+                                    disabled={createShow.isPending}
+                                    className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                  >
+                                    Add
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'library' && (
           <section>
             <p className="text-xs text-gray-500 mb-2">
               {activeFilterCount > 0 ? `${filtered.length} of ${shows.length} shows` : `${shows.length} show${shows.length !== 1 ? 's' : ''}`}
@@ -361,6 +471,7 @@ export default function Shows() {
               </div>
             )}
           </section>
+          )}
         </>
       )}
 

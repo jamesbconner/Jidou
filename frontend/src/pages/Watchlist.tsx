@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -116,57 +117,6 @@ function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   )
 }
 
-// ─── Search result row ────────────────────────────────────────────────────────
-
-interface SearchResultRowProps {
-  posterPath: string | null
-  title: string
-  year: string | undefined
-  libraryShowId: number | null
-  watchlistStatus: WatchlistStatus | null
-  onAdd: () => void
-  isPending: boolean
-}
-
-function SearchResultRow({
-  posterPath, title, year, libraryShowId, watchlistStatus, onAdd, isPending,
-}: SearchResultRowProps) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
-      {posterPath ? (
-        <img src={`${TMDB_IMG}${posterPath}`} alt={title} className="w-8 h-12 object-cover rounded flex-shrink-0" />
-      ) : (
-        <div className="w-8 h-12 bg-gray-200 rounded flex-shrink-0" />
-      )}
-      <div className="flex-1 min-w-0">
-        {libraryShowId ? (
-          <Link to={`/shows/${libraryShowId}`} className="text-sm font-medium hover:underline text-blue-700 truncate block">
-            {title}
-          </Link>
-        ) : (
-          <span className="text-sm font-medium truncate block">{title}</span>
-        )}
-        <span className="text-xs text-gray-400">{year ?? '—'}</span>
-      </div>
-      <div className="flex-shrink-0">
-        {watchlistStatus ? (
-          <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLOR[watchlistStatus]}`}>
-            {STATUS_LABEL[watchlistStatus]}
-          </span>
-        ) : (
-          <button
-            onClick={onAdd}
-            disabled={isPending}
-            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isPending ? 'Adding…' : 'Add'}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ─── Drag handle icon ─────────────────────────────────────────────────────────
 
 function GripIcon() {
@@ -208,13 +158,14 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
     opacity: isDragging ? 0.4 : 1,
     position: isDragging ? 'relative' : undefined,
     zIndex: isDragging ? 1 : undefined,
+    userSelect: 'none',
   }
 
   return (
     <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
       <td
         {...(dragEnabled ? listeners : {})}
-        className={`px-2 py-2 ${dragEnabled ? 'text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing' : 'text-gray-300 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
         <GripIcon />
@@ -258,13 +209,16 @@ export default function Watchlist() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [searchMode, setSearchMode] = useState<'library' | 'tmdb'>('library')
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
   // Per-item pending sets so concurrent adds don't clobber each other's loading state.
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
+  const [reorderError, setReorderError] = useState<string | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -273,6 +227,15 @@ export default function Watchlist() {
     timerRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [searchQuery])
+
+  useEffect(() => {
+    if (!searchModalOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [searchModalOpen])
 
   const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
   // Unfiltered full list for search cross-reference — independent of the status filter and
@@ -314,19 +277,19 @@ export default function Watchlist() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    // Drop rapid successive drags while a prior batch is in flight to prevent
-    // interleaved PATCHes writing inconsistent positions to the server.
     if (reorderWatchlist.isPending) return
     const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
     const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
     const snapshot = orderedEntries.slice()
     const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
+    setReorderError(null)
     setOrderedEntries(reordered)
     reorderWatchlist.mutate(reordered, {
-      // Roll back to the pre-drag order, not entries (API sort), which can
-      // diverge from orderedEntries after prior successful reorders.
-      onError: () => setOrderedEntries(snapshot),
+      onError: (err) => {
+        setOrderedEntries(snapshot)
+        setReorderError(err instanceof Error ? err.message : 'Failed to save order')
+      },
     })
   }
 
@@ -343,10 +306,10 @@ export default function Watchlist() {
   )
 
   const libraryResults: ShowList[] = useMemo(() => {
-    if (!debouncedQuery.trim() || searchMode !== 'library') return []
-    const q = debouncedQuery.toLowerCase()
+    if (!searchQuery.trim() || searchMode !== 'library') return []
+    const q = searchQuery.toLowerCase()
     return allShows.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 8)
-  }, [allShows, debouncedQuery, searchMode])
+  }, [allShows, searchQuery, searchMode])
 
   const tmdbResults: TmdbResult[] = useMemo(
     () => (searchMode === 'tmdb' ? (tmdbData?.results ?? []).slice(0, 8) : []),
@@ -407,13 +370,12 @@ export default function Watchlist() {
     )
   }
 
-  const showSearchResults = debouncedQuery.trim().length >= 2
   const hasResults = searchMode === 'library' ? libraryResults.length > 0 : tmdbResults.length > 0
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Watchlist</h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl font-bold mr-auto">Watchlist</h1>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as WatchlistStatus | '')}
@@ -424,82 +386,168 @@ export default function Watchlist() {
             <option key={s} value={s}>{STATUS_LABEL[s]}</option>
           ))}
         </select>
+        <button
+          onClick={() => setSearchModalOpen(true)}
+          className="border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+        >
+          Search shows to add…
+        </button>
       </div>
 
       <p className="text-sm text-gray-500">
         Keep track of shows you want to watch, are currently watching, or have finished.
       </p>
 
-      {/* Add show search */}
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none flex-shrink-0">
-            <span className={searchMode === 'library' ? 'font-medium text-blue-600' : 'text-gray-400'}>Library</span>
-            <button
-              role="switch"
-              aria-checked={searchMode === 'tmdb'}
-              onClick={() => setSearchMode((m) => m === 'library' ? 'tmdb' : 'library')}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                  searchMode === 'tmdb' ? 'translate-x-4' : 'translate-x-1'
-                }`}
-              />
-            </button>
-            <span className={searchMode === 'tmdb' ? 'font-medium text-blue-600' : 'text-gray-400'}>TMDB</span>
-          </label>
-        </div>
+      {/* Search modal */}
+      {searchModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-semibold">Add to Watchlist</h3>
+              <button
+                onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
+                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
 
-        {showSearchResults && (
-          <div className="border rounded-lg divide-y overflow-hidden">
-            {searchMode === 'tmdb' && tmdbLoading ? (
-              <p className="px-3 py-2 text-sm text-gray-400">Searching…</p>
-            ) : !hasResults ? (
-              <p className="px-3 py-2 text-sm text-gray-400">No results.</p>
-            ) : searchMode === 'library' ? (
-              libraryResults.map((s) => (
-                <SearchResultRow
-                  key={s.id}
-                  posterPath={s.poster_path ?? null}
-                  title={s.title}
-                  year={s.release_date?.slice(0, 4)}
-                  libraryShowId={s.id}
-                  watchlistStatus={watchlistStatusByShowId.get(s.id) ?? null}
-                  onAdd={() => handleAddFromLibrary(s.id)}
-                  isPending={pendingLibraryIds.has(s.id)}
-                />
-              ))
-            ) : (
-              tmdbResults.map((r) => {
-                const libraryShow = libraryByTmdbId.get(r.id)
-                const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
-                return (
-                  <SearchResultRow
-                    key={`${r.id}:${r.media_type}`}
-                    posterPath={r.poster_path ?? null}
-                    title={r.name ?? r.title ?? 'Unknown'}
-                    year={(r.first_air_date ?? r.release_date)?.slice(0, 4)}
-                    libraryShowId={libraryShow?.id ?? null}
-                    watchlistStatus={wlStatus}
-                    onAdd={() => handleAddFromTmdb(r)}
-                    isPending={pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))}
-                  />
-                )
-              })
-            )}
+            {/* Library / TMDB pill toggle */}
+            <div className="px-5 pt-4">
+              <div className="flex rounded-lg border text-sm overflow-hidden">
+                {(['library', 'tmdb'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => { setSearchMode(m); setDebouncedQuery(searchQuery) }}
+                    className={`flex-1 py-2 font-medium transition-colors ${
+                      searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {m === 'library' ? 'Library' : 'TMDB'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-5 pt-3 pb-3 border-b">
+              <input
+                type="search"
+                autoFocus
+                placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              {searchQuery.trim().length < 2 ? (
+                <p className="text-sm text-gray-400">Type at least 2 characters to search.</p>
+              ) : searchMode === 'tmdb' && (tmdbLoading || debouncedQuery !== searchQuery) ? (
+                <p className="text-sm text-gray-400">Searching…</p>
+              ) : !hasResults ? (
+                <p className="text-sm text-gray-400">No results.</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {searchMode === 'library' ? (
+                    libraryResults.map((s) => {
+                      const wlStatus = watchlistStatusByShowId.get(s.id) ?? null
+                      return (
+                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                          <div className="relative">
+                            {s.poster_path ? (
+                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full h-36 object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                            )}
+                            {wlStatus && (
+                              <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
+                                {STATUS_LABEL[wlStatus]}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2 flex flex-col flex-1">
+                            <p className="text-xs font-medium line-clamp-2 flex-1">{s.title}</p>
+                            {wlStatus ? (
+                              <Link
+                                to={`/shows/${s.id}`}
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                              >
+                                View in Library
+                              </Link>
+                            ) : (
+                              <button
+                                onClick={() => handleAddFromLibrary(s.id)}
+                                disabled={pendingLibraryIds.has(s.id)}
+                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    tmdbResults.map((r) => {
+                      const libraryShow = libraryByTmdbId.get(r.id)
+                      const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
+                      const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
+                      return (
+                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                          <div className="relative">
+                            {r.poster_path ? (
+                              <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                            ) : (
+                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                            )}
+                            {wlStatus && (
+                              <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
+                                {STATUS_LABEL[wlStatus]}
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-2 flex flex-col flex-1">
+                            <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
+                            {wlStatus && libraryShow ? (
+                              <Link
+                                to={`/shows/${libraryShow.id}`}
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                              >
+                                View in Library
+                              </Link>
+                            ) : (
+                              <button
+                                onClick={() => handleAddFromTmdb(r)}
+                                disabled={isPending}
+                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {isPending ? 'Adding…' : 'Add'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {reorderError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+          Reorder failed: {reorderError}
+        </p>
+      )}
 
       {/* Entries table */}
       {isLoading ? (

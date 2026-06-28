@@ -38,6 +38,13 @@ class WatchlistUpdate(BaseModel):
     position: int | None = None
 
 
+class WatchlistPositionItem(BaseModel):
+    """Position update for a single entry in a bulk reorder request."""
+
+    id: int
+    position: int
+
+
 class WatchlistRead(BaseModel):
     """Full watchlist entry record."""
 
