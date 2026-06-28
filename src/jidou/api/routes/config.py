@@ -44,6 +44,7 @@ async def get_config() -> dict[str, Any]:
         "local_tv_path": settings.local_tv_path,
         "local_anime_path": settings.local_anime_path,
         "local_movie_path": settings.local_movie_path,
+        "rss_config_path_set": bool(settings.rss_config_remote_path),
     }
 
 

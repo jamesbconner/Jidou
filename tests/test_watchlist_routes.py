@@ -70,6 +70,7 @@ def _session_override(
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
+        session.add = MagicMock()  # add() is not awaitable; must not be AsyncMock
         session.flush = AsyncMock()
         session.delete = AsyncMock()
 
@@ -185,9 +186,12 @@ def test_create_watchlist_entry() -> None:
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = None
 
+    no_sub_result = MagicMock()
+    no_sub_result.scalar_one_or_none.return_value = None  # no existing RSS subscription
+
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        session.execute = AsyncMock(side_effect=[show_result, existing_result, no_sub_result])
 
         # Simulate DB populating auto-generated fields on flush
         def _add_with_defaults(obj: object) -> None:
@@ -240,9 +244,11 @@ def test_create_watchlist_entry_idempotent() -> None:
     show_result.scalar_one_or_none.return_value = show
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = entry
+    no_sub_result = MagicMock()
+    no_sub_result.scalar_one_or_none.return_value = None  # no existing RSS subscription
 
     app.dependency_overrides[get_session] = _session_override(
-        execute_side_effect=[show_result, existing_result]
+        execute_side_effect=[show_result, existing_result, no_sub_result]
     )
     try:
         response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
@@ -250,6 +256,140 @@ def test_create_watchlist_entry_idempotent() -> None:
         # but the entry must be the existing one
         assert response.status_code == 201
         assert response.json()["id"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_watchlist_entry_creates_rss_stub() -> None:
+    """POST /api/watchlist adds an RssSubscription stub when no sub exists for the show."""
+    from datetime import UTC, datetime
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssSubscription
+
+    show = _make_show(id=1)
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = None
+    no_sub_result = MagicMock()
+    no_sub_result.scalar_one_or_none.return_value = None
+
+    added_objects: list[object] = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[show_result, existing_result, no_sub_result])
+
+        def _add(obj: object) -> None:
+            obj.id = 10  # type: ignore[attr-defined]
+            obj.created_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            added_objects.append(obj)
+
+        def _refresh_with_show(obj: object, attrs: list[str]) -> None:
+            if "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
+        assert response.status_code == 201
+        rss_stubs = [o for o in added_objects if isinstance(o, RssSubscription)]
+        assert len(rss_stubs) == 1
+        assert rss_stubs[0].show_id == 1
+        assert rss_stubs[0].name == show.title
+        assert rss_stubs[0].enabled_in_config is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_watchlist_entry_skips_stub_if_sub_exists() -> None:
+    """POST /api/watchlist does not create an RSS stub when one already exists for the show."""
+    from datetime import UTC, datetime
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssSubscription
+
+    show = _make_show(id=1)
+    existing_sub = MagicMock(spec=RssSubscription)
+    existing_sub.show_id = 1
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    no_entry_result = MagicMock()
+    no_entry_result.scalar_one_or_none.return_value = None
+    sub_exists_result = MagicMock()
+    sub_exists_result.scalar_one_or_none.return_value = existing_sub
+
+    added_objects: list[object] = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[show_result, no_entry_result, sub_exists_result])
+
+        def _add(obj: object) -> None:
+            obj.id = 10  # type: ignore[attr-defined]
+            obj.created_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            added_objects.append(obj)
+
+        def _refresh_with_show(obj: object, attrs: list[str]) -> None:
+            if "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
+        assert response.status_code == 201
+        rss_stubs = [o for o in added_objects if isinstance(o, RssSubscription)]
+        assert len(rss_stubs) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_watchlist_entry_idempotent_creates_rss_stub() -> None:
+    """POST /api/watchlist on an existing show still creates a stub if no RSS sub exists."""
+    from jidou.database import get_session
+    from jidou.models.rss import RssSubscription
+
+    show = _make_show(id=1)
+    entry = _make_entry(id=5, show_id=1)
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = entry
+    no_sub_result = MagicMock()
+    no_sub_result.scalar_one_or_none.return_value = None
+
+    added_objects: list[object] = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[show_result, existing_result, no_sub_result])
+        session.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
+        assert response.status_code == 201
+        rss_stubs = [o for o in added_objects if isinstance(o, RssSubscription)]
+        assert len(rss_stubs) == 1
+        assert rss_stubs[0].enabled_in_config is False
     finally:
         app.dependency_overrides.clear()
 

@@ -520,3 +520,141 @@ def test_update_subscription_bad_show_id_returns_404() -> None:
         assert "Show" in r.json()["detail"]
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/rss/subscriptions/{id}/suggest-regex
+# ---------------------------------------------------------------------------
+
+
+def test_suggest_regex_returns_suggestion() -> None:
+    """POST suggest-regex returns LLM-generated regex patterns on success."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="Attack on Titan")
+    sub.show = _make_show(id=1)
+    sub.show.title = "Attack on Titan"
+
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    llm_response = LLMResponse(
+        content='{"regex_include": "Attack.on.Titan", "regex_exclude": "FRENCH|GERMAN"}',
+        model="gpt-4o-mini",
+        provider=LLMProvider.OPENAI,
+        cached=False,
+    )
+
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=llm_response)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
+        try:
+            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+            assert r.status_code == 200
+            data = r.json()
+            assert data["regex_include"] == "Attack.on.Titan"
+            assert data["regex_exclude"] == "FRENCH|GERMAN"
+            assert data["model"] == "gpt-4o-mini"
+            assert data["cached"] is False
+        finally:
+            app.dependency_overrides.clear()
+
+
+def test_suggest_regex_404_when_sub_not_found() -> None:
+    """POST suggest-regex returns 404 when the subscription does not exist."""
+    from jidou.database import get_session
+
+    no_sub = MagicMock()
+    no_sub.scalar_one_or_none.return_value = None
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[no_sub])
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/999/suggest-regex")
+        assert r.status_code == 404
+        assert "not found" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_suggest_regex_422_when_llm_not_configured() -> None:
+    """POST suggest-regex returns 422 when the LLM provider is not configured."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    sub = _make_sub(id=1)
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = False
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
+        try:
+            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+            assert r.status_code == 422
+            assert "LLM provider" in r.json()["detail"]
+        finally:
+            app.dependency_overrides.clear()
+
+
+def test_suggest_regex_503_when_llm_call_fails() -> None:
+    """POST suggest-regex returns 503 when the LLM call returns None."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+
+    sub = _make_sub(id=1)
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=None)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
+        try:
+            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+            assert r.status_code == 503
+            assert "failed" in r.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+
+def test_suggest_regex_503_when_llm_returns_bad_json() -> None:
+    """POST suggest-regex returns 503 when the LLM response is not valid JSON."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1)
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    bad_response = LLMResponse(
+        content="Sorry, I cannot help with that.",
+        model="gpt-4o-mini",
+        provider=LLMProvider.OPENAI,
+        cached=False,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=bad_response)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
+        try:
+            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+            assert r.status_code == 503
+            assert "unparseable" in r.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.clear()
