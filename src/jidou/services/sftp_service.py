@@ -67,6 +67,16 @@ class DownloadResult:
 
 
 @dataclass
+class UploadResult:
+    """Result of a single file upload operation."""
+
+    remote_path: str
+    size: int
+    dry_run: bool
+    elapsed_seconds: float
+
+
+@dataclass
 class DownloadProgress:
     """Progress snapshot emitted after each file in a batch download."""
 
@@ -503,3 +513,86 @@ class SFTPService:
         )
         # results list is fully populated; cast away the None initialiser type
         return results  # type: ignore[return-value]
+
+    async def upload_bytes(
+        self,
+        data: bytes,
+        remote_path: str,
+        dry_run: bool = False,
+    ) -> UploadResult:
+        """Write in-memory bytes directly to a remote path.
+
+        Useful for composed configs where no local temp file is needed.
+        Transient connection failures are retried with exponential backoff.
+
+        Args:
+            data: Raw bytes to write.
+            remote_path: Full destination path on the remote server.
+            dry_run: When ``True`` the transfer is skipped; the result reports
+                ``size=0`` and ``dry_run=True``.
+
+        Returns:
+            :class:`UploadResult` with transfer details.
+        """
+        start = time.monotonic()
+        size = len(data)
+
+        if dry_run:
+            logger.info("[DRY RUN] Would upload %d bytes → %s", size, remote_path)
+            return UploadResult(remote_path=remote_path, size=0, dry_run=True, elapsed_seconds=0.0)
+
+        logger.info("Uploading %d bytes → %s", size, remote_path)
+
+        async def _do() -> None:
+            async with self._connection() as sftp, sftp.open(remote_path, "wb") as fh:
+                await fh.write(data)
+
+        await self._execute_with_retry(f"upload_bytes {remote_path}", _do)
+
+        elapsed = time.monotonic() - start
+        logger.info("Uploaded %d bytes → %s in %.2fs", size, remote_path, elapsed)
+        return UploadResult(
+            remote_path=remote_path, size=size, dry_run=False, elapsed_seconds=elapsed
+        )
+
+    async def upload_file(
+        self,
+        local_path: str | Path,
+        remote_path: str,
+        dry_run: bool = False,
+    ) -> UploadResult:
+        """Upload a local file to a remote path.
+
+        Transient connection failures are retried with exponential backoff up
+        to ``max_retries`` times.
+
+        Args:
+            local_path: Path to the local source file.
+            remote_path: Full destination path on the remote server.
+            dry_run: When ``True`` the transfer is skipped; the result reports
+                ``size=0`` and ``dry_run=True``.
+
+        Returns:
+            :class:`UploadResult` with transfer details.
+        """
+        local = Path(local_path)
+        start = time.monotonic()
+
+        if dry_run:
+            logger.info("[DRY RUN] Would upload %s → %s", local, remote_path)
+            return UploadResult(remote_path=remote_path, size=0, dry_run=True, elapsed_seconds=0.0)
+
+        size = local.stat().st_size if local.exists() else 0
+        logger.info("Uploading %s → %s", local, remote_path)
+
+        async def _do() -> None:
+            async with self._connection() as sftp:
+                await sftp.put(str(local), remote_path)
+
+        await self._execute_with_retry(f"upload_file {remote_path}", _do)
+
+        elapsed = time.monotonic() - start
+        logger.info("Uploaded %s (%d bytes) → %s in %.2fs", local.name, size, remote_path, elapsed)
+        return UploadResult(
+            remote_path=remote_path, size=size, dry_run=False, elapsed_seconds=elapsed
+        )
