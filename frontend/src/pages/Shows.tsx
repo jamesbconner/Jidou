@@ -404,7 +404,7 @@ export default function Shows() {
                             ? allShows.find((s) => s.tmdb_id === r.id)
                             : undefined
                           return (
-                            <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+                            <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
                               <div className="relative">
                                 {r.poster_path ? (
                                   <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
@@ -415,13 +415,13 @@ export default function Shows() {
                                   <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
                                 )}
                               </div>
-                              <div className="p-2">
-                                <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
+                              <div className="p-2 flex flex-col flex-1">
+                                <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
                                 {inLibrary && libraryShow ? (
                                   <Link
                                     to={`/shows/${libraryShow.id}`}
                                     onClick={closeModal}
-                                    className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                    className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
                                   >
                                     View in Library
                                   </Link>
@@ -429,9 +429,9 @@ export default function Shows() {
                                   <button
                                     onClick={() => handleTrack(r)}
                                     disabled={createShow.isPending}
-                                    className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                    className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
                                   >
-                                    Add to Library
+                                    Add
                                   </button>
                                 )}
                               </div>

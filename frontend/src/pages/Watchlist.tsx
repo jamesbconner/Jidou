@@ -459,7 +459,7 @@ export default function Watchlist() {
                     libraryResults.map((s) => {
                       const wlStatus = watchlistStatusByShowId.get(s.id) ?? null
                       return (
-                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {s.poster_path ? (
                               <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full h-36 object-cover" loading="lazy" />
@@ -472,12 +472,12 @@ export default function Watchlist() {
                               </span>
                             )}
                           </div>
-                          <div className="p-2">
-                            <p className="text-xs font-medium line-clamp-2">{s.title}</p>
+                          <div className="p-2 flex flex-col flex-1">
+                            <p className="text-xs font-medium line-clamp-2 flex-1">{s.title}</p>
                             {wlStatus ? (
                               <Link
                                 to={`/shows/${s.id}`}
-                                className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
                               >
                                 View in Library
                               </Link>
@@ -485,9 +485,9 @@ export default function Watchlist() {
                               <button
                                 onClick={() => handleAddFromLibrary(s.id)}
                                 disabled={pendingLibraryIds.has(s.id)}
-                                className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
                               >
-                                {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add to Watchlist'}
+                                {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add'}
                               </button>
                             )}
                           </div>
@@ -500,7 +500,7 @@ export default function Watchlist() {
                       const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
                       const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
                       return (
-                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {r.poster_path ? (
                               <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
@@ -513,12 +513,12 @@ export default function Watchlist() {
                               </span>
                             )}
                           </div>
-                          <div className="p-2">
-                            <p className="text-xs font-medium line-clamp-2">{r.name ?? r.title}</p>
+                          <div className="p-2 flex flex-col flex-1">
+                            <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
                             {wlStatus && libraryShow ? (
                               <Link
                                 to={`/shows/${libraryShow.id}`}
-                                className="mt-1 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
                               >
                                 View in Library
                               </Link>
@@ -526,9 +526,9 @@ export default function Watchlist() {
                               <button
                                 onClick={() => handleAddFromTmdb(r)}
                                 disabled={isPending}
-                                className="mt-1 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
                               >
-                                {isPending ? 'Adding…' : 'Add to Watchlist'}
+                                {isPending ? 'Adding…' : 'Add'}
                               </button>
                             )}
                           </div>
