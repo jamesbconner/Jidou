@@ -453,7 +453,8 @@ async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> No
         mock_orc.run = AsyncMock(return_value=error_result)
         mock_orc_class.return_value = mock_orc
 
-        await _rss_import("test-task-id", dry_run=False)
+        with pytest.raises(RuntimeError, match="Import failed"):
+            await _rss_import("test-task-id", dry_run=False)
 
     assert TaskStatus.RUNNING in captured_statuses
     assert TaskStatus.FAILED in captured_statuses

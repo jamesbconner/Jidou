@@ -64,6 +64,8 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    import_error: str | None = None  # set on orchestrator-level failure; raised post-session
+
     try:
         async with session_factory() as session:
             task = await create_task_record(
@@ -112,40 +114,40 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
                     progress_message=f"Import failed: {error_summary}",
                     result_summary={"errors": import_result.errors, "dry_run": dry_run},
                 )
-                return celery_task_id
+                import_error = error_summary  # raised after session exits so Celery sees failure
+            else:
+                summary: dict[str, object] = {
+                    "feeds_created": import_result.feeds_created,
+                    "feeds_updated": import_result.feeds_updated,
+                    "subscriptions_created": import_result.subscriptions_created,
+                    "subscriptions_updated": import_result.subscriptions_updated,
+                    "subscriptions_remote_deleted": import_result.subscriptions_remote_deleted,
+                    "shows_linked": import_result.shows_linked,
+                    "snapshot_id": import_result.snapshot_id,
+                    "errors": import_result.errors,
+                    "dry_run": dry_run,
+                }
 
-            summary: dict[str, object] = {
-                "feeds_created": import_result.feeds_created,
-                "feeds_updated": import_result.feeds_updated,
-                "subscriptions_created": import_result.subscriptions_created,
-                "subscriptions_updated": import_result.subscriptions_updated,
-                "subscriptions_remote_deleted": import_result.subscriptions_remote_deleted,
-                "shows_linked": import_result.shows_linked,
-                "snapshot_id": import_result.snapshot_id,
-                "errors": import_result.errors,
-                "dry_run": dry_run,
-            }
-
-            final_task = await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.COMPLETED,
-                progress_message=(
-                    f"Done — {import_result.feeds_created} feeds created, "
-                    f"{import_result.subscriptions_created} subscriptions created, "
-                    f"{import_result.subscriptions_updated} updated"
-                ),
-                result_summary=summary,
-            )
-
-            if final_task is not None and final_task.status == TaskStatus.COMPLETED.value:
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "complete",
-                        "data": {"summary": summary},
-                    }
+                final_task = await update_task_status(
+                    session,
+                    celery_task_id,
+                    TaskStatus.COMPLETED,
+                    progress_message=(
+                        f"Done — {import_result.feeds_created} feeds created, "
+                        f"{import_result.subscriptions_created} subscriptions created, "
+                        f"{import_result.subscriptions_updated} updated"
+                    ),
+                    result_summary=summary,
                 )
+
+                if final_task is not None and final_task.status == TaskStatus.COMPLETED.value:
+                    await emit_progress(
+                        {
+                            "celery_task_id": celery_task_id,
+                            "type": "complete",
+                            "data": {"summary": summary},
+                        }
+                    )
 
     except TaskCancelledError:
         logger.info("RSS import task %s was cancelled", celery_task_id)
@@ -170,5 +172,8 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
         raise
     finally:
         await engine.dispose()
+
+    if import_error is not None:
+        raise RuntimeError(f"Import failed: {import_error}")
 
     return celery_task_id
