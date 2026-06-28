@@ -82,7 +82,7 @@ export default function Shows() {
   const { data: shows = [], isLoading } = useShows(sort)
   // High limit so the indicator set covers the full library, not just the first page.
   const { data: allShows = [] } = useShows('title_asc', 10000)
-  const { data: searchData, isFetching: tmdbSearching } = useSearchShows(modalMode === 'tmdb' ? debouncedQuery : '')
+  const { data: searchData, isLoading: tmdbSearching } = useSearchShows(modalMode === 'tmdb' ? debouncedQuery : '')
   const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
 
