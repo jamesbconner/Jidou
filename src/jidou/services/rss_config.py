@@ -102,12 +102,12 @@ def extract_max_subscription_key(body: dict[str, object]) -> int:
         body: The parsed body dict from :func:`parse_rss_config`.
 
     Returns:
-        The maximum key as an ``int``, or ``0`` if ``subscriptions`` is empty
-        or absent.
+        The maximum key as an ``int``, or ``-1`` if ``subscriptions`` is empty
+        or absent (so that ``max + 1`` yields ``0`` as the first valid key).
     """
     subs: dict[str, object] = body.get("subscriptions", {})  # type: ignore[assignment]
     if not subs:
-        return 0
+        return -1  # no existing keys; caller should use max+1=0 as first key
     return max(int(k) for k in subs)
 
 
@@ -141,7 +141,8 @@ def compute_subscription_deltas(
 
     for key, remote_sub in remote_subs_dict.items():
         if key not in db_by_key:
-            delta.to_create.append({"remote_key": key, **remote_sub})
+            # Put remote_key last so it always wins over any remote_key inside remote_sub
+            delta.to_create.append({**remote_sub, "remote_key": key})
         else:
             db_row = db_by_key[key]
             merged = dict(remote_sub)
@@ -184,6 +185,9 @@ def _db_row_fields(sub: RssSubscription) -> dict[str, object]:
         "regex_exclude_ignorecase": sub.regex_exclude_ignorecase,
         "download_location": sub.download_location,
         "move_completed": sub.move_completed,
-        "enabled_in_config": sub.enabled_in_config,
         "label": sub.label,
+        # extra_config preserves round-trip remote fields added by Jidou on prior imports
+        "extra_config": sub.extra_config,
+        # enabled_in_config is Jidou-only; the import orchestrator handles it explicitly
+        # and must not merge it into the YaRSS2 subscription dict
     }

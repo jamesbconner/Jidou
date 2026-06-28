@@ -117,13 +117,13 @@ class TestExtractMaxSubscriptionKey:
         """Returns the maximum integer key from the subscriptions dict."""
         assert extract_max_subscription_key(_BODY) == 1
 
-    def test_empty_subscriptions_returns_zero(self) -> None:
-        """Returns 0 when subscriptions is empty."""
-        assert extract_max_subscription_key({"subscriptions": {}}) == 0
+    def test_empty_subscriptions_returns_minus_one(self) -> None:
+        """Returns -1 when subscriptions is empty so that max+1 yields 0."""
+        assert extract_max_subscription_key({"subscriptions": {}}) == -1
 
-    def test_missing_subscriptions_returns_zero(self) -> None:
-        """Returns 0 when the subscriptions key is absent."""
-        assert extract_max_subscription_key({}) == 0
+    def test_missing_subscriptions_returns_minus_one(self) -> None:
+        """Returns -1 when the subscriptions key is absent."""
+        assert extract_max_subscription_key({}) == -1
 
     def test_single_entry(self) -> None:
         """Single subscription with key '7' returns 7."""
@@ -150,6 +150,7 @@ def _make_sub(
     move_completed: str | None = None,
     enabled_in_config: bool = True,
     label: str | None = None,
+    extra_config: dict | None = None,
 ) -> MagicMock:
     """Build a minimal RssSubscription mock."""
     sub = MagicMock()
@@ -164,6 +165,7 @@ def _make_sub(
     sub.active = True
     sub.enabled_in_config = enabled_in_config
     sub.label = label
+    sub.extra_config = extra_config
     return sub
 
 
@@ -249,3 +251,25 @@ class TestComputeSubscriptionDeltas:
         assert delta.to_create[0]["remote_key"] == "1"
         assert len(delta.to_update) == 1
         assert "2" in delta.remote_deleted_keys
+
+    def test_to_create_remote_key_wins_over_remote_sub(self) -> None:
+        """remote_key from the dict key always wins even if remote_sub contains one."""
+        remote = {"7": {"name": "Show", "remote_key": "99", "active": True}}
+        delta = compute_subscription_deltas([], remote)
+        assert delta.to_create[0]["remote_key"] == "7"
+
+    def test_extra_config_preserved_in_merge(self) -> None:
+        """DB extra_config is carried into the merged dict (Jidou wins)."""
+        sub = _make_sub(remote_key="0", extra_config={"speed_limit": 100})
+        remote = {"0": {"name": "Show", "active": True}}
+        delta = compute_subscription_deltas([sub], remote)
+        _, merged = delta.to_update[0]
+        assert merged["extra_config"] == {"speed_limit": 100}
+
+    def test_enabled_in_config_not_in_merged_dict(self) -> None:
+        """enabled_in_config is Jidou-only and must not appear in the merged remote dict."""
+        sub = _make_sub(remote_key="0", enabled_in_config=True)
+        remote = {"0": {"name": "Show", "active": True}}
+        delta = compute_subscription_deltas([sub], remote)
+        _, merged = delta.to_update[0]
+        assert "enabled_in_config" not in merged
