@@ -187,8 +187,7 @@ export default function Shows() {
 
   function switchModalMode(mode: 'library' | 'tmdb') {
     setModalMode(mode)
-    setQuery('')
-    setDebouncedQuery('')
+    setDebouncedQuery(query)
   }
 
   function handleTrack(r: TmdbResult) {

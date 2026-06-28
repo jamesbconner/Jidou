@@ -476,7 +476,7 @@ export default function Watchlist() {
                 {(['library', 'tmdb'] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => { setSearchMode(m); setSearchQuery(''); setDebouncedQuery('') }}
+                    onClick={() => { setSearchMode(m); setDebouncedQuery(searchQuery) }}
                     className={`flex-1 py-2 font-medium transition-colors ${
                       searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                     }`}
