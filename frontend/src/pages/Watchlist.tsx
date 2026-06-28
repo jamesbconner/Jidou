@@ -148,6 +148,7 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
     attributes,
     listeners,
     setNodeRef,
+    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -160,10 +161,11 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   }
 
   return (
-    <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
+    <tr ref={setNodeRef} style={style} className="hover:bg-gray-50">
       <td
-        {...(dragEnabled ? listeners : {})}
-        className={`px-2 py-2 ${dragEnabled ? 'text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
+        ref={dragEnabled ? setActivatorNodeRef : undefined}
+        {...(dragEnabled ? { ...attributes, ...listeners } : {})}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-700 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
         <GripIcon />
@@ -575,20 +577,20 @@ export default function Watchlist() {
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                <tr>
-                  <th className="px-2 py-2 w-6" />
-                  <th className="px-4 py-2 text-left w-8">#</th>
-                  <th className="px-4 py-2 text-left">Show</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2 text-left">Notes</th>
-                  <th className="px-4 py-2 text-left">Added</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <SortableContext items={orderedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={orderedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="px-2 py-2 w-6" />
+                    <th className="px-4 py-2 text-left w-8">#</th>
+                    <th className="px-4 py-2 text-left">Show</th>
+                    <th className="px-4 py-2 text-left">Status</th>
+                    <th className="px-4 py-2 text-left">Notes</th>
+                    <th className="px-4 py-2 text-left">Added</th>
+                    <th className="px-4 py-2" />
+                  </tr>
+                </thead>
                 <tbody className="divide-y">
                   {orderedEntries.map((e, i) => (
                     <SortableRow
@@ -601,9 +603,9 @@ export default function Watchlist() {
                     />
                   ))}
                 </tbody>
-              </SortableContext>
-            </table>
-          </div>
+              </table>
+            </div>
+          </SortableContext>
           <DragOverlay>
             {activeEntry ? <DragRow entry={activeEntry} /> : null}
           </DragOverlay>
