@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -316,7 +316,8 @@ async def delete_subscription(
         HTTPException: 404 if the subscription is not found.
         HTTPException: 400 if the subscription is enabled in the remote config.
     """
-    stmt = select(RssSubscription).where(RssSubscription.id == sub_id)
+    # Lock the row so a concurrent PATCH can't flip enabled_in_config after this check
+    stmt = select(RssSubscription).where(RssSubscription.id == sub_id).with_for_update()
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
     if sub is None:
         raise HTTPException(status_code=404, detail="RSS subscription not found")
@@ -353,14 +354,23 @@ async def list_snapshots(
     Returns:
         List of snapshot summaries (id, snapshot_type, created_at, content length).
     """
-    stmt = select(RssConfigSnapshot).order_by(RssConfigSnapshot.created_at.desc()).limit(limit)
-    snapshots = list((await db_session.execute(stmt)).scalars().all())
+    stmt = (
+        select(
+            RssConfigSnapshot.id,
+            RssConfigSnapshot.snapshot_type,
+            RssConfigSnapshot.created_at,
+            func.length(RssConfigSnapshot.raw_content).label("content_length"),
+        )
+        .order_by(RssConfigSnapshot.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await db_session.execute(stmt)).all()
     return [
         {
-            "id": s.id,
-            "snapshot_type": s.snapshot_type,
-            "created_at": s.created_at,
-            "content_length": len(s.raw_content),
+            "id": row.id,
+            "snapshot_type": row.snapshot_type,
+            "created_at": row.created_at,
+            "content_length": row.content_length,
         }
-        for s in snapshots
+        for row in rows
     ]
