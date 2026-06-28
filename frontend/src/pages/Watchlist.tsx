@@ -370,8 +370,8 @@ export default function Watchlist() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Watchlist</h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl font-bold mr-auto">Watchlist</h1>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as WatchlistStatus | '')}
@@ -382,21 +382,17 @@ export default function Watchlist() {
             <option key={s} value={s}>{STATUS_LABEL[s]}</option>
           ))}
         </select>
+        <button
+          onClick={() => setSearchModalOpen(true)}
+          className="border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+        >
+          Search shows to add…
+        </button>
       </div>
 
       <p className="text-sm text-gray-500">
         Keep track of shows you want to watch, are currently watching, or have finished.
       </p>
-
-      {/* Add show search — button triggers modal */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <button
-          onClick={() => setSearchModalOpen(true)}
-          className="w-full border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Search shows to add to watchlist…
-        </button>
-      </div>
 
       {/* Search modal */}
       {searchModalOpen && (
