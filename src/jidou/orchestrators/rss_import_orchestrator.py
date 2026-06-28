@@ -56,6 +56,7 @@ class RssImportResult:
     subscriptions_remote_deleted: int = 0
     shows_linked: int = 0
     snapshot_id: int | None = None
+    raw_content: str | None = None
     dry_run: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -84,12 +85,14 @@ class RssImportOrchestrator:
         remote_path: str,
         dry_run: bool = False,
         on_event: _OnEvent | None = None,
+        snapshot_type: str = "import",
     ) -> None:
         self._session = session
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
         self._on_event = on_event or _default_on_event
+        self._snapshot_type = snapshot_type
 
     async def run(self) -> RssImportResult:
         """Execute the full import sequence.
@@ -104,6 +107,7 @@ class RssImportOrchestrator:
         raw_bytes = await self._sftp.download_bytes(self._remote_path)
 
         raw_str = raw_bytes.decode("utf-8")
+        result.raw_content = raw_str
 
         # 2. Parse
         try:
@@ -116,7 +120,7 @@ class RssImportOrchestrator:
 
         # 3. Snapshot (skipped in dry_run)
         if not self._dry_run:
-            snapshot = RssConfigSnapshot(snapshot_type="import", raw_content=raw_str)
+            snapshot = RssConfigSnapshot(snapshot_type=self._snapshot_type, raw_content=raw_str)
             self._session.add(snapshot)
             await self._session.flush()
             result.snapshot_id = snapshot.id

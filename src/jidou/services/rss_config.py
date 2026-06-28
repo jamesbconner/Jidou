@@ -108,7 +108,8 @@ def extract_max_subscription_key(body: dict[str, object]) -> int:
     subs: dict[str, object] = body.get("subscriptions", {})  # type: ignore[assignment]
     if not subs:
         return -1  # no existing keys; caller should use max+1=0 as first key
-    return max(int(k) for k in subs)
+    int_keys = [int(k) for k in subs if k.isdigit()]
+    return max(int_keys, default=-1)
 
 
 def compute_subscription_deltas(
