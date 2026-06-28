@@ -456,7 +456,7 @@ export default function Watchlist() {
           onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
         >
           <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -489,7 +489,7 @@ export default function Watchlist() {
 
             <div className="px-5 pt-3 pb-3 border-b">
               <input
-                type="text"
+                type="search"
                 autoFocus
                 placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
                 value={searchQuery}
