@@ -55,7 +55,7 @@ const TASK_DESCRIPTIONS: Record<TaskType, string> = {
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
-const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import']
+const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish']
 
 export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('scan')

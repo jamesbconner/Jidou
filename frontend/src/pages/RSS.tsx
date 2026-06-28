@@ -287,8 +287,8 @@ function SubscriptionsTable({ subs }: { subs: RssSubscriptionRead[] }) {
 
 export default function RSS() {
   const [filter, setFilter] = useState<SubFilter>('all')
-  const [importTaskId, setImportTaskId] = useState<string | null>(null)
-  const [publishTaskId, setPublishTaskId] = useState<string | null>(null)
+  const [importTaskId, setImportTaskId] = useState<number | null>(null)
+  const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
 
   const { data: feeds } = useRssFeeds()
   const { data: subs, isLoading } = useRssSubscriptions()
@@ -324,13 +324,13 @@ export default function RSS() {
 
   const handleImport = () => {
     triggerImport.mutate(undefined, {
-      onSuccess: (task) => setImportTaskId(task.celery_task_id),
+      onSuccess: (task) => setImportTaskId(task.id),
     })
   }
 
   const handlePublish = () => {
     triggerPublish.mutate(undefined, {
-      onSuccess: (task) => setPublishTaskId(task.celery_task_id),
+      onSuccess: (task) => setPublishTaskId(task.id),
     })
   }
 
