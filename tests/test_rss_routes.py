@@ -25,7 +25,6 @@ def _make_show(*, id: int = 1) -> MagicMock:
     return s
 
 
-
 def _make_feed(
     *,
     id: int = 1,
