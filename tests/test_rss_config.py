@@ -21,9 +21,7 @@ _HEADER = {"file": 1, "format": 1}
 _BODY = {
     "cookies": {},
     "general": {"update_interval": 30},
-    "rssfeeds": {
-        "0": {"name": "ShowRSS", "url": "https://showrss.info/feed", "active": True}
-    },
+    "rssfeeds": {"0": {"name": "ShowRSS", "url": "https://showrss.info/feed", "active": True}},
     "subscriptions": {
         "0": {
             "name": "The Last of Us",
