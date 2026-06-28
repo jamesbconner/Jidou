@@ -126,9 +126,9 @@ interface DraggableRowProps {
   dragEnabled: boolean
   isDragging: boolean
   isDragOver: boolean
-  onDragStart: (id: number) => void
+  onDragStart: (e: React.DragEvent, id: number) => void
   onDragOver: (e: React.DragEvent, id: number) => void
-  onDrop: (targetId: number) => void
+  onDrop: (e: React.DragEvent, targetId: number) => void
   onDragEnd: () => void
 }
 
@@ -139,9 +139,9 @@ function DraggableRow({
   return (
     <tr
       draggable={dragEnabled}
-      onDragStart={dragEnabled ? () => onDragStart(entry.id) : undefined}
+      onDragStart={dragEnabled ? (e) => onDragStart(e, entry.id) : undefined}
       onDragOver={dragEnabled ? (e) => onDragOver(e, entry.id) : undefined}
-      onDrop={dragEnabled ? () => onDrop(entry.id) : undefined}
+      onDrop={dragEnabled ? (e) => onDrop(e, entry.id) : undefined}
       onDragEnd={dragEnabled ? onDragEnd : undefined}
       style={{ opacity: isDragging ? 0.35 : 1 }}
       className={`hover:bg-gray-50 ${isDragOver && !isDragging ? 'outline outline-2 outline-blue-400' : ''}`}
@@ -252,23 +252,30 @@ export default function Watchlist() {
     })
   }, [entries, statusFilter])
 
-  function handleRowDragStart(id: number) {
+  function handleRowDragStart(e: React.DragEvent, id: number) {
+    // Chrome/Edge require setData() to be called in dragstart or they silently
+    // cancel the drag and never fire the drop event.
+    e.dataTransfer.setData('text/plain', String(id))
+    e.dataTransfer.effectAllowed = 'move'
     setDraggingId(id)
   }
 
   function handleRowDragOver(e: React.DragEvent, id: number) {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
     setDragOverId(id)
   }
 
-  function handleRowDrop(targetId: number) {
-    if (!draggingId || draggingId === targetId || reorderWatchlist.isPending) {
+  function handleRowDrop(e: React.DragEvent, targetId: number) {
+    e.preventDefault()
+    const fromId = Number(e.dataTransfer.getData('text/plain'))
+    if (!fromId || fromId === targetId || reorderWatchlist.isPending) {
       setDraggingId(null)
       setDragOverId(null)
       return
     }
-    const oldIndex = orderedEntries.findIndex((e) => e.id === draggingId)
-    const newIndex = orderedEntries.findIndex((e) => e.id === targetId)
+    const oldIndex = orderedEntries.findIndex((entry) => entry.id === fromId)
+    const newIndex = orderedEntries.findIndex((entry) => entry.id === targetId)
     if (oldIndex === -1 || newIndex === -1) {
       setDraggingId(null)
       setDragOverId(null)
