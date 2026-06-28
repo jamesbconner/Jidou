@@ -66,9 +66,17 @@ def _exec_result(scalar: object = None, scalars_all: list | None = None) -> Magi
 
 
 @pytest.mark.asyncio
-async def test_dry_run_returns_early() -> None:
-    """dry_run=True downloads but skips parse and DB writes."""
+async def test_dry_run_parses_and_counts_but_skips_db_writes() -> None:
+    """dry_run=True downloads and computes deltas but performs no DB writes."""
     session = _make_session()
+    # Reads still happen: feed lookup, db_subs, shows
+    session.execute = AsyncMock(
+        side_effect=[
+            _exec_result(scalar=None),  # feed "0" select
+            _exec_result(scalars_all=[]),  # RssSubscription select
+            _exec_result(scalars_all=[]),  # Show select
+        ]
+    )
     sftp = _make_sftp()
 
     orc = RssImportOrchestrator(
@@ -81,10 +89,13 @@ async def test_dry_run_returns_early() -> None:
     result = await orc.run()
 
     assert result.dry_run is True
-    assert result.feeds_created == 0
-    assert result.subscriptions_created == 0
-    sftp.download_bytes.assert_awaited_once_with("/remote/yarss2.conf", dry_run=True)
+    assert result.feeds_created == 1
+    assert result.subscriptions_created == 2
+    # Downloads without dry_run flag (always fetches the real config)
+    sftp.download_bytes.assert_awaited_once_with("/remote/yarss2.conf")
+    # No snapshot stored, no subscription rows written
     session.add.assert_not_called()
+    session.flush.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +290,56 @@ async def test_parse_error_returns_result_with_error_message() -> None:
     assert "parse" in result.errors[0].lower()
     assert result.snapshot_id is None
     session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> None:
+    """_rss_import marks the task FAILED when RssImportOrchestrator.run() returns errors."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+    from jidou.workers.rss_tasks import _rss_import
+
+    error_result = RssImportResult(errors=["Failed to parse RSS config: malformed JSON"])
+
+    task_mock = MagicMock()
+    task_mock.status = TaskStatus.PENDING.value
+
+    captured_statuses: list[TaskStatus] = []
+
+    async def fake_update_status(
+        session: object, task_id: str, status: TaskStatus, **kw: object
+    ) -> None:
+        captured_statuses.append(status)
+
+    mock_engine = MagicMock()
+    mock_engine.dispose = AsyncMock()
+
+    with (
+        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.rss_tasks.async_sessionmaker") as mock_factory,
+        patch("jidou.workers.rss_tasks.create_task_record", new=AsyncMock(return_value=task_mock)),
+        patch("jidou.workers.rss_tasks.update_task_status", side_effect=fake_update_status),
+        patch("jidou.workers.rss_tasks.RssImportOrchestrator") as mock_orc_class,
+        patch("jidou.workers.rss_tasks._build_sftp", return_value=MagicMock()),
+        patch("jidou.workers.rss_tasks.emit_progress", new=AsyncMock()),
+    ):
+        # Wire up the async session context manager
+        session_cm = AsyncMock()
+        session_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+        session_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_factory.return_value.return_value = session_cm
+
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=error_result)
+        mock_orc_class.return_value = mock_orc
+
+        await _rss_import("test-task-id", dry_run=False)
+
+    assert TaskStatus.RUNNING in captured_statuses
+    assert TaskStatus.FAILED in captured_statuses
+    assert TaskStatus.COMPLETED not in captured_statuses
 
 
 # ---------------------------------------------------------------------------

@@ -103,6 +103,17 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
 
             import_result = await orchestrator.run()
 
+            if import_result.errors:
+                error_summary = "; ".join(import_result.errors)
+                await update_task_status(
+                    session,
+                    celery_task_id,
+                    TaskStatus.FAILED,
+                    progress_message=f"Import failed: {error_summary}",
+                    result_summary={"errors": import_result.errors, "dry_run": dry_run},
+                )
+                return celery_task_id
+
             summary: dict[str, object] = {
                 "feeds_created": import_result.feeds_created,
                 "feeds_updated": import_result.feeds_updated,

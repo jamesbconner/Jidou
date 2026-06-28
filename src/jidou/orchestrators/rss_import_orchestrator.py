@@ -99,13 +99,9 @@ class RssImportOrchestrator:
         """
         result = RssImportResult(dry_run=self._dry_run)
 
-        # 1. Download raw config
+        # 1. Download raw config (always download; dry_run only skips writes)
         await self._on_event("info", f"Downloading RSS config from {self._remote_path}", None)
-        raw_bytes = await self._sftp.download_bytes(self._remote_path, dry_run=self._dry_run)
-
-        if self._dry_run:
-            await self._on_event("info", "[DRY RUN] Skipping parse and DB writes", None)
-            return result
+        raw_bytes = await self._sftp.download_bytes(self._remote_path)
 
         raw_str = raw_bytes.decode("utf-8")
 
@@ -118,16 +114,23 @@ class RssImportOrchestrator:
             result.errors.append(msg)
             return result
 
-        # 3. Snapshot
-        snapshot = RssConfigSnapshot(snapshot_type="import", raw_content=raw_str)
-        self._session.add(snapshot)
-        await self._session.flush()
-        result.snapshot_id = snapshot.id
-        await self._on_event(
-            "info",
-            f"Stored config snapshot id={snapshot.id} ({len(raw_str)} bytes)",
-            None,
-        )
+        # 3. Snapshot (skipped in dry_run)
+        if not self._dry_run:
+            snapshot = RssConfigSnapshot(snapshot_type="import", raw_content=raw_str)
+            self._session.add(snapshot)
+            await self._session.flush()
+            result.snapshot_id = snapshot.id
+            await self._on_event(
+                "info",
+                f"Stored config snapshot id={snapshot.id} ({len(raw_str)} bytes)",
+                None,
+            )
+        else:
+            await self._on_event(
+                "info",
+                f"[DRY RUN] Would store config snapshot ({len(raw_str)} bytes)",
+                None,
+            )
 
         # 4. Upsert feeds
         rssfeeds: dict[str, object] = body.get("rssfeeds", {})  # type: ignore[assignment]
@@ -178,22 +181,19 @@ class RssImportOrchestrator:
             extra = {k: v for k, v in feed_dict.items() if k not in known} or None
 
             if existing is None:
-                feed = RssFeed(
-                    remote_key=key,
-                    name=name,
-                    url=url,
-                    extra_config=extra,
-                )
-                self._session.add(feed)
-                await self._session.flush()
-                key_to_id[key] = feed.id
+                if not self._dry_run:
+                    feed = RssFeed(remote_key=key, name=name, url=url, extra_config=extra)
+                    self._session.add(feed)
+                    await self._session.flush()
+                    key_to_id[key] = feed.id
                 result.feeds_created += 1
                 logger.debug("Created RssFeed remote_key=%r name=%r", key, name)
             else:
                 existing.name = name
                 existing.url = url
                 existing.extra_config = extra
-                await self._session.flush()
+                if not self._dry_run:
+                    await self._session.flush()
                 key_to_id[key] = existing.id
                 result.feeds_updated += 1
                 logger.debug("Updated RssFeed id=%d remote_key=%r", existing.id, key)
@@ -245,13 +245,15 @@ class RssImportOrchestrator:
                 extra_config=extra,
                 **col_vals,
             )
-            self._session.add(new_sub)
+            if not self._dry_run:
+                self._session.add(new_sub)
             result.subscriptions_created += 1
             if show_id:
                 result.shows_linked += 1
             logger.debug("Created RssSubscription remote_key=%r name=%r", sub_key, name)
 
-        await self._session.flush()
+        if not self._dry_run:
+            await self._session.flush()
 
         # Update existing subscriptions
         for db_row, merged in delta.to_update:
@@ -279,7 +281,8 @@ class RssImportOrchestrator:
 
             result.subscriptions_updated += 1
 
-        await self._session.flush()
+        if not self._dry_run:
+            await self._session.flush()
 
         # Log remote-deleted keys (don't auto-delete)
         for key in delta.remote_deleted_keys:
