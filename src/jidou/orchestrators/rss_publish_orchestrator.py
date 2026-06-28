@@ -152,6 +152,11 @@ class RssPublishOrchestrator:
         max_key = max(remote_max_key, db_max_key)
         new_subs = await self._build_subscriptions_dict(max_key, result)
 
+        # Commit new remote_key assignments before uploading so they are durable even
+        # if the remote upload succeeds but a subsequent session operation rolls back.
+        if result.new_keys_assigned > 0 and not self._dry_run:
+            await self._session.commit()
+
         # 6. Assemble new body: preserve all non-managed sections, then set managed ones
         new_body: dict[str, object] = {
             k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS

@@ -18,6 +18,7 @@ def _make_session() -> MagicMock:
     session = MagicMock()
     session.add = MagicMock()
     session.flush = AsyncMock()
+    session.commit = AsyncMock()
     session.execute = AsyncMock()
     return session
 
@@ -293,6 +294,80 @@ async def test_publish_avoids_collision_with_remote_deleted_db_keys() -> None:
 
     assert stub.remote_key == "2"
     assert result.new_keys_assigned == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_commits_keys_before_upload() -> None:
+    """New remote_key assignments are committed before the upload.
+
+    This ensures they survive even if a post-upload session rollback occurs.
+    """
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    session.commit = AsyncMock()
+    sftp = MagicMock()
+
+    commit_order: list[str] = []
+
+    async def track_commit() -> None:
+        commit_order.append("commit")
+
+    async def track_upload(data: bytes, path: str) -> None:
+        commit_order.append("upload")
+
+    session.commit = AsyncMock(side_effect=track_commit)
+    sftp.upload_bytes = AsyncMock(side_effect=track_upload)
+
+    stub = _make_sub(remote_key=None, name="New Show", feed=_make_feed())
+    session.execute = AsyncMock(side_effect=_std_execute_sides([_make_feed()], [], [stub]))
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        await orc.run()
+
+    # Order should be: backup_upload → commit → config_upload.
+    # commit must precede the second (main config) upload.
+    upload_indices = [i for i, v in enumerate(commit_order) if v == "upload"]
+    assert len(upload_indices) == 2, f"expected 2 uploads, got {commit_order}"
+    commit_idx = commit_order.index("commit")
+    assert commit_idx < upload_indices[1], f"commit must precede config upload: {commit_order}"
+
+
+@pytest.mark.asyncio
+async def test_publish_non_integer_subscription_keys_do_not_raise() -> None:
+    """extract_max_subscription_key silently skips non-integer keys; publish does not abort."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    raw = (
+        '{"file":1,"format":1}'
+        '{"subscriptions":{"uuid-abc":{"name":"Weird"}},"rssfeeds":{},"cookies":{}}'
+    )
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    session.execute = AsyncMock(side_effect=_std_execute_sides([], [], []))
+
+    import_result = _import_result_ok(raw_content=raw, snapshot_id=1)
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=import_result)
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    assert not result.errors  # non-integer keys must not raise
 
 
 @pytest.mark.asyncio
