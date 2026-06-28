@@ -167,9 +167,7 @@ async def reorder_watchlist(
 
     ids = [item.id for item in payload]
     stmt = select(WatchlistEntry).where(WatchlistEntry.id.in_(ids))
-    entries_by_id = {
-        e.id: e for e in (await db_session.execute(stmt)).scalars().all()
-    }
+    entries_by_id = {e.id: e for e in (await db_session.execute(stmt)).scalars().all()}
 
     missing = [i for i in ids if i not in entries_by_id]
     if missing:
