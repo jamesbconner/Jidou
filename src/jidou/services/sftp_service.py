@@ -577,12 +577,12 @@ class SFTPService:
         """
         local = Path(local_path)
         start = time.monotonic()
-        size = local.stat().st_size if local.exists() else 0
 
         if dry_run:
             logger.info("[DRY RUN] Would upload %s → %s", local, remote_path)
             return UploadResult(remote_path=remote_path, size=0, dry_run=True, elapsed_seconds=0.0)
 
+        size = local.stat().st_size if local.exists() else 0
         logger.info("Uploading %s → %s", local, remote_path)
 
         async def _do() -> None:
