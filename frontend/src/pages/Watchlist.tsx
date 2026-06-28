@@ -275,11 +275,10 @@ export default function Watchlist() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [searchQuery])
 
-  // Close search modal on Escape.
   useEffect(() => {
     if (!searchModalOpen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery('') }
+      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -354,10 +353,10 @@ export default function Watchlist() {
   )
 
   const libraryResults: ShowList[] = useMemo(() => {
-    if (!debouncedQuery.trim() || searchMode !== 'library') return []
-    const q = debouncedQuery.toLowerCase()
+    if (!searchQuery.trim() || searchMode !== 'library') return []
+    const q = searchQuery.toLowerCase()
     return allShows.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 8)
-  }, [allShows, debouncedQuery, searchMode])
+  }, [allShows, searchQuery, searchMode])
 
   const tmdbResults: TmdbResult[] = useMemo(
     () => (searchMode === 'tmdb' ? (tmdbData?.results ?? []).slice(0, 8) : []),
@@ -454,7 +453,7 @@ export default function Watchlist() {
       {searchModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
-          onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+          onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
         >
           <div
             className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
@@ -463,7 +462,7 @@ export default function Watchlist() {
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold">Add to Watchlist</h3>
               <button
-                onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+                onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
                 className="text-gray-400 hover:text-gray-700 text-lg leading-none"
                 aria-label="Close"
               >
@@ -477,7 +476,7 @@ export default function Watchlist() {
                 {(['library', 'tmdb'] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => { setSearchMode(m); setSearchQuery('') }}
+                    onClick={() => { setSearchMode(m); setSearchQuery(''); setDebouncedQuery('') }}
                     className={`flex-1 py-2 font-medium transition-colors ${
                       searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                     }`}
@@ -499,9 +498,9 @@ export default function Watchlist() {
               />
             </div>
             <div className="overflow-y-auto flex-1 divide-y">
-              {debouncedQuery.trim().length < 2 ? (
+              {searchQuery.trim().length < 2 ? (
                 <p className="px-5 py-3 text-sm text-gray-400">Type at least 2 characters to search.</p>
-              ) : searchMode === 'tmdb' && tmdbLoading ? (
+              ) : searchMode === 'tmdb' && (tmdbLoading || debouncedQuery !== searchQuery) ? (
                 <p className="px-5 py-3 text-sm text-gray-400">Searching…</p>
               ) : !hasResults ? (
                 <p className="px-5 py-3 text-sm text-gray-400">No results.</p>

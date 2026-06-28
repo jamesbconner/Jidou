@@ -73,7 +73,7 @@ export default function Shows() {
   useEffect(() => {
     if (!tmdbModalOpen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery('') }
+      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery(''); setDebouncedQuery('') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -182,11 +182,13 @@ export default function Shows() {
   function closeModal() {
     setTmdbModalOpen(false)
     setQuery('')
+    setDebouncedQuery('')
   }
 
   function switchModalMode(mode: 'library' | 'tmdb') {
     setModalMode(mode)
     setQuery('')
+    setDebouncedQuery('')
   }
 
   function handleTrack(r: TmdbResult) {
@@ -257,9 +259,10 @@ export default function Shows() {
         </button>
       </div>
 
-      {tab === 'library' && (
+      {(tab === 'library' || tmdbModalOpen) && (
         <>
-          {/* Filter bar */}
+          {/* Filter bar — shown only on library tab; modal overlay covers it on other tabs */}
+          {tab === 'library' && (
           <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
             <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
 
@@ -310,6 +313,7 @@ export default function Shows() {
               <span className="text-gray-700">Upcoming episode</span>
             </label>
           </div>
+          )}
 
           {/* Show search modal */}
           {tmdbModalOpen && (
@@ -386,10 +390,10 @@ export default function Shows() {
                       </div>
                     )
                   ) : (
-                    tmdbSearching ? (
-                      <p className="text-sm text-gray-400">Searching…</p>
-                    ) : debouncedQuery.length < 2 ? (
+                    query.trim().length < 2 ? (
                       <p className="text-sm text-gray-400">Type at least 2 characters to search TMDB.</p>
+                    ) : tmdbSearching || debouncedQuery !== query ? (
+                      <p className="text-sm text-gray-400">Searching…</p>
                     ) : !searchData || searchData.results.length === 0 ? (
                       <p className="text-sm text-gray-500">No results for "{debouncedQuery}".</p>
                     ) : (
@@ -443,7 +447,7 @@ export default function Shows() {
             </div>
           )}
 
-          {/* Library grid */}
+          {tab === 'library' && (
           <section>
             <p className="text-xs text-gray-500 mb-2">
               {activeFilterCount > 0 ? `${filtered.length} of ${shows.length} shows` : `${shows.length} show${shows.length !== 1 ? 's' : ''}`}
@@ -468,6 +472,7 @@ export default function Shows() {
               </div>
             )}
           </section>
+          )}
         </>
       )}
 
