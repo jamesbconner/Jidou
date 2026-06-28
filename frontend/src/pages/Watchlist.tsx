@@ -258,6 +258,7 @@ export default function Watchlist() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [searchMode, setSearchMode] = useState<'library' | 'tmdb'>('library')
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
   // Per-item pending sets so concurrent adds don't clobber each other's loading state.
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
@@ -273,6 +274,16 @@ export default function Watchlist() {
     timerRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [searchQuery])
+
+  // Close search modal on Escape.
+  useEffect(() => {
+    if (!searchModalOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery('') }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [searchModalOpen])
 
   const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
   // Unfiltered full list for search cross-reference — independent of the status filter and
@@ -407,7 +418,6 @@ export default function Watchlist() {
     )
   }
 
-  const showSearchResults = debouncedQuery.trim().length >= 2
   const hasResults = searchMode === 'library' ? libraryResults.length > 0 : tmdbResults.length > 0
 
   return (
@@ -430,76 +440,106 @@ export default function Watchlist() {
         Keep track of shows you want to watch, are currently watching, or have finished.
       </p>
 
-      {/* Add show search */}
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none flex-shrink-0">
-            <span className={searchMode === 'library' ? 'font-medium text-blue-600' : 'text-gray-400'}>Library</span>
-            <button
-              role="switch"
-              aria-checked={searchMode === 'tmdb'}
-              onClick={() => setSearchMode((m) => m === 'library' ? 'tmdb' : 'library')}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                  searchMode === 'tmdb' ? 'translate-x-4' : 'translate-x-1'
-                }`}
-              />
-            </button>
-            <span className={searchMode === 'tmdb' ? 'font-medium text-blue-600' : 'text-gray-400'}>TMDB</span>
-          </label>
-        </div>
-
-        {showSearchResults && (
-          <div className="border rounded-lg divide-y overflow-hidden">
-            {searchMode === 'tmdb' && tmdbLoading ? (
-              <p className="px-3 py-2 text-sm text-gray-400">Searching…</p>
-            ) : !hasResults ? (
-              <p className="px-3 py-2 text-sm text-gray-400">No results.</p>
-            ) : searchMode === 'library' ? (
-              libraryResults.map((s) => (
-                <SearchResultRow
-                  key={s.id}
-                  posterPath={s.poster_path ?? null}
-                  title={s.title}
-                  year={s.release_date?.slice(0, 4)}
-                  libraryShowId={s.id}
-                  watchlistStatus={watchlistStatusByShowId.get(s.id) ?? null}
-                  onAdd={() => handleAddFromLibrary(s.id)}
-                  isPending={pendingLibraryIds.has(s.id)}
-                />
-              ))
-            ) : (
-              tmdbResults.map((r) => {
-                const libraryShow = libraryByTmdbId.get(r.id)
-                const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
-                return (
-                  <SearchResultRow
-                    key={`${r.id}:${r.media_type}`}
-                    posterPath={r.poster_path ?? null}
-                    title={r.name ?? r.title ?? 'Unknown'}
-                    year={(r.first_air_date ?? r.release_date)?.slice(0, 4)}
-                    libraryShowId={libraryShow?.id ?? null}
-                    watchlistStatus={wlStatus}
-                    onAdd={() => handleAddFromTmdb(r)}
-                    isPending={pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))}
-                  />
-                )
-              })
-            )}
-          </div>
-        )}
+      {/* Add show search — button triggers modal */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <button
+          onClick={() => setSearchModalOpen(true)}
+          className="w-full border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Search shows to add to watchlist…
+        </button>
       </div>
+
+      {/* Search modal */}
+      {searchModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-semibold">Add to Watchlist</h3>
+              <button
+                onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Library / TMDB pill toggle */}
+            <div className="px-5 pt-4">
+              <div className="flex rounded-lg border text-sm overflow-hidden">
+                {(['library', 'tmdb'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => { setSearchMode(m); setSearchQuery('') }}
+                    className={`flex-1 py-2 font-medium transition-colors ${
+                      searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {m === 'library' ? 'Library' : 'TMDB'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-5 pt-3 pb-3 border-b">
+              <input
+                type="text"
+                autoFocus
+                placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y">
+              {debouncedQuery.trim().length < 2 ? (
+                <p className="px-5 py-3 text-sm text-gray-400">Type at least 2 characters to search.</p>
+              ) : searchMode === 'tmdb' && tmdbLoading ? (
+                <p className="px-5 py-3 text-sm text-gray-400">Searching…</p>
+              ) : !hasResults ? (
+                <p className="px-5 py-3 text-sm text-gray-400">No results.</p>
+              ) : searchMode === 'library' ? (
+                libraryResults.map((s) => (
+                  <SearchResultRow
+                    key={s.id}
+                    posterPath={s.poster_path ?? null}
+                    title={s.title}
+                    year={s.release_date?.slice(0, 4)}
+                    libraryShowId={s.id}
+                    watchlistStatus={watchlistStatusByShowId.get(s.id) ?? null}
+                    onAdd={() => handleAddFromLibrary(s.id)}
+                    isPending={pendingLibraryIds.has(s.id)}
+                  />
+                ))
+              ) : (
+                tmdbResults.map((r) => {
+                  const libraryShow = libraryByTmdbId.get(r.id)
+                  const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
+                  return (
+                    <SearchResultRow
+                      key={`${r.id}:${r.media_type}`}
+                      posterPath={r.poster_path ?? null}
+                      title={r.name ?? r.title ?? 'Unknown'}
+                      year={(r.first_air_date ?? r.release_date)?.slice(0, 4)}
+                      libraryShowId={libraryShow?.id ?? null}
+                      watchlistStatus={wlStatus}
+                      onAdd={() => handleAddFromTmdb(r)}
+                      isPending={pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))}
+                    />
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Entries table */}
       {isLoading ? (
