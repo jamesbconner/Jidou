@@ -7,8 +7,8 @@ import pytest
 
 from jidou.services.rss_config import (
     ReconcileDelta,
-    compute_subscription_deltas,
     compose_rss_config,
+    compute_subscription_deltas,
     extract_max_subscription_key,
     parse_rss_config,
 )
@@ -62,7 +62,7 @@ class TestParseRssConfig:
     def test_whitespace_tolerant(self) -> None:
         """Leading/trailing whitespace does not break parsing."""
         raw_with_whitespace = f"\n  {_RAW}  \n"
-        header, body = parse_rss_config(raw_with_whitespace)
+        header, _body = parse_rss_config(raw_with_whitespace)
         assert header["format"] == 1
 
     def test_raises_on_single_object(self) -> None:
