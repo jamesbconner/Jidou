@@ -439,3 +439,58 @@ async def trigger_rss_import(
 
     logger.info("Enqueued RSS import task %s (dry_run=%s)", task_id, dry_run)
     return new_task
+
+
+@router.post("/publish", response_model=TaskRead, status_code=202)
+async def trigger_rss_publish(
+    dry_run: bool = False,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BackgroundTask:
+    """Compose and upload the Jidou DB state back to the remote YaRSS2 config.
+
+    Requires ``RSS_CONFIG_REMOTE_PATH`` to be configured.  Backs up the current
+    remote file, reconciles out-of-band changes, then uploads the composed config.
+    Progress is streamed over WebSocket (``/ws``) using the returned task ID.
+
+    Args:
+        dry_run: Plan the publish without uploading to the remote server.
+        db_session: DB session (injected).
+
+    Returns:
+        Background task record for polling or WebSocket tracking.
+
+    Raises:
+        HTTPException: 422 if ``RSS_CONFIG_REMOTE_PATH`` is not configured.
+        HTTPException: 503 if the Celery broker is unreachable.
+    """
+    if not settings.rss_config_remote_path:
+        raise HTTPException(
+            status_code=422,
+            detail="RSS_CONFIG_REMOTE_PATH is not configured.",
+        )
+
+    task_id = str(uuid.uuid4())
+    new_task = await create_task_record(
+        db_session,
+        task_id,
+        "rss_publish",
+        dry_run=dry_run,
+    )
+
+    try:
+        from jidou.workers.rss_tasks import rss_publish_task
+
+        rss_publish_task.apply_async(args=[dry_run], task_id=task_id)
+    except Exception as exc:
+        from datetime import UTC, datetime
+
+        from jidou.models.task import TaskStatus
+
+        new_task.status = TaskStatus.FAILED.value
+        new_task.progress_message = f"Failed to enqueue task: {exc}"
+        new_task.completed_at = datetime.now(UTC)
+        await db_session.commit()
+        raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
+
+    logger.info("Enqueued RSS publish task %s (dry_run=%s)", task_id, dry_run)
+    return new_task
