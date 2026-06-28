@@ -195,6 +195,10 @@ async def test_subscriptions_created_for_new_keys() -> None:
     assert result.subscriptions_created == 2
     assert result.subscriptions_updated == 0
     assert session.add.call_count == 2
+    # All imported subscriptions must be marked as enabled in the remote config
+    for call in session.add.call_args_list:
+        added = call.args[0]
+        assert added.enabled_in_config is True
 
 
 @pytest.mark.asyncio
@@ -265,6 +269,52 @@ async def test_remote_deleted_keys_logged() -> None:
 
     assert result.subscriptions_remote_deleted == 1
     assert any("99" in e for e in events)
+
+
+@pytest.mark.asyncio
+async def test_last_update_preserved_in_extra_config_on_update() -> None:
+    """On subscription update, remote non-column fields like last_update go into extra_config."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    db_sub = MagicMock(spec=RssSubscription)
+    db_sub.remote_key = "0"
+    db_sub.name = "Severance"
+    db_sub.regex_include = None
+    db_sub.regex_exclude = None
+    db_sub.regex_include_ignorecase = True
+    db_sub.regex_exclude_ignorecase = True
+    db_sub.download_location = None
+    db_sub.move_completed = None
+    db_sub.label = None
+    db_sub.extra_config = {"last_update": "2026-01-01"}
+    db_sub.show_id = None
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[
+            _exec_result(scalars_all=[db_sub]),  # db_subs
+            _exec_result(scalars_all=[]),  # shows
+        ]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    # Remote has a newer last_update
+    remote_subs = {"0": {"name": "Severance", "active": True, "last_update": "2026-06-01"}}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    # extra_config should contain the NEW remote last_update, not the old one
+    assert db_sub.extra_config is not None
+    assert db_sub.extra_config["last_update"] == "2026-06-01"
 
 
 @pytest.mark.asyncio

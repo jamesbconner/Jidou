@@ -243,6 +243,7 @@ class RssImportOrchestrator:
                 feed_id=feed_id,
                 show_id=show_id,
                 extra_config=extra,
+                enabled_in_config=True,
                 **col_vals,
             )
             if not self._dry_run:
@@ -266,9 +267,20 @@ class RssImportOrchestrator:
                 if new_feed_id is not None:
                     db_row.feed_id = new_feed_id
 
-                if "extra_config" in merged:
-                    raw_extra = merged["extra_config"]
-                    db_row.extra_config = raw_extra if isinstance(raw_extra, dict) else None
+                # Rebuild extra_config: preserve old DB value, overlay with remote
+                # non-column fields (e.g. last_update, feedID-equivalent keys, etc.)
+                _extra_skip = _SUBSCRIPTION_COLUMNS | {
+                    "remote_key",
+                    "feedID",
+                    "feed_key",
+                    "feed_id",
+                    "extra_config",
+                }
+                old_extra = merged.get("extra_config") or {}
+                if not isinstance(old_extra, dict):
+                    old_extra = {}
+                remote_extras = {k: merged[k] for k in merged if k not in _extra_skip}
+                db_row.extra_config = {**old_extra, **remote_extras} or None
 
             # Auto-link show: read db_row.show_id but only write in live run
             if db_row.show_id is None:
