@@ -1,15 +1,18 @@
 """API routes for RSS feed and subscription management."""
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
+from jidou.models.task import BackgroundTask
 from jidou.schemas.rss_schema import (
     RssFeedCreate,
     RssFeedRead,
@@ -18,6 +21,8 @@ from jidou.schemas.rss_schema import (
     RssSubscriptionRead,
     RssSubscriptionUpdate,
 )
+from jidou.schemas.task_schema import TaskRead
+from jidou.services.progress import create_task_record
 
 logger = logging.getLogger(__name__)
 
@@ -374,3 +379,63 @@ async def list_snapshots(
         }
         for row in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Background tasks
+# ---------------------------------------------------------------------------
+
+
+@router.post("/import", response_model=TaskRead, status_code=202)
+async def trigger_rss_import(
+    dry_run: bool = False,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BackgroundTask:
+    """Download the remote YaRSS2 config and sync it into the database.
+
+    Requires ``RSS_CONFIG_REMOTE_PATH`` to be configured.  Progress is
+    streamed over WebSocket (``/ws``) using the returned task ID.
+
+    Args:
+        dry_run: Parse and reconcile without writing to the database.
+        db_session: DB session (injected).
+
+    Returns:
+        Background task record for polling or WebSocket tracking.
+
+    Raises:
+        HTTPException: 422 if ``RSS_CONFIG_REMOTE_PATH`` is not configured.
+        HTTPException: 503 if the Celery broker is unreachable.
+    """
+    if not settings.rss_config_remote_path:
+        raise HTTPException(
+            status_code=422,
+            detail="RSS_CONFIG_REMOTE_PATH is not configured.",
+        )
+
+    task_id = str(uuid.uuid4())
+    new_task = await create_task_record(
+        db_session,
+        task_id,
+        "rss_import",
+        dry_run=dry_run,
+    )
+
+    try:
+        # Delayed import avoids circular references with the Celery app
+        from jidou.workers.rss_tasks import rss_import_task
+
+        rss_import_task.apply_async(args=[dry_run], task_id=task_id)
+    except Exception as exc:
+        from datetime import UTC, datetime
+
+        from jidou.models.task import TaskStatus
+
+        new_task.status = TaskStatus.FAILED.value
+        new_task.progress_message = f"Failed to enqueue task: {exc}"
+        new_task.completed_at = datetime.now(UTC)
+        await db_session.commit()
+        raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
+
+    logger.info("Enqueued RSS import task %s (dry_run=%s)", task_id, dry_run)
+    return new_task

@@ -514,6 +514,41 @@ class SFTPService:
         # results list is fully populated; cast away the None initialiser type
         return results  # type: ignore[return-value]
 
+    async def download_bytes(
+        self,
+        remote_path: str,
+        dry_run: bool = False,
+    ) -> bytes:
+        """Download a remote file and return its raw bytes.
+
+        Useful when the caller needs the content in memory (e.g. parsing a
+        config file) rather than writing it to a local path.
+        Transient connection failures are retried with exponential backoff.
+
+        Args:
+            remote_path: Full remote file path.
+            dry_run: When ``True`` the transfer is skipped and ``b""`` is returned.
+
+        Returns:
+            Raw file content as bytes, or ``b""`` for dry-run.
+        """
+        start = time.monotonic()
+
+        if dry_run:
+            logger.info("[DRY RUN] Would download %s", remote_path)
+            return b""
+
+        logger.info("Downloading %s into memory", remote_path)
+
+        async def _do() -> bytes:
+            async with self._connection() as sftp, sftp.open(remote_path, "rb") as fh:
+                return await fh.read()  # type: ignore[no-any-return]
+
+        data: bytes = await self._execute_with_retry(f"download_bytes {remote_path}", _do)
+        elapsed = time.monotonic() - start
+        logger.info("Downloaded %s (%d bytes) in %.2fs", remote_path, len(data), elapsed)
+        return data
+
     async def upload_bytes(
         self,
         data: bytes,
