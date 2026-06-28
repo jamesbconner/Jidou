@@ -50,10 +50,12 @@ const TASK_DESCRIPTIONS: Record<TaskType, string> = {
   sync: 'Runs the full pipeline in sequence: Scan → Download → Match → Route.',
   import: 'Imports episode file paths from a text file, matching them to shows and episodes via TMDB lookup.',
   db_import: 'Imports show and episode metadata from a structured CSV or database export.',
+  rss_import: 'Downloads the remote YaRSS2 config and syncs feeds and subscriptions into the database.',
+  rss_publish: 'Composes the Jidou database state into a YaRSS2 config and uploads it to the remote server.',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
-const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import']
+const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish']
 
 export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('scan')

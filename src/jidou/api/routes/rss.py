@@ -17,6 +17,7 @@ from jidou.schemas.rss_schema import (
     RssFeedCreate,
     RssFeedRead,
     RssFeedUpdate,
+    RssRegexSuggestion,
     RssSubscriptionCreate,
     RssSubscriptionRead,
     RssSubscriptionUpdate,
@@ -338,6 +339,107 @@ async def delete_subscription(
 
     await db_session.delete(sub)
     logger.info("Deleted RSS subscription id=%d name=%r", sub_id, sub.name)
+
+
+_REGEX_SYSTEM_PROMPT = (
+    "You are a BitTorrent RSS filter assistant. "
+    "Return ONLY a compact JSON object with exactly two keys: "
+    '"regex_include" and "regex_exclude". '
+    "regex_include should match 1080p episodes of the requested show, "
+    "preferring BluRay/WEB-DL/WEBRip releases. "
+    "regex_exclude should filter out dubbed language releases (e.g. FRENCH, GERMAN, "
+    "SPANISH, ITALIAN, DUBBED), internal scene releases (INTERNAL), "
+    "and low-quality encodes (CAM, TS). "
+    "Do not include any explanation, markdown, or extra text — only the JSON object."
+)
+
+
+@router.post("/subscriptions/{sub_id}/suggest-regex", response_model=RssRegexSuggestion)
+async def suggest_regex(
+    sub_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RssRegexSuggestion:
+    """Generate an LLM regex suggestion for an RSS subscription filter.
+
+    Uses the subscription name (and linked show title if available) as the
+    prompt context.  The LLM returns a compact JSON object with
+    ``regex_include`` and ``regex_exclude`` patterns suitable for a
+    BitTorrent RSS downloader.
+
+    Args:
+        sub_id: Database primary key of the subscription.
+        db_session: DB session (injected).
+
+    Returns:
+        :class:`RssRegexSuggestion` with the suggested regex patterns.
+
+    Raises:
+        HTTPException: 404 if the subscription is not found.
+        HTTPException: 422 if the LLM provider is not configured.
+        HTTPException: 503 if the LLM call fails.
+    """
+    from jidou.services.llm_service import LLMService
+
+    stmt = _sub_stmt().where(RssSubscription.id == sub_id)
+    sub = (await db_session.execute(stmt)).scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="RSS subscription not found")
+
+    llm = LLMService(
+        provider=settings.llm_provider,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+    )
+    if not llm.is_available():
+        raise HTTPException(
+            status_code=422,
+            detail="LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL).",
+        )
+
+    show_title = sub.show.title if sub.show else None
+    label = show_title or sub.name
+    user_prompt = (
+        f'Suggest RSS filter regexes for the show "{label}".'
+        if show_title
+        else f'Suggest RSS filter regexes for the subscription named "{sub.name}".'
+    )
+
+    response = await llm.complete(prompt=user_prompt, system=_REGEX_SYSTEM_PROMPT)
+    if response is None:
+        raise HTTPException(status_code=503, detail="LLM provider call failed.")
+
+    import json
+    import re
+
+    # Strip markdown code fences that some models add despite the system prompt
+    raw = response.content.strip()
+    raw = re.sub(r"^```[a-z]*\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
+
+    try:
+        parsed = json.loads(raw)
+        regex_include = str(parsed["regex_include"])
+        regex_exclude = str(parsed["regex_exclude"])
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.warning("LLM returned unparseable regex JSON for sub_id=%d: %s", sub_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="LLM returned an unparseable response.",
+        ) from exc
+
+    logger.info(
+        "Suggested regex for sub_id=%d (model=%s cached=%s)",
+        sub_id,
+        response.model,
+        response.cached,
+    )
+    return RssRegexSuggestion(
+        regex_include=regex_include,
+        regex_exclude=regex_exclude,
+        model=response.model,
+        cached=response.cached,
+    )
 
 
 # ---------------------------------------------------------------------------

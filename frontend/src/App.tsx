@@ -12,6 +12,7 @@ import Watchlist from '@/pages/Watchlist'
 import Tasks from '@/pages/Tasks'
 import Settings from '@/pages/Settings'
 import Data from '@/pages/Data'
+import RSS from '@/pages/RSS'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/data" element={<Data />} />
+                <Route path="/rss" element={<RSS />} />
               </Route>
             </Routes>
           </ErrorBoundary>

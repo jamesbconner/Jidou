@@ -209,7 +209,7 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled'
 
-export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync' | 'import' | 'db_import'
+export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync' | 'import' | 'db_import' | 'rss_import' | 'rss_publish'
 
 export interface TaskList {
   id: number
@@ -291,6 +291,78 @@ export interface AppConfig {
   local_tv_path: string
   local_anime_path: string
   local_movie_path: string
+  rss_config_path_set: boolean
+}
+
+// ─── RSS ──────────────────────────────────────────────────────────────────────
+
+export interface RssFeedRead {
+  id: number
+  remote_key: string | null
+  name: string
+  url: string
+  default_download_location: string | null
+  default_move_completed: string | null
+  extra_config: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RssFeedUpdate {
+  name?: string
+  url?: string
+  default_download_location?: string | null
+  default_move_completed?: string | null
+}
+
+export interface RssShowBrief {
+  id: number
+  title: string
+  poster_path: string | null
+}
+
+export interface RssSubscriptionRead {
+  id: number
+  remote_key: string | null
+  feed_id: number | null
+  show_id: number | null
+  name: string
+  regex_include: string | null
+  regex_exclude: string | null
+  regex_include_ignorecase: boolean
+  regex_exclude_ignorecase: boolean
+  download_location: string | null
+  move_completed: string | null
+  active: boolean
+  enabled_in_config: boolean
+  label: string | null
+  last_match: string | null
+  extra_config: Record<string, unknown> | null
+  feed: RssFeedRead | null
+  show: RssShowBrief | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RssSubscriptionUpdate {
+  name?: string
+  regex_include?: string | null
+  regex_exclude?: string | null
+  regex_include_ignorecase?: boolean
+  regex_exclude_ignorecase?: boolean
+  feed_id?: number | null
+  show_id?: number | null
+  download_location?: string | null
+  move_completed?: string | null
+  enabled_in_config?: boolean
+  label?: string | null
+}
+
+export interface RssRegexSuggestion {
+  regex_include: string
+  regex_exclude: string
+  model: string
+  cached: boolean
 }
 
 export interface ConnectionTestResult {

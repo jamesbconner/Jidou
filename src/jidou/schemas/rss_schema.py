@@ -113,3 +113,19 @@ class RssSubscriptionRead(BaseModel):
     show: RssShowBrief | None
     created_at: datetime
     updated_at: datetime
+
+
+class RssRegexSuggestion(BaseModel):
+    """LLM-generated regex suggestion for an RSS subscription filter.
+
+    Attributes:
+        regex_include: Suggested include regex (match wanted torrents).
+        regex_exclude: Suggested exclude regex (filter out unwanted releases).
+        model: LLM model identifier that produced the suggestion.
+        cached: Whether the response came from the LLM cache.
+    """
+
+    regex_include: str
+    regex_exclude: str
+    model: str
+    cached: bool

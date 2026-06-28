@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
+from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.watchlist_schema import (
@@ -21,6 +22,39 @@ from jidou.schemas.watchlist_schema import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
+
+
+async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) -> None:
+    """Create a disabled RssSubscription stub for show_id if one does not exist.
+
+    Uses a savepoint so a concurrent-insert IntegrityError does not roll back
+    the enclosing watchlist transaction.  The partial unique index on
+    ``(show_id) WHERE remote_key IS NULL`` enforces at most one stub per show.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        show_id: ID of the show to link the stub to.
+        show_title: Title used as the stub subscription name.
+    """
+    stmt = select(RssSubscription).where(RssSubscription.show_id == show_id).limit(1)
+    if (await session.execute(stmt)).scalar_one_or_none() is None:
+        stub = RssSubscription(
+            show_id=show_id,
+            name=show_title,
+            enabled_in_config=False,
+            active=True,
+        )
+        session.add(stub)
+        try:
+            async with session.begin_nested():
+                await session.flush()
+            logger.debug(
+                "Created RSS subscription stub for show_id=%d name=%r", show_id, show_title
+            )
+        except IntegrityError:
+            logger.debug(
+                "RSS stub for show_id=%d already exists (concurrent insert ignored)", show_id
+            )
 
 
 @router.get("", response_model=list[WatchlistRead])
@@ -108,6 +142,7 @@ async def create_watchlist_entry(
             logger.debug(
                 "Show id=%d already on watchlist (entry id=%d)", payload.show_id, existing.id
             )
+        await _ensure_rss_stub(db_session, existing.show_id, existing.show.title)
         return existing
 
     entry = WatchlistEntry(**payload.model_dump())
@@ -132,6 +167,7 @@ async def create_watchlist_entry(
                 payload.show_id,
                 existing.id,
             )
+            await _ensure_rss_stub(db_session, existing.show_id, existing.show.title)
             return existing
         raise
 
@@ -142,6 +178,7 @@ async def create_watchlist_entry(
         entry.status,
     )
     await db_session.refresh(entry, ["show"])
+    await _ensure_rss_stub(db_session, entry.show_id, entry.show.title)
     return entry
 
 
