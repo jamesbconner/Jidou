@@ -412,12 +412,17 @@ def test_create_watchlist_entry_idempotent_creates_rss_stub() -> None:
 
 
 def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
-    """POST /api/watchlist tolerates an IntegrityError on the stub insert (TOCTOU race)."""
+    """POST /api/watchlist tolerates an IntegrityError on the stub insert (TOCTOU race).
+
+    When the savepoint flush raises IntegrityError, the stub must be expunged from
+    the session so the final commit does not re-flush it and blow up the transaction.
+    """
     from datetime import UTC, datetime
 
     from sqlalchemy.exc import IntegrityError
 
     from jidou.database import get_session
+    from jidou.models.rss import RssSubscription
 
     show = _make_show(id=1)
 
@@ -428,7 +433,7 @@ def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
     no_sub_result = MagicMock()
     no_sub_result.scalar_one_or_none.return_value = None  # both concurrent requests see no sub
 
-    call_count = 0
+    expunged_objects: list[object] = []
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
@@ -444,21 +449,22 @@ def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
                 obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
+        session.expunge = MagicMock(side_effect=expunged_objects.append)
         # Flush #1 succeeds (WatchlistEntry); flush #2 (stub inside savepoint) raises
         session.flush = AsyncMock(
             side_effect=[None, IntegrityError("stmt", {}, Exception("duplicate key"))]
         )
         session.refresh = AsyncMock(side_effect=_refresh_with_show)
         session.begin_nested = _make_begin_nested()
-
-        nonlocal call_count
-        call_count += 1
         yield session
 
     app.dependency_overrides[get_session] = _mock_session
     try:
         response = TestClient(app).post("/api/watchlist", json={"show_id": 1})
         assert response.status_code == 201
+        # The stub must have been expunged so commit() won't re-flush it
+        rss_expunged = [o for o in expunged_objects if isinstance(o, RssSubscription)]
+        assert len(rss_expunged) == 1
     finally:
         app.dependency_overrides.clear()
 
