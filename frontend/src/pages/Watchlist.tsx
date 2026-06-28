@@ -1,22 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
 import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
@@ -133,38 +116,37 @@ function GripIcon() {
   )
 }
 
-// ─── Sortable table row ───────────────────────────────────────────────────────
+// ─── Draggable table row (HTML5 native drag-and-drop) ────────────────────────
 
-interface SortableRowProps {
+interface DraggableRowProps {
   entry: WatchlistRead
   index: number
   onDelete: (id: number) => void
   isDeletePending: boolean
   dragEnabled: boolean
+  isDragging: boolean
+  isDragOver: boolean
+  onDragStart: (id: number) => void
+  onDragOver: (e: React.DragEvent, id: number) => void
+  onDrop: (targetId: number) => void
+  onDragEnd: () => void
 }
 
-function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: SortableRowProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: entry.id })
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0 : 1,
-  }
-
+function DraggableRow({
+  entry, index, onDelete, isDeletePending, dragEnabled,
+  isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd,
+}: DraggableRowProps) {
   return (
-    <tr ref={setNodeRef} style={style} className="hover:bg-gray-50">
+    <tr
+      draggable={dragEnabled}
+      onDragStart={dragEnabled ? () => onDragStart(entry.id) : undefined}
+      onDragOver={dragEnabled ? (e) => onDragOver(e, entry.id) : undefined}
+      onDrop={dragEnabled ? () => onDrop(entry.id) : undefined}
+      onDragEnd={dragEnabled ? onDragEnd : undefined}
+      style={{ opacity: isDragging ? 0.35 : 1 }}
+      className={`hover:bg-gray-50 ${isDragOver && !isDragging ? 'outline outline-2 outline-blue-400' : ''}`}
+    >
       <td
-        ref={dragEnabled ? setActivatorNodeRef : undefined}
-        {...(dragEnabled ? { ...attributes, ...listeners } : {})}
         className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-700 cursor-grab active:cursor-grabbing' : 'text-gray-200 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
@@ -202,18 +184,6 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   )
 }
 
-// ─── Drag overlay row (follows cursor during drag) ────────────────────────────
-
-function DragRow({ entry }: { entry: WatchlistRead }) {
-  return (
-    <div className="bg-white border-2 border-blue-400 rounded shadow-xl px-4 py-3 text-sm flex items-center gap-3 cursor-grabbing opacity-90">
-      <GripIcon />
-      <span className="font-medium">{entry.show.title}</span>
-      <span className="text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
-    </div>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Watchlist() {
@@ -226,11 +196,8 @@ export default function Watchlist() {
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
-  const [activeEntry, setActiveEntry] = useState<WatchlistRead | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  )
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -285,33 +252,43 @@ export default function Watchlist() {
     })
   }, [entries, statusFilter])
 
-  function handleDragStart(event: DragStartEvent) {
-    const entry = orderedEntries.find((e) => e.id === event.active.id)
-    setActiveEntry(entry ?? null)
+  function handleRowDragStart(id: number) {
+    setDraggingId(id)
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveEntry(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    // Drop rapid successive drags while a prior batch is in flight to prevent
-    // interleaved PATCHes writing inconsistent positions to the server.
-    if (reorderWatchlist.isPending) return
-    const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
-    const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
+  function handleRowDragOver(e: React.DragEvent, id: number) {
+    e.preventDefault()
+    setDragOverId(id)
+  }
+
+  function handleRowDrop(targetId: number) {
+    if (!draggingId || draggingId === targetId || reorderWatchlist.isPending) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
+    }
+    const oldIndex = orderedEntries.findIndex((e) => e.id === draggingId)
+    const newIndex = orderedEntries.findIndex((e) => e.id === targetId)
+    if (oldIndex === -1 || newIndex === -1) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
+    }
     const snapshot = orderedEntries.slice()
-    const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
+    const reordered = [...orderedEntries]
+    const [moved] = reordered.splice(oldIndex, 1)
+    reordered.splice(newIndex, 0, moved)
     setOrderedEntries(reordered)
+    setDraggingId(null)
+    setDragOverId(null)
     reorderWatchlist.mutate(reordered, {
-      // Roll back to the pre-drag order, not entries (API sort), which can
-      // diverge from orderedEntries after prior successful reorders.
       onError: () => setOrderedEntries(snapshot),
     })
   }
 
-  function handleDragCancel() {
-    setActiveEntry(null)
+  function handleRowDragEnd() {
+    setDraggingId(null)
+    setDragOverId(null)
   }
 
   // Map show_id → watchlist status for result-row lookup (uses full unfiltered list)
@@ -570,46 +547,39 @@ export default function Watchlist() {
       ) : entries.length === 0 ? (
         <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <SortableContext items={orderedEntries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                  <tr>
-                    <th className="px-2 py-2 w-6" />
-                    <th className="px-4 py-2 text-left w-8">#</th>
-                    <th className="px-4 py-2 text-left">Show</th>
-                    <th className="px-4 py-2 text-left">Status</th>
-                    <th className="px-4 py-2 text-left">Notes</th>
-                    <th className="px-4 py-2 text-left">Added</th>
-                    <th className="px-4 py-2" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {orderedEntries.map((e, i) => (
-                    <SortableRow
-                      key={e.id}
-                      entry={e as WatchlistRead}
-                      index={i}
-                      onDelete={(id) => deleteEntry.mutate(id)}
-                      isDeletePending={deleteEntry.isPending}
-                      dragEnabled={dragEnabled}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SortableContext>
-          <DragOverlay>
-            {activeEntry ? <DragRow entry={activeEntry} /> : null}
-          </DragOverlay>
-        </DndContext>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th className="px-2 py-2 w-6" />
+                <th className="px-4 py-2 text-left w-8">#</th>
+                <th className="px-4 py-2 text-left">Show</th>
+                <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Notes</th>
+                <th className="px-4 py-2 text-left">Added</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {orderedEntries.map((e, i) => (
+                <DraggableRow
+                  key={e.id}
+                  entry={e as WatchlistRead}
+                  index={i}
+                  onDelete={(id) => deleteEntry.mutate(id)}
+                  isDeletePending={deleteEntry.isPending}
+                  dragEnabled={dragEnabled}
+                  isDragging={draggingId === e.id}
+                  isDragOver={dragOverId === e.id}
+                  onDragStart={handleRowDragStart}
+                  onDragOver={handleRowDragOver}
+                  onDrop={handleRowDrop}
+                  onDragEnd={handleRowDragEnd}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
