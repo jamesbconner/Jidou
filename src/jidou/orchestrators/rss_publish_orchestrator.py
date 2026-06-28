@@ -134,8 +134,20 @@ class RssPublishOrchestrator:
         # 4. Build new rssfeeds dict from DB
         new_feeds = await self._build_feeds_dict(result)
 
-        # 5. Build new subscriptions dict from DB
-        max_key = extract_max_subscription_key(old_body)
+        # 5. Build new subscriptions dict from DB.
+        # Seed max_key from both the remote body and all existing DB remote_keys so
+        # that remote-deleted subscriptions (still in DB with a remote_key but absent
+        # from old_body) cannot collide with keys assigned to new stubs.
+        remote_max_key = extract_max_subscription_key(old_body)
+        all_keys_stmt = select(RssSubscription.remote_key).where(
+            RssSubscription.remote_key.is_not(None)
+        )
+        all_key_rows = (await self._session.execute(all_keys_stmt)).scalars().all()
+        db_max_key = max(
+            (int(k) for k in all_key_rows if k and k.isdigit()),
+            default=-1,
+        )
+        max_key = max(remote_max_key, db_max_key)
         new_subs = await self._build_subscriptions_dict(max_key, result)
 
         # 6. Assemble new body: preserve all non-managed sections, then set managed ones

@@ -105,6 +105,23 @@ def _import_result_ok(raw_content: str = _MINIMAL_RAW, snapshot_id: int = 99) ->
     return r
 
 
+def _std_execute_sides(
+    feeds: list[object],
+    db_keys: list[str],
+    subs: list[object],
+) -> list[MagicMock]:
+    """Return the three execute side-effects in order:
+    1. feeds query (_build_feeds_dict)
+    2. all-DB-keys query (collision-avoidance in run())
+    3. enabled-subs query (_build_subscriptions_dict)
+    """
+    return [
+        _exec_result(scalars_all=feeds),
+        _exec_result(scalars_all=db_keys),
+        _exec_result(scalars_all=subs),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # RssPublishOrchestrator unit tests
 # ---------------------------------------------------------------------------
@@ -119,15 +136,9 @@ async def test_publish_dry_run_does_not_upload() -> None:
     sftp = MagicMock()
     sftp.upload_bytes = AsyncMock()
 
-    # feeds query → one feed; subs query → one sub with remote_key
     feed = _make_feed()
     sub = _make_sub(feed=feed)
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[feed]),  # _build_feeds_dict
-            _exec_result(scalars_all=[sub]),  # _build_subscriptions_dict
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
@@ -155,12 +166,7 @@ async def test_publish_uploads_backup_and_config() -> None:
 
     feed = _make_feed()
     sub = _make_sub(feed=feed)
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[feed]),
-            _exec_result(scalars_all=[sub]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
@@ -173,12 +179,10 @@ async def test_publish_uploads_backup_and_config() -> None:
         result = await orc.run()
 
     assert sftp.upload_bytes.call_count == 2
-    # First call is the backup
     backup_call_path = sftp.upload_bytes.call_args_list[0][0][1]
     assert "backup" in backup_call_path
     assert result.backup_path is not None
     assert "backup" in result.backup_path
-    # Second call is the new config at the original path
     config_call_path = sftp.upload_bytes.call_args_list[1][0][1]
     assert config_call_path == "/remote/yarss2.conf"
     assert not result.errors
@@ -191,16 +195,10 @@ async def test_publish_builds_feeds_from_db() -> None:
 
     session = _make_session()
     sftp = MagicMock()
-    sftp.upload_bytes = AsyncMock()
 
     feed = _make_feed(remote_key="f1", name="My Feed", url="http://x.example/rss")
     sub = _make_sub(feed=feed)
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[feed]),
-            _exec_result(scalars_all=[sub]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
     uploaded_configs: list[bytes] = []
 
@@ -221,10 +219,8 @@ async def test_publish_builds_feeds_from_db() -> None:
 
     import json
 
-    # The second upload is the new config
     _, new_config_raw = uploaded_configs
     new_config_str = new_config_raw.decode("utf-8")
-    # Strip header object; parse body
     decoder = json.JSONDecoder()
     _hdr, offset = decoder.raw_decode(new_config_str)
     body, _ = decoder.raw_decode(new_config_str, offset)
@@ -243,14 +239,9 @@ async def test_publish_assigns_keys_to_stubs() -> None:
     sftp.upload_bytes = AsyncMock()
 
     feed = _make_feed()
-    # Stub subscription with no remote_key
     stub = _make_sub(remote_key=None, name="New Show", feed=feed)
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[feed]),  # _build_feeds_dict
-            _exec_result(scalars_all=[stub]),  # _build_subscriptions_dict
-        ]
-    )
+    # DB remote keys: ["0"] — matches the remote body max key of 0
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [stub]))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
@@ -262,11 +253,46 @@ async def test_publish_assigns_keys_to_stubs() -> None:
         orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
         result = await orc.run()
 
-    # The old config has key "0", so the new stub should get key "1"
+    # Remote body has key "0"; stub gets key "1"
     assert stub.remote_key == "1"
     assert result.new_keys_assigned == 1
     assert result.subscriptions_published == 1
     session.flush.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_avoids_collision_with_remote_deleted_db_keys() -> None:
+    """Stub keys skip over remote_keys held by DB subs that no longer exist remotely."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    # Remote body max key is "0"; but DB has another sub with remote_key="1"
+    # (e.g., it was remote-deleted). A new stub must get key "2", not "1".
+    raw = (
+        '{"file":1,"format":1}'
+        '{"subscriptions":{"0":{"name":"Existing"}},"rssfeeds":{},"cookies":{}}'
+    )
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    stub = _make_sub(remote_key=None, name="New Show", feed=None)
+    # All DB remote_keys include "0" AND "1" (the remote-deleted one)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([], ["0", "1"], [stub]))
+
+    import_result = _import_result_ok(raw_content=raw, snapshot_id=5)
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=import_result)
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    assert stub.remote_key == "2"
+    assert result.new_keys_assigned == 1
 
 
 @pytest.mark.asyncio
@@ -279,12 +305,7 @@ async def test_publish_dry_run_does_not_assign_keys() -> None:
     sftp.upload_bytes = AsyncMock()
 
     stub = _make_sub(remote_key=None, name="Stub Show", feed=_make_feed())
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[_make_feed()]),
-            _exec_result(scalars_all=[stub]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([_make_feed()], [], [stub]))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
@@ -296,7 +317,6 @@ async def test_publish_dry_run_does_not_assign_keys() -> None:
         orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=True)
         result = await orc.run()
 
-    # remote_key should NOT be assigned in dry_run
     assert stub.remote_key is None
     assert result.new_keys_assigned == 1  # counted but not persisted
     session.flush.assert_not_called()
@@ -319,12 +339,7 @@ async def test_publish_falls_back_to_feed_download_location() -> None:
 
     feed = _make_feed(default_download_location="/media/downloads")
     sub = _make_sub(feed=feed, download_location=None)
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[feed]),
-            _exec_result(scalars_all=[sub]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
@@ -365,12 +380,7 @@ async def test_publish_preserves_passthrough_sections() -> None:
 
     sftp.upload_bytes = AsyncMock(side_effect=capture)
 
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[]),
-            _exec_result(scalars_all=[]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([], [], []))
 
     import_result = _import_result_ok(raw_content=raw, snapshot_id=10)
 
@@ -430,12 +440,7 @@ async def test_publish_snapshot_type_passed_to_import_orc() -> None:
     sftp = MagicMock()
     sftp.upload_bytes = AsyncMock()
 
-    session.execute = AsyncMock(
-        side_effect=[
-            _exec_result(scalars_all=[]),
-            _exec_result(scalars_all=[]),
-        ]
-    )
+    session.execute = AsyncMock(side_effect=_std_execute_sides([], [], []))
 
     with patch(
         "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
