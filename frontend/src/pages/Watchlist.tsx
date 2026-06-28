@@ -214,6 +214,7 @@ export default function Watchlist() {
   const [pendingLibraryIds, setPendingLibraryIds] = useState<Set<number>>(new Set())
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
+  const [reorderError, setReorderError] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -276,19 +277,19 @@ export default function Watchlist() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    // Drop rapid successive drags while a prior batch is in flight to prevent
-    // interleaved PATCHes writing inconsistent positions to the server.
     if (reorderWatchlist.isPending) return
     const oldIndex = orderedEntries.findIndex((e) => e.id === active.id)
     const newIndex = orderedEntries.findIndex((e) => e.id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
     const snapshot = orderedEntries.slice()
     const reordered = arrayMove(orderedEntries, oldIndex, newIndex)
+    setReorderError(null)
     setOrderedEntries(reordered)
     reorderWatchlist.mutate(reordered, {
-      // Roll back to the pre-drag order, not entries (API sort), which can
-      // diverge from orderedEntries after prior successful reorders.
-      onError: () => setOrderedEntries(snapshot),
+      onError: (err) => {
+        setOrderedEntries(snapshot)
+        setReorderError(err instanceof Error ? err.message : 'Failed to save order')
+      },
     })
   }
 
@@ -540,6 +541,12 @@ export default function Watchlist() {
             </div>
           </div>
         </div>
+      )}
+
+      {reorderError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+          Reorder failed: {reorderError}
+        </p>
       )}
 
       {/* Entries table */}

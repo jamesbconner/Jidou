@@ -396,6 +396,11 @@ export interface WatchlistUpdate {
   position?: number | null
 }
 
+export interface WatchlistPositionItem {
+  id: number
+  position: number
+}
+
 // ─── Orphaned Tracking Records ────────────────────────────────────────────
 
 export interface OrphanedTrackingRecord {

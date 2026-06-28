@@ -352,6 +352,78 @@ def test_patch_watchlist_entry_not_found() -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/watchlist/reorder
+# ---------------------------------------------------------------------------
+
+
+def test_reorder_watchlist_updates_positions() -> None:
+    """POST /api/watchlist/reorder updates positions for all provided entries."""
+    from jidou.database import get_session
+
+    entry_a = _make_entry(id=1, position=1)
+    entry_b = _make_entry(id=2, position=2)
+
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [entry_a, entry_b]
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post(
+            "/api/watchlist/reorder",
+            json=[{"id": 1, "position": 2}, {"id": 2, "position": 1}],
+        )
+        assert response.status_code == 204
+        assert entry_a.position == 2
+        assert entry_b.position == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_reorder_watchlist_empty_payload() -> None:
+    """POST /api/watchlist/reorder with empty list returns 204 immediately."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(many=[])
+    try:
+        response = TestClient(app).post("/api/watchlist/reorder", json=[])
+        assert response.status_code == 204
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_reorder_watchlist_missing_entry_returns_404() -> None:
+    """POST /api/watchlist/reorder returns 404 when an entry ID does not exist."""
+    from jidou.database import get_session
+
+    entry_a = _make_entry(id=1, position=1)
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [entry_a]
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post(
+            "/api/watchlist/reorder",
+            json=[{"id": 1, "position": 2}, {"id": 9999, "position": 1}],
+        )
+        assert response.status_code == 404
+        assert "9999" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # DELETE /api/watchlist/{entry_id}
 # ---------------------------------------------------------------------------
 
