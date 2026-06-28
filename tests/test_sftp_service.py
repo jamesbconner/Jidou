@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jidou.services.sftp_service import DownloadProgress, SFTPService
+from jidou.services.sftp_service import DownloadProgress, SFTPService, UploadResult
 
 
 @pytest.fixture
@@ -577,3 +577,133 @@ class TestDownloadFiles:
             )
 
         mock_connect.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# upload_bytes
+# ---------------------------------------------------------------------------
+
+
+class TestUploadBytes:
+    @pytest.mark.asyncio
+    async def test_dry_run_skips_transfer(self, sftp_service: SFTPService) -> None:
+        """dry_run=True must not open any SSH connection."""
+        with patch("asyncssh.connect") as mock_connect:
+            result = await sftp_service.upload_bytes(b"hello", "/remote/config.json", dry_run=True)
+
+        mock_connect.assert_not_called()
+        assert result.dry_run is True
+        assert result.size == 0
+        assert result.elapsed_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_dry_run_result_fields(self, sftp_service: SFTPService) -> None:
+        """dry_run result carries the correct remote_path."""
+        with patch("asyncssh.connect"):
+            result = await sftp_service.upload_bytes(b"data", "/remote/out.json", dry_run=True)
+
+        assert result.remote_path == "/remote/out.json"
+        assert isinstance(result, UploadResult)
+
+    @pytest.mark.asyncio
+    async def test_upload_bytes_calls_sftp_open_and_write(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Non-dry-run must call sftp.open() in write mode and write the data."""
+        payload = b"rss config content"
+        mock_fh = AsyncMock()
+        # Ensure async-with yields mock_fh itself as `fh`
+        mock_fh.__aenter__ = AsyncMock(return_value=mock_fh)
+        mock_sftp = AsyncMock()
+        mock_sftp.open = MagicMock(return_value=mock_fh)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.upload_bytes(payload, "/remote/rss.json")
+
+        mock_sftp.open.assert_called_once_with("/remote/rss.json", "wb")
+        mock_fh.write.assert_called_once_with(payload)
+        assert result.dry_run is False
+        assert result.size == len(payload)
+        assert result.remote_path == "/remote/rss.json"
+
+    @pytest.mark.asyncio
+    async def test_upload_bytes_size_matches_payload(self, sftp_service: SFTPService) -> None:
+        """UploadResult.size equals len(data)."""
+        data = b"x" * 1024
+        mock_fh = AsyncMock()
+        mock_fh.__aenter__ = AsyncMock(return_value=mock_fh)
+        mock_sftp = AsyncMock()
+        mock_sftp.open = MagicMock(return_value=mock_fh)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.upload_bytes(data, "/remote/file")
+
+        assert result.size == 1024
+
+
+# ---------------------------------------------------------------------------
+# upload_file
+# ---------------------------------------------------------------------------
+
+
+class TestUploadFile:
+    @pytest.mark.asyncio
+    async def test_dry_run_skips_transfer(self, sftp_service: SFTPService, tmp_path: Path) -> None:
+        """dry_run=True must not open any SSH connection."""
+        local = tmp_path / "config.json"
+        local.write_bytes(b"content")
+
+        with patch("asyncssh.connect") as mock_connect:
+            result = await sftp_service.upload_file(local, "/remote/config.json", dry_run=True)
+
+        mock_connect.assert_not_called()
+        assert result.dry_run is True
+        assert result.size == 0
+        assert result.elapsed_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_dry_run_result_fields(self, sftp_service: SFTPService, tmp_path: Path) -> None:
+        """dry_run result carries the correct remote_path."""
+        local = tmp_path / "out.json"
+        local.write_bytes(b"data")
+
+        with patch("asyncssh.connect"):
+            result = await sftp_service.upload_file(local, "/remote/out.json", dry_run=True)
+
+        assert result.remote_path == "/remote/out.json"
+        assert isinstance(result, UploadResult)
+
+    @pytest.mark.asyncio
+    async def test_upload_file_calls_sftp_put(
+        self, sftp_service: SFTPService, tmp_path: Path
+    ) -> None:
+        """Non-dry-run must call sftp.put() with correct local and remote paths."""
+        local = tmp_path / "show.mkv"
+        local.write_bytes(b"x" * 512)
+
+        mock_sftp = AsyncMock()
+        mock_sftp.put = AsyncMock()
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.upload_file(local, "/remote/show.mkv")
+
+        mock_sftp.put.assert_called_once_with(str(local), "/remote/show.mkv")
+        assert result.dry_run is False
+        assert result.size == 512
+        assert result.remote_path == "/remote/show.mkv"
+
+    @pytest.mark.asyncio
+    async def test_upload_file_size_from_local_stat(
+        self, sftp_service: SFTPService, tmp_path: Path
+    ) -> None:
+        """UploadResult.size is read from the local file's stat."""
+        local = tmp_path / "payload.bin"
+        local.write_bytes(b"y" * 256)
+
+        mock_sftp = AsyncMock()
+        mock_sftp.put = AsyncMock()
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.upload_file(local, "/remote/payload.bin")
+
+        assert result.size == 256

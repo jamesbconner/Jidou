@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     sftp_key_path: str | None = None
     # Comma-separated remote paths to scan, e.g. "/downloads,/completed"
     sftp_remote_paths: str = "/"
+    # Full remote path to the YaRSS2 config file managed by Jidou
+    rss_config_remote_path: str | None = None
     sftp_max_workers: int = Field(default=8, ge=1, le=32)
     sftp_max_retries: int = Field(default=3, ge=0)
     sftp_retry_delay: float = Field(default=1.0, ge=0.1)
