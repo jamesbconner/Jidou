@@ -483,6 +483,37 @@ async def list_snapshots(
     ]
 
 
+@router.get("/snapshots/{snapshot_id}", response_model=dict[str, object])
+async def get_snapshot(
+    snapshot_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict[str, object]:
+    """Return a single RSS config snapshot including its raw content.
+
+    Useful for inspecting the exact YaRSS2 format of an imported config file.
+
+    Args:
+        snapshot_id: Database primary key.
+        db_session: DB session (injected).
+
+    Returns:
+        Snapshot record including raw_content.
+
+    Raises:
+        HTTPException: 404 if the snapshot is not found.
+    """
+    stmt = select(RssConfigSnapshot).where(RssConfigSnapshot.id == snapshot_id)
+    snapshot = (await db_session.execute(stmt)).scalar_one_or_none()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    return {
+        "id": snapshot.id,
+        "snapshot_type": snapshot.snapshot_type,
+        "created_at": snapshot.created_at,
+        "raw_content": snapshot.raw_content,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Background tasks
 # ---------------------------------------------------------------------------
