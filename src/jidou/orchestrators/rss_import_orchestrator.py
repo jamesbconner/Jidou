@@ -224,6 +224,11 @@ class RssImportOrchestrator:
 
         delta = compute_subscription_deltas(db_subs, remote_subs)
 
+        logger.debug(
+            "feed_key_to_id keys available for subscription linking: %s",
+            list(feed_key_to_id.keys()),
+        )
+
         # Build show title lookup for auto-linking
         shows_stmt = select(Show.id, Show.title)
         show_rows = (await self._session.execute(shows_stmt)).all()
@@ -248,6 +253,14 @@ class RssImportOrchestrator:
 
             # Derive feed_id from the remote sub's feed reference (if any)
             feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
+            if feed_id is None and feed_key_to_id:
+                await self._on_event(
+                    "warn",
+                    f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
+                    f"feedID={sub_dict.get('feedID')!r}, "
+                    f"available feed keys={list(feed_key_to_id.keys())}",
+                    {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
+                )
             show_id = show_by_lower_title.get(name.lower())
 
             # Extract only recognised column fields; stash the rest in extra_config
@@ -310,6 +323,15 @@ class RssImportOrchestrator:
                 new_feed_id = self._resolve_feed_id(merged, feed_key_to_id)
                 if new_feed_id is not None:
                     db_row.feed_id = new_feed_id
+                elif feed_key_to_id and db_row.feed_id is None:
+                    await self._on_event(
+                        "warn",
+                        f"Subscription {db_row.remote_key!r} ({db_row.name!r}): "
+                        f"could not resolve feed on update — "
+                        f"feedID={merged.get('feedID')!r}, "
+                        f"available feed keys={list(feed_key_to_id.keys())}",
+                        {"remote_key": db_row.remote_key, "feedID": merged.get("feedID")},
+                    )
 
                 # Rebuild extra_config: preserve old DB value, overlay with remote
                 # non-column fields (e.g. last_update, feedID-equivalent keys, etc.)
@@ -368,9 +390,24 @@ class RssImportOrchestrator:
         """
         for field_name in ("feedID", "feed_key", "feed_id"):
             raw = sub_dict.get(field_name)
-            if raw is None:
+            if raw is None or raw == "" or raw is False:
                 continue
             feed_key = str(raw)
             if feed_key in feed_key_to_id:
                 return feed_key_to_id[feed_key]
+            logger.debug(
+                "_resolve_feed_id: field %r has value %r but key %r not in feed_key_to_id %s",
+                field_name,
+                raw,
+                feed_key,
+                list(feed_key_to_id.keys()),
+            )
+        # Log at debug level when no feed reference found at all
+        _ref_keys = ("feedID", "feed_key", "feed_id")
+        candidate_fields = {k: sub_dict[k] for k in _ref_keys if k in sub_dict}
+        if not candidate_fields:
+            logger.debug(
+                "_resolve_feed_id: sub has no feed reference field; sub keys=%s",
+                [k for k in sub_dict if k != "remote_key"],
+            )
         return None
