@@ -274,9 +274,7 @@ class RssImportOrchestrator:
                     for col, val in col_vals.items():
                         setattr(stub, col, val)
                 result.stubs_promoted += 1
-                logger.debug(
-                    "Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name
-                )
+                logger.debug("Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name)
             else:
                 new_sub = RssSubscription(
                     remote_key=sub_key,

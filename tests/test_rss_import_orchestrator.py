@@ -257,9 +257,7 @@ async def test_stub_promoted_when_remote_matches_by_show_id() -> None:
     shows_result = MagicMock()
     shows_result.all.return_value = [show_row]
 
-    session.execute = AsyncMock(
-        side_effect=[_exec_result(scalars_all=[stub]), shows_result]
-    )
+    session.execute = AsyncMock(side_effect=[_exec_result(scalars_all=[stub]), shows_result])
 
     sftp = _make_sftp()
     orc = RssImportOrchestrator(
