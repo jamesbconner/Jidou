@@ -389,8 +389,9 @@ class RssImportOrchestrator:
     ) -> int | None:
         """Try to resolve a feed_id from a subscription dict.
 
-        YaRSS2 subscriptions carry the feed key in a ``feedID`` or ``feed_key``
-        field.  We look up that key in our upserted feed mapping.
+        YaRSS2 subscriptions carry the feed key in ``rssfeed_key`` (native format)
+        or ``feedID`` (Jidou-published format).  We look up that key in our
+        upserted feed mapping.
 
         Args:
             sub_dict: Subscription dict (may be remote or merged).
@@ -399,7 +400,7 @@ class RssImportOrchestrator:
         Returns:
             DB feed id, or ``None`` if not resolvable.
         """
-        for field_name in ("feedID", "feed_key", "feed_id"):
+        for field_name in ("rssfeed_key", "feedID", "feed_key", "feed_id"):
             raw = sub_dict.get(field_name)
             if raw is None or raw == "" or raw is False:
                 continue
@@ -414,7 +415,7 @@ class RssImportOrchestrator:
                 list(feed_key_to_id.keys()),
             )
         # Log at debug level when no feed reference found at all
-        _ref_keys = ("feedID", "feed_key", "feed_id")
+        _ref_keys = ("rssfeed_key", "feedID", "feed_key", "feed_id")
         candidate_fields = {k: sub_dict[k] for k in _ref_keys if k in sub_dict}
         if not candidate_fields:
             logger.debug(
