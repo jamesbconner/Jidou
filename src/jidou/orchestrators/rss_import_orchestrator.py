@@ -257,7 +257,7 @@ class RssImportOrchestrator:
 
             # Extract only recognised column fields; stash the rest in extra_config
             col_vals = {k: sub_dict[k] for k in _SUBSCRIPTION_COLUMNS if k in sub_dict}
-            _skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id"}
+            _skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id", "feedID"}
             extra_keys = set(sub_dict.keys()) - _skip
             extra = {k: sub_dict[k] for k in extra_keys} or None
 
@@ -389,8 +389,9 @@ class RssImportOrchestrator:
     ) -> int | None:
         """Try to resolve a feed_id from a subscription dict.
 
-        YaRSS2 subscriptions carry the feed key in ``rssfeed_key`` (native format)
-        or ``feedID`` (Jidou-published format).  We look up that key in our
+        YaRSS2 subscriptions carry the feed key in ``rssfeed_key`` (native format).
+        ``feedID`` and the other aliases are checked as fallbacks for configs
+        produced by older versions of Jidou.  We look up that key in our
         upserted feed mapping.
 
         Args:

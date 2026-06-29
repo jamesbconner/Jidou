@@ -304,9 +304,11 @@ class RssPublishOrchestrator:
             sub_dict["move_completed"] = mv_loc
 
         # rssfeed_key is the native YaRSS2 field linking a subscription to its feed.
-        # feedID is the Jidou-internal alias kept for backwards compatibility.
         if sub.feed is not None and sub.feed.remote_key is not None:
             sub_dict["rssfeed_key"] = sub.feed.remote_key
-            sub_dict["feedID"] = sub.feed.remote_key
+
+        # feedID is not part of the YaRSS2 spec; scrub any legacy value that may
+        # have been written by an earlier version of Jidou.
+        sub_dict.pop("feedID", None)
 
         return sub_dict
