@@ -272,7 +272,7 @@ function SubscriptionEditModal({
             </div>
 
             {/* Regex */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-gray-600">Regex Patterns</span>
                 <button
@@ -282,13 +282,31 @@ function SubscriptionEditModal({
                   Suggest via LLM
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {field('Include', monoInput('regex_include', 'e.g. 1080p|720p'))}
-                {field('Exclude', monoInput('regex_exclude', 'e.g. FRENCH|GERMAN'))}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
+                {monoInput('regex_include', 'e.g. 1080p|720p')}
+                <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draft.regex_include_ignorecase}
+                    onChange={(e) => set('regex_include_ignorecase', e.target.checked)}
+                    className="rounded"
+                  />
+                  Case-insensitive
+                </label>
               </div>
-              <div className="flex gap-6">
-                {checkbox('regex_include_ignorecase', 'Include ignore case')}
-                {checkbox('regex_exclude_ignorecase', 'Exclude ignore case')}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
+                {monoInput('regex_exclude', 'e.g. FRENCH|GERMAN')}
+                <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draft.regex_exclude_ignorecase}
+                    onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)}
+                    className="rounded"
+                  />
+                  Case-insensitive
+                </label>
               </div>
             </div>
 
