@@ -253,14 +253,6 @@ class RssImportOrchestrator:
 
             # Derive feed_id from the remote sub's feed reference (if any)
             feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
-            if feed_id is None and feed_key_to_id:
-                await self._on_event(
-                    "warn",
-                    f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
-                    f"feedID={sub_dict.get('feedID')!r}, "
-                    f"available feed keys={list(feed_key_to_id.keys())}",
-                    {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
-                )
             show_id = show_by_lower_title.get(name.lower())
 
             # Extract only recognised column fields; stash the rest in extra_config
@@ -282,9 +274,10 @@ class RssImportOrchestrator:
                     stubs_by_show_id.pop(stub.show_id, None)
                 stubs_by_lower_name.pop(stub.name.lower(), None)
 
+                effective_feed_id = feed_id if feed_id is not None else stub.feed_id
                 if not self._dry_run:
                     stub.remote_key = sub_key
-                    stub.feed_id = feed_id if feed_id is not None else stub.feed_id
+                    stub.feed_id = effective_feed_id
                     stub.enabled_in_config = True
                     stub.extra_config = extra
                     if show_id is not None and stub.show_id is None:
@@ -294,7 +287,25 @@ class RssImportOrchestrator:
                         setattr(stub, col, val)
                 result.stubs_promoted += 1
                 logger.debug("Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name)
+                # Only warn if the stub will still have no feed after promotion
+                if effective_feed_id is None and feed_key_to_id:
+                    await self._on_event(
+                        "warn",
+                        f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
+                        f"feedID={sub_dict.get('feedID')!r}, "
+                        f"available feed keys={list(feed_key_to_id.keys())}",
+                        {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
+                    )
             else:
+                # Warn when a newly created row will have no feed link
+                if feed_id is None and feed_key_to_id:
+                    await self._on_event(
+                        "warn",
+                        f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
+                        f"feedID={sub_dict.get('feedID')!r}, "
+                        f"available feed keys={list(feed_key_to_id.keys())}",
+                        {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
+                    )
                 new_sub = RssSubscription(
                     remote_key=sub_key,
                     feed_id=feed_id,
