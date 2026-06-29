@@ -238,7 +238,7 @@ async def test_show_auto_linked_by_name() -> None:
 
 @pytest.mark.asyncio
 async def test_stub_promoted_when_remote_matches_by_show_id() -> None:
-    """A watchlist stub (remote_key=None) is promoted in-place when import finds a match by show_id."""
+    """A watchlist stub (remote_key=None) is promoted in-place when import finds a match."""
     from jidou.models.rss import RssSubscription
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 
