@@ -292,9 +292,9 @@ class RssImportOrchestrator:
                     await self._on_event(
                         "warn",
                         f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
-                        f"feedID={sub_dict.get('feedID')!r}, "
+                        f"rssfeed_key={sub_dict.get('rssfeed_key')!r}, "
                         f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
+                        {"remote_key": sub_key, "rssfeed_key": sub_dict.get("rssfeed_key")},
                     )
             else:
                 # Warn when a newly created row will have no feed link
@@ -302,9 +302,9 @@ class RssImportOrchestrator:
                     await self._on_event(
                         "warn",
                         f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
-                        f"feedID={sub_dict.get('feedID')!r}, "
+                        f"rssfeed_key={sub_dict.get('rssfeed_key')!r}, "
                         f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": sub_key, "feedID": sub_dict.get("feedID")},
+                        {"remote_key": sub_key, "rssfeed_key": sub_dict.get("rssfeed_key")},
                     )
                 new_sub = RssSubscription(
                     remote_key=sub_key,
@@ -339,13 +339,13 @@ class RssImportOrchestrator:
                         "warn",
                         f"Subscription {db_row.remote_key!r} ({db_row.name!r}): "
                         f"could not resolve feed on update — "
-                        f"feedID={merged.get('feedID')!r}, "
+                        f"rssfeed_key={merged.get('rssfeed_key')!r}, "
                         f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": db_row.remote_key, "feedID": merged.get("feedID")},
+                        {"remote_key": db_row.remote_key, "rssfeed_key": merged.get("rssfeed_key")},
                     )
 
                 # Rebuild extra_config: preserve old DB value, overlay with remote
-                # non-column fields (e.g. last_update, feedID-equivalent keys, etc.)
+                # non-column fields (e.g. last_update, last_match, active, etc.)
                 _extra_skip = _SUBSCRIPTION_COLUMNS | {
                     "remote_key",
                     "feedID",
