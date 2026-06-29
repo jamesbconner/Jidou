@@ -257,7 +257,7 @@ class RssImportOrchestrator:
 
             # Extract only recognised column fields; stash the rest in extra_config
             col_vals = {k: sub_dict[k] for k in _SUBSCRIPTION_COLUMNS if k in sub_dict}
-            _skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id", "feedID"}
+            _skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id"}
             extra_keys = set(sub_dict.keys()) - _skip
             extra = {k: sub_dict[k] for k in extra_keys} or None
 
@@ -346,13 +346,7 @@ class RssImportOrchestrator:
 
                 # Rebuild extra_config: preserve old DB value, overlay with remote
                 # non-column fields (e.g. last_update, last_match, active, etc.)
-                _extra_skip = _SUBSCRIPTION_COLUMNS | {
-                    "remote_key",
-                    "feedID",
-                    "feed_key",
-                    "feed_id",
-                    "extra_config",
-                }
+                _extra_skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "extra_config"}
                 old_extra = merged.get("extra_config") or {}
                 if not isinstance(old_extra, dict):
                     old_extra = {}
@@ -389,10 +383,8 @@ class RssImportOrchestrator:
     ) -> int | None:
         """Try to resolve a feed_id from a subscription dict.
 
-        YaRSS2 subscriptions carry the feed key in ``rssfeed_key`` (native format).
-        ``feedID`` and the other aliases are checked as fallbacks for configs
-        produced by older versions of Jidou.  We look up that key in our
-        upserted feed mapping.
+        YaRSS2 subscriptions carry the feed key in ``rssfeed_key``.  We look
+        up that key in our upserted feed mapping.
 
         Args:
             sub_dict: Subscription dict (may be remote or merged).
@@ -401,26 +393,19 @@ class RssImportOrchestrator:
         Returns:
             DB feed id, or ``None`` if not resolvable.
         """
-        for field_name in ("rssfeed_key", "feedID", "feed_key", "feed_id"):
-            raw = sub_dict.get(field_name)
-            if raw is None or raw == "" or raw is False:
-                continue
+        raw = sub_dict.get("rssfeed_key")
+        if raw is not None and raw != "" and raw is not False:
             feed_key = str(raw)
             if feed_key in feed_key_to_id:
                 return feed_key_to_id[feed_key]
             logger.debug(
-                "_resolve_feed_id: field %r has value %r but key %r not in feed_key_to_id %s",
-                field_name,
-                raw,
+                "_resolve_feed_id: rssfeed_key=%r not in feed_key_to_id %s",
                 feed_key,
                 list(feed_key_to_id.keys()),
             )
-        # Log at debug level when no feed reference found at all
-        _ref_keys = ("rssfeed_key", "feedID", "feed_key", "feed_id")
-        candidate_fields = {k: sub_dict[k] for k in _ref_keys if k in sub_dict}
-        if not candidate_fields:
+        else:
             logger.debug(
-                "_resolve_feed_id: sub has no feed reference field; sub keys=%s",
+                "_resolve_feed_id: sub has no rssfeed_key; sub keys=%s",
                 [k for k in sub_dict if k != "remote_key"],
             )
         return None

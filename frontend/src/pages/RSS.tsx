@@ -386,8 +386,6 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
   if (sub.feed?.remote_key) {
     dict['rssfeed_key'] = sub.feed.remote_key
   }
-  // feedID is not part of the YaRSS2 spec — scrub any legacy value from extra_config
-  delete dict['feedID']
   return dict
 }
 
