@@ -359,6 +359,47 @@ async def test_stub_not_mutated_in_dry_run() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stub_only_promoted_once_second_remote_match_creates_new_row() -> None:
+    """A stub evicted after first promotion; a second remote sub with same name gets a new row."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = MagicMock(spec=RssSubscription)
+    stub.remote_key = None
+    stub.show_id = None
+    stub.name = "Daredevil Born Again"
+    stub.feed_id = None
+    stub.id = 10
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[stub]), _exec_result(scalars_all=[])]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    # Two remote subs with the same name matching the same stub
+    remote_subs = {
+        "3": {"name": "Daredevil Born Again", "active": True},
+        "7": {"name": "Daredevil Born Again", "active": True},
+    }
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    # First match promotes the stub; second match creates a new row
+    assert result.stubs_promoted == 1
+    assert result.subscriptions_created == 1
+    session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_remote_deleted_keys_logged() -> None:
     """Keys in DB but absent from remote are reported as remote-deleted."""
     from jidou.models.rss import RssSubscription

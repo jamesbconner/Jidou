@@ -262,7 +262,13 @@ class RssImportOrchestrator:
             )
 
             if stub is not None:
-                # Promote the stub: apply remote data in-place instead of creating a new row
+                # Promote the stub: apply remote data in-place instead of creating a new row.
+                # Evict from both lookups immediately so a second remote subscription that
+                # matches the same stub doesn't overwrite it; that second entry gets a new row.
+                if stub.show_id is not None:
+                    stubs_by_show_id.pop(stub.show_id, None)
+                stubs_by_lower_name.pop(stub.name.lower(), None)
+
                 if not self._dry_run:
                     stub.remote_key = sub_key
                     stub.feed_id = feed_id if feed_id is not None else stub.feed_id
