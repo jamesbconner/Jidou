@@ -385,7 +385,6 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
   if (mvLoc !== null) dict['move_completed'] = mvLoc
   if (sub.feed?.remote_key) {
     dict['rssfeed_key'] = sub.feed.remote_key
-    dict['feedID'] = sub.feed.remote_key
   }
   return dict
 }

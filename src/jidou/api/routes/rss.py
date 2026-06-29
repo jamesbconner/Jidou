@@ -588,9 +588,10 @@ async def get_snapshot(
     snapshot_id: int,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, object]:
-    """Return a single RSS config snapshot including its raw content.
+    """Return a single RSS config snapshot including its full raw content.
 
-    Useful for inspecting the exact YaRSS2 format of an imported config file.
+    The listing endpoint omits raw_content; use this to retrieve the actual
+    config text for a specific import or pre-publish snapshot.
 
     Args:
         snapshot_id: Database primary key.
