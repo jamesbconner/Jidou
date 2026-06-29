@@ -4,6 +4,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,6 +14,7 @@ from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
+from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 from jidou.schemas.rss_schema import (
     RssFeedCreate,
     RssFeedRead,
@@ -24,6 +26,11 @@ from jidou.schemas.rss_schema import (
 )
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.progress import create_task_record
+from jidou.services.rss_config import (
+    compose_rss_config,
+    extract_max_subscription_key,
+    parse_rss_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -439,6 +446,99 @@ async def suggest_regex(
         regex_exclude=regex_exclude,
         model=response.model,
         cached=response.cached,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Download (compose current DB state as a YaRSS2 config file)
+# ---------------------------------------------------------------------------
+
+_MANAGED_SECTIONS = frozenset({"rssfeeds", "subscriptions"})
+
+
+@router.get("/download")
+async def download_config(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Response:
+    """Compose and download the current DB state as a YaRSS2 config file.
+
+    Uses the latest stored snapshot for the header and non-managed sections,
+    then overlays the current DB feeds and enabled subscriptions.  Does not
+    upload to the remote server — equivalent to a dry-run publish returned
+    as a file attachment.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        ``application/octet-stream`` response with ``yarss2.conf`` filename.
+
+    Raises:
+        HTTPException: 404 if no snapshot exists (run an import first).
+        HTTPException: 500 if the latest snapshot cannot be parsed.
+    """
+    snapshot_stmt = select(RssConfigSnapshot).order_by(RssConfigSnapshot.created_at.desc()).limit(1)
+    snapshot = (await db_session.execute(snapshot_stmt)).scalar_one_or_none()
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404, detail="No config snapshot found — run an import first"
+        )
+
+    try:
+        header, old_body = parse_rss_config(snapshot.raw_content)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse latest snapshot: {exc}"
+        ) from exc
+
+    # Build feeds dict from DB
+    feeds_stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None))
+    feeds = list((await db_session.execute(feeds_stmt)).scalars().all())
+    new_feeds: dict[str, object] = {}
+    for feed in feeds:
+        if feed.remote_key is None:
+            continue
+        feed_dict: dict[str, object] = dict(feed.extra_config or {})
+        feed_dict["name"] = feed.name
+        feed_dict["url"] = feed.url
+        new_feeds[feed.remote_key] = feed_dict
+
+    # Build subscriptions dict from enabled DB rows
+    subs_stmt = (
+        select(RssSubscription)
+        .where(RssSubscription.enabled_in_config.is_(True))
+        .options(selectinload(RssSubscription.feed))
+        .order_by(RssSubscription.id.asc())
+    )
+    subs = list((await db_session.execute(subs_stmt)).scalars().all())
+
+    # Mirror the publish orchestrator's key-ceiling logic: take the max of both the
+    # snapshot's existing keys and all remote_keys stored in the DB, so stubs assigned
+    # during download cannot collide with keys held by other enabled subscriptions.
+    remote_max_key = extract_max_subscription_key(old_body)
+    all_keys_stmt = select(RssSubscription.remote_key).where(
+        RssSubscription.remote_key.is_not(None)
+    )
+    all_key_rows = (await db_session.execute(all_keys_stmt)).scalars().all()
+    db_max_key = max((int(k) for k in all_key_rows if k and k.isdigit()), default=-1)
+    max_key = max(remote_max_key, db_max_key)
+    next_key = max_key + 1
+    new_subs: dict[str, object] = {}
+    for sub in subs:
+        key = sub.remote_key or str(next_key)
+        if not sub.remote_key:
+            next_key += 1
+        new_subs[key] = RssPublishOrchestrator._build_sub_dict(sub)
+
+    new_body: dict[str, object] = {k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS}
+    new_body["rssfeeds"] = new_feeds
+    new_body["subscriptions"] = new_subs
+
+    composed = compose_rss_config(header, new_body)
+    return Response(
+        content=composed.encode("utf-8"),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="yarss2.conf"'},
     )
 
 

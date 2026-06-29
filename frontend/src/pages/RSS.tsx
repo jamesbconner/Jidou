@@ -365,47 +365,60 @@ function SubscriptionEditModal({
 }
 
 // ---------------------------------------------------------------------------
-// Inline include-regex edit (still used in table)
+// Compose subscription dict (mirrors _build_sub_dict in publish orchestrator)
 // ---------------------------------------------------------------------------
 
-function InlineRegexEdit({ sub }: { sub: RssSubscriptionRead }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(sub.regex_include ?? '')
-  const patch = usePatchRssSubscription()
-
-  const save = () => {
-    patch.mutate(
-      { id: sub.id, update: { regex_include: value || null } },
-      { onSuccess: () => setEditing(false) },
-    )
+function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
+  const dict: Record<string, unknown> = { ...(sub.extra_config ?? {}) }
+  dict['name'] = sub.name
+  dict['regex_include_ignorecase'] = sub.regex_include_ignorecase
+  dict['regex_exclude_ignorecase'] = sub.regex_exclude_ignorecase
+  dict['active'] = sub.active
+  if (sub.regex_include !== null) dict['regex_include'] = sub.regex_include
+  if (sub.regex_exclude !== null) dict['regex_exclude'] = sub.regex_exclude
+  if (sub.label !== null) dict['label'] = sub.label
+  if (sub.last_match !== null) dict['last_match'] = sub.last_match
+  // Use || (not ??) to match Python's `or` — empty strings are treated as unset
+  const dlLoc = sub.download_location || sub.feed?.default_download_location || null
+  const mvLoc = sub.move_completed || sub.feed?.default_move_completed || null
+  if (dlLoc !== null) dict['download_location'] = dlLoc
+  if (mvLoc !== null) dict['move_completed'] = mvLoc
+  if (sub.feed?.remote_key) {
+    dict['rssfeed_key'] = sub.feed.remote_key
+    dict['feedID'] = sub.feed.remote_key
   }
+  return dict
+}
 
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { setValue(sub.regex_include ?? ''); setEditing(true) }}
-        className="text-left text-xs font-mono text-gray-600 hover:text-gray-900 truncate max-w-[200px]"
-        title={sub.regex_include ?? 'Click to set'}
-      >
-        {sub.regex_include ?? <span className="text-gray-300 italic">not set</span>}
-      </button>
-    )
-  }
+// ---------------------------------------------------------------------------
+// Subscription preview modal
+// ---------------------------------------------------------------------------
+
+function SubPreviewModal({ sub, onClose }: { sub: RssSubscriptionRead; onClose: () => void }) {
+  const composed = composeSubDict(sub)
+  const json = JSON.stringify(composed, null, 2)
 
   return (
-    <div className="flex gap-1 items-center">
-      <input
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') save()
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        className="text-xs font-mono border rounded px-1 py-0.5 w-[160px]"
-      />
-      <button onClick={save} disabled={patch.isPending} className="text-xs text-green-700 hover:underline">Save</button>
-      <button onClick={() => setEditing(false)} className="text-xs text-gray-400 hover:underline">✕</button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-5 border-b">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Composed JSON</h2>
+            <p className="text-xs text-gray-500">{sub.name} — what would be written to the config</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <div className="overflow-y-auto p-5">
+          <pre className="bg-gray-50 border rounded p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">
+            {json}
+          </pre>
+        </div>
+        <div className="flex justify-end p-4 border-t bg-gray-50 rounded-b-lg">
+          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -424,23 +437,25 @@ function SubscriptionsTable({
   const patch = usePatchRssSubscription()
   const del = useDeleteRssSubscription()
   const [editSub, setEditSub] = useState<RssSubscriptionRead | null>(null)
+  const [previewSub, setPreviewSub] = useState<RssSubscriptionRead | null>(null)
 
   return (
     <>
       {editSub && (
         <SubscriptionEditModal sub={editSub} feeds={feeds} onClose={() => setEditSub(null)} />
       )}
+      {previewSub && (
+        <SubPreviewModal sub={previewSub} onClose={() => setPreviewSub(null)} />
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
-              <th className="px-3 py-2">Key</th>
+              <th className="px-3 py-2 w-16">Key</th>
               <th className="px-3 py-2">Name / Show</th>
-              <th className="px-3 py-2">Feed</th>
-              <th className="px-3 py-2">Include regex</th>
-              <th className="px-3 py-2">Enabled</th>
-              <th className="px-3 py-2">Active</th>
-              <th className="px-3 py-2"></th>
+              <th className="px-3 py-2 w-20">Enabled</th>
+              <th className="px-3 py-2 w-20">Active</th>
+              <th className="px-3 py-2 w-32"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -452,7 +467,7 @@ function SubscriptionsTable({
                 <td className="px-3 py-2">
                   <button
                     onClick={() => setEditSub(sub)}
-                    className="font-medium truncate max-w-[160px] text-left hover:text-indigo-600 hover:underline"
+                    className="font-medium text-left hover:text-indigo-600 hover:underline"
                     title="Edit subscription"
                   >
                     {sub.name}
@@ -462,12 +477,6 @@ function SubscriptionsTable({
                       {sub.show.title}
                     </Link>
                   )}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {sub.feed?.name ?? <span className="text-gray-300">—</span>}
-                </td>
-                <td className="px-3 py-2">
-                  <InlineRegexEdit sub={sub} />
                 </td>
                 <td className="px-3 py-2">
                   <button
@@ -489,6 +498,9 @@ function SubscriptionsTable({
                   <div className="flex gap-2 items-center">
                     <button onClick={() => setEditSub(sub)} className="text-xs text-gray-500 hover:underline">
                       Edit
+                    </button>
+                    <button onClick={() => setPreviewSub(sub)} className="text-xs text-gray-500 hover:underline">
+                      Preview
                     </button>
                     {!sub.enabled_in_config && (
                       <button
@@ -524,7 +536,27 @@ export default function RSS() {
   const [feedFilter, setFeedFilter] = useState<number | 'unlinked' | 'all'>('all')
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
+  const [downloading, setDownloading] = useState(false)
   const qc = useQueryClient()
+
+  const handleDownload = async () => {
+    setDownloading(true)
+    try {
+      const resp = await fetch('/api/rss/download')
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'yarss2.conf'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   const { data: feeds = [] } = useRssFeeds()
   const { data: subs, isLoading } = useRssSubscriptions()
@@ -605,6 +637,13 @@ export default function RSS() {
               className="px-4 py-2 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
             >
               {triggerImport.isPending ? 'Dispatching…' : 'Import from server'}
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="px-4 py-2 text-sm rounded bg-gray-600 text-white hover:bg-gray-500 disabled:opacity-50"
+            >
+              {downloading ? 'Downloading…' : 'Download'}
             </button>
             <button
               onClick={() => triggerPublish.mutate(undefined, { onSuccess: (t) => setPublishTaskId(t.id) })}
