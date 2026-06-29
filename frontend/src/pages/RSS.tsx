@@ -378,8 +378,9 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
   if (sub.regex_exclude !== null) dict['regex_exclude'] = sub.regex_exclude
   if (sub.label !== null) dict['label'] = sub.label
   if (sub.last_match !== null) dict['last_match'] = sub.last_match
-  const dlLoc = sub.download_location ?? sub.feed?.default_download_location ?? null
-  const mvLoc = sub.move_completed ?? sub.feed?.default_move_completed ?? null
+  // Use || (not ??) to match Python's `or` — empty strings are treated as unset
+  const dlLoc = sub.download_location || sub.feed?.default_download_location || null
+  const mvLoc = sub.move_completed || sub.feed?.default_move_completed || null
   if (dlLoc !== null) dict['download_location'] = dlLoc
   if (mvLoc !== null) dict['move_completed'] = mvLoc
   if (sub.feed?.remote_key) {

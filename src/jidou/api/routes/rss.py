@@ -512,7 +512,16 @@ async def download_config(
     )
     subs = list((await db_session.execute(subs_stmt)).scalars().all())
 
-    max_key = extract_max_subscription_key(old_body)
+    # Mirror the publish orchestrator's key-ceiling logic: take the max of both the
+    # snapshot's existing keys and all remote_keys stored in the DB, so stubs assigned
+    # during download cannot collide with keys held by other enabled subscriptions.
+    remote_max_key = extract_max_subscription_key(old_body)
+    all_keys_stmt = select(RssSubscription.remote_key).where(
+        RssSubscription.remote_key.is_not(None)
+    )
+    all_key_rows = (await db_session.execute(all_keys_stmt)).scalars().all()
+    db_max_key = max((int(k) for k in all_key_rows if k and k.isdigit()), default=-1)
+    max_key = max(remote_max_key, db_max_key)
     next_key = max_key + 1
     new_subs: dict[str, object] = {}
     for sub in subs:
