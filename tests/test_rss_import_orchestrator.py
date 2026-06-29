@@ -202,6 +202,37 @@ async def test_subscriptions_created_for_new_keys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rssfeed_key_resolves_feed_id() -> None:
+    """The native YaRSS2 field rssfeed_key is used to link subscriptions to feeds."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[]), _exec_result(scalars_all=[])]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    remote_subs = {"216": {"name": "Scum of the Brave", "active": True, "rssfeed_key": "1"}}
+    feed_key_to_id = {"0": 10, "1": 11, "2": 12}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, feed_key_to_id, result)
+
+    assert result.subscriptions_created == 1
+    added_sub = session.add.call_args_list[0].args[0]
+    assert isinstance(added_sub, RssSubscription)
+    assert added_sub.feed_id == 11  # rssfeed_key "1" → DB id 11
+
+
+@pytest.mark.asyncio
 async def test_show_auto_linked_by_name() -> None:
     """A subscription whose name matches a show title gets show_id set."""
     from jidou.models.rss import RssSubscription
