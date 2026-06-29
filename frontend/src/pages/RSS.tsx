@@ -548,7 +548,7 @@ export default function RSS() {
   const filteredSubs = (subs ?? []).filter((s) => {
     if (nameSearch && !s.name.toLowerCase().includes(nameSearch.toLowerCase())) return false
     if (enabledFilter === 'enabled' && !s.enabled_in_config) return false
-    if (enabledFilter === 'stubs' && s.enabled_in_config) return false
+    if (enabledFilter === 'stubs' && s.remote_key !== null) return false
     if (feedFilter === 'unlinked' && s.feed_id !== null) return false
     if (typeof feedFilter === 'number' && s.feed_id !== feedFilter) return false
     return true
@@ -663,7 +663,7 @@ export default function RSS() {
             >
               <option value="all">All</option>
               <option value="enabled">Enabled only</option>
-              <option value="stubs">Stubs only</option>
+              <option value="stubs">Stubs only (no remote key)</option>
             </select>
 
             {/* Feed filter */}
