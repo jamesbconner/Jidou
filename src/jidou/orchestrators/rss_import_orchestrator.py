@@ -54,6 +54,7 @@ class RssImportResult:
     subscriptions_created: int = 0
     subscriptions_updated: int = 0
     subscriptions_remote_deleted: int = 0
+    stubs_promoted: int = 0
     shows_linked: int = 0
     snapshot_id: int | None = None
     raw_content: str | None = None
@@ -149,6 +150,7 @@ class RssImportOrchestrator:
             (
                 f"Import complete — feeds: +{result.feeds_created}/~{result.feeds_updated}, "
                 f"subscriptions: +{result.subscriptions_created}/~{result.subscriptions_updated}, "
+                f"stubs promoted: {result.stubs_promoted}, "
                 f"remote-deleted: {result.subscriptions_remote_deleted}, "
                 f"shows linked: {result.shows_linked}"
             ),
@@ -227,7 +229,19 @@ class RssImportOrchestrator:
         show_rows = (await self._session.execute(shows_stmt)).all()
         show_by_lower_title: dict[str, int] = {r.title.lower(): r.id for r in show_rows}
 
-        # Create new subscriptions
+        # Stub lookup: stubs are rows with remote_key=None created by the watchlist integration.
+        # When the remote has a subscription matching a stub (by show_id or name), we promote
+        # the stub in-place rather than creating a duplicate row.
+        stubs_by_show_id: dict[int, RssSubscription] = {
+            sub.show_id: sub
+            for sub in db_subs
+            if sub.remote_key is None and sub.show_id is not None
+        }
+        stubs_by_lower_name: dict[str, RssSubscription] = {
+            sub.name.lower(): sub for sub in db_subs if sub.remote_key is None
+        }
+
+        # Create new subscriptions (or promote matching stubs)
         for sub_dict in delta.to_create:
             sub_key = str(sub_dict.get("remote_key", ""))
             name = str(sub_dict.get("name", ""))
@@ -242,20 +256,42 @@ class RssImportOrchestrator:
             extra_keys = set(sub_dict.keys()) - _skip
             extra = {k: sub_dict[k] for k in extra_keys} or None
 
-            new_sub = RssSubscription(
-                remote_key=sub_key,
-                feed_id=feed_id,
-                show_id=show_id,
-                extra_config=extra,
-                enabled_in_config=True,
-                **col_vals,
+            # Check if a local stub exists for this remote subscription
+            stub = (stubs_by_show_id.get(show_id) if show_id else None) or stubs_by_lower_name.get(
+                name.lower()
             )
-            if not self._dry_run:
-                self._session.add(new_sub)
-            result.subscriptions_created += 1
-            if show_id:
-                result.shows_linked += 1
-            logger.debug("Created RssSubscription remote_key=%r name=%r", sub_key, name)
+
+            if stub is not None:
+                # Promote the stub: apply remote data in-place instead of creating a new row
+                if not self._dry_run:
+                    stub.remote_key = sub_key
+                    stub.feed_id = feed_id if feed_id is not None else stub.feed_id
+                    stub.enabled_in_config = True
+                    stub.extra_config = extra
+                    if show_id is not None and stub.show_id is None:
+                        stub.show_id = show_id
+                        result.shows_linked += 1
+                    for col, val in col_vals.items():
+                        setattr(stub, col, val)
+                result.stubs_promoted += 1
+                logger.debug(
+                    "Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name
+                )
+            else:
+                new_sub = RssSubscription(
+                    remote_key=sub_key,
+                    feed_id=feed_id,
+                    show_id=show_id,
+                    extra_config=extra,
+                    enabled_in_config=True,
+                    **col_vals,
+                )
+                if not self._dry_run:
+                    self._session.add(new_sub)
+                result.subscriptions_created += 1
+                if show_id:
+                    result.shows_linked += 1
+                logger.debug("Created RssSubscription remote_key=%r name=%r", sub_key, name)
 
         if not self._dry_run:
             await self._session.flush()

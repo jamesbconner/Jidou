@@ -237,6 +237,130 @@ async def test_show_auto_linked_by_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stub_promoted_when_remote_matches_by_show_id() -> None:
+    """A watchlist stub (remote_key=None) is promoted in-place when import finds a match by show_id."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = MagicMock(spec=RssSubscription)
+    stub.remote_key = None
+    stub.show_id = 42
+    stub.name = "Daredevil Born Again"
+    stub.feed_id = None
+    stub.id = 7
+
+    session = _make_session()
+
+    show_row = MagicMock()
+    show_row.id = 42
+    show_row.title = "Daredevil Born Again"
+    shows_result = MagicMock()
+    shows_result.all.return_value = [show_row]
+
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[stub]), shows_result]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    remote_subs = {
+        "5": {"name": "Daredevil Born Again", "active": True, "regex_include": ".*1080p.*"}
+    }
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    # No new row created; stub promoted in-place
+    assert result.stubs_promoted == 1
+    assert result.subscriptions_created == 0
+    session.add.assert_not_called()
+    assert stub.remote_key == "5"
+    assert stub.enabled_in_config is True
+    assert stub.name == "Daredevil Born Again"
+
+
+@pytest.mark.asyncio
+async def test_stub_promoted_when_remote_matches_by_name_only() -> None:
+    """A stub with show_id=None is promoted when the remote sub name matches case-insensitively."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = MagicMock(spec=RssSubscription)
+    stub.remote_key = None
+    stub.show_id = None
+    stub.name = "Daredevil Born Again"
+    stub.feed_id = None
+    stub.id = 8
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[stub]), _exec_result(scalars_all=[])]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    remote_subs = {"3": {"name": "daredevil born again", "active": True}}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    assert result.stubs_promoted == 1
+    assert result.subscriptions_created == 0
+    session.add.assert_not_called()
+    assert stub.remote_key == "3"
+    assert stub.enabled_in_config is True
+
+
+@pytest.mark.asyncio
+async def test_stub_not_mutated_in_dry_run() -> None:
+    """In dry_run mode, a matching stub is counted as promoted but not mutated."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = MagicMock(spec=RssSubscription)
+    stub.remote_key = None
+    stub.show_id = None
+    stub.name = "Daredevil Born Again"
+    stub.feed_id = None
+    stub.id = 9
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[stub]), _exec_result(scalars_all=[])]
+    )
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=True,
+        on_event=_noop_event,
+    )
+
+    remote_subs = {"3": {"name": "Daredevil Born Again", "active": True}}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    assert result.stubs_promoted == 1
+    # dry_run: stub fields must NOT be mutated
+    assert stub.remote_key is None
+    assert not hasattr(stub, "enabled_in_config") or stub.enabled_in_config != True  # noqa: E712
+
+
+@pytest.mark.asyncio
 async def test_remote_deleted_keys_logged() -> None:
     """Keys in DB but absent from remote are reported as remote-deleted."""
     from jidou.models.rss import RssSubscription
