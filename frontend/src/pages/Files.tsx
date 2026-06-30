@@ -104,9 +104,13 @@ function InlineEpisodePicker({
         episode_id: newEpisodeId,
         ...(newEpisodeId !== null ? { status: 'matched', error_message: null } : {}),
       }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       setEditing(false)
       setError(null)
+      qc.setQueriesData<FileRead[]>(
+        { queryKey: fileKeys.all },
+        (old) => old?.map((f) => (f.id === updated.id ? updated : f)),
+      )
       qc.invalidateQueries({ queryKey: fileKeys.all })
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
