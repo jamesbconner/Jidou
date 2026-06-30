@@ -138,7 +138,8 @@ function InlineEpisodePicker({
       <div className="mt-0.5">
         <button
           onClick={() => { setSelectValue(episodeId?.toString() ?? ''); setError(null); setEditing(true) }}
-          className="text-xs text-gray-500 hover:text-blue-600 hover:underline text-left"
+          disabled={patch.isPending}
+          className="text-xs text-gray-500 hover:text-blue-600 hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
           title="Click to assign episode"
         >
           {label}

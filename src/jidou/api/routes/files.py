@@ -263,6 +263,9 @@ async def patch_file(
                 ep.tracked_source = "match"
                 file.parsed_season = ep.season_number
                 file.parsed_episode = ep.episode_number
+        else:
+            file.parsed_season = None
+            file.parsed_episode = None
         # Clear stale tracking on the previous episode only when no other file
         # still points to it — mirrors the guard in manual_match_file.
         if old_episode_id is not None and old_episode_id != payload.episode_id:
