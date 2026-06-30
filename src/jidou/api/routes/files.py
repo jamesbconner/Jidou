@@ -300,9 +300,15 @@ async def patch_file(
                 detail="Referenced show_id or episode_id does not exist",
             ) from None
         raise
-    await db_session.refresh(file)
+    refreshed = (
+        await db_session.execute(
+            select(DownloadedFile)
+            .where(DownloadedFile.id == file_id)
+            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        )
+    ).scalar_one()
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
-    return file
+    return refreshed
 
 
 @router.post("/{file_id}/match", response_model=FileRead)
