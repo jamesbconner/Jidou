@@ -42,7 +42,7 @@ async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str)
             show_id=show_id,
             name=show_title,
             enabled_in_config=False,
-            active=True,
+            active=False,
         )
         session.add(stub)
         try:

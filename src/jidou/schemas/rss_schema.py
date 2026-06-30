@@ -22,6 +22,7 @@ class RssFeedCreate(BaseModel):
     url: str
     default_download_location: str | None = None
     default_move_completed: str | None = None
+    active: bool = True
     extra_config: dict[str, object] | None = None
 
 
@@ -33,6 +34,7 @@ class RssFeedUpdate(BaseModel):
     url: str | None = None
     default_download_location: str | None = None
     default_move_completed: str | None = None
+    active: bool | None = None
     extra_config: dict[str, object] | None = None
 
 
@@ -47,6 +49,7 @@ class RssFeedRead(BaseModel):
     url: str
     default_download_location: str | None
     default_move_completed: str | None
+    active: bool
     extra_config: dict[str, object] | None
     created_at: datetime
     updated_at: datetime
@@ -64,7 +67,7 @@ class RssSubscriptionCreate(BaseModel):
     regex_exclude_ignorecase: bool = True
     download_location: str | None = None
     move_completed: str | None = None
-    active: bool = True
+    active: bool = False
     enabled_in_config: bool = False
     label: str | None = None
     extra_config: dict[str, object] | None = None

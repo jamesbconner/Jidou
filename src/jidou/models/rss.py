@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 class RssFeed(TimestampMixin, Base):
     """A YaRSS2 RSS feed source.
 
-    Imported from the remote config.  Feeds are owned by the remote tool;
-    Jidou imports and displays them but does not create them.
+    Feeds can be imported from the remote config or created manually in Jidou.
+    ``active=False`` feeds are excluded from the published config.
     """
 
     __tablename__ = "rss_feeds"
@@ -29,6 +29,7 @@ class RssFeed(TimestampMixin, Base):
     url: Mapped[str] = mapped_column(String(2048))
     default_download_location: Mapped[str | None] = mapped_column(String(1024))
     default_move_completed: Mapped[str | None] = mapped_column(String(1024))
+    active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     # Round-trips all other remote feed fields unchanged
     extra_config: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 

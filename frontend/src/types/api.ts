@@ -303,16 +303,28 @@ export interface RssFeedRead {
   url: string
   default_download_location: string | null
   default_move_completed: string | null
+  active: boolean
   extra_config: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }
 
+export interface RssFeedCreate {
+  name: string
+  url: string
+  remote_key?: string | null
+  default_download_location?: string | null
+  default_move_completed?: string | null
+  active?: boolean
+}
+
 export interface RssFeedUpdate {
   name?: string
   url?: string
+  remote_key?: string | null
   default_download_location?: string | null
   default_move_completed?: string | null
+  active?: boolean
 }
 
 export interface RssShowBrief {
@@ -344,6 +356,21 @@ export interface RssSubscriptionRead {
   updated_at: string
 }
 
+export interface RssSubscriptionCreate {
+  name: string
+  feed_id?: number | null
+  show_id?: number | null
+  regex_include?: string | null
+  regex_exclude?: string | null
+  regex_include_ignorecase?: boolean
+  regex_exclude_ignorecase?: boolean
+  download_location?: string | null
+  move_completed?: string | null
+  active?: boolean
+  enabled_in_config?: boolean
+  label?: string | null
+}
+
 export interface RssSubscriptionUpdate {
   name?: string
   regex_include?: string | null
@@ -354,6 +381,7 @@ export interface RssSubscriptionUpdate {
   show_id?: number | null
   download_location?: string | null
   move_completed?: string | null
+  active?: boolean
   enabled_in_config?: boolean
   label?: string | null
 }

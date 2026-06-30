@@ -2,8 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import type {
   RssFeedRead,
+  RssFeedCreate,
   RssFeedUpdate,
   RssSubscriptionRead,
+  RssSubscriptionCreate,
   RssSubscriptionUpdate,
   RssRegexSuggestion,
   TaskRead,
@@ -40,6 +42,17 @@ export function useRssSubscriptions(filters?: {
   })
 }
 
+export function useCreateRssSubscription() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: RssSubscriptionCreate) =>
+      api.post<RssSubscriptionRead>('/rss/subscriptions', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    },
+  })
+}
+
 export function usePatchRssSubscription() {
   const qc = useQueryClient()
   return useMutation({
@@ -61,12 +74,32 @@ export function useDeleteRssSubscription() {
   })
 }
 
+export function useCreateRssFeed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: RssFeedCreate) => api.post<RssFeedRead>('/rss/feeds', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
+    },
+  })
+}
+
 export function usePatchRssFeed() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, update }: { id: number; update: RssFeedUpdate }) =>
       api.patch<RssFeedRead>(`/rss/feeds/${id}`, update),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
+    },
+  })
+}
+
+export function useDeleteRssFeed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.delete<void>(`/rss/feeds/${id}`),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: rssKeys.feeds() })
     },
   })
