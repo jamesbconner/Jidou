@@ -396,6 +396,7 @@ function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead[]; onC
   const [draft, setDraft] = useState<SubDraft>({
     name: '',
     feed_id: null,
+    show_id: null,
     active: false,
     regex_include: '',
     regex_exclude: '',
