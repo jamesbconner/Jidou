@@ -85,17 +85,13 @@ async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str)
     try:
         async with session.begin_nested():
             await session.flush()
-        logger.debug(
-            "Created RSS subscription stub for show_id=%d name=%r", show_id, show_title
-        )
+        logger.debug("Created RSS subscription stub for show_id=%d name=%r", show_id, show_title)
     except IntegrityError:
         # Expunge the stub so it is not in session.new when get_session commits.
         # Without this, SQLAlchemy would re-flush the pending object on commit,
         # hit the unique index again, and roll back the entire outer transaction.
         session.expunge(stub)
-        logger.debug(
-            "RSS stub for show_id=%d already exists (concurrent insert ignored)", show_id
-        )
+        logger.debug("RSS stub for show_id=%d already exists (concurrent insert ignored)", show_id)
 
 
 @router.get("", response_model=list[WatchlistRead])

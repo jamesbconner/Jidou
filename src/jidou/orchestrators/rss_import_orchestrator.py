@@ -58,6 +58,7 @@ def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None
         return show_by_lower_title[matched_lower_title]
     return None
 
+
 _OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
 
 # Fields carried from the parsed remote dict directly into a new DB row.
