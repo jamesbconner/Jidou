@@ -93,6 +93,7 @@ function InlineEpisodePicker({
   episode: EpisodeBrief | null
 }) {
   const [editing, setEditing] = useState(false)
+  const [selectValue, setSelectValue] = useState(episodeId?.toString() ?? '')
   const [error, setError] = useState<string | null>(null)
   const qc = useQueryClient()
   const { data: episodes = [] } = useShowEpisodes(showId)
@@ -107,6 +108,7 @@ function InlineEpisodePicker({
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
     onError: (err: unknown) => {
+      setSelectValue(episodeId?.toString() ?? '')
       const msg = err instanceof Error ? err.message : 'Failed to update episode'
       setError(msg)
     },
@@ -128,7 +130,7 @@ function InlineEpisodePicker({
     return (
       <div className="mt-0.5">
         <button
-          onClick={() => { setError(null); setEditing(true) }}
+          onClick={() => { setSelectValue(episodeId?.toString() ?? ''); setError(null); setEditing(true) }}
           className="text-xs text-gray-500 hover:text-blue-600 hover:underline text-left"
           title="Click to assign episode"
         >
@@ -143,13 +145,14 @@ function InlineEpisodePicker({
     <div className="mt-0.5">
       <select
         autoFocus
-        defaultValue={episodeId ?? ''}
+        value={selectValue}
         onChange={(e) => {
           const val = e.target.value
+          setSelectValue(val)
           patch.mutate(val === '' ? null : Number(val))
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') { setEditing(false); setError(null) }
+          if (e.key === 'Escape') setEditing(false)
         }}
         disabled={patch.isPending}
         className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs"
