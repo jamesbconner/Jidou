@@ -5,6 +5,7 @@ import { showKeys, useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { RematchModal } from '@/components/RematchModal'
+import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
@@ -196,6 +197,7 @@ export default function Files() {
   const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
   const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
   const [rematchFile, setRematchFile] = useState<FileRead | null>(null)
+  const [fixEpsFile, setFixEpsFile] = useState<FileRead | null>(null)
   const { data: files = [], isLoading } = useFiles(statusFilter || undefined)
 
   return (
@@ -275,8 +277,8 @@ export default function Files() {
                       <InlineShowId fileId={f.id} showId={f.show_id} />
                     )}
                   </td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">
-                    {f.status === 'unmatched' && (
+                  <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
+                    {f.status === 'unmatched' && f.show_id == null && (
                       <button
                         onClick={() => setResolveFile(f)}
                         className="text-xs text-indigo-600 hover:underline"
@@ -284,12 +286,21 @@ export default function Files() {
                         Resolve
                       </button>
                     )}
-                    {f.show_id != null && f.status !== 'unmatched' && (
+                    {f.show_id != null &&
+                      !['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
+                        <button
+                          onClick={() => setRematchFile(f)}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Fix Show
+                        </button>
+                      )}
+                    {f.show_id != null && ['matched', 'routed'].includes(f.status) && (
                       <button
-                        onClick={() => setRematchFile(f)}
+                        onClick={() => setFixEpsFile(f)}
                         className="text-xs text-blue-600 hover:underline"
                       >
-                        Re-match
+                        Fix Eps
                       </button>
                     )}
                   </td>
@@ -310,6 +321,12 @@ export default function Files() {
         <RematchModal
           file={rematchFile}
           onClose={() => setRematchFile(null)}
+        />
+      )}
+      {fixEpsFile && (
+        <FixEpisodeModal
+          file={fixEpsFile}
+          onClose={() => setFixEpsFile(null)}
         />
       )}
     </div>

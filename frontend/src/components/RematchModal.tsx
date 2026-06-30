@@ -174,7 +174,7 @@ export function RematchModal({ file, onClose }: Props) {
       <div className="w-full max-w-2xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-zinc-100">Re-match file</h2>
+          <h2 className="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
           <button
             onClick={onClose}
             className="text-zinc-400 hover:text-zinc-200 text-lg leading-none"
