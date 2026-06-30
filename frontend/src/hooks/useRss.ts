@@ -58,7 +58,11 @@ export function usePatchRssSubscription() {
   return useMutation({
     mutationFn: ({ id, update }: { id: number; update: RssSubscriptionUpdate }) =>
       api.patch<RssSubscriptionRead>(`/rss/subscriptions/${id}`, update),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      qc.setQueriesData<RssSubscriptionRead[]>(
+        { queryKey: rssKeys.subscriptions() },
+        (old) => old?.map((s) => (s.id === updated.id ? updated : s)),
+      )
       qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
     },
   })

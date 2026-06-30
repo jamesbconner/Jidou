@@ -169,7 +169,10 @@ function SubscriptionEditModal({
   const { data: allShows = [] } = useShows()
   const isStub = sub.remote_key === null && !sub.enabled_in_config
 
-  const linkedShow = allShows.find((s) => s.id === draft.show_id) ?? null
+  const linkedShowFromList = allShows.find((s) => s.id === draft.show_id) ?? null
+  const linkedShow = draft.show_id !== null
+    ? (linkedShowFromList ?? (draft.show_id === sub.show_id ? sub.show : null))
+    : null
   const showSearchResults = showSearch.trim().length >= 1
     ? allShows.filter((s) => s.title.toLowerCase().includes(showSearch.toLowerCase())).slice(0, 10)
     : []
