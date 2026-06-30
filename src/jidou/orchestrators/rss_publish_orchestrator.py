@@ -211,9 +211,11 @@ class RssPublishOrchestrator:
             RssSubscription.enabled_in_config.is_(True),
             RssSubscription.feed_id.is_not(None),
         )
-        referenced_feed_ids: set[int] = set(
-            (await self._session.execute(ref_stmt)).scalars().all()
-        )
+        referenced_feed_ids: set[int] = {
+            int(fid)
+            for fid in (await self._session.execute(ref_stmt)).scalars().all()
+            if fid is not None
+        }
 
         stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None))
         feeds = list((await self._session.execute(stmt)).scalars().all())
