@@ -71,6 +71,11 @@ function RegexSuggestModal({
           <p className="text-sm text-gray-600">
             Generate regex patterns for <strong>{sub.name}</strong> using an LLM.
           </p>
+          {suggest.isError && (
+            <p className="text-sm text-red-600">
+              {suggest.error instanceof Error ? suggest.error.message : 'Suggestion failed. Check LLM configuration.'}
+            </p>
+          )}
           {result ? (
             <div className="space-y-2">
               <div>
@@ -83,7 +88,7 @@ function RegexSuggestModal({
               </div>
             </div>
           ) : (
-            <p className="text-sm text-gray-400 italic">Click Suggest to generate patterns.</p>
+            !suggest.isError && <p className="text-sm text-gray-400 italic">Click Suggest to generate patterns.</p>
           )}
         </div>
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
@@ -164,7 +169,7 @@ function SubscriptionEditModal({
     const update: RssSubscriptionUpdate = {
       name: draft.name || undefined,
       feed_id: draft.feed_id,
-      active: draft.active,
+      active: isStub ? false : draft.active,
       regex_include: draft.regex_include || null,
       regex_exclude: draft.regex_exclude || null,
       regex_include_ignorecase: draft.regex_include_ignorecase,
@@ -459,10 +464,10 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
   dict['regex_include_ignorecase'] = sub.regex_include_ignorecase
   dict['regex_exclude_ignorecase'] = sub.regex_exclude_ignorecase
   dict['active'] = sub.active
-  if (sub.regex_include) dict['regex_include'] = sub.regex_include
-  if (sub.regex_exclude) dict['regex_exclude'] = sub.regex_exclude
-  if (sub.label) dict['label'] = sub.label
-  if (sub.last_match) dict['last_match'] = sub.last_match
+  if (sub.regex_include !== null) dict['regex_include'] = sub.regex_include
+  if (sub.regex_exclude !== null) dict['regex_exclude'] = sub.regex_exclude
+  if (sub.label !== null) dict['label'] = sub.label
+  if (sub.last_match !== null) dict['last_match'] = sub.last_match
   const dlLoc = sub.download_location || sub.feed?.default_download_location || null
   const mvLoc = sub.move_completed || sub.feed?.default_move_completed || null
   if (dlLoc !== null) dict['download_location'] = dlLoc

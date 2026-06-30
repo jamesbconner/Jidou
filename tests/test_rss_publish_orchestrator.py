@@ -45,6 +45,7 @@ def _make_feed(
     url: str = "http://f1.example/rss",
     default_download_location: str | None = "/downloads",
     default_move_completed: str | None = None,
+    active: bool = True,
     extra_config: dict | None = None,
 ) -> MagicMock:
     feed = MagicMock()
@@ -54,6 +55,7 @@ def _make_feed(
     feed.url = url
     feed.default_download_location = default_download_location
     feed.default_move_completed = default_move_completed
+    feed.active = active
     feed.extra_config = extra_config
     return feed
 
@@ -110,13 +112,18 @@ def _std_execute_sides(
     feeds: list[object],
     db_keys: list[str],
     subs: list[object],
+    ref_feed_ids: list[int] | None = None,
 ) -> list[MagicMock]:
-    """Return the three execute side-effects in order:
-    1. feeds query (_build_feeds_dict)
-    2. all-DB-keys query (collision-avoidance in run())
-    3. enabled-subs query (_build_subscriptions_dict)
+    """Return execute side-effects in call order:
+    1. referenced-feed-ids query (_build_feeds_dict pre-check)
+    2. feeds query (_build_feeds_dict)
+    3. all-DB-keys query (collision-avoidance in run())
+    4. enabled-subs query (_build_subscriptions_dict)
     """
+    # Default: all feeds with id=1 are "referenced" to avoid inactive-feed warnings
+    default_ids = [f.id for f in feeds if hasattr(f, "id")]
     return [
+        _exec_result(scalars_all=ref_feed_ids if ref_feed_ids is not None else default_ids),
         _exec_result(scalars_all=feeds),
         _exec_result(scalars_all=db_keys),
         _exec_result(scalars_all=subs),

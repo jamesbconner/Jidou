@@ -195,18 +195,41 @@ class RssPublishOrchestrator:
     async def _build_feeds_dict(self, result: RssPublishResult) -> dict[str, object]:
         """Build the rssfeeds dict from DB RssFeed rows that have a remote_key.
 
+        Active feeds are always included.  Inactive feeds are also included if
+        at least one enabled subscription still references them — omitting them
+        would leave dangling rssfeed_key values in the subscriptions output.
+        A warning is logged for each such feed.
+
         Args:
             result: Mutated in-place with feeds_published count.
 
         Returns:
             Dict of remote_key → feed dict for the new config.
         """
-        stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None), RssFeed.active.is_(True))
+        # Collect feed IDs referenced by enabled subscriptions
+        ref_stmt = select(RssSubscription.feed_id).where(
+            RssSubscription.enabled_in_config.is_(True),
+            RssSubscription.feed_id.is_not(None),
+        )
+        referenced_feed_ids: set[int] = set(
+            (await self._session.execute(ref_stmt)).scalars().all()
+        )
+
+        stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None))
         feeds = list((await self._session.execute(stmt)).scalars().all())
         new_feeds: dict[str, object] = {}
         for feed in feeds:
             if feed.remote_key is None:
                 continue
+            if not feed.active:
+                if feed.id not in referenced_feed_ids:
+                    continue
+                logger.warning(
+                    "Feed id=%d remote_key=%r is inactive but referenced by enabled "
+                    "subscriptions — including in publish to avoid orphaned rssfeed_key values",
+                    feed.id,
+                    feed.remote_key,
+                )
             feed_dict: dict[str, object] = {}
             if feed.extra_config:
                 feed_dict.update(feed.extra_config)
