@@ -201,7 +201,7 @@ class RssPublishOrchestrator:
         Returns:
             Dict of remote_key → feed dict for the new config.
         """
-        stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None))
+        stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None), RssFeed.active.is_(True))
         feeds = list((await self._session.execute(stmt)).scalars().all())
         new_feeds: dict[str, object] = {}
         for feed in feeds:

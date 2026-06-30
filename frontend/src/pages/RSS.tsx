@@ -2,29 +2,50 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import type {
+  RssFeedRead,
+  RssFeedCreate,
+  RssFeedUpdate,
+  RssSubscriptionRead,
+  RssSubscriptionCreate,
+  RssSubscriptionUpdate,
+  TaskRead,
+} from '@/types/api'
 import {
   useRssFeeds,
   useRssSubscriptions,
+  useCreateRssSubscription,
   usePatchRssSubscription,
   useDeleteRssSubscription,
+  useCreateRssFeed,
+  usePatchRssFeed,
+  useDeleteRssFeed,
   useTriggerRssImport,
   useTriggerRssPublish,
   useSuggestRegex,
 } from '@/hooks/useRss'
-import type { RssFeedRead, RssSubscriptionRead, RssRegexSuggestion, TaskRead } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function badge(label: string, color: string) {
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>{label}</span>
+}
+
+// Reusable modal field row
+function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
-    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${color}`}>{label}</span>
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      {children}
+      {note && <p className="text-xs text-gray-400 mt-0.5">{note}</p>}
+    </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Regex suggest modal
+// RegexSuggestModal
 // ---------------------------------------------------------------------------
 
 function RegexSuggestModal({
@@ -34,84 +55,54 @@ function RegexSuggestModal({
 }: {
   sub: RssSubscriptionRead
   onClose: () => void
-  onApply?: (include: string, exclude: string) => void
+  onApply: (inc: string, exc: string) => void
 }) {
   const suggest = useSuggestRegex(sub.id)
-  const patch = usePatchRssSubscription()
-  const [result, setResult] = useState<RssRegexSuggestion | null>(null)
-
-  const handleSuggest = () => {
-    suggest.mutate(undefined, { onSuccess: (data) => setResult(data) })
-  }
-
-  const handleApply = () => {
-    if (!result) return
-    if (onApply) {
-      onApply(result.regex_include, result.regex_exclude)
-      onClose()
-    } else {
-      patch.mutate(
-        { id: sub.id, update: { regex_include: result.regex_include, regex_exclude: result.regex_exclude } },
-        { onSuccess: onClose },
-      )
-    }
-  }
+  const [result, setResult] = useState<{ regex_include: string; regex_exclude: string } | null>(null)
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
-        <h2 className="text-lg font-semibold mb-1">Suggest regex — {sub.name}</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          The LLM will suggest include/exclude patterns for a BitTorrent RSS filter.
-        </p>
-
-        {result ? (
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
-              <code className="block bg-gray-50 border rounded p-2 text-sm break-all">{result.regex_include}</code>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-base font-semibold">Suggest Regex via LLM</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-gray-600">
+            Generate regex patterns for <strong>{sub.name}</strong> using an LLM.
+          </p>
+          {result ? (
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Include</p>
+                <code className="block bg-gray-50 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_include || '(empty)'}</code>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Exclude</p>
+                <code className="block bg-gray-50 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_exclude || '(empty)'}</code>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
-              <code className="block bg-gray-50 border rounded p-2 text-sm break-all">{result.regex_exclude}</code>
-            </div>
-            <p className="text-xs text-gray-400">Model: {result.model} {result.cached && '(cached)'}</p>
-          </div>
-        ) : (
-          <div className="h-20 flex items-center justify-center text-sm mb-4">
-            {suggest.isPending ? (
-              <span className="text-gray-400">Asking LLM…</span>
-            ) : suggest.isError ? (
-              <span className="text-red-500">{(suggest.error as Error)?.message ?? 'Request failed'}</span>
-            ) : (
-              <span className="text-gray-400">Click "Suggest" to generate patterns.</span>
-            )}
-          </div>
-        )}
-
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">
-            Cancel
-          </button>
-          {!result && (
+          ) : (
+            <p className="text-sm text-gray-400 italic">Click Suggest to generate patterns.</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          {result && (
             <button
-              onClick={handleSuggest}
-              disabled={suggest.isPending}
-              className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              onClick={() => { onApply(result.regex_include, result.regex_exclude); onClose() }}
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700"
             >
-              Suggest
+              Apply
             </button>
           )}
-          {result && (
-            <>
-              <button onClick={handleSuggest} disabled={suggest.isPending} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50">
-                Retry
-              </button>
-              <button onClick={handleApply} disabled={patch.isPending} className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-                Apply
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => suggest.mutate(undefined, { onSuccess: (r) => setResult(r) })}
+            disabled={suggest.isPending}
+            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {suggest.isPending ? 'Generating…' : result ? 'Re-suggest' : 'Suggest'}
+          </button>
         </div>
       </div>
     </div>
@@ -119,12 +110,13 @@ function RegexSuggestModal({
 }
 
 // ---------------------------------------------------------------------------
-// Subscription edit modal (issue #115)
+// Subscription edit modal
 // ---------------------------------------------------------------------------
 
-interface EditDraft {
+interface SubDraft {
   name: string
   feed_id: number | null
+  active: boolean
   regex_include: string
   regex_exclude: string
   regex_include_ignorecase: boolean
@@ -135,10 +127,11 @@ interface EditDraft {
   label: string
 }
 
-function draftFromSub(sub: RssSubscriptionRead): EditDraft {
+function draftFromSub(sub: RssSubscriptionRead): SubDraft {
   return {
     name: sub.name,
     feed_id: sub.feed_id,
+    active: sub.active,
     regex_include: sub.regex_include ?? '',
     regex_exclude: sub.regex_exclude ?? '',
     regex_include_ignorecase: sub.regex_include_ignorecase,
@@ -159,43 +152,32 @@ function SubscriptionEditModal({
   feeds: RssFeedRead[]
   onClose: () => void
 }) {
-  const [draft, setDraft] = useState<EditDraft>(() => draftFromSub(sub))
+  const [draft, setDraft] = useState<SubDraft>(() => draftFromSub(sub))
   const [showSuggest, setShowSuggest] = useState(false)
   const patch = usePatchRssSubscription()
+  const isStub = sub.remote_key === null
 
-  const set = <K extends keyof EditDraft>(key: K, value: EditDraft[K]) =>
+  const set = <K extends keyof SubDraft>(key: K, value: SubDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
 
   const handleSave = () => {
-    patch.mutate(
-      {
-        id: sub.id,
-        update: {
-          name: draft.name || undefined,
-          feed_id: draft.feed_id,
-          regex_include: draft.regex_include || null,
-          regex_exclude: draft.regex_exclude || null,
-          regex_include_ignorecase: draft.regex_include_ignorecase,
-          regex_exclude_ignorecase: draft.regex_exclude_ignorecase,
-          download_location: draft.download_location || null,
-          move_completed: draft.move_completed || null,
-          enabled_in_config: draft.enabled_in_config,
-          label: draft.label || null,
-        },
-      },
-      { onSuccess: onClose },
-    )
+    const update: RssSubscriptionUpdate = {
+      name: draft.name || undefined,
+      feed_id: draft.feed_id,
+      active: draft.active,
+      regex_include: draft.regex_include || null,
+      regex_exclude: draft.regex_exclude || null,
+      regex_include_ignorecase: draft.regex_include_ignorecase,
+      regex_exclude_ignorecase: draft.regex_exclude_ignorecase,
+      download_location: draft.download_location || null,
+      move_completed: draft.move_completed || null,
+      enabled_in_config: draft.enabled_in_config,
+      label: draft.label || null,
+    }
+    patch.mutate({ id: sub.id, update }, { onSuccess: onClose })
   }
 
-  const field = (label: string, children: React.ReactNode, note?: string) => (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      {children}
-      {note && <p className="text-xs text-gray-400 mt-0.5">{note}</p>}
-    </div>
-  )
-
-  const textInput = (key: keyof EditDraft, placeholder = '') => (
+  const textInput = (key: keyof SubDraft, placeholder = '') => (
     <input
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
@@ -204,7 +186,7 @@ function SubscriptionEditModal({
     />
   )
 
-  const monoInput = (key: keyof EditDraft, placeholder = '') => (
+  const monoInput = (key: keyof SubDraft, placeholder = '') => (
     <input
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
@@ -213,33 +195,17 @@ function SubscriptionEditModal({
     />
   )
 
-  const checkbox = (key: keyof EditDraft, label: string) => (
-    <label className="flex items-center gap-2 text-sm cursor-pointer">
-      <input
-        type="checkbox"
-        checked={draft[key] as boolean}
-        onChange={(e) => set(key, e.target.checked)}
-        className="rounded"
-      />
-      {label}
-    </label>
-  )
-
   return (
     <>
       {showSuggest && (
         <RegexSuggestModal
           sub={sub}
           onClose={() => setShowSuggest(false)}
-          onApply={(inc, exc) => {
-            set('regex_include', inc)
-            set('regex_exclude', exc)
-          }}
+          onApply={(inc, exc) => { set('regex_include', inc); set('regex_exclude', exc) }}
         />
       )}
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-          {/* Header */}
           <div className="flex items-start justify-between p-5 border-b">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
@@ -252,33 +218,25 @@ function SubscriptionEditModal({
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           </div>
 
-          {/* Body */}
           <div className="overflow-y-auto p-5 space-y-4">
-            {/* Row 1 */}
             <div className="grid grid-cols-2 gap-4">
-              {field('Name', textInput('name'))}
-              {field('RSS Feed',
+              <Field label="Name">{textInput('name')}</Field>
+              <Field label="RSS Feed">
                 <select
                   value={draft.feed_id ?? ''}
                   onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
                   className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
                   <option value="">— None —</option>
-                  {feeds.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
+                  {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
-              )}
+              </Field>
             </div>
 
-            {/* Regex */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-gray-600">Regex Patterns</span>
-                <button
-                  onClick={() => setShowSuggest(true)}
-                  className="text-xs text-indigo-500 hover:underline"
-                >
+                <button onClick={() => setShowSuggest(true)} className="text-xs text-indigo-500 hover:underline">
                   Suggest via LLM
                 </button>
               </div>
@@ -286,12 +244,7 @@ function SubscriptionEditModal({
                 <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
                 {monoInput('regex_include', 'e.g. 1080p|720p')}
                 <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={draft.regex_include_ignorecase}
-                    onChange={(e) => set('regex_include_ignorecase', e.target.checked)}
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={draft.regex_include_ignorecase} onChange={(e) => set('regex_include_ignorecase', e.target.checked)} className="rounded" />
                   Case-insensitive
                 </label>
               </div>
@@ -299,57 +252,52 @@ function SubscriptionEditModal({
                 <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
                 {monoInput('regex_exclude', 'e.g. FRENCH|GERMAN')}
                 <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={draft.regex_exclude_ignorecase}
-                    onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)}
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={draft.regex_exclude_ignorecase} onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)} className="rounded" />
                   Case-insensitive
                 </label>
               </div>
             </div>
 
-            {/* Paths */}
             <div className="grid grid-cols-2 gap-4">
-              {field('Download Location', textInput('download_location', 'Override feed default'), 'Leave blank to use feed default')}
-              {field('Move Completed', textInput('move_completed', 'Override feed default'), 'Leave blank to use feed default')}
+              <Field label="Download Location" note="Leave blank to use feed default">{textInput('download_location', 'Override feed default')}</Field>
+              <Field label="Move Completed" note="Leave blank to use feed default">{textInput('move_completed', 'Override feed default')}</Field>
             </div>
 
-            {/* Label + Enabled */}
-            <div className="grid grid-cols-2 gap-4">
-              {field('Label', textInput('label', 'e.g. TV'))}
-              <div className="flex items-end pb-1">
-                {checkbox('enabled_in_config', 'Enabled in config (published to server)')}
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Label">{textInput('label', 'e.g. TV')}</Field>
+              <div className="flex flex-col gap-2 justify-end pb-1">
+                <label
+                  className="flex items-center gap-2 text-sm cursor-pointer"
+                  title="Included in the published YaRSS2 config. Stubs are excluded until explicitly enabled."
+                >
+                  <input type="checkbox" checked={draft.enabled_in_config} onChange={(e) => set('enabled_in_config', e.target.checked)} className="rounded" />
+                  Enabled in config
+                </label>
+                <label
+                  className={`flex items-center gap-2 text-sm ${isStub ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title={isStub ? 'Stubs are always inactive until promoted to a real subscription.' : 'Jidou controls this flag. Active subscriptions are treated as live by the downloader.'}
+                >
+                  <input
+                    type="checkbox"
+                    checked={draft.active}
+                    onChange={(e) => set('active', e.target.checked)}
+                    disabled={isStub}
+                    className="rounded"
+                  />
+                  Active
+                </label>
               </div>
-            </div>
-
-            {/* Read-only info */}
-            <div className="grid grid-cols-3 gap-4 pt-2 border-t">
               <div>
-                <p className="text-xs font-medium text-gray-500">Remote Key</p>
-                <p className="text-sm font-mono">{sub.remote_key ?? <span className="text-yellow-600">new</span>}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Active (remote)</p>
-                <p className="text-sm">
-                  {sub.active
-                    ? badge('active', 'bg-green-100 text-green-700')
-                    : badge('inactive', 'bg-gray-100 text-gray-500')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Last Match</p>
+                <p className="text-xs font-medium text-gray-500 mb-1">Remote Key</p>
+                <p className="text-sm font-mono">{sub.remote_key ?? <span className="text-yellow-600">new (stub)</span>}</p>
+                <p className="text-xs font-medium text-gray-500 mt-2 mb-1">Last Match</p>
                 <p className="text-sm text-gray-600">{sub.last_match ?? '—'}</p>
               </div>
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-            <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">
-              Cancel
-            </button>
+            <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
             <button
               onClick={handleSave}
               disabled={patch.isPending}
@@ -365,6 +313,143 @@ function SubscriptionEditModal({
 }
 
 // ---------------------------------------------------------------------------
+// Subscription create modal
+// ---------------------------------------------------------------------------
+
+function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead[]; onClose: () => void }) {
+  const create = useCreateRssSubscription()
+  const [draft, setDraft] = useState<SubDraft>({
+    name: '',
+    feed_id: null,
+    active: false,
+    regex_include: '',
+    regex_exclude: '',
+    regex_include_ignorecase: true,
+    regex_exclude_ignorecase: true,
+    download_location: '',
+    move_completed: '',
+    enabled_in_config: false,
+    label: '',
+  })
+
+  const set = <K extends keyof SubDraft>(key: K, value: SubDraft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }))
+
+  const handleCreate = () => {
+    if (!draft.name.trim()) return
+    const body: RssSubscriptionCreate = {
+      name: draft.name.trim(),
+      feed_id: draft.feed_id,
+      active: draft.active,
+      regex_include: draft.regex_include || null,
+      regex_exclude: draft.regex_exclude || null,
+      regex_include_ignorecase: draft.regex_include_ignorecase,
+      regex_exclude_ignorecase: draft.regex_exclude_ignorecase,
+      download_location: draft.download_location || null,
+      move_completed: draft.move_completed || null,
+      enabled_in_config: draft.enabled_in_config,
+      label: draft.label || null,
+    }
+    create.mutate(body, { onSuccess: onClose })
+  }
+
+  const textInput = (key: keyof SubDraft, placeholder = '') => (
+    <input
+      value={draft[key] as string}
+      onChange={(e) => set(key, e.target.value)}
+      placeholder={placeholder}
+      className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+    />
+  )
+
+  const monoInput = (key: keyof SubDraft, placeholder = '') => (
+    <input
+      value={draft[key] as string}
+      onChange={(e) => set(key, e.target.value)}
+      placeholder={placeholder}
+      className="w-full border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+    />
+  )
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">New Subscription</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Name *">{textInput('name', 'e.g. My Show S01')}</Field>
+            <Field label="RSS Feed">
+              <select
+                value={draft.feed_id ?? ''}
+                onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
+                className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="">— None —</option>
+                {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <div className="space-y-3">
+            <span className="text-xs font-medium text-gray-600">Regex Patterns</span>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
+              {monoInput('regex_include', 'e.g. 1080p|720p')}
+              <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                <input type="checkbox" checked={draft.regex_include_ignorecase} onChange={(e) => set('regex_include_ignorecase', e.target.checked)} className="rounded" />
+                Case-insensitive
+              </label>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
+              {monoInput('regex_exclude', 'e.g. FRENCH|GERMAN')}
+              <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                <input type="checkbox" checked={draft.regex_exclude_ignorecase} onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)} className="rounded" />
+                Case-insensitive
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Download Location" note="Leave blank to use feed default">{textInput('download_location')}</Field>
+            <Field label="Move Completed" note="Leave blank to use feed default">{textInput('move_completed')}</Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Label">{textInput('label', 'e.g. TV')}</Field>
+            <div className="flex flex-col gap-2 justify-end pb-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer" title="Included in the published YaRSS2 config.">
+                <input type="checkbox" checked={draft.enabled_in_config} onChange={(e) => set('enabled_in_config', e.target.checked)} className="rounded" />
+                Enabled in config
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader.">
+                <input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} className="rounded" />
+                Active
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <button
+            onClick={handleCreate}
+            disabled={create.isPending || !draft.name.trim()}
+            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {create.isPending ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Compose subscription dict (mirrors _build_sub_dict in publish orchestrator)
 // ---------------------------------------------------------------------------
 
@@ -374,11 +459,10 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
   dict['regex_include_ignorecase'] = sub.regex_include_ignorecase
   dict['regex_exclude_ignorecase'] = sub.regex_exclude_ignorecase
   dict['active'] = sub.active
-  if (sub.regex_include !== null) dict['regex_include'] = sub.regex_include
-  if (sub.regex_exclude !== null) dict['regex_exclude'] = sub.regex_exclude
-  if (sub.label !== null) dict['label'] = sub.label
-  if (sub.last_match !== null) dict['last_match'] = sub.last_match
-  // Use || (not ??) to match Python's `or` — empty strings are treated as unset
+  if (sub.regex_include) dict['regex_include'] = sub.regex_include
+  if (sub.regex_exclude) dict['regex_exclude'] = sub.regex_exclude
+  if (sub.label) dict['label'] = sub.label
+  if (sub.last_match) dict['last_match'] = sub.last_match
   const dlLoc = sub.download_location || sub.feed?.default_download_location || null
   const mvLoc = sub.move_completed || sub.feed?.default_move_completed || null
   if (dlLoc !== null) dict['download_location'] = dlLoc
@@ -395,27 +479,23 @@ function composeSubDict(sub: RssSubscriptionRead): Record<string, unknown> {
 
 function SubPreviewModal({ sub, onClose }: { sub: RssSubscriptionRead; onClose: () => void }) {
   const composed = composeSubDict(sub)
-  const json = JSON.stringify(composed, null, 2)
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-5 border-b">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Composed JSON</h2>
-            <p className="text-xs text-gray-500">{sub.name} — what would be written to the config</p>
-          </div>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-base font-semibold text-gray-900">Subscription Config Preview</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
-        <div className="overflow-y-auto p-5">
-          <pre className="bg-gray-50 border rounded p-4 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed">
-            {json}
+        <div className="overflow-y-auto p-4">
+          <p className="text-xs text-gray-500 mb-2">
+            Composed output for <strong>{sub.name}</strong> (key: {sub.remote_key ?? 'unassigned'})
+          </p>
+          <pre className="bg-gray-50 border rounded p-3 text-xs font-mono whitespace-pre-wrap break-all">
+            {JSON.stringify(composed, null, 2)}
           </pre>
         </div>
         <div className="flex justify-end p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Close</button>
         </div>
       </div>
     </div>
@@ -426,97 +506,313 @@ function SubPreviewModal({ sub, onClose }: { sub: RssSubscriptionRead; onClose: 
 // Subscriptions table
 // ---------------------------------------------------------------------------
 
-function SubscriptionsTable({
-  subs,
-  feeds,
-}: {
-  subs: RssSubscriptionRead[]
-  feeds: RssFeedRead[]
-}) {
+function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[]; feeds: RssFeedRead[] }) {
   const patch = usePatchRssSubscription()
   const del = useDeleteRssSubscription()
   const [editSub, setEditSub] = useState<RssSubscriptionRead | null>(null)
   const [previewSub, setPreviewSub] = useState<RssSubscriptionRead | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <>
-      {editSub && (
-        <SubscriptionEditModal sub={editSub} feeds={feeds} onClose={() => setEditSub(null)} />
-      )}
-      {previewSub && (
-        <SubPreviewModal sub={previewSub} onClose={() => setPreviewSub(null)} />
-      )}
+      {createOpen && <SubscriptionCreateModal feeds={feeds} onClose={() => setCreateOpen(false)} />}
+      {editSub && <SubscriptionEditModal sub={editSub} feeds={feeds} onClose={() => setEditSub(null)} />}
+      {previewSub && <SubPreviewModal sub={previewSub} onClose={() => setPreviewSub(null)} />}
+
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
+        >
+          + New Subscription
+        </button>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
               <th className="px-3 py-2 w-16">Key</th>
               <th className="px-3 py-2">Name / Show</th>
-              <th className="px-3 py-2 w-20">Enabled</th>
-              <th className="px-3 py-2 w-20">Active</th>
-              <th className="px-3 py-2 w-32"></th>
+              <th className="px-3 py-2 w-20" title="Included in the published YaRSS2 config. Stubs are excluded until explicitly enabled.">Enabled ⓘ</th>
+              <th className="px-3 py-2 w-24" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader. Stubs are always inactive.">Active ⓘ</th>
+              <th className="px-3 py-2 w-36"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {subs.map((sub) => (
-              <tr key={sub.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 font-mono text-xs text-gray-500">
-                  {sub.remote_key ?? badge('new', 'bg-yellow-100 text-yellow-700')}
-                </td>
-                <td className="px-3 py-2">
-                  <button
-                    onClick={() => setEditSub(sub)}
-                    className="font-medium text-left hover:text-indigo-600 hover:underline"
-                    title="Edit subscription"
-                  >
-                    {sub.name}
-                  </button>
-                  {sub.show && (
-                    <Link to={`/shows/${sub.show.id}`} className="block text-xs text-indigo-500 hover:underline">
-                      {sub.show.title}
-                    </Link>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <button
-                    onClick={() => patch.mutate({ id: sub.id, update: { enabled_in_config: !sub.enabled_in_config } })}
-                    className={`w-10 h-5 rounded-full transition-colors ${sub.enabled_in_config ? 'bg-green-500' : 'bg-gray-300'}`}
-                    title={sub.enabled_in_config ? 'Disable' : 'Enable'}
-                  >
-                    <span
-                      className={`block w-4 h-4 bg-white rounded-full shadow transform transition-transform mx-0.5 ${sub.enabled_in_config ? 'translate-x-5' : 'translate-x-0'}`}
-                    />
-                  </button>
-                </td>
-                <td className="px-3 py-2">
-                  {sub.active
-                    ? badge('active', 'bg-green-100 text-green-700')
-                    : badge('inactive', 'bg-gray-100 text-gray-500')}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-2 items-center">
-                    <button onClick={() => setEditSub(sub)} className="text-xs text-gray-500 hover:underline">
-                      Edit
+            {subs.map((sub) => {
+              const isStub = sub.remote_key === null
+              return (
+                <tr key={sub.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 font-mono text-xs text-gray-500">
+                    {sub.remote_key ?? badge('stub', 'bg-yellow-100 text-yellow-700')}
+                  </td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => setEditSub(sub)}
+                      className="font-medium text-left hover:text-indigo-600 hover:underline"
+                      title="Edit subscription"
+                    >
+                      {sub.name}
                     </button>
-                    <button onClick={() => setPreviewSub(sub)} className="text-xs text-gray-500 hover:underline">
-                      Preview
+                    {sub.show && (
+                      <Link to={`/shows/${sub.show.id}`} className="block text-xs text-indigo-500 hover:underline">
+                        {sub.show.title}
+                      </Link>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => patch.mutate({ id: sub.id, update: { enabled_in_config: !sub.enabled_in_config } })}
+                      className={`w-10 h-5 rounded-full transition-colors ${sub.enabled_in_config ? 'bg-green-500' : 'bg-gray-300'}`}
+                      title={sub.enabled_in_config
+                        ? 'Enabled — included in published config. Click to disable.'
+                        : 'Disabled — not included in published config. Click to enable.'}
+                    >
+                      <span className={`block w-4 h-4 bg-white rounded-full shadow transform transition-transform mx-0.5 ${sub.enabled_in_config ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
-                    {!sub.enabled_in_config && (
-                      <button
-                        onClick={() => { if (confirm(`Delete subscription "${sub.name}"?`)) del.mutate(sub.id) }}
-                        className="text-xs text-red-400 hover:underline"
+                  </td>
+                  <td className="px-3 py-2">
+                    {isStub ? (
+                      <span
+                        title="Stubs are always inactive until promoted to a real subscription."
+                        className="cursor-default"
                       >
-                        Delete
+                        {badge('inactive', 'bg-gray-100 text-gray-400')}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => patch.mutate({ id: sub.id, update: { active: !sub.active } })}
+                        title={sub.active
+                          ? 'Active — downloader treats this as live. Click to deactivate.'
+                          : 'Inactive — downloader skips this. Click to activate.'}
+                      >
+                        {sub.active
+                          ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
+                          : badge('inactive', 'bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400')}
                       </button>
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-2 items-center">
+                      <button onClick={() => setEditSub(sub)} className="text-xs text-gray-500 hover:underline">Edit</button>
+                      <button onClick={() => setPreviewSub(sub)} className="text-xs text-gray-500 hover:underline">Preview</button>
+                      {!sub.enabled_in_config && (
+                        <button
+                          onClick={() => { if (confirm(`Delete subscription "${sub.name}"?`)) del.mutate(sub.id) }}
+                          className="text-xs text-red-400 hover:underline"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {subs.length === 0 && (
+          <p className="text-center text-gray-400 py-8 text-sm">No subscriptions match the filter.</p>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Feed form modal (create and edit)
+// ---------------------------------------------------------------------------
+
+interface FeedDraft {
+  name: string
+  url: string
+  remote_key: string
+  default_download_location: string
+  default_move_completed: string
+  active: boolean
+}
+
+function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onClose: () => void }) {
+  const create = useCreateRssFeed()
+  const patch = usePatchRssFeed()
+  const isEdit = feed !== null
+
+  const [draft, setDraft] = useState<FeedDraft>({
+    name: feed?.name ?? '',
+    url: feed?.url ?? '',
+    remote_key: feed?.remote_key ?? '',
+    default_download_location: feed?.default_download_location ?? '',
+    default_move_completed: feed?.default_move_completed ?? '',
+    active: feed?.active ?? true,
+  })
+
+  const set = <K extends keyof FeedDraft>(key: K, value: FeedDraft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }))
+
+  const handleSave = () => {
+    if (!draft.name.trim() || !draft.url.trim()) return
+    if (isEdit) {
+      const update: RssFeedUpdate = {
+        name: draft.name.trim(),
+        url: draft.url.trim(),
+        remote_key: draft.remote_key.trim() || null,
+        default_download_location: draft.default_download_location.trim() || null,
+        default_move_completed: draft.default_move_completed.trim() || null,
+        active: draft.active,
+      }
+      patch.mutate({ id: feed.id, update }, { onSuccess: onClose })
+    } else {
+      const body: RssFeedCreate = {
+        name: draft.name.trim(),
+        url: draft.url.trim(),
+        remote_key: draft.remote_key.trim() || null,
+        default_download_location: draft.default_download_location.trim() || null,
+        default_move_completed: draft.default_move_completed.trim() || null,
+        active: draft.active,
+      }
+      create.mutate(body, { onSuccess: onClose })
+    }
+  }
+
+  const isPending = create.isPending || patch.isPending
+
+  const textInput = (key: keyof FeedDraft, placeholder = '') => (
+    <input
+      value={draft[key] as string}
+      onChange={(e) => set(key, e.target.value)}
+      placeholder={placeholder}
+      className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+    />
+  )
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Edit Feed' : 'New Feed'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Name *">{textInput('name', 'e.g. ShowRSS')}</Field>
+            <Field label="Remote Key" note="YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.">{textInput('remote_key', 'e.g. 1')}</Field>
+          </div>
+          <Field label="URL *">{textInput('url', 'https://…')}</Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Default Download Location" note="Used by subscriptions that don't override it.">{textInput('default_download_location')}</Field>
+            <Field label="Default Move Completed" note="Used by subscriptions that don't override it.">{textInput('default_move_completed')}</Field>
+          </div>
+          <label
+            className="flex items-center gap-2 text-sm cursor-pointer"
+            title="Inactive feeds are excluded from the published YaRSS2 config."
+          >
+            <input
+              type="checkbox"
+              checked={draft.active}
+              onChange={(e) => set('active', e.target.checked)}
+              className="rounded"
+            />
+            Active (included in published config)
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={isPending || !draft.name.trim() || !draft.url.trim()}
+            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Feeds table
+// ---------------------------------------------------------------------------
+
+function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
+  const patch = usePatchRssFeed()
+  const del = useDeleteRssFeed()
+  const [editFeed, setEditFeed] = useState<RssFeedRead | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+
+  return (
+    <>
+      {createOpen && <FeedFormModal feed={null} onClose={() => setCreateOpen(false)} />}
+      {editFeed && <FeedFormModal feed={editFeed} onClose={() => setEditFeed(null)} />}
+
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
+        >
+          + New Feed
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+            <tr>
+              <th className="px-3 py-2 w-12">Key</th>
+              <th className="px-3 py-2">Name</th>
+              <th className="px-3 py-2 max-w-[200px]">URL</th>
+              <th className="px-3 py-2">Default Download</th>
+              <th className="px-3 py-2">Default Move</th>
+              <th className="px-3 py-2 w-24" title="Inactive feeds are excluded from the published YaRSS2 config.">Active ⓘ</th>
+              <th className="px-3 py-2 w-24"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {feeds.map((f) => (
+              <tr key={f.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2 font-mono text-xs text-gray-500">{f.remote_key ?? '—'}</td>
+                <td className="px-3 py-2 font-medium">
+                  <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 hover:underline text-left">
+                    {f.name}
+                  </button>
+                </td>
+                <td className="px-3 py-2 text-xs text-gray-500 max-w-[200px] truncate">
+                  <a href={f.url} target="_blank" rel="noreferrer" className="hover:underline" title={f.url}>{f.url}</a>
+                </td>
+                <td className="px-3 py-2 text-xs text-gray-500">{f.default_download_location ?? '—'}</td>
+                <td className="px-3 py-2 text-xs text-gray-500">{f.default_move_completed ?? '—'}</td>
+                <td className="px-3 py-2">
+                  <button
+                    onClick={() => patch.mutate({ id: f.id, update: { active: !f.active } })}
+                    title={f.active
+                      ? 'Active — included in published config. Click to deactivate.'
+                      : 'Inactive — excluded from published config. Click to activate.'}
+                  >
+                    {f.active
+                      ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
+                      : badge('inactive', 'bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400')}
+                  </button>
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditFeed(f)} className="text-xs text-gray-500 hover:underline">Edit</button>
+                    <button
+                      onClick={() => { if (confirm(`Delete feed "${f.name}"?`)) del.mutate(f.id) }}
+                      className="text-xs text-red-400 hover:underline"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {subs.length === 0 && (
-          <p className="text-center text-gray-400 py-8 text-sm">No subscriptions match the filter.</p>
+        {feeds.length === 0 && (
+          <p className="text-center text-gray-400 py-8 text-sm">No feeds. Run an import or create one manually.</p>
         )}
       </div>
     </>
@@ -530,6 +826,7 @@ function SubscriptionsTable({
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
 export default function RSS() {
+  const [tab, setTab] = useState<'subscriptions' | 'feeds'>('subscriptions')
   const [nameSearch, setNameSearch] = useState('')
   const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'stubs'>('all')
   const [feedFilter, setFeedFilter] = useState<number | 'unlinked' | 'all'>('all')
@@ -619,7 +916,7 @@ export default function RSS() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -629,7 +926,7 @@ export default function RSS() {
           </p>
         </div>
         <div className="flex flex-col gap-2 items-end">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={() => triggerImport.mutate(undefined, { onSuccess: (t) => setImportTaskId(t.id) })}
               disabled={triggerImport.isPending}
@@ -638,18 +935,19 @@ export default function RSS() {
               {triggerImport.isPending ? 'Dispatching…' : 'Import from server'}
             </button>
             <button
-              onClick={handleDownload}
-              disabled={downloading}
-              className="px-4 py-2 text-sm rounded bg-gray-600 text-white hover:bg-gray-500 disabled:opacity-50"
-            >
-              {downloading ? 'Downloading…' : 'Download'}
-            </button>
-            <button
               onClick={() => triggerPublish.mutate(undefined, { onSuccess: (t) => setPublishTaskId(t.id) })}
               disabled={triggerPublish.isPending}
               className="px-4 py-2 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               {triggerPublish.isPending ? 'Dispatching…' : 'Publish to server'}
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-1" />
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+            >
+              {downloading ? 'Downloading…' : 'Download'}
             </button>
           </div>
           {importTask && <div className="text-right text-xs">Import: <TaskStatusBadge task={importTask} /></div>}
@@ -660,49 +958,31 @@ export default function RSS() {
         </div>
       </div>
 
-      {/* Feeds */}
-      <section>
-        <h2 className="text-base font-semibold text-gray-700 mb-3">Feeds ({feeds.length})</h2>
-        {feeds.length === 0 ? (
-          <p className="text-sm text-gray-400">No feeds. Run an import to sync from the server.</p>
-        ) : (
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="px-3 py-2">Key</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">URL</th>
-                  <th className="px-3 py-2">Default download</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {feeds.map((f) => (
-                  <tr key={f.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-mono text-xs text-gray-500">{f.remote_key ?? '—'}</td>
-                    <td className="px-3 py-2 font-medium">{f.name}</td>
-                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[240px] truncate">
-                      <a href={f.url} target="_blank" rel="noreferrer" className="hover:underline">{f.url}</a>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-500">{f.default_download_location ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          {(['subscriptions', 'feeds'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`pb-3 text-sm font-medium capitalize border-b-2 transition-colors ${
+                tab === t
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {t === 'subscriptions'
+                ? `Subscriptions (${subs?.length ?? 0})`
+                : `Feeds (${feeds.length})`}
+            </button>
+          ))}
+        </nav>
+      </div>
 
-      {/* Subscriptions */}
-      <section>
-        <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-end sm:justify-between">
-          <h2 className="text-base font-semibold text-gray-700">
-            Subscriptions ({filteredSubs.length} / {subs?.length ?? 0})
-          </h2>
-
-          {/* Filter bar (issue #116) */}
-          <div className="flex flex-wrap gap-2 items-end">
-            {/* Name search */}
+      {/* Tab content */}
+      {tab === 'subscriptions' && (
+        <section>
+          <div className="flex flex-wrap gap-2 items-center mb-3">
             <input
               type="search"
               value={nameSearch}
@@ -710,8 +990,6 @@ export default function RSS() {
               placeholder="Search name…"
               className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
-
-            {/* Enabled filter */}
             <select
               value={enabledFilter}
               onChange={(e) => setEnabledFilter(e.target.value as typeof enabledFilter)}
@@ -719,10 +997,8 @@ export default function RSS() {
             >
               <option value="all">All</option>
               <option value="enabled">Enabled only</option>
-              <option value="stubs">Stubs only (no remote key)</option>
+              <option value="stubs">Stubs only</option>
             </select>
-
-            {/* Feed filter */}
             <select
               value={feedFilter === 'all' ? 'all' : feedFilter === 'unlinked' ? 'unlinked' : String(feedFilter)}
               onChange={(e) => {
@@ -733,21 +1009,28 @@ export default function RSS() {
             >
               <option value="all">All feeds</option>
               <option value="unlinked">Unlinked</option>
-              {feeds.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
+              {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
+            <span className="text-xs text-gray-400 ml-1">{filteredSubs.length} / {subs?.length ?? 0}</span>
           </div>
-        </div>
 
-        {isLoading ? (
-          <p className="text-sm text-gray-400">Loading subscriptions…</p>
-        ) : (
-          <div className="border rounded-lg">
-            <SubscriptionsTable subs={filteredSubs} feeds={feeds} />
+          {isLoading ? (
+            <p className="text-sm text-gray-400">Loading subscriptions…</p>
+          ) : (
+            <div className="border rounded-lg p-3">
+              <SubscriptionsTable subs={filteredSubs} feeds={feeds} />
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === 'feeds' && (
+        <section>
+          <div className="border rounded-lg p-3">
+            <FeedsTable feeds={feeds} />
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   )
 }
