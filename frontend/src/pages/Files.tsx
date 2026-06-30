@@ -109,7 +109,11 @@ function InlineEpisodePicker({
       setError(null)
       qc.setQueriesData<FileRead[]>(
         { queryKey: fileKeys.all },
-        (old) => old?.map((f) => (f.id === updated.id ? updated : f)),
+        (old) => old?.map((f) =>
+          f.id === updated.id
+            ? { ...f, ...updated, show: updated.show ?? f.show, episode: updated.episode ?? f.episode }
+            : f
+        ),
       )
       qc.invalidateQueries({ queryKey: fileKeys.all })
       qc.invalidateQueries({ queryKey: showKeys.all })
