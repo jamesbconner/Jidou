@@ -561,8 +561,12 @@ def test_patch_file_reassign_episode_clears_stale_tracking() -> None:
         requery_result.scalar_one.return_value = f
         session.execute = AsyncMock(
             side_effect=[
-                file_result, delete_result, new_ep_result,
-                count_result, old_ep_result, requery_result,
+                file_result,
+                delete_result,
+                new_ep_result,
+                count_result,
+                old_ep_result,
+                requery_result,
             ]
         )
         session.flush = AsyncMock()
