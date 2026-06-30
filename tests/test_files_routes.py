@@ -505,7 +505,9 @@ def test_patch_file_episode_id_marks_target_episode_tracked() -> None:
         ep_result.scalar_one_or_none.return_value = ep
         requery_result = MagicMock()
         requery_result.scalar_one.return_value = f
-        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result, requery_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, ep_result, requery_result]
+        )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
         yield session
@@ -558,7 +560,10 @@ def test_patch_file_reassign_episode_clears_stale_tracking() -> None:
         requery_result = MagicMock()
         requery_result.scalar_one.return_value = f
         session.execute = AsyncMock(
-            side_effect=[file_result, delete_result, new_ep_result, count_result, old_ep_result, requery_result]
+            side_effect=[
+                file_result, delete_result, new_ep_result,
+                count_result, old_ep_result, requery_result,
+            ]
         )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
@@ -752,7 +757,9 @@ def test_patch_file_episode_id_allows_same_episode_relink() -> None:
         ep_result.scalar_one_or_none.return_value = ep
         requery_result = MagicMock()
         requery_result.scalar_one.return_value = f
-        session.execute = AsyncMock(side_effect=[file_result, delete_result, ep_result, requery_result])
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, ep_result, requery_result]
+        )
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
         yield session
