@@ -102,7 +102,7 @@ function InlineEpisodePicker({
     mutationFn: (newEpisodeId: number | null) =>
       api.patch<FileRead>(`/files/${fileId}`, {
         episode_id: newEpisodeId,
-        ...(newEpisodeId !== null ? { status: 'matched' } : {}),
+        ...(newEpisodeId !== null ? { status: 'matched', error_message: null } : {}),
       }),
     onSuccess: () => {
       setEditing(false)
