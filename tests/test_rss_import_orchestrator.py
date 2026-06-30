@@ -268,6 +268,77 @@ async def test_show_auto_linked_by_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_show_fuzzy_linked_by_name() -> None:
+    """A subscription whose name fuzzy-matches a show title (token-set ratio) gets show_id set."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _make_session()
+
+    show_row = MagicMock()
+    show_row.id = 7
+    show_row.title = "Marvel's Daredevil"
+    shows_result = MagicMock()
+    shows_result.all.return_value = [show_row]
+
+    session.execute = AsyncMock(side_effect=[_exec_result(scalars_all=[]), shows_result])
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    # YaRSS2 uses "Daredevil" — token_set_ratio vs "Marvel's Daredevil" is 100
+    remote_subs = {"9": {"name": "Daredevil", "active": True}}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    assert result.shows_linked == 1
+    added_sub = session.add.call_args_list[0].args[0]
+    assert isinstance(added_sub, RssSubscription)
+    assert added_sub.show_id == 7
+
+
+@pytest.mark.asyncio
+async def test_show_fuzzy_link_below_threshold_not_matched() -> None:
+    """A subscription name that scores below the fuzzy threshold does not get show_id set."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _make_session()
+
+    show_row = MagicMock()
+    show_row.id = 3
+    show_row.title = "The Boys"
+    shows_result = MagicMock()
+    shows_result.all.return_value = [show_row]
+
+    session.execute = AsyncMock(side_effect=[_exec_result(scalars_all=[]), shows_result])
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+
+    remote_subs = {"11": {"name": "Attack on Titan", "active": True}}
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, {}, result)
+
+    assert result.shows_linked == 0
+    added_sub = session.add.call_args_list[0].args[0]
+    assert isinstance(added_sub, RssSubscription)
+    assert added_sub.show_id is None
+
+
+@pytest.mark.asyncio
 async def test_stub_promoted_when_remote_matches_by_show_id() -> None:
     """A watchlist stub (remote_key=None) is promoted in-place when import finds a match."""
     from jidou.models.rss import RssSubscription
