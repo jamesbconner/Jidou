@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
@@ -24,6 +24,7 @@ import {
   useTriggerRssPublish,
   useSuggestRegex,
 } from '@/hooks/useRss'
+import { useShows } from '@/hooks/useShows'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,6 +122,7 @@ function RegexSuggestModal({
 interface SubDraft {
   name: string
   feed_id: number | null
+  show_id: number | null
   active: boolean
   regex_include: string
   regex_exclude: string
@@ -136,6 +138,7 @@ function draftFromSub(sub: RssSubscriptionRead): SubDraft {
   return {
     name: sub.name,
     feed_id: sub.feed_id,
+    show_id: sub.show_id,
     active: sub.active,
     regex_include: sub.regex_include ?? '',
     regex_exclude: sub.regex_exclude ?? '',
@@ -159,8 +162,27 @@ function SubscriptionEditModal({
 }) {
   const [draft, setDraft] = useState<SubDraft>(() => draftFromSub(sub))
   const [showSuggest, setShowSuggest] = useState(false)
+  const [showSearch, setShowSearch] = useState('')
+  const [showPickerOpen, setShowPickerOpen] = useState(false)
+  const showPickerRef = useRef<HTMLDivElement>(null)
   const patch = usePatchRssSubscription()
+  const { data: allShows = [] } = useShows()
   const isStub = sub.remote_key === null && !sub.enabled_in_config
+
+  const linkedShow = allShows.find((s) => s.id === draft.show_id) ?? null
+  const showSearchResults = showSearch.trim().length >= 1
+    ? allShows.filter((s) => s.title.toLowerCase().includes(showSearch.toLowerCase())).slice(0, 10)
+    : []
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (showPickerRef.current && !showPickerRef.current.contains(e.target as Node)) {
+        setShowPickerOpen(false)
+      }
+    }
+    if (showPickerOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showPickerOpen])
 
   const set = <K extends keyof SubDraft>(key: K, value: SubDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -169,6 +191,7 @@ function SubscriptionEditModal({
     const update: RssSubscriptionUpdate = {
       name: draft.name || undefined,
       feed_id: draft.feed_id,
+      show_id: draft.show_id,
       active: isStub ? false : draft.active,
       regex_include: draft.regex_include || null,
       regex_exclude: draft.regex_exclude || null,
@@ -212,14 +235,7 @@ function SubscriptionEditModal({
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
           <div className="flex items-start justify-between p-5 border-b">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
-              {sub.show && (
-                <Link to={`/shows/${sub.show.id}`} className="text-xs text-indigo-500 hover:underline" onClick={onClose}>
-                  {sub.show.title} ↗
-                </Link>
-              )}
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           </div>
 
@@ -237,6 +253,57 @@ function SubscriptionEditModal({
                 </select>
               </Field>
             </div>
+
+            <Field label="Linked Show">
+              <div ref={showPickerRef} className="relative">
+                {linkedShow ? (
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/shows/${linkedShow.id}`}
+                      className="text-sm text-indigo-600 hover:underline"
+                      onClick={onClose}
+                    >
+                      {linkedShow.title} ↗
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => { set('show_id', null); setShowSearch(''); setShowPickerOpen(false) }}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Remove link
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={showSearch}
+                    onChange={(e) => { setShowSearch(e.target.value); setShowPickerOpen(true) }}
+                    onFocus={() => setShowPickerOpen(true)}
+                    placeholder="Search library shows…"
+                    className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                )}
+                {showPickerOpen && showSearchResults.length > 0 && (
+                  <ul className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg max-h-48 overflow-y-auto text-sm">
+                    {showSearchResults.map((s) => (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50"
+                          onClick={() => {
+                            set('show_id', s.id)
+                            setShowSearch('')
+                            setShowPickerOpen(false)
+                          }}
+                        >
+                          {s.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Field>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
