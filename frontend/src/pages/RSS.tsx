@@ -833,7 +833,8 @@ const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 export default function RSS() {
   const [tab, setTab] = useState<'subscriptions' | 'feeds'>('subscriptions')
   const [nameSearch, setNameSearch] = useState('')
-  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'stubs'>('all')
+  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [feedFilter, setFeedFilter] = useState<number | 'unlinked' | 'all'>('all')
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
@@ -899,7 +900,9 @@ export default function RSS() {
   const filteredSubs = (subs ?? []).filter((s) => {
     if (nameSearch && !s.name.toLowerCase().includes(nameSearch.toLowerCase())) return false
     if (enabledFilter === 'enabled' && !s.enabled_in_config) return false
-    if (enabledFilter === 'stubs' && s.remote_key !== null) return false
+    if (enabledFilter === 'disabled' && s.enabled_in_config) return false
+    if (activeFilter === 'active' && !s.active) return false
+    if (activeFilter === 'inactive' && s.active) return false
     if (feedFilter === 'unlinked' && s.feed_id !== null) return false
     if (typeof feedFilter === 'number' && s.feed_id !== feedFilter) return false
     return true
@@ -1000,9 +1003,18 @@ export default function RSS() {
               onChange={(e) => setEnabledFilter(e.target.value as typeof enabledFilter)}
               className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              <option value="all">All</option>
-              <option value="enabled">Enabled only</option>
-              <option value="stubs">Stubs only</option>
+              <option value="all">Any enabled</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <select
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value as typeof activeFilter)}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="all">Any active</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
             <select
               value={feedFilter === 'all' ? 'all' : feedFilter === 'unlinked' ? 'unlinked' : String(feedFilter)}
