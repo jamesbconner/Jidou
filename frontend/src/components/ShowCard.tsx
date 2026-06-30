@@ -33,18 +33,20 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="relative">
-        {show.poster_path ? (
-          <img
-            src={`${TMDB_IMG}${show.poster_path}`}
-            alt={show.title}
-            className="w-full h-48 object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
-            No image
-          </div>
-        )}
+        <Link to={`/shows/${show.id}`} className="block">
+          {show.poster_path ? (
+            <img
+              src={`${TMDB_IMG}${show.poster_path}`}
+              alt={show.title}
+              className="w-full h-48 object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+              No image
+            </div>
+          )}
+        </Link>
 
         {/* Watchlist toggle — upper left */}
         {onWatchlistToggle && (
