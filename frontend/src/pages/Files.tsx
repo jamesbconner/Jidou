@@ -1,13 +1,13 @@
 import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useFiles, fileKeys } from '@/hooks/useFiles'
-import { showKeys } from '@/hooks/useShows'
+import { showKeys, useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { RematchModal } from '@/components/RematchModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
-import type { FileRead, FileStatus } from '@/types/api'
+import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
 
 const STATUS_OPTIONS: (FileStatus | '')[] = [
   '',
@@ -76,6 +76,100 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
       }}
       className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
     />
+  )
+}
+
+function pad2(n: number) { return String(n).padStart(2, '0') }
+
+function InlineEpisodePicker({
+  fileId,
+  showId,
+  episodeId,
+  episode,
+}: {
+  fileId: number
+  showId: number
+  episodeId: number | null
+  episode: EpisodeBrief | null
+}) {
+  const [editing, setEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const { data: episodes = [] } = useShowEpisodes(showId)
+
+  const patch = useMutation({
+    mutationFn: (newEpisodeId: number | null) =>
+      api.patch<FileRead>(`/files/${fileId}`, { episode_id: newEpisodeId }),
+    onSuccess: () => {
+      setEditing(false)
+      setError(null)
+      qc.invalidateQueries({ queryKey: fileKeys.all })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to update episode'
+      setError(msg)
+    },
+  })
+
+  const seasonMap = new Map<number, typeof episodes>()
+  for (const ep of episodes) {
+    const bucket = seasonMap.get(ep.season_number) ?? []
+    bucket.push(ep)
+    seasonMap.set(ep.season_number, bucket)
+  }
+  const seasons = Array.from(seasonMap.keys()).sort((a, b) => a - b)
+
+  const label = episode
+    ? `S${pad2(episode.season_number)}E${pad2(episode.episode_number)} · ${episode.name}`
+    : '—'
+
+  if (!editing) {
+    return (
+      <div className="mt-0.5">
+        <button
+          onClick={() => { setError(null); setEditing(true) }}
+          className="text-xs text-gray-500 hover:text-blue-600 hover:underline text-left"
+          title="Click to assign episode"
+        >
+          {label}
+        </button>
+        {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-0.5">
+      <select
+        autoFocus
+        defaultValue={episodeId ?? ''}
+        onChange={(e) => {
+          const val = e.target.value
+          patch.mutate(val === '' ? null : Number(val))
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { setEditing(false); setError(null) }
+        }}
+        disabled={patch.isPending}
+        className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs"
+      >
+        <option value="">— clear —</option>
+        {seasons.map((sn) => (
+          <optgroup key={sn} label={`Season ${sn}`}>
+            {(seasonMap.get(sn) ?? [])
+              .sort((a, b) => a.episode_number - b.episode_number)
+              .map((ep) => (
+                <option key={ep.id} value={ep.id}>
+                  {`S${pad2(ep.season_number)}E${pad2(ep.episode_number)} — ${ep.name}`}
+                  {ep.file_tracked && ep.id !== episodeId ? ' (taken)' : ''}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+    </div>
   )
 }
 
@@ -152,9 +246,16 @@ export default function Files() {
                         >
                           {f.show.title}
                         </Link>
-                        {f.episode && (
+                        {(f.status === 'unmatched' || f.status === 'error') ? (
+                          <InlineEpisodePicker
+                            fileId={f.id}
+                            showId={f.show.id}
+                            episodeId={f.episode_id}
+                            episode={f.episode}
+                          />
+                        ) : f.episode && (
                           <div className="text-xs text-gray-500">
-                            {`S${String(f.episode.season_number).padStart(2, '0')}E${String(f.episode.episode_number).padStart(2, '0')} · ${f.episode.name}`}
+                            {`S${pad2(f.episode.season_number)}E${pad2(f.episode.episode_number)} · ${f.episode.name}`}
                           </div>
                         )}
                       </div>
