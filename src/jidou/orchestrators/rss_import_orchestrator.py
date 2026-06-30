@@ -14,6 +14,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from rapidfuzz import fuzz, process
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,50 @@ from jidou.services.rss_config import compute_subscription_deltas, parse_rss_con
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
+
+_FUZZY_THRESHOLD = 85
+
+
+def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None:
+    """Return a show_id for name using exact then token-set-ratio fuzzy match.
+
+    Args:
+        name: Subscription name from the remote config.
+        show_by_lower_title: Mapping of lowercase show title → show_id.
+
+    Returns:
+        Matched show_id, or None if no match meets the threshold.
+    """
+    exact = show_by_lower_title.get(name.lower())
+    if exact is not None:
+        return exact
+    # Fetch top-2 so we can detect a tie at the same score (ambiguous link).
+    results = process.extract(
+        name.lower(),
+        list(show_by_lower_title.keys()),
+        scorer=fuzz.token_set_ratio,
+        score_cutoff=_FUZZY_THRESHOLD,
+        limit=2,
+    )
+    if not results:
+        return None
+    if len(results) > 1 and results[0][1] == results[1][1]:
+        logger.debug(
+            "_fuzzy_show_id: ambiguous fuzzy match for %r — %d candidates at score %d; skipping",
+            name,
+            len(results),
+            results[0][1],
+        )
+        return None
+    matched_lower_title, _score, _ = results[0]
+    logger.debug(
+        "_fuzzy_show_id: fuzzy-matched %r → %r (score=%d)",
+        name,
+        matched_lower_title,
+        _score,
+    )
+    return show_by_lower_title[matched_lower_title]
+
 
 _OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
 
@@ -253,7 +298,7 @@ class RssImportOrchestrator:
 
             # Derive feed_id from the remote sub's feed reference (if any)
             feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
-            show_id = show_by_lower_title.get(name.lower())
+            show_id = _fuzzy_show_id(name, show_by_lower_title)
 
             # Extract only recognised column fields; stash the rest in extra_config
             col_vals = {k: sub_dict[k] for k in _SUBSCRIPTION_COLUMNS if k in sub_dict}
@@ -356,7 +401,7 @@ class RssImportOrchestrator:
             # Auto-link show: read db_row.show_id but only write in live run
             if db_row.show_id is None:
                 name = str(merged.get("name", db_row.name))
-                show_id = show_by_lower_title.get(name.lower())
+                show_id = _fuzzy_show_id(name, show_by_lower_title)
                 if show_id:
                     if not self._dry_run:
                         db_row.show_id = show_id

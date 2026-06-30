@@ -38,6 +38,7 @@ dependencies = [
     # Caching
     "cachetools>=5.5",
     "python-multipart>=0.0.32",
+    "rapidfuzz>=3.14.5",
 ]
 
 [project.optional-dependencies]
