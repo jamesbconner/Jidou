@@ -160,7 +160,7 @@ function SubscriptionEditModal({
   const [draft, setDraft] = useState<SubDraft>(() => draftFromSub(sub))
   const [showSuggest, setShowSuggest] = useState(false)
   const patch = usePatchRssSubscription()
-  const isStub = sub.remote_key === null
+  const isStub = sub.remote_key === null && !sub.enabled_in_config
 
   const set = <K extends keyof SubDraft>(key: K, value: SubDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -546,7 +546,7 @@ function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[]; feed
           </thead>
           <tbody className="divide-y divide-gray-100">
             {subs.map((sub) => {
-              const isStub = sub.remote_key === null
+              const isStub = sub.remote_key === null && !sub.enabled_in_config
               return (
                 <tr key={sub.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-xs text-gray-500">

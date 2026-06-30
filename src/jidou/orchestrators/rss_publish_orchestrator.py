@@ -238,6 +238,7 @@ class RssPublishOrchestrator:
             # DB column values overlay extra_config (DB wins)
             feed_dict["name"] = feed.name
             feed_dict["url"] = feed.url
+            feed_dict["active"] = feed.active
             new_feeds[feed.remote_key] = feed_dict
             result.feeds_published += 1
         return new_feeds
