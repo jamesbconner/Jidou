@@ -604,6 +604,73 @@ def test_create_watchlist_entry_links_fuzzy_name_unlinked_sub() -> None:
         app.dependency_overrides.clear()
 
 
+def test_create_watchlist_entry_skips_link_when_fuzzy_ambiguous() -> None:
+    """POST /api/watchlist creates a stub when multiple unlinked subs tie on fuzzy score."""
+    from datetime import UTC, datetime
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssSubscription
+
+    show = _make_show(id=7)
+    show.title = "Daredevil"
+
+    # Both subs score 100 on token_set_ratio vs "Daredevil"
+    sub_a = MagicMock(spec=RssSubscription)
+    sub_a.id = 10
+    sub_a.show_id = None
+    sub_a.name = "Marvel's Daredevil"
+
+    sub_b = MagicMock(spec=RssSubscription)
+    sub_b.id = 11
+    sub_b.show_id = None
+    sub_b.name = "Daredevil Born Again"  # no colon — scores 100, not 60
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = None
+    no_show_id_result = MagicMock()
+    no_show_id_result.scalar_one_or_none.return_value = None
+    unlinked_result = MagicMock()
+    unlinked_result.scalars.return_value.all.return_value = [sub_a, sub_b]
+
+    added_objects: list[object] = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(
+            side_effect=[show_result, existing_result, no_show_id_result, unlinked_result]
+        )
+
+        def _add(obj: object) -> None:
+            obj.id = 20  # type: ignore[attr-defined]
+            obj.created_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
+            added_objects.append(obj)
+
+        def _refresh_with_show(obj: object, attrs: list[str]) -> None:
+            if "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock(side_effect=_refresh_with_show)
+        session.begin_nested = _make_begin_nested()
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        response = TestClient(app).post("/api/watchlist", json={"show_id": 7})
+        assert response.status_code == 201
+        # Ambiguous — neither sub linked; a new stub is created instead
+        rss_stubs = [o for o in added_objects if isinstance(o, RssSubscription)]
+        assert len(rss_stubs) == 1
+        assert sub_a.show_id is None
+        assert sub_b.show_id is None
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # GET /api/watchlist/{entry_id}
 # ---------------------------------------------------------------------------

@@ -41,22 +41,32 @@ def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None
     exact = show_by_lower_title.get(name.lower())
     if exact is not None:
         return exact
-    result = process.extractOne(
+    # Fetch top-2 so we can detect a tie at the same score (ambiguous link).
+    results = process.extract(
         name.lower(),
         list(show_by_lower_title.keys()),
         scorer=fuzz.token_set_ratio,
         score_cutoff=_FUZZY_THRESHOLD,
+        limit=2,
     )
-    if result is not None:
-        matched_lower_title, _score, _ = result
+    if not results:
+        return None
+    if len(results) > 1 and results[0][1] == results[1][1]:
         logger.debug(
-            "_fuzzy_show_id: fuzzy-matched %r → %r (score=%d)",
+            "_fuzzy_show_id: ambiguous fuzzy match for %r — %d candidates at score %d; skipping",
             name,
-            matched_lower_title,
-            _score,
+            len(results),
+            results[0][1],
         )
-        return show_by_lower_title[matched_lower_title]
-    return None
+        return None
+    matched_lower_title, _score, _ = results[0]
+    logger.debug(
+        "_fuzzy_show_id: fuzzy-matched %r → %r (score=%d)",
+        name,
+        matched_lower_title,
+        _score,
+    )
+    return show_by_lower_title[matched_lower_title]
 
 
 _OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
