@@ -539,8 +539,8 @@ function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[]; feed
             <tr>
               <th className="px-3 py-2 w-16">Key</th>
               <th className="px-3 py-2">Name / Show</th>
-              <th className="px-3 py-2 w-20" title="Included in the published YaRSS2 config. Stubs are excluded until explicitly enabled.">Enabled ⓘ</th>
-              <th className="px-3 py-2 w-24" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader. Stubs are always inactive.">Active ⓘ</th>
+              <th className="px-3 py-2 w-20" title="Included in the published YaRSS2 config. Stubs are excluded until explicitly enabled.">Enabled</th>
+              <th className="px-3 py-2 w-24" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader. Stubs are always inactive.">Active</th>
               <th className="px-3 py-2 w-36"></th>
             </tr>
           </thead>
@@ -771,7 +771,7 @@ function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
               <th className="px-3 py-2 max-w-[200px]">URL</th>
               <th className="px-3 py-2">Default Download</th>
               <th className="px-3 py-2">Default Move</th>
-              <th className="px-3 py-2 w-24" title="Inactive feeds are excluded from the published YaRSS2 config.">Active ⓘ</th>
+              <th className="px-3 py-2 w-24" title="Inactive feeds are excluded from the published YaRSS2 config.">Active</th>
               <th className="px-3 py-2 w-24"></th>
             </tr>
           </thead>
