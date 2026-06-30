@@ -154,6 +154,7 @@ function InlineEpisodePicker({
           setSelectValue(val)
           patch.mutate(val === '' ? null : Number(val))
         }}
+        onBlur={() => setEditing(false)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') setEditing(false)
         }}
