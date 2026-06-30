@@ -54,11 +54,14 @@ async def _ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str)
     unlinked_subs = list((await session.execute(unlinked_stmt)).scalars().all())
     title_lower = show_title.lower()
     best_match: RssSubscription | None = None
+    best_score: float = 0
     for sub in unlinked_subs:
         if sub.name.lower() == title_lower:
             best_match = sub
             break
-        if fuzz.token_set_ratio(show_title, sub.name) >= _FUZZY_THRESHOLD:
+        score = fuzz.token_set_ratio(title_lower, sub.name.lower())
+        if score >= _FUZZY_THRESHOLD and score > best_score:
+            best_score = score
             best_match = sub
     if best_match is not None:
         best_match.show_id = show_id

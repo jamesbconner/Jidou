@@ -488,7 +488,7 @@ def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
 
 
 def test_create_watchlist_entry_links_exact_name_unlinked_sub() -> None:
-    """POST /api/watchlist links an existing unlinked sub instead of creating a stub (exact name)."""
+    """POST /api/watchlist links an unlinked sub by exact name instead of creating a stub."""
     from datetime import UTC, datetime
 
     from jidou.database import get_session
@@ -546,9 +546,7 @@ def test_create_watchlist_entry_links_exact_name_unlinked_sub() -> None:
 
 
 def test_create_watchlist_entry_links_fuzzy_name_unlinked_sub() -> None:
-    """POST /api/watchlist links an unlinked sub via fuzzy name match (e.g. title prefix mismatch)."""
-    from datetime import UTC, datetime
-
+    """POST /api/watchlist links an unlinked sub via fuzzy name match (title prefix mismatch)."""
     from jidou.database import get_session
     from jidou.models.rss import RssSubscription
 
