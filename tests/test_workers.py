@@ -497,9 +497,7 @@ async def test_sync_all_cancellation_marks_cancelled() -> None:
             new_callable=AsyncMock,
             return_value=pending,
         ),
-        patch(
-            "jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.sync_tasks.SFTPService"),
         patch("jidou.workers.sync_tasks.TMDBService"),
@@ -702,9 +700,7 @@ async def test_scan_remote_skips_redelivery() -> None:
             new_callable=AsyncMock,
             return_value=terminal,
         ),
-        patch(
-            "jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
     ):
         result = await _scan_remote("tid-sc1", dry_run=False)
 
@@ -770,9 +766,7 @@ async def test_scan_remote_cancellation_marks_cancelled() -> None:
             new_callable=AsyncMock,
             return_value=pending,
         ),
-        patch(
-            "jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.scan_tasks.SFTPService"),
         patch(
@@ -805,9 +799,7 @@ async def test_scan_remote_exception_marks_failed() -> None:
             new_callable=AsyncMock,
             return_value=pending,
         ),
-        patch(
-            "jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.scan_tasks.SFTPService"),
         patch(
@@ -1332,9 +1324,7 @@ async def test_path_import_on_event_closure_invoked() -> None:
         ),
         patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock
-        ) as mock_event,
+        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock) as mock_event,
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
         patch("jidou.workers.import_tasks.LLMService"),

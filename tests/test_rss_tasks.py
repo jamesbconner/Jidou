@@ -27,6 +27,7 @@ def _pending() -> MagicMock:
 def _completed() -> MagicMock:
     return MagicMock(status=TaskStatus.COMPLETED.value)
 
+
 # ---------------------------------------------------------------------------
 # rss_import_task (sync wrapper) — soft timeout
 # ---------------------------------------------------------------------------
@@ -76,9 +77,7 @@ async def test_rss_import_skips_redelivery() -> None:
             new_callable=AsyncMock,
             return_value=terminal,
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
     ):
         result = await _rss_import("tid-ri1", dry_run=False)
 
@@ -161,9 +160,7 @@ async def test_rss_import_error_result_marks_failed_and_raises() -> None:
             new_callable=AsyncMock,
             return_value=_pending(),
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),
@@ -326,9 +323,7 @@ async def test_rss_import_exception_marks_failed_and_raises() -> None:
             new_callable=AsyncMock,
             return_value=_pending(),
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),
@@ -394,9 +389,7 @@ async def test_rss_publish_skips_redelivery() -> None:
             new_callable=AsyncMock,
             return_value=terminal,
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
     ):
         result = await _rss_publish("tid-rp1", dry_run=False)
 
@@ -476,9 +469,7 @@ async def test_rss_publish_error_result_marks_failed_and_raises() -> None:
             new_callable=AsyncMock,
             return_value=_pending(),
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),
@@ -641,9 +632,7 @@ async def test_rss_publish_exception_marks_failed_and_raises() -> None:
             new_callable=AsyncMock,
             return_value=_pending(),
         ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
+        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),

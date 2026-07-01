@@ -637,9 +637,7 @@ async def test_publish_skips_inactive_unreferenced_feed() -> None:
     sub = _make_sub(feed=active_feed)
     # ref_feed_ids only includes the active feed (id=1), not the inactive (id=2)
     session.execute = AsyncMock(
-        side_effect=_std_execute_sides(
-            [inactive_feed, active_feed], ["0"], [sub], ref_feed_ids=[1]
-        )
+        side_effect=_std_execute_sides([inactive_feed, active_feed], ["0"], [sub], ref_feed_ids=[1])
     )
 
     with patch(
@@ -713,9 +711,7 @@ async def test_publish_returns_error_when_config_parse_fails() -> None:
     sftp.upload_bytes = AsyncMock()
 
     with (
-        patch(
-            "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
-        ) as mock_orc_cls,
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
         patch(
             "jidou.orchestrators.rss_publish_orchestrator.parse_rss_config",
             side_effect=ValueError("bad format"),
