@@ -355,7 +355,7 @@ export default function Files() {
 
       {!isLoading && total > 0 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>{total} file{total !== 1 ? 's' : ''}{(search || statusFilter) ? ' matching filters' : ''}</span>
+          <span>{total} file{total !== 1 ? 's' : ''}{(debouncedSearch || statusFilter) ? ' matching filters' : ''}</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
