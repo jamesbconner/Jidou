@@ -48,7 +48,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
             Assign imported file — S{pad2(episode.season_number)}E{pad2(episode.episode_number)} ·{' '}
             {episode.name}
           </h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 text-lg leading-none">
+          <button onClick={onClose} aria-label="Close dialog" className="text-zinc-400 hover:text-zinc-200 text-lg leading-none">
             ✕
           </button>
         </div>

@@ -129,7 +129,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-100">Resolve unmatched file</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+          <button onClick={onClose} aria-label="Close dialog" className="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
