@@ -5,15 +5,35 @@ import type { FileRead, FileMatchRequest, FileStatus, TmdbSuggestionsResponse } 
 
 export const fileKeys = {
   all: ['files'] as const,
-  list: (status?: FileStatus) => [...fileKeys.all, 'list', status ?? 'all'] as const,
+  list: (status?: FileStatus, page?: number, pageSize?: number, search?: string) =>
+    [...fileKeys.all, 'list', status ?? 'all', page ?? 0, pageSize ?? 50, search ?? ''] as const,
   detail: (id: number) => [...fileKeys.all, 'detail', id] as const,
 }
 
-export function useFiles(status?: FileStatus) {
-  const params = status ? `?status=${status}` : ''
+export interface FilesPage {
+  data: FileRead[]
+  total: number
+}
+
+export function useFiles({
+  status,
+  page = 0,
+  pageSize = 50,
+  search,
+}: {
+  status?: FileStatus
+  page?: number
+  pageSize?: number
+  search?: string
+} = {}) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (search) params.set('search', search)
+  params.set('limit', String(pageSize))
+  params.set('offset', String(page * pageSize))
   return useQuery({
-    queryKey: fileKeys.list(status),
-    queryFn: () => api.get<FileRead[]>(`/files${params}`),
+    queryKey: fileKeys.list(status, page, pageSize, search),
+    queryFn: () => api.getWithTotal<FileRead[]>(`/files?${params}`),
   })
 }
 

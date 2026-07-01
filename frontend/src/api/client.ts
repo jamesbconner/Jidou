@@ -37,6 +37,17 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function requestWithTotal<T>(path: string): Promise<{ data: T; total: number }> {
+  const res = await fetch(`${BASE}${path}`, { method: 'GET' })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new ApiError(res.status, detail.detail ?? res.statusText)
+  }
+  const total = parseInt(res.headers.get('X-Total-Count') ?? '0', 10)
+  const data = (await res.json()) as T
+  return { data, total }
+}
+
 async function downloadBlob(path: string): Promise<{ blob: Blob; filename: string }> {
   const res = await fetch(`${BASE}${path}`, { method: 'GET' })
   if (!res.ok) {
@@ -52,6 +63,7 @@ async function downloadBlob(path: string): Promise<{ blob: Blob; filename: strin
 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
+  getWithTotal: <T>(path: string) => requestWithTotal<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),

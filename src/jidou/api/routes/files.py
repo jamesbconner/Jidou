@@ -5,7 +5,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,10 +34,12 @@ def _sanitize_sys_name(title: str) -> str:
 
 @router.get("", response_model=list[FileRead])
 async def list_files(
+    response: Response,
     status: str | None = None,
     show_id: int | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    search: str | None = None,
+    limit: int = Query(default=50, ge=1, le=500),  # noqa: B008
+    offset: int = Query(default=0, ge=0),  # noqa: B008
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[DownloadedFile]:
     """List tracked downloaded files with optional filters.
@@ -45,8 +47,10 @@ async def list_files(
     Args:
         status: Filter by file status (``discovered``, ``downloaded``, etc.).
         show_id: Filter by matched show ID.
-        limit: Maximum results to return (default 50).
+        search: Case-insensitive substring match on ``original_filename``.
+        limit: Maximum results to return (1–500, default 50).
         offset: Number of results to skip for pagination.
+        response: FastAPI response object used to set ``X-Total-Count`` header.
         db_session: DB session (injected).
 
     Returns:
@@ -55,10 +59,7 @@ async def list_files(
     Raises:
         HTTPException: 400 if *status* is not a valid :class:`FileStatus`.
     """
-    stmt = select(DownloadedFile).options(
-        selectinload(DownloadedFile.show),
-        selectinload(DownloadedFile.episode),
-    )
+    filters = []
 
     if status is not None:
         try:
@@ -69,12 +70,27 @@ async def list_files(
                 status_code=400,
                 detail=f"Invalid status {status!r}. Must be one of: {valid}",
             ) from None
-        stmt = stmt.where(DownloadedFile.status == file_status)
+        filters.append(DownloadedFile.status == file_status)
 
     if show_id is not None:
-        stmt = stmt.where(DownloadedFile.show_id == show_id)
+        filters.append(DownloadedFile.show_id == show_id)
 
-    stmt = stmt.order_by(DownloadedFile.created_at.desc()).offset(offset).limit(limit)
+    if search is not None:
+        filters.append(DownloadedFile.original_filename.ilike(f"%{search}%"))
+
+    total = await db_session.scalar(
+        select(func.count()).select_from(DownloadedFile).where(*filters)
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    stmt = (
+        select(DownloadedFile)
+        .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        .where(*filters)
+        .order_by(DownloadedFile.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db_session.execute(stmt)
     return list(result.scalars().all())
 
