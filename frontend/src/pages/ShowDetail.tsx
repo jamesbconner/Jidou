@@ -12,6 +12,7 @@ import {
 } from '@/hooks/useShows'
 import { useBeginEpisodeRematch } from '@/hooks/useFiles'
 import { RematchModal } from '@/components/RematchModal'
+import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import type { EpisodeList, FileRead, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -249,18 +250,33 @@ function FileChip({
   label,
   chipClass,
   onFix,
+  onFixEps,
+  disabled,
 }: {
   label: string
   chipClass: string
   onFix: () => void
+  onFixEps: () => void
+  disabled?: boolean
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
         {label}
       </span>
-      <button onClick={onFix} className="text-xs text-blue-600 hover:underline">
+      <button
+        onClick={onFix}
+        disabled={disabled}
+        className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+      >
         Fix Match
+      </button>
+      <button
+        onClick={onFixEps}
+        disabled={disabled}
+        className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Fix Eps
       </button>
     </div>
   )
@@ -269,9 +285,13 @@ function FileChip({
 function TrackedBadges({
   ep,
   onFix,
+  onFixEps,
+  disabled,
 }: {
   ep: EpisodeList
   onFix: (fileId?: number) => void
+  onFixEps: (fileId?: number) => void
+  disabled?: boolean
 }) {
   if (ep.backing_files.length > 0) {
     return (
@@ -282,6 +302,8 @@ function TrackedBadges({
             label="Matched"
             chipClass="bg-teal-100 text-teal-700"
             onFix={() => onFix(bf.id)}
+            onFixEps={() => onFixEps(bf.id)}
+            disabled={disabled}
           />
         ))}
       </div>
@@ -294,6 +316,8 @@ function TrackedBadges({
       label={isImport ? 'Imported' : 'Tracked'}
       chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
       onFix={() => onFix()}
+      onFixEps={() => onFixEps()}
+      disabled={disabled}
     />
   )
 }
@@ -320,12 +344,14 @@ export default function ShowDetail() {
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
+  const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
 
   useEffect(() => {
     setRematchOpen(false)
     setPathModalOpen(false)
     setContentTypeOpen(false)
     setFileForRematch(null)
+    setFileForFixEps(null)
     syncEpisodes.reset()
     updatePaths.reset()
     patchShow.reset()
@@ -360,7 +386,18 @@ export default function ShowDetail() {
   async function handleEpisodeFix(ep: EpisodeList, fileId?: number) {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
+      setFileForFixEps(null)
       setFileForRematch(file)
+    } catch {
+      // error surfaced via beginRematch.error — no additional handling needed
+    }
+  }
+
+  async function handleEpisodeFixEps(ep: EpisodeList, fileId?: number) {
+    try {
+      const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
+      setFileForRematch(null)
+      setFileForFixEps(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
     }
@@ -531,6 +568,8 @@ export default function ShowDetail() {
                           <TrackedBadges
                             ep={ep}
                             onFix={(fileId) => handleEpisodeFix(ep, fileId)}
+                            onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
+                            disabled={beginRematch.isPending}
                           />
                         ) : (
                           <span className="shrink-0 text-xs text-zinc-600">—</span>
@@ -584,6 +623,12 @@ export default function ShowDetail() {
         <RematchModal
           file={fileForRematch}
           onClose={() => setFileForRematch(null)}
+        />
+      )}
+      {fileForFixEps && (
+        <FixEpisodeModal
+          file={fileForFixEps}
+          onClose={() => setFileForFixEps(null)}
         />
       )}
     </div>
