@@ -177,6 +177,7 @@ export function RematchModal({ file, onClose }: Props) {
           <h2 className="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="text-zinc-400 hover:text-zinc-200 text-lg leading-none"
           >
             ✕

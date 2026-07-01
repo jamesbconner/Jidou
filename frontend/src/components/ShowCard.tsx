@@ -62,6 +62,7 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
                 : 'bg-black/40 text-white hover:bg-black/60'
             }`}
             title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+            aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
           >
             <EyeIcon filled={inWatchlist} />
           </button>

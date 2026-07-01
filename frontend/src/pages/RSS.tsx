@@ -644,6 +644,8 @@ function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[]; feed
                       title={sub.enabled_in_config
                         ? 'Enabled — included in published config. Click to disable.'
                         : 'Disabled — not included in published config. Click to enable.'}
+                      aria-label={sub.enabled_in_config ? 'Enabled in config — click to disable' : 'Disabled from config — click to enable'}
+                      aria-pressed={sub.enabled_in_config}
                     >
                       <span className={`block w-4 h-4 bg-white rounded-full shadow transform transition-transform mx-0.5 ${sub.enabled_in_config ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
@@ -662,6 +664,8 @@ function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[]; feed
                         title={sub.active
                           ? 'Active — downloader treats this as live. Click to deactivate.'
                           : 'Inactive — downloader skips this. Click to activate.'}
+                        aria-label={sub.active ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+                        aria-pressed={sub.active}
                       >
                         {sub.active
                           ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
@@ -866,6 +870,8 @@ function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
                     title={f.active
                       ? 'Active — included in published config. Click to deactivate.'
                       : 'Inactive — excluded from published config. Click to activate.'}
+                    aria-label={f.active ? 'Feed active — click to deactivate' : 'Feed inactive — click to activate'}
+                    aria-pressed={f.active}
                   >
                     {f.active
                       ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
