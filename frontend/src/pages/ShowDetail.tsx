@@ -251,21 +251,31 @@ function FileChip({
   chipClass,
   onFix,
   onFixEps,
+  disabled,
 }: {
   label: string
   chipClass: string
   onFix: () => void
   onFixEps: () => void
+  disabled?: boolean
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${chipClass}`}>
         {label}
       </span>
-      <button onClick={onFix} className="text-xs text-blue-600 hover:underline">
+      <button
+        onClick={onFix}
+        disabled={disabled}
+        className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+      >
         Fix Match
       </button>
-      <button onClick={onFixEps} className="text-xs text-blue-600 hover:underline">
+      <button
+        onClick={onFixEps}
+        disabled={disabled}
+        className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+      >
         Fix Eps
       </button>
     </div>
@@ -276,10 +286,12 @@ function TrackedBadges({
   ep,
   onFix,
   onFixEps,
+  disabled,
 }: {
   ep: EpisodeList
   onFix: (fileId?: number) => void
   onFixEps: (fileId?: number) => void
+  disabled?: boolean
 }) {
   if (ep.backing_files.length > 0) {
     return (
@@ -291,6 +303,7 @@ function TrackedBadges({
             chipClass="bg-teal-100 text-teal-700"
             onFix={() => onFix(bf.id)}
             onFixEps={() => onFixEps(bf.id)}
+            disabled={disabled}
           />
         ))}
       </div>
@@ -304,6 +317,7 @@ function TrackedBadges({
       chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
       onFix={() => onFix()}
       onFixEps={() => onFixEps()}
+      disabled={disabled}
     />
   )
 }
@@ -555,6 +569,7 @@ export default function ShowDetail() {
                             ep={ep}
                             onFix={(fileId) => handleEpisodeFix(ep, fileId)}
                             onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
+                            disabled={beginRematch.isPending}
                           />
                         ) : (
                           <span className="shrink-0 text-xs text-zinc-600">—</span>
