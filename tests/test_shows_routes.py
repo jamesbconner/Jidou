@@ -1859,46 +1859,13 @@ def test_begin_episode_rematch_resets_backing_file() -> None:
         app.dependency_overrides.clear()
 
 
-def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
-    """With no backing file, creates a synthetic DownloadedFile for imports.
-
-    The synthetic must have episode_id set (not None) so a second Fix Match
-    click finds it via the backing-file query rather than inserting a duplicate.
-    It must also carry parsed_season/parsed_episode so the route orchestrator
-    can place the file in the correct season folder.
-    """
+def test_begin_episode_rematch_returns_422_for_import_episode() -> None:
+    """With no backing DownloadedFile, returns 422 directing caller to assign-import."""
     from jidou.database import get_session
-    from jidou.models.downloaded_file import DownloadedFile, FileStatus
 
     show = _make_show(id=1)
     ep = _make_tracked_episode(id=10, show_id=1)
     ep.tracked_source = "import"
-
-    synthetic = MagicMock(spec=DownloadedFile)
-    synthetic.id = 200
-    synthetic.show_id = 1
-    synthetic.episode_id = 10  # must NOT be None — prevents duplicate inserts
-    synthetic.original_filename = "show.s01e01.mkv"
-    synthetic.remote_path = "synthetic-import://episode-10/show.s01e01.mkv"
-    synthetic.local_path = "/media/shows/show/Season 01/show.s01e01.mkv"
-    synthetic.file_size = 0
-    synthetic.hash_sha256 = None
-    synthetic.status = FileStatus.ROUTED
-    synthetic.matched_by = None
-    synthetic.error_message = None
-    synthetic.parsed_show_name = None
-    synthetic.parsed_season = 1  # from ep.season_number
-    synthetic.parsed_episode = 1  # from ep.episode_number
-    synthetic.parsed_confidence = None
-    synthetic.parsed_content_type = None
-    from datetime import UTC, datetime
-
-    synthetic.created_at = datetime.now(UTC)
-    synthetic.updated_at = datetime.now(UTC)
-    synthetic.show = None
-    synthetic.episode = None
-
-    added_files: list[object] = []
 
     async def _session() -> AsyncMock:
         session = AsyncMock()
@@ -1908,34 +1875,214 @@ def test_begin_episode_rematch_creates_synthetic_for_import() -> None:
         ep_result.scalar_one_or_none.return_value = ep
         no_backing = MagicMock()
         no_backing.scalar_one_or_none.return_value = None
-        reload_result = MagicMock()
-        reload_result.scalar_one.return_value = synthetic
-
-        async def _flush() -> None:
-            synthetic.id = 200
-
-        session.execute = AsyncMock(side_effect=[show_result, ep_result, no_backing, reload_result])
-        session.flush = AsyncMock(side_effect=_flush)
-        session.refresh = AsyncMock()
-        session.add = MagicMock(side_effect=lambda obj: added_files.append(obj))
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, no_backing])
+        session.flush = AsyncMock()
         yield session
 
     app.dependency_overrides[get_session] = _session
     try:
         response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch")
-        assert response.status_code == 200
-        # Episode tracking must NOT be cleared
-        assert ep.file_tracked is True
-        # Exactly one synthetic file created
-        assert len(added_files) == 1
-        created = added_files[0]
-        assert hasattr(created, "episode_id")
-        from jidou.models.downloaded_file import DownloadedFile as DLFile
+        assert response.status_code == 422
+        assert "assign-import" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
 
-        assert isinstance(created, DLFile)
-        assert created.episode_id == 10
-        assert created.parsed_season == ep.season_number
-        assert created.parsed_episode == ep.episode_number
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/episodes/{episode_id}/assign-import
+# ---------------------------------------------------------------------------
+
+
+def test_assign_import_returns_404_when_show_missing() -> None:
+    """Returns 404 when the show does not exist."""
+    from jidou.database import get_session
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/9999/episodes/1/assign-import",
+            json={"filename": "/media/show/ep.mkv"},
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_returns_404_when_episode_missing() -> None:
+    """Returns 404 when the target episode does not exist."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/9999/assign-import",
+            json={"filename": "/media/show/ep.mkv"},
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_returns_422_when_filename_not_in_import_pool() -> None:
+    """Returns 422 when the filename is not import-tracked by any episode in the show."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, source_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/nonexistent.mkv"},
+        )
+        assert response.status_code == 422
+        assert "import pool" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_returns_422_when_target_is_download_backed() -> None:
+    """Returns 422 when the target episode is tracked via a downloaded file."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    source_ep = _make_tracked_episode(id=5, show_id=1)
+    source_ep.tracked_filename = "/media/show/ep05.mkv"
+    source_ep.tracked_source = "import"
+    # Target is match-backed — must not be overwritten by assign-import.
+    target_ep = _make_tracked_episode(id=10, show_id=1)
+    target_ep.tracked_source = "match"
+    target_ep.tracked_filename = "/media/show/ep10.mkv"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source_ep
+        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep05.mkv"},
+        )
+        assert response.status_code == 422
+        assert "downloaded file" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_moves_filename_to_target() -> None:
+    """Filename moves from source episode to target; source tracking is cleared."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    source_ep = _make_tracked_episode(id=5, show_id=1)
+    source_ep.tracked_filename = "/media/show/ep05.mkv"
+    source_ep.tracked_source = "import"
+    target_ep = _make_tracked_episode(id=10, show_id=1)
+    target_ep.tracked_filename = "/media/show/ep10.mkv"
+    target_ep.tracked_source = "import"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source_ep
+        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep05.mkv"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        # Source episode tracking cleared
+        assert source_ep.file_tracked is False
+        assert source_ep.tracked_filename is None
+        # Target episode gets the filename
+        assert target_ep.tracked_filename == "/media/show/ep05.mkv"
+        assert target_ep.tracked_source == "import"
+        assert target_ep.file_tracked is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_no_op_when_source_equals_target() -> None:
+    """When the filename is already on the target episode, nothing changes."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+    ep.tracked_filename = "/media/show/ep10.mkv"
+    ep.tracked_source = "import"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = ep  # same episode
+        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep10.mkv"},
+        )
+        assert response.status_code == 200
+        # Episode tracking unchanged
+        assert ep.file_tracked is True
+        assert ep.tracked_filename == "/media/show/ep10.mkv"
     finally:
         app.dependency_overrides.clear()
 
