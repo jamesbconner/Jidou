@@ -13,6 +13,32 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
 type Tab = 'library' | 'data'
 
+function sortShows(shows: ShowList[], sort: ShowSortOrder): ShowList[] {
+  function nullsLast<T>(
+    a: T | null | undefined,
+    b: T | null | undefined,
+    cmp: (a: T, b: T) => number,
+  ): number {
+    if (a == null && b == null) return 0
+    if (a == null) return 1
+    if (b == null) return -1
+    return cmp(a, b)
+  }
+  return shows.slice().sort((a, b) => {
+    switch (sort) {
+      case 'title_asc': return a.title.localeCompare(b.title)
+      case 'title_desc': return b.title.localeCompare(a.title)
+      case 'added_desc': return b.created_at.localeCompare(a.created_at)
+      case 'added_asc': return a.created_at.localeCompare(b.created_at)
+      case 'release_desc': return nullsLast(a.release_date, b.release_date, (x, y) => y.localeCompare(x))
+      case 'release_asc': return nullsLast(a.release_date, b.release_date, (x, y) => x.localeCompare(y))
+      case 'last_aired_desc': return nullsLast(a.last_air_date, b.last_air_date, (x, y) => y.localeCompare(x))
+      case 'rating_desc': return nullsLast(a.vote_average, b.vote_average, (x, y) => y - x)
+      case 'episodes_desc': return nullsLast(a.number_of_episodes, b.number_of_episodes, (x, y) => y - x)
+    }
+  })
+}
+
 function applyFilters(
   shows: ShowList[],
   contentType: string,
@@ -79,9 +105,9 @@ export default function Shows() {
     return () => window.removeEventListener('keydown', onKey)
   }, [tmdbModalOpen])
 
-  const { data: shows = [], isLoading } = useShows(sort)
-  // High limit so the indicator set covers the full library, not just the first page.
-  const { data: allShows = [] } = useShows('title_asc', 10000)
+  // Single fetch covers both the modal search pool and the display grid.
+  const { data: allShows = [], isLoading } = useShows('title_asc', 10000)
+  const displayShows = useMemo(() => sortShows(allShows, sort), [allShows, sort])
   const { data: searchData, isLoading: tmdbSearching } = useSearchShows(modalMode === 'tmdb' ? debouncedQuery : '')
   const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
@@ -130,41 +156,41 @@ export default function Shows() {
 
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
-    shows.forEach((s) => s.genres?.forEach((g) => { if (g.name) names.add(g.name as string) }))
+    allShows.forEach((s) => s.genres?.forEach((g) => { if (g.name) names.add(g.name as string) }))
     return Array.from(names).sort()
-  }, [shows])
+  }, [allShows])
 
   const languageOptions = useMemo(() => {
     const langs = new Set<string>()
-    shows.forEach((s) => { if (s.original_language) langs.add(s.original_language) })
+    allShows.forEach((s) => { if (s.original_language) langs.add(s.original_language) })
     return Array.from(langs).sort()
-  }, [shows])
+  }, [allShows])
 
   const statusOptions = useMemo(() => {
     const statuses = new Set<string>()
-    shows.forEach((s) => { if (s.status) statuses.add(s.status) })
+    allShows.forEach((s) => { if (s.status) statuses.add(s.status) })
     return Array.from(statuses).sort()
-  }, [shows])
+  }, [allShows])
 
   const filtered = useMemo(
-    () => applyFilters(shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating),
-    [shows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating],
+    () => applyFilters(displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating),
+    [displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating],
   )
 
   const dqCounts = useMemo(
-    () => Object.fromEntries(DQ_CHECKS.map((c) => [c.key, shows.filter(c.test).length])),
-    [shows],
+    () => Object.fromEntries(DQ_CHECKS.map((c) => [c.key, allShows.filter(c.test).length])),
+    [allShows],
   )
   const totalDqIssues = useMemo(
-    () => shows.filter((s) => DQ_CHECKS.some((c) => c.test(s))).length,
-    [shows],
+    () => allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s))).length,
+    [allShows],
   )
   const dqRows = useMemo(() => {
     const check = dqFilter ? DQ_CHECKS.find((c) => c.key === dqFilter) : null
     return check
-      ? shows.filter(check.test)
-      : shows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
-  }, [shows, dqFilter])
+      ? allShows.filter(check.test)
+      : allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
+  }, [allShows, dqFilter])
 
   const activeFilterCount = [
     filterContentType, filterStatus, filterGenre, filterLanguage, filterMinRating,
@@ -246,7 +272,7 @@ export default function Shows() {
       {/* Tabs */}
       <div className="flex border-b">
         <button className={tabCls('library')} onClick={() => setTab('library')}>
-          Shows in Library ({shows.length})
+          Shows in Library ({allShows.length})
         </button>
         <button className={tabCls('data')} onClick={() => setTab('data')}>
           Data Quality
@@ -449,13 +475,13 @@ export default function Shows() {
           {tab === 'library' && (
           <section>
             <p className="text-xs text-gray-500 mb-2">
-              {activeFilterCount > 0 ? `${filtered.length} of ${shows.length} shows` : `${shows.length} show${shows.length !== 1 ? 's' : ''}`}
+              {activeFilterCount > 0 ? `${filtered.length} of ${allShows.length} shows` : `${allShows.length} show${allShows.length !== 1 ? 's' : ''}`}
             </p>
             {isLoading ? (
               <p className="text-gray-400 text-sm">Loading…</p>
             ) : filtered.length === 0 ? (
               <p className="text-gray-500 text-sm">
-                {shows.length === 0 ? 'No shows in library yet. Search above to add one.' : 'No shows match the current filters.'}
+                {allShows.length === 0 ? 'No shows in library yet. Search above to add one.' : 'No shows match the current filters.'}
               </p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -527,7 +553,7 @@ export default function Shows() {
             <p className="text-sm text-gray-500">
               {dqFilter
                 ? `No shows with this issue.`
-                : `No data quality issues found across ${shows.length} show${shows.length !== 1 ? 's' : ''}.`}
+                : `No data quality issues found across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`}
             </p>
           ) : dqRows.length > 0 ? (
             <table className="w-full text-sm border-collapse">
