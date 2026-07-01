@@ -24,7 +24,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
 
   const filePool = useMemo(() => {
     return episodes
-      .filter((ep) => ep.tracked_filename)
+      .filter((ep) => ep.tracked_filename && ep.tracked_source === 'import')
       .map((ep) => ({
         filename: ep.tracked_filename!,
         epId: ep.id,

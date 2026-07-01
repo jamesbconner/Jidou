@@ -933,16 +933,33 @@ async def assign_import_episode(
     if target_ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
 
-    # Find the episode that currently holds this filename.
+    # Find the import-tracked episode that currently holds this filename.
+    # Filenames tracked via 'match' (download-backed) are not in the import pool —
+    # moving them would desync the Episode from its DownloadedFile row.
     source_stmt = select(Episode).where(
         Episode.show_id == show_id,
         Episode.tracked_filename == payload.filename,
+        Episode.tracked_source == "import",
     )
     source_ep = (await db_session.execute(source_stmt)).scalar_one_or_none()
     if source_ep is None:
         raise HTTPException(
             status_code=422,
-            detail=f"Filename {payload.filename!r} is not tracked by any episode in this show.",
+            detail=(
+                f"Filename {payload.filename!r} is not in this show's import pool. "
+                "Only filenames tracked via path-import can be reassigned here."
+            ),
+        )
+
+    # Refuse to overwrite a download-backed episode's tracking — that episode's
+    # DownloadedFile row would be left inconsistently linked.
+    if target_ep.file_tracked and target_ep.tracked_source != "import":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Target episode is backed by a downloaded file. "
+                "Use POST /shows/{show_id}/episodes/{episode_id}/begin-rematch to reassign it."
+            ),
         )
 
     from datetime import UTC

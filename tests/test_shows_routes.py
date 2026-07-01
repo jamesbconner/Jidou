@@ -1941,8 +1941,8 @@ def test_assign_import_returns_404_when_episode_missing() -> None:
         app.dependency_overrides.clear()
 
 
-def test_assign_import_returns_422_when_filename_not_tracked() -> None:
-    """Returns 422 when the filename is not tracked by any episode in the show."""
+def test_assign_import_returns_422_when_filename_not_in_import_pool() -> None:
+    """Returns 422 when the filename is not import-tracked by any episode in the show."""
     from jidou.database import get_session
 
     show = _make_show(id=1)
@@ -1966,6 +1966,43 @@ def test_assign_import_returns_422_when_filename_not_tracked() -> None:
             json={"filename": "/media/show/nonexistent.mkv"},
         )
         assert response.status_code == 422
+        assert "import pool" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_returns_422_when_target_is_download_backed() -> None:
+    """Returns 422 when the target episode is tracked via a downloaded file."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    source_ep = _make_tracked_episode(id=5, show_id=1)
+    source_ep.tracked_filename = "/media/show/ep05.mkv"
+    source_ep.tracked_source = "import"
+    # Target is match-backed — must not be overwritten by assign-import.
+    target_ep = _make_tracked_episode(id=10, show_id=1)
+    target_ep.tracked_source = "match"
+    target_ep.tracked_filename = "/media/show/ep10.mkv"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source_ep
+        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep05.mkv"},
+        )
+        assert response.status_code == 422
+        assert "downloaded file" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

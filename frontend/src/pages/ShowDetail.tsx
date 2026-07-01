@@ -397,16 +397,17 @@ export default function ShowDetail() {
     }
   }
 
-  function handleEpisodeFixEps(ep: EpisodeList) {
+  function handleEpisodeFixEps(ep: EpisodeList, fileId?: number) {
     if (ep.backing_files.length === 0 && (ep.tracked_source === 'import' || !ep.file_tracked)) {
       // Imported or untracked: pure metadata swap via assign-import endpoint.
       setFileForRematch(null)
       setFileForFixEps(null)
       setAssignImportEp(ep)
     } else {
-      // Downloaded/backed: begin-rematch → FixEpisodeModal.
+      // Downloaded/backed: begin-rematch → FixEpisodeModal; pass fileId so
+      // multi-backed episodes target the chip the user clicked.
       beginRematch
-        .mutateAsync({ showId, episodeId: ep.id })
+        .mutateAsync({ showId, episodeId: ep.id, fileId })
         .then((file) => {
           setFileForRematch(null)
           setAssignImportEp(null)
@@ -581,7 +582,7 @@ export default function ShowDetail() {
                           <TrackedBadges
                             ep={ep}
                             onFix={(fileId) => handleEpisodeFix(ep, fileId)}
-                            onFixEps={() => handleEpisodeFixEps(ep)}
+                            onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
                             fixMatchDisabled={beginRematch.isPending}
                           />
                         ) : hasImportEps ? (
