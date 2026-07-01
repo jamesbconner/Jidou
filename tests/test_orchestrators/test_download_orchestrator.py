@@ -96,6 +96,14 @@ def test_staging_path_flat_file():
     assert result == Path("/staging/flat.mkv")
 
 
+def test_staging_path_traversal_raises():
+    """Path containing .. that escapes the staging root raises ValueError."""
+    import pytest
+
+    with pytest.raises(ValueError, match="Path traversal detected"):
+        _staging_path_for("/downloads/../../../etc/passwd", "/data/staging")
+
+
 # ---------------------------------------------------------------------------
 # DownloadOrchestrator integration tests
 # ---------------------------------------------------------------------------
