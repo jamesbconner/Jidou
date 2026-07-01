@@ -28,10 +28,19 @@ def _staging_path_for(remote_path: str, staging_root: str) -> Path:
 
     Returns:
         Absolute :class:`Path` for the staging destination.
+
+    Raises:
+        ValueError: If the resolved destination escapes the staging root
+            (e.g. remote path contains ``..`` segments).
     """
     # Strip leading slash so Path joining works correctly
     relative = remote_path.lstrip("/")
-    return Path(staging_root) / relative
+    destination = Path(staging_root) / relative
+    resolved = destination.resolve()
+    staging_resolved = Path(staging_root).resolve()
+    if not resolved.is_relative_to(staging_resolved):
+        raise ValueError(f"Path traversal detected: {remote_path!r} resolves outside staging root")
+    return destination
 
 
 @dataclass
