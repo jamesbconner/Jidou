@@ -33,3 +33,34 @@ def test_health_check_status_values() -> None:
 
     body = response.json()
     assert body["status"] in {"healthy", "degraded"}
+
+
+def test_health_redis_ping_failure_marks_degraded() -> None:
+    """Redis ping failure is caught and reported as degraded."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_redis = AsyncMock()
+    mock_redis.ping = AsyncMock(side_effect=ConnectionError("Redis unreachable"))
+    mock_redis.aclose = AsyncMock()
+
+    with patch("redis.asyncio.from_url", return_value=mock_redis), TestClient(app) as client:
+        response = client.get("/api/health")
+
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["services"]["redis"]["status"] == "unhealthy"
+
+
+def test_health_redis_client_creation_failure_marks_degraded() -> None:
+    """Redis client creation failure is caught and reported as degraded."""
+    from unittest.mock import patch
+
+    with (
+        patch("redis.asyncio.from_url", side_effect=OSError("Cannot connect")),
+        TestClient(app) as client,
+    ):
+        response = client.get("/api/health")
+
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["services"]["redis"]["status"] == "unhealthy"

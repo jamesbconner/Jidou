@@ -360,3 +360,64 @@ class TestResponseCaching:
 
         assert result is not None
         assert result.latency_seconds >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# test_connection — not configured path
+# ---------------------------------------------------------------------------
+
+
+class TestTestConnection:
+    @pytest.mark.asyncio
+    async def test_raises_when_provider_is_none(self) -> None:
+        """test_connection() raises RuntimeError when provider='none'."""
+        svc = LLMService(provider="none", api_key="", base_url="", model="")
+        with pytest.raises(RuntimeError, match="not configured"):
+            await svc.test_connection()
+
+    @pytest.mark.asyncio
+    async def test_succeeds_for_openai_provider(self, openai_service: LLMService) -> None:
+        """test_connection() returns (latency, model) tuple for OpenAI provider."""
+        client = _mock_http_client(_openai_response("ok"))
+
+        with patch("httpx.AsyncClient", return_value=client):
+            latency, model = await openai_service.test_connection()
+
+        assert latency >= 0.0
+        assert model == openai_service._model
+
+    @pytest.mark.asyncio
+    async def test_succeeds_for_anthropic_provider(self, anthropic_service: LLMService) -> None:
+        """test_connection() returns (latency, model) tuple for Anthropic provider."""
+        client = _mock_http_client(_anthropic_response("ok"))
+
+        with patch("httpx.AsyncClient", return_value=client):
+            latency, model = await anthropic_service.test_connection()
+
+        assert latency >= 0.0
+        assert model == anthropic_service._model
+
+    @pytest.mark.asyncio
+    async def test_raises_for_unsupported_provider(self) -> None:
+        """test_connection() raises RuntimeError for an unrecognised provider."""
+        svc = LLMService(provider="lmstudio", api_key="", base_url="http://localhost", model="m")
+        svc._provider = "unsupported_fake_provider"  # type: ignore[assignment]
+        with pytest.raises(RuntimeError, match="Unsupported"):
+            await svc.test_connection()
+
+
+# ---------------------------------------------------------------------------
+# complete() — unsupported provider returns None
+# ---------------------------------------------------------------------------
+
+
+class TestUnsupportedProvider:
+    @pytest.mark.asyncio
+    async def test_complete_returns_none_for_unknown_provider(self) -> None:
+        """complete() logs a warning and returns None for unsupported provider."""
+        svc = LLMService(provider="lmstudio", api_key="", base_url="http://localhost", model="m")
+        # Force an unknown provider enum value via monkey-patch
+        svc._provider = "unsupported_fake_provider"  # type: ignore[assignment]
+
+        result = await svc.complete("test prompt")
+        assert result is None
