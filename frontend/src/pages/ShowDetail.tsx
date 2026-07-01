@@ -372,6 +372,7 @@ export default function ShowDetail() {
   async function handleEpisodeFix(ep: EpisodeList, fileId?: number) {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
+      setFileForFixEps(null)
       setFileForRematch(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
@@ -381,6 +382,7 @@ export default function ShowDetail() {
   async function handleEpisodeFixEps(ep: EpisodeList, fileId?: number) {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
+      setFileForRematch(null)
       setFileForFixEps(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
