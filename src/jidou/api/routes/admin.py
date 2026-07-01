@@ -16,6 +16,7 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
 from jidou.models.watchlist import WatchlistEntry
+from jidou.schemas.admin_schema import StatsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +25,17 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 _NEEDS_ATTENTION = ("unmatched", "error")
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=StatsResponse)
 async def get_stats(
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict[str, Any]:
+) -> StatsResponse:
     """Return dashboard statistics.
 
     Args:
         db_session: DB session (injected).
 
     Returns:
-        Dictionary of labelled counts for the dashboard stat cards.
+        Labelled counts for the dashboard stat cards.
     """
     now = datetime.now(UTC)
 
@@ -117,22 +118,22 @@ async def get_stats(
         )
     )
 
-    return {
-        "shows": shows or 0,
-        "episodes_tracked": episodes_tracked or 0,
-        "episodes_total": episodes_total or 0,
-        "files_needs_attention": files_needs_attention or 0,
-        "files_added_1d": files_added_1d or 0,
-        "files_added_7d": files_added_7d or 0,
-        "files_added_30d": files_added_30d or 0,
-        "watchlist": watchlist or 0,
-        "background_tasks": background_tasks or 0,
-        "dq_total": dq_total or 0,
-        "dq_no_path": dq_no_path or 0,
-        "dq_no_content_type": dq_no_content_type or 0,
-        "dq_no_episodes": dq_no_episodes or 0,
-        "dq_orphan": dq_orphan or 0,
-    }
+    return StatsResponse(
+        shows=shows or 0,
+        episodes_tracked=episodes_tracked or 0,
+        episodes_total=episodes_total or 0,
+        files_needs_attention=files_needs_attention or 0,
+        files_added_1d=files_added_1d or 0,
+        files_added_7d=files_added_7d or 0,
+        files_added_30d=files_added_30d or 0,
+        watchlist=watchlist or 0,
+        background_tasks=background_tasks or 0,
+        dq_total=dq_total or 0,
+        dq_no_path=dq_no_path or 0,
+        dq_no_content_type=dq_no_content_type or 0,
+        dq_no_episodes=dq_no_episodes or 0,
+        dq_orphan=dq_orphan or 0,
+    )
 
 
 @router.get("/stats/files-timeline")
