@@ -1,6 +1,7 @@
 """API routes for RSS feed and subscription management."""
 
 import logging
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -348,6 +349,22 @@ async def delete_subscription(
     logger.info("Deleted RSS subscription id=%d name=%r", sub_id, sub.name)
 
 
+_MAX_LABEL_LEN = 200
+# Strip control characters (includes \n, \r, \t, null) and backticks.
+_UNSAFE_LABEL_RE = re.compile(r"[\x00-\x1f\x7f`]")
+
+
+def _sanitize_label(text: str) -> str:
+    """Return *text* safe for LLM prompt inclusion.
+
+    Removes control characters and backticks, collapses internal whitespace,
+    and truncates to :data:`_MAX_LABEL_LEN` characters.
+    """
+    cleaned = _UNSAFE_LABEL_RE.sub("", text)
+    collapsed = " ".join(cleaned.split())
+    return collapsed[:_MAX_LABEL_LEN]
+
+
 _REGEX_SYSTEM_PROMPT = (
     "You are a BitTorrent RSS filter assistant. "
     "Return ONLY a compact JSON object with exactly two keys: "
@@ -405,11 +422,11 @@ async def suggest_regex(
         )
 
     show_title = sub.show.title if sub.show else None
-    label = show_title or sub.name
+    label = _sanitize_label(show_title or sub.name)
     user_prompt = (
         f'Suggest RSS filter regexes for the show "{label}".'
         if show_title
-        else f'Suggest RSS filter regexes for the subscription named "{sub.name}".'
+        else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
 
     response = await llm.complete(prompt=user_prompt, system=_REGEX_SYSTEM_PROMPT)
@@ -417,7 +434,6 @@ async def suggest_regex(
         raise HTTPException(status_code=503, detail="LLM provider call failed.")
 
     import json
-    import re
 
     # Strip markdown code fences that some models add despite the system prompt
     raw = response.content.strip()
@@ -433,6 +449,16 @@ async def suggest_regex(
         raise HTTPException(
             status_code=503,
             detail="LLM returned an unparseable response.",
+        ) from exc
+
+    try:
+        re.compile(regex_include)
+        re.compile(regex_exclude)
+    except re.error as exc:
+        logger.warning("LLM returned invalid regex for sub_id=%d: %s", sub_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="LLM returned an invalid regex pattern.",
         ) from exc
 
     logger.info(
