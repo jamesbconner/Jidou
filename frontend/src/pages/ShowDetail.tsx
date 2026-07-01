@@ -310,11 +310,28 @@ function TrackedBadges({
     )
   }
 
-  const isImport = ep.tracked_source === 'import'
+  if (ep.tracked_source === 'import') {
+    // Import episodes have no DownloadedFile backing — begin-rematch returns 422
+    // for them, so "Fix Match" is not available. Show only the badge + "Fix Eps".
+    return (
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+          Imported
+        </span>
+        <button
+          onClick={() => onFixEps()}
+          className="text-xs text-blue-600 hover:underline"
+        >
+          Fix Eps
+        </button>
+      </div>
+    )
+  }
+
   return (
     <FileChip
-      label={isImport ? 'Imported' : 'Tracked'}
-      chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
+      label="Tracked"
+      chipClass="bg-teal-100 text-teal-700"
       onFix={() => onFix()}
       onFixEps={() => onFixEps()}
       fixMatchDisabled={fixMatchDisabled}
