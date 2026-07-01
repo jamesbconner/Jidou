@@ -227,6 +227,14 @@ export default function Files() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const isLoading = filesQuery.isLoading
 
+  // Snap back to the last valid page when total shrinks (e.g. after a mutation
+  // or when a filter narrows results before the reset effect fires).
+  useEffect(() => {
+    if (total > 0 && page * PAGE_SIZE >= total) {
+      setPage(Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))
+    }
+  }, [total, page])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">

@@ -56,7 +56,8 @@ def _session_override(
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
         # list_files issues a scalar count query for X-Total-Count header.
-        _count = scalar_count if scalar_count is not None else len(many or ([single] if single else []))
+        items = many or ([single] if single else [])
+        _count = scalar_count if scalar_count is not None else len(items)
         session.scalar = AsyncMock(return_value=_count)
         yield session
 
