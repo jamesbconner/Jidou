@@ -966,14 +966,24 @@ async def assign_import_episode(
 
     now = datetime.now(UTC)
 
-    # Clear tracking on the source episode (unless it IS the target — a no-op).
     if source_ep.id != target_ep.id:
-        source_ep.file_tracked = False
-        source_ep.file_tracked_at = None
-        source_ep.tracked_filename = None
-        source_ep.tracked_source = None
+        # Capture the filename target currently holds before overwriting it.
+        # If target held a different import filename, swap it back to source so it
+        # stays in the pool.  If target was untracked (None), source is cleared.
+        displaced = target_ep.tracked_filename
 
-    # Assign the filename to the target episode, overwriting any prior tracking.
+        if displaced and displaced != payload.filename:
+            source_ep.file_tracked = True
+            source_ep.file_tracked_at = now
+            source_ep.tracked_filename = displaced
+            source_ep.tracked_source = "import"
+        else:
+            source_ep.file_tracked = False
+            source_ep.file_tracked_at = None
+            source_ep.tracked_filename = None
+            source_ep.tracked_source = None
+
+    # Assign the filename to the target episode.
     target_ep.file_tracked = True
     target_ep.file_tracked_at = now
     target_ep.tracked_filename = payload.filename

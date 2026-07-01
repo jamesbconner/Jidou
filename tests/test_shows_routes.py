@@ -2007,8 +2007,12 @@ def test_assign_import_returns_422_when_target_is_download_backed() -> None:
         app.dependency_overrides.clear()
 
 
-def test_assign_import_moves_filename_to_target() -> None:
-    """Filename moves from source episode to target; source tracking is cleared."""
+def test_assign_import_swaps_when_target_already_tracked() -> None:
+    """When both source and target hold import filenames, the two are swapped.
+
+    This keeps the displaced filename in the pool so it can be reassigned
+    in a subsequent operation — the pool never shrinks mid-session.
+    """
     from jidou.database import get_session
 
     show = _make_show(id=1)
@@ -2040,13 +2044,57 @@ def test_assign_import_moves_filename_to_target() -> None:
         )
         assert response.status_code == 200
         assert response.json() == {"ok": True}
-        # Source episode tracking cleared
-        assert source_ep.file_tracked is False
-        assert source_ep.tracked_filename is None
-        # Target episode gets the filename
+        # Target gets the requested filename
         assert target_ep.tracked_filename == "/media/show/ep05.mkv"
         assert target_ep.tracked_source == "import"
         assert target_ep.file_tracked is True
+        # Source receives target's displaced filename (swap — keeps it in the pool)
+        assert source_ep.tracked_filename == "/media/show/ep10.mkv"
+        assert source_ep.tracked_source == "import"
+        assert source_ep.file_tracked is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_clears_source_when_target_untracked() -> None:
+    """When target is untracked, source is cleared (no filename to displace)."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    source_ep = _make_tracked_episode(id=5, show_id=1)
+    source_ep.tracked_filename = "/media/show/ep05.mkv"
+    source_ep.tracked_source = "import"
+    target_ep = _make_tracked_episode(id=10, show_id=1)
+    target_ep.file_tracked = False
+    target_ep.tracked_filename = None
+    target_ep.tracked_source = None
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source_ep
+        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep05.mkv"},
+        )
+        assert response.status_code == 200
+        # Target receives the filename
+        assert target_ep.tracked_filename == "/media/show/ep05.mkv"
+        assert target_ep.file_tracked is True
+        # Source is cleared (no displaced filename to give back)
+        assert source_ep.file_tracked is False
+        assert source_ep.tracked_filename is None
     finally:
         app.dependency_overrides.clear()
 
