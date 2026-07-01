@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useFiles, fileKeys } from '@/hooks/useFiles'
+import { useFiles, fileKeys, type FilesPage } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
@@ -108,9 +108,12 @@ function InlineEpisodePicker({
     onSuccess: (updated) => {
       setEditing(false)
       setError(null)
-      qc.setQueriesData<FileRead[]>(
-        { queryKey: fileKeys.all },
-        (old) => old?.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)),
+      qc.setQueriesData<FilesPage>(
+        { queryKey: [...fileKeys.all, 'list'] },
+        (old) =>
+          old
+            ? { ...old, data: old.data.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)) }
+            : old,
       )
       qc.invalidateQueries({ queryKey: fileKeys.all })
       qc.invalidateQueries({ queryKey: showKeys.all })
@@ -193,17 +196,56 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
+const PAGE_SIZE = 50
+
 export default function Files() {
   const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(0)
   const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
   const [rematchFile, setRematchFile] = useState<FileRead | null>(null)
   const [fixEpsFile, setFixEpsFile] = useState<FileRead | null>(null)
-  const { data: files = [], isLoading } = useFiles(statusFilter || undefined)
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [search])
+
+  useEffect(() => { setPage(0) }, [statusFilter, debouncedSearch])
+
+  const filesQuery = useFiles({
+    status: statusFilter || undefined,
+    page,
+    pageSize: PAGE_SIZE,
+    search: debouncedSearch || undefined,
+  })
+  const files = filesQuery.data?.data ?? []
+  const total = filesQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const isLoading = filesQuery.isLoading
+
+  // Snap back to the last valid page when total shrinks (e.g. after a mutation
+  // or when a filter narrows results before the reset effect fires).
+  useEffect(() => {
+    if (total > 0 && page * PAGE_SIZE >= total) {
+      setPage(Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))
+    }
+  }, [total, page])
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Files</h1>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl font-bold mr-auto">Files</h1>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search filenames…"
+          className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as FileStatus | '')}
@@ -308,6 +350,29 @@ export default function Files() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!isLoading && total > 0 && (
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <span>{total} file{total !== 1 ? 's' : ''}{(debouncedSearch || statusFilter) ? ' matching filters' : ''}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ← Prev
+            </button>
+            <span>Page {page + 1} of {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={(page + 1) * PAGE_SIZE >= total}
+              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next →
+            </button>
+          </div>
         </div>
       )}
 

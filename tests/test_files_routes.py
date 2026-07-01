@@ -44,6 +44,7 @@ def _make_file(
 def _session_override(
     single: MagicMock | None = None,
     many: list[MagicMock] | None = None,
+    scalar_count: int | None = None,
 ) -> "type[AsyncMock]":
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
@@ -54,6 +55,10 @@ def _session_override(
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
+        # list_files issues a scalar count query for X-Total-Count header.
+        items = many or ([single] if single else [])
+        _count = scalar_count if scalar_count is not None else len(items)
+        session.scalar = AsyncMock(return_value=_count)
         yield session
 
     return _mock_session  # type: ignore[return-value]
@@ -99,6 +104,48 @@ def test_list_files_with_invalid_status_returns_400() -> None:
         response = TestClient(app).get("/api/files?status=nonexistent")
         assert response.status_code == 400
         assert "Invalid status" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_returns_x_total_count_header() -> None:
+    """GET /api/files includes X-Total-Count header reflecting total matches."""
+    from jidou.database import get_session
+
+    files = [_make_file(id=i) for i in range(1, 4)]
+    app.dependency_overrides[get_session] = _session_override(many=files, scalar_count=3)
+    try:
+        response = TestClient(app).get("/api/files")
+        assert response.status_code == 200
+        assert response.headers.get("x-total-count") == "3"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_search_param_returns_200() -> None:
+    """GET /api/files?search=<term> is accepted and returns 200."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(many=[], scalar_count=0)
+    try:
+        response = TestClient(app).get("/api/files?search=show.s01e01")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+        assert response.headers.get("x-total-count") == "0"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_search_and_status_combined() -> None:
+    """GET /api/files?search=<term>&status=<status> returns 200."""
+    from jidou.database import get_session
+
+    f = _make_file(status="error")
+    app.dependency_overrides[get_session] = _session_override(many=[f], scalar_count=1)
+    try:
+        response = TestClient(app).get("/api/files?search=show&status=error")
+        assert response.status_code == 200
+        assert response.headers.get("x-total-count") == "1"
     finally:
         app.dependency_overrides.clear()
 
