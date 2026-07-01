@@ -133,3 +133,21 @@ export function useRematchShow(showId: number) {
     },
   })
 }
+
+export function useAssignImportEpisode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      showId,
+      episodeId,
+      filename,
+    }: {
+      showId: number
+      episodeId: number
+      filename: string
+    }) => api.post(`/shows/${showId}/episodes/${episodeId}/assign-import`, { filename }),
+    onSuccess: (_data, { showId }) => {
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    },
+  })
+}

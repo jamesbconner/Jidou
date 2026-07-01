@@ -13,6 +13,7 @@ import {
 import { useBeginEpisodeRematch } from '@/hooks/useFiles'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
+import { AssignImportModal } from '@/components/AssignImportModal'
 import type { EpisodeList, FileRead, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -251,13 +252,13 @@ function FileChip({
   chipClass,
   onFix,
   onFixEps,
-  disabled,
+  fixMatchDisabled,
 }: {
   label: string
   chipClass: string
   onFix: () => void
   onFixEps: () => void
-  disabled?: boolean
+  fixMatchDisabled?: boolean
 }) {
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -266,15 +267,14 @@ function FileChip({
       </span>
       <button
         onClick={onFix}
-        disabled={disabled}
+        disabled={fixMatchDisabled}
         className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Fix Match
       </button>
       <button
         onClick={onFixEps}
-        disabled={disabled}
-        className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+        className="text-xs text-blue-600 hover:underline"
       >
         Fix Eps
       </button>
@@ -286,12 +286,12 @@ function TrackedBadges({
   ep,
   onFix,
   onFixEps,
-  disabled,
+  fixMatchDisabled,
 }: {
   ep: EpisodeList
   onFix: (fileId?: number) => void
   onFixEps: (fileId?: number) => void
-  disabled?: boolean
+  fixMatchDisabled?: boolean
 }) {
   if (ep.backing_files.length > 0) {
     return (
@@ -303,7 +303,7 @@ function TrackedBadges({
             chipClass="bg-teal-100 text-teal-700"
             onFix={() => onFix(bf.id)}
             onFixEps={() => onFixEps(bf.id)}
-            disabled={disabled}
+            fixMatchDisabled={fixMatchDisabled}
           />
         ))}
       </div>
@@ -317,7 +317,7 @@ function TrackedBadges({
       chipClass={isImport ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}
       onFix={() => onFix()}
       onFixEps={() => onFixEps()}
-      disabled={disabled}
+      fixMatchDisabled={fixMatchDisabled}
     />
   )
 }
@@ -345,6 +345,7 @@ export default function ShowDetail() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
   const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
+  const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
 
   useEffect(() => {
     setRematchOpen(false)
@@ -352,6 +353,7 @@ export default function ShowDetail() {
     setContentTypeOpen(false)
     setFileForRematch(null)
     setFileForFixEps(null)
+    setAssignImportEp(null)
     syncEpisodes.reset()
     updatePaths.reset()
     patchShow.reset()
@@ -366,6 +368,7 @@ export default function ShowDetail() {
   }
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
+  const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
@@ -387,19 +390,29 @@ export default function ShowDetail() {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
       setFileForFixEps(null)
+      setAssignImportEp(null)
       setFileForRematch(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
     }
   }
 
-  async function handleEpisodeFixEps(ep: EpisodeList, fileId?: number) {
-    try {
-      const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
+  function handleEpisodeFixEps(ep: EpisodeList) {
+    if (ep.backing_files.length === 0 && (ep.tracked_source === 'import' || !ep.file_tracked)) {
+      // Imported or untracked: pure metadata swap via assign-import endpoint.
       setFileForRematch(null)
-      setFileForFixEps(file)
-    } catch {
-      // error surfaced via beginRematch.error — no additional handling needed
+      setFileForFixEps(null)
+      setAssignImportEp(ep)
+    } else {
+      // Downloaded/backed: begin-rematch → FixEpisodeModal.
+      beginRematch
+        .mutateAsync({ showId, episodeId: ep.id })
+        .then((file) => {
+          setFileForRematch(null)
+          setAssignImportEp(null)
+          setFileForFixEps(file)
+        })
+        .catch(() => {})
     }
   }
 
@@ -568,9 +581,16 @@ export default function ShowDetail() {
                           <TrackedBadges
                             ep={ep}
                             onFix={(fileId) => handleEpisodeFix(ep, fileId)}
-                            onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
-                            disabled={beginRematch.isPending}
+                            onFixEps={() => handleEpisodeFixEps(ep)}
+                            fixMatchDisabled={beginRematch.isPending}
                           />
+                        ) : hasImportEps ? (
+                          <button
+                            onClick={() => handleEpisodeFixEps(ep)}
+                            className="shrink-0 text-xs text-blue-600 hover:underline"
+                          >
+                            Fix Eps
+                          </button>
                         ) : (
                           <span className="shrink-0 text-xs text-zinc-600">—</span>
                         )}
@@ -629,6 +649,13 @@ export default function ShowDetail() {
         <FixEpisodeModal
           file={fileForFixEps}
           onClose={() => setFileForFixEps(null)}
+        />
+      )}
+      {assignImportEp && (
+        <AssignImportModal
+          showId={showId}
+          episode={assignImportEp}
+          onClose={() => setAssignImportEp(null)}
         />
       )}
     </div>

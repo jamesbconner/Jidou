@@ -139,6 +139,12 @@ class ShowRead(BaseModel):
     updated_at: datetime
 
 
+class AssignImportRequest(BaseModel):
+    """Payload for reassigning an imported episode's tracked filename."""
+
+    filename: str
+
+
 class RematchRequest(BaseModel):
     """Payload for re-matching a show to a different TMDB entry."""
 
