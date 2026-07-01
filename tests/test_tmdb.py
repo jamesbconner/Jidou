@@ -2,11 +2,58 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
+import jidou.services.tmdb as tmdb_module
 from jidou.services.tmdb import TMDBService
+
+
+@asynccontextmanager
+async def _patched_http(
+    json_data: dict | None = None,
+    *,
+    raise_on_status: Exception | None = None,
+    get_side_effect: Exception | None = None,
+) -> AsyncGenerator[tuple[AsyncMock, AsyncMock]]:
+    """Patch cache (forced miss), rate limiter (noop), and httpx for HTTP-layer tests.
+
+    Yields:
+        (mock_http_client, mock_cache_set) so callers can assert on them.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.elapsed.total_seconds.return_value = 0.05
+    if raise_on_status is not None:
+        mock_response.raise_for_status.side_effect = raise_on_status
+    else:
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = json_data or {}
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = False
+    if get_side_effect is not None:
+        mock_client.get = AsyncMock(side_effect=get_side_effect)
+    else:
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+    @asynccontextmanager
+    async def _noop_acquire() -> AsyncGenerator[None]:
+        yield
+
+    mock_cache_set = AsyncMock()
+
+    with (
+        patch.object(tmdb_module.cache, "get", AsyncMock(return_value=None)),
+        patch.object(tmdb_module.cache, "set", mock_cache_set),
+        patch.object(tmdb_module.rate_limiter, "acquire", _noop_acquire),
+        patch("httpx.AsyncClient", return_value=mock_client),
+    ):
+        yield mock_client, mock_cache_set
 
 
 @pytest.fixture
@@ -286,3 +333,146 @@ class TestTMDBService:
         successful = [r for r in results if isinstance(r, dict)]
         assert len(successful) >= 1
         assert all(r == mock_response_data for r in successful)
+
+
+class TestTMDBPublicMethodsCoverage:
+    """Cover public methods not yet reached by TestTMDBService."""
+
+    @pytest.mark.asyncio
+    async def test_search_invalid_media_type_raises(self, tmdb_service: TMDBService) -> None:
+        """search() raises ValueError for unknown media_type."""
+        with pytest.raises(ValueError, match="media_type"):
+            await tmdb_service.search("query", media_type="podcast")
+
+    @pytest.mark.asyncio
+    async def test_get_details_tv_correct_endpoint(self, tmdb_service: TMDBService) -> None:
+        """get_details() uses /tv/{id} for media_type='tv'."""
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {"id": 42}
+            await tmdb_service.get_details(42, media_type="tv")
+        assert mock_req.call_args.args[0] == "/tv/42"
+
+    @pytest.mark.asyncio
+    async def test_get_details_movie_correct_endpoint(self, tmdb_service: TMDBService) -> None:
+        """get_details() uses /movie/{id} for media_type='movie'."""
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {"id": 10}
+            await tmdb_service.get_details(10, media_type="movie")
+        assert mock_req.call_args.args[0] == "/movie/10"
+
+    @pytest.mark.asyncio
+    async def test_get_recommendations_delegates_to_request(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """get_recommendations() calls _request with correct endpoint."""
+        expected = {"results": []}
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = expected
+            result = await tmdb_service.get_recommendations(7)
+        assert result == expected
+        assert mock_req.call_args.args[0] == "/tv/7/recommendations"
+
+    @pytest.mark.asyncio
+    async def test_get_recommendations_invalid_media_type_raises(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """get_recommendations() raises ValueError for unknown media_type."""
+        with pytest.raises(ValueError, match="media_type"):
+            await tmdb_service.get_recommendations(1, media_type="podcast")
+
+    @pytest.mark.asyncio
+    async def test_get_external_ids_delegates_to_request(self, tmdb_service: TMDBService) -> None:
+        """get_external_ids() calls _request with correct endpoint."""
+        expected = {"imdb_id": "tt0108778"}
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = expected
+            result = await tmdb_service.get_external_ids(1668)
+        assert result == expected
+        assert mock_req.call_args.args[0] == "/tv/1668/external_ids"
+
+    @pytest.mark.asyncio
+    async def test_get_external_ids_invalid_media_type_raises(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """get_external_ids() raises ValueError for unknown media_type."""
+        with pytest.raises(ValueError, match="media_type"):
+            await tmdb_service.get_external_ids(1, media_type="podcast")
+
+    @pytest.mark.asyncio
+    async def test_get_episode_groups_correct_endpoint(self, tmdb_service: TMDBService) -> None:
+        """get_episode_groups() calls _request with correct endpoint."""
+        expected = {"results": [{"id": "abc", "type": 6}]}
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = expected
+            result = await tmdb_service.get_episode_groups(1398)
+        assert result == expected
+        assert mock_req.call_args.args[0] == "/tv/1398/episode_groups"
+
+
+class TestTMDBRequestHTTPLayer:
+    """Test _request behaviour at the HTTP transport level."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_http_call(self, tmdb_service: TMDBService) -> None:
+        """When the cache is warm, no HTTP call is made."""
+        cached = {"results": [{"id": 1}], "cached": True}
+        with (
+            patch.object(tmdb_module.cache, "get", AsyncMock(return_value=cached)),
+            patch("httpx.AsyncClient") as mock_cls,
+        ):
+            result = await tmdb_service.get_trending()
+
+        assert result == cached
+        mock_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_success_returns_json_and_populates_cache(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """A 200 response is returned and stored in the cache."""
+        payload = {"results": [{"id": 42}]}
+        async with _patched_http(json_data=payload) as (_, mock_cache_set):
+            result = await tmdb_service.get_trending(media_type="tv")
+
+        assert result == payload
+        mock_cache_set.assert_called_once()
+        _, cached_value = mock_cache_set.call_args.args[:2]
+        assert cached_value == payload
+
+    @pytest.mark.asyncio
+    async def test_http_404_raises_http_status_error(self, tmdb_service: TMDBService) -> None:
+        """A 404 response propagates as httpx.HTTPStatusError."""
+        req = httpx.Request("GET", "https://api.themoviedb.org/3/tv/99999")
+        error = httpx.HTTPStatusError("404 Not Found", request=req, response=httpx.Response(404))
+        async with _patched_http(raise_on_status=error):
+            with pytest.raises(httpx.HTTPStatusError):
+                await tmdb_service.get_details(99999)
+
+    @pytest.mark.asyncio
+    async def test_http_429_raises_http_status_error(self, tmdb_service: TMDBService) -> None:
+        """A 429 rate-limit response propagates as httpx.HTTPStatusError."""
+        req = httpx.Request("GET", "https://api.themoviedb.org/3/trending/multi/day")
+        error = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=req, response=httpx.Response(429)
+        )
+        async with _patched_http(raise_on_status=error):
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await tmdb_service.get_trending()
+        assert exc_info.value.response.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_network_timeout_propagates(self, tmdb_service: TMDBService) -> None:
+        """A network timeout propagates as httpx.TimeoutException."""
+        async with _patched_http(get_side_effect=httpx.ReadTimeout("timed out")):
+            with pytest.raises(httpx.TimeoutException):
+                await tmdb_service.get_trending()
+
+    @pytest.mark.asyncio
+    async def test_http_error_does_not_populate_cache(self, tmdb_service: TMDBService) -> None:
+        """A failed HTTP request must not write anything to the cache."""
+        req = httpx.Request("GET", "https://api.themoviedb.org/3/search/multi")
+        error = httpx.HTTPStatusError("500 Server Error", request=req, response=httpx.Response(500))
+        async with _patched_http(raise_on_status=error) as (_, mock_cache_set):
+            with pytest.raises(httpx.HTTPStatusError):
+                await tmdb_service.search("test")
+        mock_cache_set.assert_not_called()
