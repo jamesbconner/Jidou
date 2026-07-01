@@ -226,3 +226,73 @@ async def test_run_cancellation_propagates():
 
     # Phase 3 (Download) should never have run — cancelled at phase 2
     mock_dl_cls.return_value.run.assert_not_called()
+
+
+async def test_run_show_not_found_uses_empty_tmdb_result():
+    """When show_id is given but show is missing from DB, TMDB result is empty."""
+    session = _make_session(show=None)
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_show_episodes = AsyncMock()
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        result = await orch.run(show_id=99)
+
+    mock_tmdb_cls.return_value.sync_show_episodes.assert_not_called()
+    assert result.tmdb.shows_synced == 0
+
+
+async def test_run_tmdb_exception_handled_and_sync_continues():
+    """When sync_show_episodes raises, exception is caught and sync continues."""
+    show = MagicMock()
+    show.cached = False
+    show.id = 5
+
+    result_show = MagicMock()
+    result_show.scalar_one_or_none.return_value = show
+    result_ep = MagicMock()
+    result_ep.scalar.return_value = False  # no episodes → triggers sync
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    session.execute = AsyncMock(side_effect=[result_show, result_ep])
+
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=RuntimeError("TMDB API down")
+        )
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        result = await orch.run(show_id=5)  # must not raise
+
+    assert result.tmdb.shows_synced == 0
+    session.rollback.assert_called_once()

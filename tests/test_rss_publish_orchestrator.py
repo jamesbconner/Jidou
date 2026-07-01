@@ -541,6 +541,231 @@ async def test_publish_snapshot_type_passed_to_import_orc() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _build_sub_dict — optional fields coverage
+# ---------------------------------------------------------------------------
+
+
+def test_build_sub_dict_includes_all_optional_fields() -> None:
+    """_build_sub_dict serialises regex, label, last_match, and extra_config."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    feed = _make_feed(remote_key="f1", default_move_completed="/completed")
+    sub = _make_sub(
+        feed=feed,
+        regex_include=".*show.*",
+        regex_exclude=".*trailer.*",
+        label="MyLabel",
+        last_match="2024-01-01",
+        move_completed=None,  # fall back to feed default
+        extra_config={"extra_key": "extra_value"},
+    )
+
+    result = RssPublishOrchestrator._build_sub_dict(sub)
+
+    assert result["regex_include"] == ".*show.*"
+    assert result["regex_exclude"] == ".*trailer.*"
+    assert result["label"] == "MyLabel"
+    assert result["last_match"] == "2024-01-01"
+    assert result["move_completed"] == "/completed"
+    assert result["extra_key"] == "extra_value"
+    assert result["rssfeed_key"] == "f1"
+
+
+# ---------------------------------------------------------------------------
+# _build_feeds_dict — skip inactive unreferenced feed + skip no remote_key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_feed_without_remote_key() -> None:
+    """Feeds with remote_key=None are excluded from the published config."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+
+    uploaded_configs: list[bytes] = []
+
+    async def capture(data: bytes, path: str) -> None:
+        uploaded_configs.append(data)
+
+    sftp.upload_bytes = AsyncMock(side_effect=capture)
+
+    no_key_feed = _make_feed(remote_key=None, name="NoKeyFeed")
+    keyed_feed = _make_feed(remote_key="fk1", name="KeyedFeed")
+    sub = _make_sub(feed=keyed_feed)
+    session.execute = AsyncMock(
+        side_effect=_std_execute_sides([no_key_feed, keyed_feed], ["0"], [sub])
+    )
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    import json
+
+    _, config_raw = uploaded_configs
+    decoder = json.JSONDecoder()
+    _hdr, off = decoder.raw_decode(config_raw.decode())
+    body, _ = decoder.raw_decode(config_raw.decode(), off)
+    assert "NoKeyFeed" not in str(body["rssfeeds"])
+    assert result.feeds_published == 1  # only the keyed feed
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_inactive_unreferenced_feed() -> None:
+    """Inactive feeds not referenced by enabled subs are excluded."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    uploaded_configs: list[bytes] = []
+
+    async def capture(data: bytes, path: str) -> None:
+        uploaded_configs.append(data)
+
+    sftp.upload_bytes = AsyncMock(side_effect=capture)
+
+    inactive_feed = _make_feed(id=2, remote_key="fi1", name="InactiveFeed", active=False)
+    active_feed = _make_feed(id=1, remote_key="fa1", name="ActiveFeed", active=True)
+    sub = _make_sub(feed=active_feed)
+    # ref_feed_ids only includes the active feed (id=1), not the inactive (id=2)
+    session.execute = AsyncMock(
+        side_effect=_std_execute_sides([inactive_feed, active_feed], ["0"], [sub], ref_feed_ids=[1])
+    )
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    import json
+
+    _, config_raw = uploaded_configs
+    decoder = json.JSONDecoder()
+    _hdr, off = decoder.raw_decode(config_raw.decode())
+    body, _ = decoder.raw_decode(config_raw.decode(), off)
+    assert "fi1" not in body["rssfeeds"]
+    assert result.feeds_published == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_includes_inactive_feed_referenced_by_sub() -> None:
+    """Inactive feed IS included when referenced by an enabled subscription."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    uploaded_configs: list[bytes] = []
+
+    async def capture(data: bytes, path: str) -> None:
+        uploaded_configs.append(data)
+
+    sftp.upload_bytes = AsyncMock(side_effect=capture)
+
+    inactive_feed = _make_feed(id=5, remote_key="fi5", name="RefdInactiveFeed", active=False)
+    sub = _make_sub(feed=inactive_feed)
+    # ref_feed_ids includes id=5 so it's treated as referenced
+    session.execute = AsyncMock(
+        side_effect=_std_execute_sides([inactive_feed], ["0"], [sub], ref_feed_ids=[5])
+    )
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    import json
+
+    _, config_raw = uploaded_configs
+    decoder = json.JSONDecoder()
+    _hdr, off = decoder.raw_decode(config_raw.decode())
+    body, _ = decoder.raw_decode(config_raw.decode(), off)
+    assert "fi5" in body["rssfeeds"]  # included despite being inactive
+    assert result.feeds_published == 1
+
+
+@pytest.mark.asyncio
+async def test_publish_returns_error_when_config_parse_fails() -> None:
+    """When re-parsing the downloaded config raises ValueError, errors are returned."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch(
+            "jidou.orchestrators.rss_publish_orchestrator.parse_rss_config",
+            side_effect=ValueError("bad format"),
+        ),
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf")
+        result = await orc.run()
+
+    assert any("Failed to re-parse" in e for e in result.errors)
+    sftp.upload_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_includes_extra_config_on_feeds() -> None:
+    """feed.extra_config is included in the published feed dict."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    uploaded_configs: list[bytes] = []
+
+    async def capture(data: bytes, path: str) -> None:
+        uploaded_configs.append(data)
+
+    sftp.upload_bytes = AsyncMock(side_effect=capture)
+
+    feed = _make_feed(remote_key="fx1", extra_config={"custom_key": "custom_val"})
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        await orc.run()
+
+    import json
+
+    _, config_raw = uploaded_configs
+    decoder = json.JSONDecoder()
+    _hdr, off = decoder.raw_decode(config_raw.decode())
+    body, _ = decoder.raw_decode(config_raw.decode(), off)
+    assert body["rssfeeds"]["fx1"]["custom_key"] == "custom_val"
+
+
+# ---------------------------------------------------------------------------
 # Celery task test
 # ---------------------------------------------------------------------------
 

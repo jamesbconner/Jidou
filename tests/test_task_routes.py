@@ -336,3 +336,36 @@ def test_trigger_task_broker_failure_marks_task_failed() -> None:
 
     assert response.status_code == 503
     assert updated == [TaskStatus.FAILED.value]
+
+
+# ---------------------------------------------------------------------------
+# TaskProgress schema — _coerce_task_status
+# ---------------------------------------------------------------------------
+
+
+def test_task_progress_schema_coerces_valid_status() -> None:
+    """TaskProgress accepts a valid status string via field_validator."""
+    from jidou.schemas.task_schema import TaskProgress
+
+    tp = TaskProgress(
+        celery_task_id="abc",
+        status="running",
+        progress_current=5,
+        progress_total=10,
+        progress_message="In progress",
+    )
+    assert tp.status == TaskStatus.RUNNING
+
+
+def test_task_progress_schema_defaults_unknown_status_to_pending() -> None:
+    """TaskProgress coerces an unknown status string to PENDING."""
+    from jidou.schemas.task_schema import TaskProgress
+
+    tp = TaskProgress(
+        celery_task_id="abc",
+        status="not_a_real_status",
+        progress_current=0,
+        progress_total=0,
+        progress_message=None,
+    )
+    assert tp.status == TaskStatus.PENDING
