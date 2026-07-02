@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
+from jidou.api.dependencies import get_llm_service
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
@@ -581,8 +582,6 @@ def test_create_subscription_null_regex_fields_are_accepted() -> None:
 
 def test_suggest_regex_returns_suggestion() -> None:
     """POST suggest-regex returns LLM-generated regex patterns on success."""
-    from unittest.mock import patch
-
     from jidou.database import get_session
     from jidou.services.llm_service import LLMProvider, LLMResponse
 
@@ -605,17 +604,47 @@ def test_suggest_regex_returns_suggestion() -> None:
     mock_llm.complete = AsyncMock(return_value=llm_response)
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 200
-            data = r.json()
-            assert data["regex_include"] == "Attack.on.Titan"
-            assert data["regex_exclude"] == "FRENCH|GERMAN"
-            assert data["model"] == "gpt-4o-mini"
-            assert data["cached"] is False
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["regex_include"] == "Attack.on.Titan"
+        assert data["regex_exclude"] == "FRENCH|GERMAN"
+        assert data["model"] == "gpt-4o-mini"
+        assert data["cached"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_suggest_regex_passes_max_tokens() -> None:
+    """POST suggest-regex calls complete() with max_tokens >= 4096."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="My Show")
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(
+        return_value=LLMResponse(
+            content='{"regex_include": "My.Show", "regex_exclude": "FRENCH"}',
+            model="test-model",
+            provider=LLMProvider.OPENAI,
+            cached=False,
+        )
+    )
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        _, kwargs = mock_llm.complete.call_args
+        assert kwargs.get("max_tokens", 0) >= 4096
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_suggest_regex_404_when_sub_not_found() -> None:
@@ -636,8 +665,6 @@ def test_suggest_regex_404_when_sub_not_found() -> None:
 
 def test_suggest_regex_422_when_llm_not_configured() -> None:
     """POST suggest-regex returns 422 when the LLM provider is not configured."""
-    from unittest.mock import patch
-
     from jidou.database import get_session
 
     sub = _make_sub(id=1)
@@ -648,19 +675,17 @@ def test_suggest_regex_422_when_llm_not_configured() -> None:
     mock_llm.is_available.return_value = False
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 422
-            assert "LLM provider" in r.json()["detail"]
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 422
+        assert "LLM provider" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_suggest_regex_503_when_llm_call_fails() -> None:
     """POST suggest-regex returns 503 when the LLM call returns None."""
-    from unittest.mock import patch
-
     from jidou.database import get_session
 
     sub = _make_sub(id=1)
@@ -672,19 +697,17 @@ def test_suggest_regex_503_when_llm_call_fails() -> None:
     mock_llm.complete = AsyncMock(return_value=None)
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 503
-            assert "failed" in r.json()["detail"].lower()
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 503
+        assert "failed" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_suggest_regex_503_when_llm_returns_bad_json() -> None:
     """POST suggest-regex returns 503 when the LLM response is not valid JSON."""
-    from unittest.mock import patch
-
     from jidou.database import get_session
     from jidou.services.llm_service import LLMProvider, LLMResponse
 
@@ -703,19 +726,48 @@ def test_suggest_regex_503_when_llm_returns_bad_json() -> None:
     mock_llm.complete = AsyncMock(return_value=bad_response)
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 503
-            assert "unparseable" in r.json()["detail"].lower()
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 503
+        assert "unparseable" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_suggest_regex_503_when_llm_truncated() -> None:
+    """POST suggest-regex returns 503 with a truncation message on finish_reason='length'."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1)
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    truncated = LLMResponse(
+        content='{"regex_include": "partial',
+        model="local-model",
+        provider=LLMProvider.LMSTUDIO,
+        cached=False,
+        finish_reason="length",
+        completion_tokens=4096,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=truncated)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 503
+        assert "truncated" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_suggest_regex_strips_markdown_fences() -> None:
-    """POST suggest-regex parses JSON wrapped in markdown code fences."""
-    from unittest.mock import patch
-
+    """POST suggest-regex parses JSON wrapped in lowercase markdown code fences."""
     from jidou.database import get_session
     from jidou.services.llm_service import LLMProvider, LLMResponse
 
@@ -735,15 +787,47 @@ def test_suggest_regex_strips_markdown_fences() -> None:
     mock_llm.complete = AsyncMock(return_value=fenced_response)
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 200
-            data = r.json()
-            assert data["regex_include"] == "My.Show"
-            assert data["regex_exclude"] == "FRENCH"
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["regex_include"] == "My.Show"
+        assert data["regex_exclude"] == "FRENCH"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_suggest_regex_strips_uppercase_markdown_fence() -> None:
+    """POST suggest-regex strips ```JSON (uppercase) fences emitted by local models."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1)
+    sub.name = "My Show"
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    uppercase_fenced = LLMResponse(
+        content='```JSON\n{"regex_include": "My.Show", "regex_exclude": "FRENCH"}\n```',
+        model="local-model",
+        provider=LLMProvider.LMSTUDIO,
+        cached=False,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=uppercase_fenced)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["regex_include"] == "My.Show"
+        assert data["regex_exclude"] == "FRENCH"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_suggest_regex_sanitizes_long_name() -> None:
@@ -770,8 +854,6 @@ def test_suggest_regex_sanitizes_control_chars_and_backticks() -> None:
 
 def test_suggest_regex_503_for_invalid_regex_output() -> None:
     """POST suggest-regex returns 503 when LLM response contains an invalid regex."""
-    from unittest.mock import patch
-
     from jidou.database import get_session
     from jidou.services.llm_service import LLMProvider, LLMResponse
 
@@ -793,10 +875,10 @@ def test_suggest_regex_503_for_invalid_regex_output() -> None:
     mock_llm.complete = AsyncMock(return_value=llm_response)
 
     app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
-    with patch("jidou.services.llm_service.LLMService", return_value=mock_llm):
-        try:
-            r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
-            assert r.status_code == 503
-            assert "invalid regex" in r.json()["detail"].lower()
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 503
+        assert "invalid regex" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()

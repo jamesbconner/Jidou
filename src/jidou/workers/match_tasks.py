@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from jidou.config import settings
 from jidou.models.task import TaskStatus
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
-from jidou.services.llm_service import LLMService
+from jidou.services.llm_service import create_llm_service
 from jidou.services.progress import (
     TaskCancelledError,
     check_task_cancelled,
@@ -65,14 +65,7 @@ async def _match_files(
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
 
-            llm = LLMService(
-                provider=settings.llm_provider,
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model=settings.llm_model,
-                cache_ttl=settings.llm_cache_ttl,
-                timeout=settings.llm_timeout,
-            )
+            llm = create_llm_service(settings)
 
             await update_task_status(
                 session,

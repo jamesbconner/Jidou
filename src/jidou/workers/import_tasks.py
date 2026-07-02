@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from jidou.config import settings
 from jidou.models.task import TaskStatus
 from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
-from jidou.services.llm_service import LLMService
+from jidou.services.llm_service import create_llm_service
 from jidou.services.path_parser import parse_file
 from jidou.services.progress import (
     TaskCancelledError,
@@ -119,14 +119,7 @@ async def _path_import(
                 )
 
             tmdb = TMDBService()
-            llm = LLMService(
-                provider=settings.llm_provider,
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model=settings.llm_model,
-                cache_ttl=settings.llm_cache_ttl,
-                timeout=settings.llm_timeout,
-            )
+            llm = create_llm_service(settings)
 
             async def on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
                 # Use a separate session so the event commit does not flush

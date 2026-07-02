@@ -14,10 +14,13 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx2 as httpx
 from cachetools import TTLCache
+
+if TYPE_CHECKING:
+    from jidou.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,7 @@ class LLMResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latency_seconds: float = 0.0
+    finish_reason: str = ""
 
 
 class LLMService:
@@ -134,11 +138,17 @@ class LLMService:
         start = time.monotonic()
         if self._provider in _OPENAI_COMPATIBLE:
             await self._call_openai_compatible(
-                system=None, prompt="Reply with the single word: ok", model=self._model
+                system=None,
+                prompt="Reply with the single word: ok",
+                model=self._model,
+                max_tokens=5,
             )
         elif self._provider == LLMProvider.ANTHROPIC:
             await self._call_anthropic(
-                system=None, prompt="Reply with the single word: ok", model=self._model
+                system=None,
+                prompt="Reply with the single word: ok",
+                model=self._model,
+                max_tokens=5,
             )
         else:
             raise RuntimeError(f"Unsupported LLM provider: {self._provider!r}")
@@ -146,8 +156,10 @@ class LLMService:
         return time.monotonic() - start, self._model
 
     @staticmethod
-    def _make_cache_key(provider: str, model: str, system: str | None, prompt: str) -> str:
-        raw = f"{provider}:{model}:{system or ''}:{prompt}"
+    def _make_cache_key(
+        provider: str, model: str, system: str | None, prompt: str, max_tokens: int
+    ) -> str:
+        raw = f"{provider}:{model}:{system or ''}:{prompt}:{max_tokens}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
     async def complete(
@@ -179,7 +191,9 @@ class LLMService:
             return None
 
         effective_model = model or self._model
-        cache_key = self._make_cache_key(self._provider, effective_model, system, prompt)
+        cache_key = self._make_cache_key(
+            self._provider, effective_model, system, prompt, max_tokens
+        )
 
         if not bypass_cache:
             async with self._cache_lock:
@@ -196,18 +210,22 @@ class LLMService:
         start = time.monotonic()
         try:
             if self._provider in _OPENAI_COMPATIBLE:
-                content, prompt_tokens, completion_tokens = await self._call_openai_compatible(
-                    system=system,
-                    prompt=prompt,
-                    model=effective_model,
-                    max_tokens=max_tokens,
+                content, prompt_tokens, completion_tokens, finish_reason = (
+                    await self._call_openai_compatible(
+                        system=system,
+                        prompt=prompt,
+                        model=effective_model,
+                        max_tokens=max_tokens,
+                    )
                 )
             elif self._provider == LLMProvider.ANTHROPIC:
-                content, prompt_tokens, completion_tokens = await self._call_anthropic(
-                    system=system,
-                    prompt=prompt,
-                    model=effective_model,
-                    max_tokens=max_tokens,
+                content, prompt_tokens, completion_tokens, finish_reason = (
+                    await self._call_anthropic(
+                        system=system,
+                        prompt=prompt,
+                        model=effective_model,
+                        max_tokens=max_tokens,
+                    )
                 )
             else:
                 logger.warning("Unsupported LLM provider: %r", self._provider)
@@ -222,17 +240,29 @@ class LLMService:
             return None
 
         elapsed = time.monotonic() - start
+
+        if finish_reason == "length":
+            logger.warning(
+                "LLM response truncated at max_tokens=%d (provider=%s model=%s) — "
+                "increase max_tokens or use a model with a larger context window",
+                max_tokens,
+                self._provider,
+                effective_model,
+            )
+        else:
+            # Only cache complete (non-truncated) responses
+            async with self._cache_lock:
+                self._cache[cache_key] = content
+
         logger.info(
-            "LLM %s/%s: %d+%d tokens in %.2fs",
+            "LLM %s/%s: %d+%d tokens in %.2fs (finish_reason=%r)",
             self._provider,
             effective_model,
             prompt_tokens,
             completion_tokens,
             elapsed,
+            finish_reason,
         )
-
-        async with self._cache_lock:
-            self._cache[cache_key] = content
 
         return LLMResponse(
             content=content,
@@ -242,6 +272,7 @@ class LLMService:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             latency_seconds=elapsed,
+            finish_reason=finish_reason,
         )
 
     async def _call_openai_compatible(
@@ -250,7 +281,7 @@ class LLMService:
         prompt: str,
         model: str,
         max_tokens: int = 1024,
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, int, int, str]:
         """Call an OpenAI-compatible ``/v1/chat/completions`` endpoint.
 
         Args:
@@ -260,10 +291,11 @@ class LLMService:
             max_tokens: Maximum tokens the model may generate.
 
         Returns:
-            Tuple of ``(content, prompt_tokens, completion_tokens)``.
+            Tuple of ``(content, prompt_tokens, completion_tokens, finish_reason)``.
 
         Raises:
             httpx.HTTPStatusError: On non-2xx responses.
+            ValueError: When the provider returns an empty choices list.
         """
         messages: list[dict[str, str]] = []
         if system:
@@ -285,9 +317,22 @@ class LLMService:
             response.raise_for_status()
             data: dict[str, Any] = response.json()
 
-        content: str = data["choices"][0]["message"]["content"]
+        choices: list[dict[str, Any]] = data.get("choices") or []
+        if not choices:
+            raise ValueError(
+                f"Provider returned empty choices list for model={model!r} "
+                "(content_filter, token-boundary truncation, or unsupported model)"
+            )
+        choice = choices[0]
+        content: str = choice["message"]["content"]
+        finish_reason: str = choice.get("finish_reason") or ""
         usage: dict[str, int] = data.get("usage", {})
-        return content, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+        return (
+            content,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+            finish_reason,
+        )
 
     async def _call_anthropic(
         self,
@@ -295,7 +340,7 @@ class LLMService:
         prompt: str,
         model: str,
         max_tokens: int = 1024,
-    ) -> tuple[str, int, int]:
+    ) -> tuple[str, int, int, str]:
         """Call the Anthropic ``/v1/messages`` endpoint.
 
         Args:
@@ -305,7 +350,9 @@ class LLMService:
             max_tokens: Maximum tokens the model may generate.
 
         Returns:
-            Tuple of ``(content, input_tokens, output_tokens)``.
+            Tuple of ``(content, input_tokens, output_tokens, finish_reason)``.
+            ``finish_reason`` is ``"length"`` when the response was truncated at
+            ``max_tokens`` (Anthropic calls this ``"max_tokens"``).
 
         Raises:
             httpx.HTTPStatusError: On non-2xx responses.
@@ -335,4 +382,31 @@ class LLMService:
 
         content = data["content"][0]["text"]
         usage = data.get("usage", {})
-        return content, usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+        # Anthropic uses "max_tokens" stop_reason; normalise to "length" for consistency
+        stop_reason: str = data.get("stop_reason") or ""
+        finish_reason = "length" if stop_reason == "max_tokens" else stop_reason
+        return content, usage.get("input_tokens", 0), usage.get("output_tokens", 0), finish_reason
+
+
+def create_llm_service(settings: Settings) -> LLMService:
+    """Instantiate :class:`LLMService` from application settings.
+
+    This is the canonical factory used by the FastAPI lifespan, route
+    dependencies, and Celery workers.  All six constructor parameters are
+    populated so callers do not risk omitting one and silently getting the
+    wrong default.
+
+    Args:
+        settings: Application settings object exposing ``llm_*`` attributes.
+
+    Returns:
+        Configured :class:`LLMService` instance.
+    """
+    return LLMService(
+        provider=settings.llm_provider,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+        cache_ttl=settings.llm_cache_ttl,
+        timeout=settings.llm_timeout,
+    )
