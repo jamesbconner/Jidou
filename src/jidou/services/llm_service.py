@@ -210,22 +210,28 @@ class LLMService:
         start = time.monotonic()
         try:
             if self._provider in _OPENAI_COMPATIBLE:
-                content, prompt_tokens, completion_tokens, finish_reason = (
-                    await self._call_openai_compatible(
-                        system=system,
-                        prompt=prompt,
-                        model=effective_model,
-                        max_tokens=max_tokens,
-                    )
+                (
+                    content,
+                    prompt_tokens,
+                    completion_tokens,
+                    finish_reason,
+                ) = await self._call_openai_compatible(
+                    system=system,
+                    prompt=prompt,
+                    model=effective_model,
+                    max_tokens=max_tokens,
                 )
             elif self._provider == LLMProvider.ANTHROPIC:
-                content, prompt_tokens, completion_tokens, finish_reason = (
-                    await self._call_anthropic(
-                        system=system,
-                        prompt=prompt,
-                        model=effective_model,
-                        max_tokens=max_tokens,
-                    )
+                (
+                    content,
+                    prompt_tokens,
+                    completion_tokens,
+                    finish_reason,
+                ) = await self._call_anthropic(
+                    system=system,
+                    prompt=prompt,
+                    model=effective_model,
+                    max_tokens=max_tokens,
                 )
             else:
                 logger.warning("Unsupported LLM provider: %r", self._provider)

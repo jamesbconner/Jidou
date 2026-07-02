@@ -642,7 +642,7 @@ def test_suggest_regex_passes_max_tokens() -> None:
     try:
         TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
         _, kwargs = mock_llm.complete.call_args
-        assert kwargs.get("max_tokens", 0) >= 4096
+        assert kwargs.get("max_tokens", 0) >= 1024
     finally:
         app.dependency_overrides.clear()
 

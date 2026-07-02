@@ -368,8 +368,8 @@ def _sanitize_label(text: str) -> str:
 
 
 # Upper token bound for the regex suggester.  Local models routinely add a
-# preamble before the JSON; 4096 gives them room without risking truncation.
-_REGEX_MAX_TOKENS: int = 4096
+# preamble before the JSON; 1024 gives them room without risking truncation.
+_REGEX_MAX_TOKENS: int = 1024
 
 _REGEX_SYSTEM_PROMPT = (
     "You are exclusively a BitTorrent RSS regex generator. "

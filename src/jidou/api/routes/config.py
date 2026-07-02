@@ -120,7 +120,10 @@ async def test_llm(
         ``{"ok": False, "error": "..."}`` on failure.
     """
     if not llm.is_available():
-        return {"ok": False, "error": "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)"}  # noqa: E501
+        return {
+            "ok": False,
+            "error": "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)",
+        }  # noqa: E501
 
     try:
         latency_s, model = await llm.test_connection()
