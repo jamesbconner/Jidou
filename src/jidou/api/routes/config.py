@@ -3,9 +3,11 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from jidou.api.dependencies import get_llm_service
 from jidou.config import settings
+from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +107,9 @@ async def test_sftp() -> dict[str, Any]:
 
 
 @router.post("/test/llm")
-async def test_llm() -> dict[str, Any]:
+async def test_llm(
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
+) -> dict[str, Any]:
     """Test LLM connectivity by sending a minimal completion request.
 
     Uses :meth:`LLMService.test_connection` which propagates real provider
@@ -115,21 +119,13 @@ async def test_llm() -> dict[str, Any]:
         ``{"ok": True, "message": "Nms (provider / model)"}`` on success or
         ``{"ok": False, "error": "..."}`` on failure.
     """
-    if settings.llm_provider.lower() == "none":
-        return {"ok": False, "error": "LLM provider is set to 'none'"}
-    if not settings.llm_model:
-        return {"ok": False, "error": "LLM_MODEL is not configured"}
+    if not llm.is_available():
+        return {
+            "ok": False,
+            "error": "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)",
+        }
 
     try:
-        from jidou.services.llm_service import LLMService
-
-        llm = LLMService(
-            provider=settings.llm_provider,
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-            model=settings.llm_model,
-            timeout=settings.llm_timeout,
-        )
         latency_s, model = await llm.test_connection()
         latency_ms = round(latency_s * 1000, 1)
         return {

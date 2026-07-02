@@ -378,7 +378,7 @@ async def test_match_files_cancellation_marks_cancelled() -> None:
             "jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock
         ) as mock_update,
         patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.LLMService"),
+        patch("jidou.workers.match_tasks.create_llm_service"),
         patch(
             "jidou.workers.match_tasks.ParseOrchestrator.run",
             new_callable=AsyncMock,
@@ -501,7 +501,7 @@ async def test_sync_all_cancellation_marks_cancelled() -> None:
         patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.sync_tasks.SFTPService"),
         patch("jidou.workers.sync_tasks.TMDBService"),
-        patch("jidou.workers.sync_tasks.LLMService"),
+        patch("jidou.workers.sync_tasks.create_llm_service"),
         patch(
             "jidou.workers.sync_tasks.SyncOrchestrator.run",
             new_callable=AsyncMock,
@@ -1006,7 +1006,7 @@ async def test_match_files_on_progress_is_invoked() -> None:
         patch("jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.match_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.LLMService"),
+        patch("jidou.workers.match_tasks.create_llm_service"),
         patch("jidou.workers.match_tasks.ParseOrchestrator.run", side_effect=fake_run),
     ):
         result = await _match_files("tid-mop1", dry_run=False)
@@ -1043,7 +1043,7 @@ async def test_match_files_success_path() -> None:
         ),
         patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.match_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.LLMService"),
+        patch("jidou.workers.match_tasks.create_llm_service"),
         patch(
             "jidou.workers.match_tasks.ParseOrchestrator.run",
             new_callable=AsyncMock,
@@ -1093,7 +1093,7 @@ async def test_sync_all_on_progress_is_invoked() -> None:
         patch("jidou.workers.sync_tasks.check_task_cancelled", new_callable=AsyncMock),
         patch("jidou.workers.sync_tasks.SFTPService"),
         patch("jidou.workers.sync_tasks.TMDBService"),
-        patch("jidou.workers.sync_tasks.LLMService"),
+        patch("jidou.workers.sync_tasks.create_llm_service"),
         patch("jidou.workers.sync_tasks.SyncOrchestrator.run", side_effect=fake_run),
     ):
         result = await _sync_all("tid-sap1", dry_run=False)
@@ -1132,7 +1132,7 @@ async def test_sync_all_success_path() -> None:
         patch("jidou.workers.sync_tasks.check_task_cancelled", new_callable=AsyncMock),
         patch("jidou.workers.sync_tasks.SFTPService"),
         patch("jidou.workers.sync_tasks.TMDBService"),
-        patch("jidou.workers.sync_tasks.LLMService"),
+        patch("jidou.workers.sync_tasks.create_llm_service"),
         patch(
             "jidou.workers.sync_tasks.SyncOrchestrator.run",
             new_callable=AsyncMock,
@@ -1186,7 +1186,7 @@ async def test_path_import_on_progress_and_on_event_invoked() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch("jidou.workers.import_tasks.PathImportOrchestrator.run", side_effect=fake_run),
     ):
         result = await _path_import("tid-iop1", "/show/ep.mkv\n", "anime", False)
@@ -1232,7 +1232,7 @@ async def test_path_import_success_path() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch(
             "jidou.workers.import_tasks.PathImportOrchestrator.run",
             new_callable=AsyncMock,
@@ -1269,7 +1269,7 @@ async def test_path_import_exception_marks_failed() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch(
             "jidou.workers.import_tasks.PathImportOrchestrator.run",
             new_callable=AsyncMock,
@@ -1327,7 +1327,7 @@ async def test_path_import_on_event_closure_invoked() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock) as mock_event,
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
     ):
         result = await _path_import("tid-ioev1", "/show/ep.mkv\n", "anime", False)
@@ -1360,7 +1360,7 @@ async def test_path_import_cancellation_swallowed() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch(
             "jidou.workers.import_tasks.PathImportOrchestrator.run",
             new_callable=AsyncMock,
@@ -1401,7 +1401,7 @@ async def test_path_import_skips_emit_when_task_is_none() -> None:
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.LLMService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
         patch(
             "jidou.workers.import_tasks.PathImportOrchestrator.run",
             new_callable=AsyncMock,
