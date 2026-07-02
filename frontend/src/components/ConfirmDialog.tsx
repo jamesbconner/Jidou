@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import clsx from 'clsx'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface Props {
   title: string
@@ -10,15 +11,6 @@ interface Props {
   danger?: boolean
 }
 
-const FOCUSABLE = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',')
-
 export function ConfirmDialog({
   title,
   description,
@@ -27,53 +19,12 @@ export function ConfirmDialog({
   onCancel,
   danger = false,
 }: Props) {
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useFocusTrap<HTMLDivElement>(onCancel)
   const cancelRef = useRef<HTMLButtonElement>(null)
-  const onCancelRef = useRef(onCancel)
   const [fired, setFired] = useState(false)
 
-  // Keep ref current without triggering effects.
-  onCancelRef.current = onCancel
-
-  // Focus Cancel once on mount only.
-  useEffect(() => {
-    cancelRef.current?.focus()
-  }, [])
-
-  // Trap focus within the dialog + handle Escape.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onCancelRef.current()
-        return
-      }
-
-      if (e.key !== 'Tab' || !dialogRef.current) return
-
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
-      )
-      if (focusable.length === 0) return
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault()
-          last.focus()
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault()
-          first.focus()
-        }
-      }
-    }
-
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  // Focus Cancel on mount (useFocusTrap handles Escape + Tab trap).
+  // Using a callback ref on the Cancel button keeps this in one place.
 
   function handleConfirm() {
     if (fired) return
@@ -103,6 +54,7 @@ export function ConfirmDialog({
             ref={cancelRef}
             onClick={onCancel}
             disabled={fired}
+            autoFocus
             className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50 transition-colors"
           >
             Cancel

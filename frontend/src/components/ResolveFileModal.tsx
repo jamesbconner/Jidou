@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import type { FileRead, TmdbSuggestion, TmdbSearchResponse, ContentType, AppConfig } from '@/types/api'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function ResolveFileModal({ file, onClose }: Props) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [selected, setSelected] = useState<TmdbSuggestion | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [localPath, setLocalPath] = useState('')
@@ -114,11 +116,16 @@ export function ResolveFileModal({ file, onClose }: Props) {
     date ? new Date(date).getFullYear().toString() : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl rounded-lg bg-zinc-900 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="resolve-file-title"
+    >
+      <div ref={dialogRef} className="w-full max-w-2xl rounded-lg bg-zinc-900 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100">Resolve unmatched file</h2>
+          <h2 id="resolve-file-title" className="text-sm font-semibold text-zinc-100">Resolve unmatched file</h2>
           <button onClick={onClose} aria-label="Close dialog" className="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
         </div>
 
