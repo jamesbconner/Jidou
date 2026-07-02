@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
 import { useShows } from '@/hooks/useShows'
+import { useDebounce } from '@/hooks/useDebounce'
 import { api } from '@/api/client'
 import type {
   FileRead,
@@ -24,13 +25,12 @@ export function RematchModal({ file, onClose }: Props) {
   const [mode, setMode] = useState<'library' | 'tmdb'>('tmdb')
   const initialQuery = file.parsed_show_name ?? ''
   const [searchQuery, setSearchQuery] = useState(initialQuery)
-  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery)
+  const debouncedQuery = useDebounce(searchQuery, 300)
   const [selectedLibraryShow, setSelectedLibraryShow] = useState<ShowList | null>(null)
   const [selectedTmdb, setSelectedTmdb] = useState<TmdbResult | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [localPath, setLocalPath] = useState('')
   const [pathEdited, setPathEdited] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -74,15 +74,6 @@ export function RematchModal({ file, onClose }: Props) {
     [allShows],
   )
 
-  // debounce search input
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [searchQuery])
-
   // When a TMDB result is selected: derive content type from media_type and auto-fill path.
   // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep
   // (the first effect would read stale contentType before the second effect could update it).
@@ -117,7 +108,6 @@ export function RematchModal({ file, onClose }: Props) {
   function switchMode(next: 'library' | 'tmdb') {
     setMode(next)
     setSearchQuery('')
-    setDebouncedQuery('')
     setSelectedLibraryShow(null)
     setSelectedTmdb(null)
     rematch.reset()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
 import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
@@ -6,6 +6,7 @@ import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
+import { useDebounce } from '@/hooks/useDebounce'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import type { ShowList, TmdbResult, OrphanedTrackingRecord } from '@/types/api'
 
@@ -74,7 +75,6 @@ export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
   const [dqFilter, setDqFilter] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [sort, setSort] = useState<ShowSortOrder>('title_asc')
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
   const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
@@ -89,17 +89,12 @@ export default function Shows() {
   const [filterUpcoming, setFilterUpcoming] = useState(false)
   const [filterMinRating, setFilterMinRating] = useState('')
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setDebouncedQuery(query), 300)
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [query])
+  const debouncedQuery = useDebounce(query, 300)
 
   useEffect(() => {
     if (!tmdbModalOpen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery(''); setDebouncedQuery('') }
+      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery('') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -208,12 +203,10 @@ export default function Shows() {
   function closeModal() {
     setTmdbModalOpen(false)
     setQuery('')
-    setDebouncedQuery('')
   }
 
   function switchModalMode(mode: 'library' | 'tmdb') {
     setModalMode(mode)
-    setDebouncedQuery(query)
   }
 
   function handleTrack(r: TmdbResult) {

@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
 import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
+import { useDebounce } from '@/hooks/useDebounce'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
 const STATUS_OPTIONS: WatchlistStatus[] = ['planned', 'watching', 'completed', 'on_hold', 'dropped']
@@ -207,7 +208,6 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
 export default function Watchlist() {
   const [statusFilter, setStatusFilter] = useState<WatchlistStatus | ''>('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [searchMode, setSearchMode] = useState<'library' | 'tmdb'>('library')
   const [searchModalOpen, setSearchModalOpen] = useState(false)
   // Per-item pending sets so concurrent adds don't clobber each other's loading state.
@@ -221,17 +221,12 @@ export default function Watchlist() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300)
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [searchQuery])
+  const debouncedQuery = useDebounce(searchQuery, 300)
 
   useEffect(() => {
     if (!searchModalOpen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }
+      if (e.key === 'Escape') { setSearchModalOpen(false); setSearchQuery('') }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -402,7 +397,7 @@ export default function Watchlist() {
       {searchModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
-          onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
+          onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
         >
           <div
             className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
@@ -411,7 +406,7 @@ export default function Watchlist() {
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold">Add to Watchlist</h3>
               <button
-                onClick={() => { setSearchModalOpen(false); setSearchQuery(''); setDebouncedQuery('') }}
+                onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
                 className="text-gray-400 hover:text-gray-700 text-lg leading-none"
                 aria-label="Close"
               >
@@ -425,7 +420,7 @@ export default function Watchlist() {
                 {(['library', 'tmdb'] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => { setSearchMode(m); setDebouncedQuery(searchQuery) }}
+                    onClick={() => { setSearchMode(m) }}
                     className={`flex-1 py-2 font-medium transition-colors ${
                       searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                     }`}
