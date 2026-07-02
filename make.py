@@ -217,7 +217,7 @@ def health() -> None:
     """
     import json
 
-    import httpx
+    import httpx2 as httpx
 
     try:
         r = httpx.get("http://localhost:8192/api/admin/health", timeout=5)
