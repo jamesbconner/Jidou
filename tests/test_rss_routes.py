@@ -523,6 +523,58 @@ def test_update_subscription_bad_show_id_returns_404() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Regex field validation on create / update
+# ---------------------------------------------------------------------------
+
+
+def test_create_subscription_invalid_regex_include_returns_422() -> None:
+    """POST /subscriptions with an invalid regex_include returns 422."""
+    r = TestClient(app).post(
+        "/api/rss/subscriptions",
+        json={"name": "Test", "regex_include": "[unclosed"},
+    )
+    assert r.status_code == 422
+    body = r.json()
+    assert any("regex" in str(e).lower() for e in body["detail"])
+
+
+def test_create_subscription_invalid_regex_exclude_returns_422() -> None:
+    """POST /subscriptions with an invalid regex_exclude returns 422."""
+    r = TestClient(app).post(
+        "/api/rss/subscriptions",
+        json={"name": "Test", "regex_exclude": "(?P<bad"},
+    )
+    assert r.status_code == 422
+
+
+def test_update_subscription_invalid_regex_include_returns_422() -> None:
+    """PATCH /subscriptions/{id} with an invalid regex_include returns 422."""
+    r = TestClient(app).patch(
+        "/api/rss/subscriptions/1",
+        json={"regex_include": "*noanchor"},
+    )
+    assert r.status_code == 422
+
+
+def test_update_subscription_invalid_regex_exclude_returns_422() -> None:
+    """PATCH /subscriptions/{id} with an invalid regex_exclude returns 422."""
+    r = TestClient(app).patch(
+        "/api/rss/subscriptions/1",
+        json={"regex_exclude": "[z-a]"},
+    )
+    assert r.status_code == 422
+
+
+def test_create_subscription_null_regex_fields_are_accepted() -> None:
+    """None/omitted regex fields pass validation (they are optional)."""
+    from jidou.schemas.rss_schema import RssSubscriptionCreate
+
+    schema = RssSubscriptionCreate(name="Test")
+    assert schema.regex_include is None
+    assert schema.regex_exclude is None
+
+
+# ---------------------------------------------------------------------------
 # POST /api/rss/subscriptions/{id}/suggest-regex
 # ---------------------------------------------------------------------------
 
