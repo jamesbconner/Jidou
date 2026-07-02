@@ -250,7 +250,7 @@ export function RematchModal({ file, onClose }: Props) {
                 <div className="text-xs text-zinc-500 py-1">No results.</div>
               )}
 
-              {tmdbDisplayResults.length > 0 && (
+              {searchQuery.length >= 2 && tmdbDisplayResults.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {tmdbDisplayResults.map((r) => (
                     <button
