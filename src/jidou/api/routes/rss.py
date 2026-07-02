@@ -418,6 +418,8 @@ async def suggest_regex(
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
         model=settings.llm_model,
+        cache_ttl=settings.llm_cache_ttl,
+        timeout=settings.llm_timeout,
     )
     if not llm.is_available():
         raise HTTPException(
@@ -433,7 +435,7 @@ async def suggest_regex(
         else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
 
-    response = await llm.complete(prompt=user_prompt, system=_REGEX_SYSTEM_PROMPT)
+    response = await llm.complete(prompt=user_prompt, system=_REGEX_SYSTEM_PROMPT, max_tokens=256)
     if response is None:
         raise HTTPException(status_code=503, detail="LLM provider call failed.")
 

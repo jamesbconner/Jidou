@@ -156,6 +156,7 @@ class LLMService:
         system: str | None = None,
         model: str | None = None,
         bypass_cache: bool = False,
+        max_tokens: int = 1024,
     ) -> LLMResponse | None:
         """Generate a chat completion.
 
@@ -165,6 +166,9 @@ class LLMService:
             model: Override the configured model for this single call.
             bypass_cache: When ``True`` skip cache lookup and always hit the
                 provider.
+            max_tokens: Maximum tokens the model may generate. Applies to all
+                providers. Keeps local models (Ollama, LM Studio) from running
+                indefinitely and helps avoid HTTP read timeouts.
 
         Returns:
             :class:`LLMResponse` on success, ``None`` on any failure
@@ -196,12 +200,14 @@ class LLMService:
                     system=system,
                     prompt=prompt,
                     model=effective_model,
+                    max_tokens=max_tokens,
                 )
             elif self._provider == LLMProvider.ANTHROPIC:
                 content, prompt_tokens, completion_tokens = await self._call_anthropic(
                     system=system,
                     prompt=prompt,
                     model=effective_model,
+                    max_tokens=max_tokens,
                 )
             else:
                 logger.warning("Unsupported LLM provider: %r", self._provider)
@@ -243,6 +249,7 @@ class LLMService:
         system: str | None,
         prompt: str,
         model: str,
+        max_tokens: int = 1024,
     ) -> tuple[str, int, int]:
         """Call an OpenAI-compatible ``/v1/chat/completions`` endpoint.
 
@@ -250,6 +257,7 @@ class LLMService:
             system: Optional system message.
             prompt: User message.
             model: Model identifier.
+            max_tokens: Maximum tokens the model may generate.
 
         Returns:
             Tuple of ``(content, prompt_tokens, completion_tokens)``.
@@ -266,7 +274,7 @@ class LLMService:
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
-        payload: dict[str, Any] = {"model": model, "messages": messages}
+        payload: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
@@ -286,6 +294,7 @@ class LLMService:
         system: str | None,
         prompt: str,
         model: str,
+        max_tokens: int = 1024,
     ) -> tuple[str, int, int]:
         """Call the Anthropic ``/v1/messages`` endpoint.
 
@@ -293,6 +302,7 @@ class LLMService:
             system: Optional system message (passed as a top-level field).
             prompt: User message.
             model: Anthropic model identifier.
+            max_tokens: Maximum tokens the model may generate.
 
         Returns:
             Tuple of ``(content, input_tokens, output_tokens)``.
@@ -308,7 +318,7 @@ class LLMService:
 
         payload: dict[str, Any] = {
             "model": model,
-            "max_tokens": 1024,
+            "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
