@@ -96,6 +96,7 @@ services:
       # Application
       - DEBUG=${DEBUG:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
+      - JIDOU_API_KEY=${JIDOU_API_KEY:-}
       # Server
       - HOST=0.0.0.0
       - PORT=8192
@@ -177,6 +178,7 @@ services:
       - RSS_CONFIG_REMOTE_PATH=${RSS_CONFIG_REMOTE_PATH:-}
       # Application
       - DEBUG=${DEBUG:-true}
+      - JIDOU_API_KEY=${JIDOU_API_KEY:-}
     volumes:
       # Mount source code for hot reload in development
       - ./src:/app/src
