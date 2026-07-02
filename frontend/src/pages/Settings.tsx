@@ -25,10 +25,33 @@ export default function Settings() {
 
       {config && (
         <div className="bg-white rounded-lg shadow p-4 space-y-2">
-          <h2 className="font-semibold mb-2">Configuration</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold">Configuration</h2>
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              API docs →
+            </a>
+          </div>
           <ConfigRow label="App name" value={config.app_name} />
           <ConfigRow label="Debug" value={String(config.debug)} />
           <ConfigRow label="TMDB API key" value={config.tmdb_api_key_set ? 'Set ✓' : 'Not set ✗'} />
+          <div className="flex gap-3 text-sm items-center">
+            <span className="text-gray-500 w-32 shrink-0">API auth</span>
+            <span
+              className={clsx(
+                'text-xs font-medium px-2 py-0.5 rounded-full',
+                config.api_key_enabled
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-500',
+              )}
+            >
+              {config.api_key_enabled ? 'Active' : 'Disabled'}
+            </span>
+          </div>
           <ConfigRow label="LLM provider" value={config.llm_provider} />
           <ConfigRow label="LLM model" value={config.llm_model || 'Not configured'} />
           <ConfigRow label="LLM host" value={config.llm_base_url ?? 'Default'} />
