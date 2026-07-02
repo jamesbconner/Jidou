@@ -207,7 +207,7 @@ class SFTPService:
                 )
                 await asyncio.sleep(delay)
                 delay *= 2
-        assert last_exc is not None
+        assert last_exc is not None  # nosec B101 — type-narrowing only; loop always sets last_exc before this line
         logger.error(
             "%s: all %d attempts failed; last error: %s",
             label,
