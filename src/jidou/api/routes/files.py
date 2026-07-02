@@ -2,7 +2,6 @@
 
 import logging
 import re
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -18,6 +17,7 @@ from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
+from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -273,10 +273,7 @@ async def patch_file(
                         status_code=409,
                         detail="Episode is already tracked by another file",
                     )
-                ep.file_tracked = True
-                ep.file_tracked_at = datetime.now(UTC)
-                ep.tracked_filename = file.local_path or file.original_filename
-                ep.tracked_source = "match"
+                mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
                 file.parsed_season = ep.season_number
                 file.parsed_episode = ep.episode_number
         else:
@@ -293,10 +290,7 @@ async def patch_file(
                     await db_session.execute(select(Episode).where(Episode.id == old_episode_id))
                 ).scalar_one_or_none()
                 if old_ep is not None:
-                    old_ep.file_tracked = False
-                    old_ep.file_tracked_at = None
-                    old_ep.tracked_filename = None
-                    old_ep.tracked_source = None
+                    clear_episode_tracking(old_ep)
     if "status" in payload.model_fields_set and payload.status is not None:
         file.status = FileStatus(payload.status)
     if "error_message" in payload.model_fields_set:
@@ -564,10 +558,7 @@ async def manual_match_file(
                         OrphanedTrackingRecord.downloaded_file_id == file.id
                     )
                 )
-                ep.file_tracked = True
-                ep.file_tracked_at = datetime.now(UTC)
-                ep.tracked_filename = file.local_path or file.original_filename
-                ep.tracked_source = "match"
+                mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
 
     # Clear stale tracking on the old episode only when the episode actually
     # changed.  Running this after the heuristic avoids falsely clearing
@@ -582,10 +573,7 @@ async def manual_match_file(
             )
             old_ep = old_ep_result.scalar_one_or_none()
             if old_ep is not None:
-                old_ep.file_tracked = False
-                old_ep.file_tracked_at = None
-                old_ep.tracked_filename = None
-                old_ep.tracked_source = None
+                clear_episode_tracking(old_ep)
 
     await db_session.flush()
     await db_session.refresh(file)

@@ -14,6 +14,7 @@ from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.show_schema import RematchRequest
+from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -256,10 +257,12 @@ class ShowRematchOrchestrator:
         for key, state in old_tracking.items():
             matched_ep = ep_by_se.get(key)
             if matched_ep is not None:
-                matched_ep.file_tracked = True
-                matched_ep.file_tracked_at = state["file_tracked_at"]
-                matched_ep.tracked_filename = state["tracked_filename"]
-                matched_ep.tracked_source = state["tracked_source"]
+                mark_episode_tracked(
+                    matched_ep,
+                    state["tracked_filename"],
+                    state["tracked_source"],
+                    tracked_at=state["file_tracked_at"],
+                )
                 migrated += 1
 
         # Phase 3: re-link orphaned DownloadedFile rows

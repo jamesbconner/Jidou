@@ -19,7 +19,6 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -30,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
@@ -308,13 +308,12 @@ class PathImportOrchestrator:
             if ep is not None:
                 newly_tracked = not ep.file_tracked
                 if not self.dry_run:
-                    ep.file_tracked = True
                     # Only overwrite tracking metadata on first track; preserve
                     # match/download metadata from later non-import tracking.
                     if newly_tracked:
-                        ep.file_tracked_at = datetime.now(UTC)
-                        ep.tracked_filename = entry.raw_path
-                        ep.tracked_source = "import"
+                        mark_episode_tracked(ep, entry.raw_path, "import")
+                    else:
+                        ep.file_tracked = True
                 if newly_tracked:
                     show_result.episodes_tracked += 1
             else:
