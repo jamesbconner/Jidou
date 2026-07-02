@@ -1,8 +1,19 @@
 """Pydantic schemas for RSS feed and subscription API endpoints."""
 
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+def _validate_regex(v: str | None) -> str | None:
+    """Compile *v* as a Python regex, raising ValueError if invalid."""
+    if v is not None:
+        try:
+            re.compile(v)
+        except re.error as exc:
+            raise ValueError(f"Invalid regular expression: {exc}") from exc
+    return v
 
 
 class RssShowBrief(BaseModel):
@@ -72,6 +83,12 @@ class RssSubscriptionCreate(BaseModel):
     label: str | None = None
     extra_config: dict[str, object] | None = None
 
+    @field_validator("regex_include", "regex_exclude")
+    @classmethod
+    def validate_regex(cls, v: str | None) -> str | None:
+        """Reject patterns that fail to compile as Python regexes."""
+        return _validate_regex(v)
+
 
 class RssSubscriptionUpdate(BaseModel):
     """Request body for updating an RSS subscription — all fields optional."""
@@ -89,6 +106,12 @@ class RssSubscriptionUpdate(BaseModel):
     enabled_in_config: bool | None = None
     label: str | None = None
     extra_config: dict[str, object] | None = None
+
+    @field_validator("regex_include", "regex_exclude")
+    @classmethod
+    def validate_regex(cls, v: str | None) -> str | None:
+        """Reject patterns that fail to compile as Python regexes."""
+        return _validate_regex(v)
 
 
 class RssSubscriptionRead(BaseModel):
