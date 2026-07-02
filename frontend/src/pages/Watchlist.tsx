@@ -237,7 +237,9 @@ export default function Watchlist() {
   // the default limit=50 that powers the table, so search badges are always accurate.
   const { data: allEntries = [] } = useWatchlist(undefined, 10000)
   const { data: allShows = [] } = useShows('title_asc', 10000)
-  const { data: tmdbData, isLoading: tmdbLoading } = useSearchShows(searchMode === 'tmdb' ? debouncedQuery : '')
+  const { data: tmdbData, isLoading: tmdbLoading } = useSearchShows(
+    searchMode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',
+  )
 
   const createWatchlistEntry = useCreateWatchlistEntry()
   const createShow = useCreateShow()

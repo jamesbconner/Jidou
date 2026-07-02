@@ -45,7 +45,7 @@ export function RematchModal({ file, onClose }: Props) {
       api.get<TmdbSearchResponse>(
         `/shows/search?query=${encodeURIComponent(debouncedQuery)}&media_type=multi`,
       ),
-    enabled: mode === 'tmdb' && debouncedQuery.length >= 2,
+    enabled: mode === 'tmdb' && searchQuery.length >= 2 && debouncedQuery.length >= 2,
     staleTime: 60_000,
   })
 

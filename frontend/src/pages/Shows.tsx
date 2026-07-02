@@ -103,7 +103,9 @@ export default function Shows() {
   // Single fetch covers both the modal search pool and the display grid.
   const { data: allShows = [], isLoading } = useShows('title_asc', 10000)
   const displayShows = useMemo(() => sortShows(allShows, sort), [allShows, sort])
-  const { data: searchData, isLoading: tmdbSearching } = useSearchShows(modalMode === 'tmdb' ? debouncedQuery : '')
+  const { data: searchData, isLoading: tmdbSearching } = useSearchShows(
+    modalMode === 'tmdb' && query.length >= 2 ? debouncedQuery : '',
+  )
   const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
 

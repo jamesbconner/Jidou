@@ -41,7 +41,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
         `/shows/search?query=${encodeURIComponent(debouncedQuery)}&media_type=multi`,
       )
     },
-    enabled: customSearch && debouncedQuery.length >= 2,
+    enabled: customSearch && searchQuery.length >= 2 && debouncedQuery.length >= 2,
     staleTime: 60_000,
   })
 
