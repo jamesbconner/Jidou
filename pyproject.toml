@@ -30,8 +30,6 @@ dependencies = [
     "hiredis>=2.3",
     # SFTP
     "asyncssh>=2.15",
-    # HTTP client for external APIs
-    "httpx>=0.27",
     "aiohttp>=3.11",
     # Logging
     "structlog>=24.4",
@@ -39,6 +37,7 @@ dependencies = [
     "cachetools>=5.5",
     "python-multipart>=0.0.32",
     "rapidfuzz>=3.14.5",
+    "httpx2>=2.5.0",
 ]
 
 [project.optional-dependencies]
@@ -136,7 +135,6 @@ filterwarnings = [
     "ignore:websockets.*is deprecated:DeprecationWarning",
     "ignore:unclosed:ResourceWarning",
     "ignore:loop is closed:ResourceWarning",
-    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 
 [tool.coverage.run]
@@ -152,4 +150,3 @@ packages = ["src/jidou"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B104"]  # binding to 0.0.0.0 is required for Docker deployment

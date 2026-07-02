@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
