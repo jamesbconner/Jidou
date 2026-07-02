@@ -40,7 +40,8 @@ RUN useradd --create-home --shell /bin/bash appuser && \
 USER appuser
 
 # Run Celery worker — concurrency and prefetch are configurable via env vars.
-CMD celery -A jidou.workers.celery_app:celery_app worker \
+# exec replaces the shell so Celery is PID 1 and receives SIGTERM on stop.
+CMD exec celery -A jidou.workers.celery_app:celery_app worker \
     --loglevel=info \
     --concurrency=${CELERY_CONCURRENCY:-4} \
     --prefetch-multiplier=${CELERY_PREFETCH_MULTIPLIER:-1}
