@@ -137,16 +137,15 @@ export function RematchModal({ file, onClose }: Props) {
           })
         }
       }
-      // Fire-and-forget: trigger route task to move file to new show directory
-      triggerRoute.mutate({ task_type: 'route' })
+      await triggerRoute.mutateAsync({ task_type: 'route' })
       onClose()
     } catch {
-      // rematch.error is rendered below
+      // rematch.error / triggerRoute.error rendered below
     }
   }
 
   const canConfirm = (() => {
-    if (rematch.isPending) return false
+    if (rematch.isPending || triggerRoute.isPending) return false
     if (mode === 'library') {
       return selectedLibraryShow !== null && selectedLibraryShow.local_path != null
     }
@@ -156,8 +155,17 @@ export function RematchModal({ file, onClose }: Props) {
     return localPath.trim().length > 0
   })()
 
-  const errorMsg =
-    rematch.error instanceof Error ? rematch.error.message : rematch.error ? 'Match failed' : null
+  const errorMsg = (() => {
+    if (rematch.error) {
+      return rematch.error instanceof Error ? rematch.error.message : 'Match failed'
+    }
+    if (triggerRoute.error) {
+      return triggerRoute.error instanceof Error
+        ? triggerRoute.error.message
+        : 'File matched but routing failed — trigger a route task manually'
+    }
+    return null
+  })()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
