@@ -690,3 +690,63 @@ async def test_run_heuristic_fails_empty_episodes_marks_unmatched() -> None:
     result = await orch.run()
 
     assert result.files_unmatched == 1
+
+
+# ---------------------------------------------------------------------------
+# Episode index — O(1) lookup correctness
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_finds_episode_at_end_of_large_list() -> None:
+    """Episode lookup is correct even when target episode is last in a 500-item list."""
+    show = _make_show(show_id=30)
+    target_ep = _make_episode(ep_id=500, season=1, ep_num=500)
+    episodes = [_make_episode(ep_id=i, season=1, ep_num=i) for i in range(1, 500)] + [target_ep]
+
+    file = _make_file(filename="Show.S01E500.mkv", show_id=30)
+
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    ep_list_result = MagicMock()
+    ep_list_result.scalars.return_value.all.return_value = episodes
+    orphan = MagicMock()
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[files_result, ep_list_result, orphan])
+
+    orch = MatchOrchestrator(session, llm=None)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file.episode_id == target_ep.id
+    assert target_ep.file_tracked is True
+
+
+@pytest.mark.asyncio
+async def test_run_duplicate_season_episode_first_occurrence_wins() -> None:
+    """When two episodes share (season, episode), the first in the list is matched."""
+    show = _make_show(show_id=31)
+    ep_first = _make_episode(ep_id=10, season=1, ep_num=1, name="First")
+    ep_second = _make_episode(ep_id=11, season=1, ep_num=1, name="Dupe")
+
+    file = _make_file(filename="Show.S01E01.mkv", show_id=31)
+
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    ep_list_result = MagicMock()
+    ep_list_result.scalars.return_value.all.return_value = [ep_first, ep_second]
+    orphan = MagicMock()
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[files_result, ep_list_result, orphan])
+
+    orch = MatchOrchestrator(session, llm=None)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file.episode_id == ep_first.id  # first occurrence wins

@@ -154,13 +154,23 @@ class MatchOrchestrator:
         rows = list((await self.session.execute(stmt)).all())
         total = len(rows)
 
-        # Pre-load episodes per show to avoid N+1 queries
+        # Pre-load episodes per show to avoid N+1 queries.
+        # Also build a (season, episode) → Episode index per show for O(1) lookup.
+        # When two episodes share identical (season, episode) numbers (rare specials),
+        # the first occurrence wins — matching next() / linear-scan behaviour.
         show_ids = {show.id for _, show in rows}
         episodes_by_show: dict[int, list[Episode]] = {}
+        episode_index_by_show: dict[int, dict[tuple[int, int], Episode]] = {}
         for sid in show_ids:
             ep_stmt = select(Episode).where(Episode.show_id == sid)
             eps = list((await self.session.execute(ep_stmt)).scalars().all())
             episodes_by_show[sid] = eps
+            index: dict[tuple[int, int], Episode] = {}
+            for e in eps:
+                key = (e.season_number, e.episode_number)
+                if key not in index:
+                    index[key] = e
+            episode_index_by_show[sid] = index
 
         files_matched = 0
         matched_by_heuristic = 0
@@ -208,14 +218,7 @@ class MatchOrchestrator:
                         matched_by = MatchedBy.LLM
 
                 if season is not None and episode_num is not None:
-                    ep = next(
-                        (
-                            e
-                            for e in episodes
-                            if e.season_number == season and e.episode_number == episode_num
-                        ),
-                        None,
-                    )
+                    ep = episode_index_by_show.get(show.id, {}).get((season, episode_num))
                     if ep is not None:
                         old_episode_id = (
                             file.episode_id
