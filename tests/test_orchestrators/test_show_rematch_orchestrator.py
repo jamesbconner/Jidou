@@ -75,7 +75,9 @@ def _make_payload(
     media_type: str = "tv",
     preserve_tracking: bool = True,
 ) -> RematchRequest:
-    return RematchRequest(tmdb_id=tmdb_id, media_type=media_type, preserve_tracking=preserve_tracking)
+    return RematchRequest(
+        tmdb_id=tmdb_id, media_type=media_type, preserve_tracking=preserve_tracking
+    )
 
 
 def _make_tmdb_data(title: str = "New Show Title") -> dict:
