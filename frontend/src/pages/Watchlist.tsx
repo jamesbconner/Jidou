@@ -62,11 +62,12 @@ function InlineStatusSelect({ id, current }: { id: number; current: WatchlistSta
     <select
       autoFocus
       defaultValue={current}
-      onChange={(e) => { pendingRef.current = e.target.value as WatchlistStatus }}
-      onBlur={() => {
-        setEditing(false)
-        if (pendingRef.current !== current) patch.mutate({ id, update: { status: pendingRef.current } })
+      onChange={(e) => {
+        const next = e.target.value as WatchlistStatus
+        pendingRef.current = next
+        if (next !== current) patch.mutate({ id, update: { status: next } })
       }}
+      onBlur={() => setEditing(false)}
       className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       {STATUS_OPTIONS.map((s) => (
