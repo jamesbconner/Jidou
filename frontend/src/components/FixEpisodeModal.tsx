@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useShowEpisodes, showKeys } from '@/hooks/useShows'
 import { fileKeys } from '@/hooks/useFiles'
 import { api } from '@/api/client'
 import type { FileRead } from '@/types/api'
+import { buildSeasonMap } from '@/utils/episodeUtils'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -20,13 +21,8 @@ export function FixEpisodeModal({ file, onClose }: Props) {
 
   const { data: episodes = [] } = useShowEpisodes(file.show_id!)
 
-  const seasonMap = new Map<number, typeof episodes>()
-  for (const ep of episodes) {
-    const bucket = seasonMap.get(ep.season_number) ?? []
-    bucket.push(ep)
-    seasonMap.set(ep.season_number, bucket)
-  }
-  const seasons = Array.from(seasonMap.keys()).sort((a, b) => a - b)
+  const seasonMap = useMemo(() => buildSeasonMap(episodes), [episodes])
+  const seasons = useMemo(() => Array.from(seasonMap.keys()).sort((a, b) => a - b), [seasonMap])
 
   const patch = useMutation({
     mutationFn: (episodeId: number | null) =>

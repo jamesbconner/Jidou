@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useFiles, fileKeys, type FilesPage } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes } from '@/hooks/useShows'
@@ -9,6 +9,7 @@ import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
+import { buildSeasonMap } from '@/utils/episodeUtils'
 
 const STATUS_OPTIONS: (FileStatus | '')[] = [
   '',
@@ -125,13 +126,8 @@ function InlineEpisodePicker({
     },
   })
 
-  const seasonMap = new Map<number, typeof episodes>()
-  for (const ep of episodes) {
-    const bucket = seasonMap.get(ep.season_number) ?? []
-    bucket.push(ep)
-    seasonMap.set(ep.season_number, bucket)
-  }
-  const seasons = Array.from(seasonMap.keys()).sort((a, b) => a - b)
+  const seasonMap = useMemo(() => buildSeasonMap(episodes), [episodes])
+  const seasons = useMemo(() => Array.from(seasonMap.keys()).sort((a, b) => a - b), [seasonMap])
 
   const label = episode
     ? `S${pad2(episode.season_number)}E${pad2(episode.episode_number)} · ${episode.name}`
