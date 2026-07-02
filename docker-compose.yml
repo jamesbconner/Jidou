@@ -69,6 +69,8 @@ services:
       # TMDB API
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
+      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-86400}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -96,6 +98,7 @@ services:
       # Application
       - DEBUG=${DEBUG:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}
+      - JIDOU_API_KEY=${JIDOU_API_KEY:-}
       # Server
       - HOST=0.0.0.0
       - PORT=8192
@@ -151,6 +154,8 @@ services:
       # TMDB API
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
+      - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
+      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-86400}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -177,6 +182,10 @@ services:
       - RSS_CONFIG_REMOTE_PATH=${RSS_CONFIG_REMOTE_PATH:-}
       # Application
       - DEBUG=${DEBUG:-true}
+      - JIDOU_API_KEY=${JIDOU_API_KEY:-}
+      # Celery
+      - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
+      - CELERY_PREFETCH_MULTIPLIER=${CELERY_PREFETCH_MULTIPLIER:-1}
     volumes:
       # Mount source code for hot reload in development
       - ./src:/app/src
