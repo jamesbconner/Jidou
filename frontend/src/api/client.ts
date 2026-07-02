@@ -1,4 +1,5 @@
 const BASE = '/api'
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined
 
 class ApiError extends Error {
   constructor(
@@ -10,6 +11,11 @@ class ApiError extends Error {
   }
 }
 
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = API_KEY ? { 'X-API-Key': API_KEY } : {}
+  return extra ? { ...h, ...extra } : h
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -17,7 +23,7 @@ async function request<T>(
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    headers: apiHeaders(body !== undefined ? { 'Content-Type': 'application/json' } : undefined),
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
@@ -29,7 +35,7 @@ async function request<T>(
 }
 
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form })
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: apiHeaders(), body: form })
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }))
     throw new ApiError(res.status, detail.detail ?? res.statusText)
@@ -38,7 +44,7 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
 }
 
 async function requestWithTotal<T>(path: string): Promise<{ data: T; total: number }> {
-  const res = await fetch(`${BASE}${path}`, { method: 'GET' })
+  const res = await fetch(`${BASE}${path}`, { method: 'GET', headers: apiHeaders() })
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }))
     throw new ApiError(res.status, detail.detail ?? res.statusText)
@@ -49,7 +55,7 @@ async function requestWithTotal<T>(path: string): Promise<{ data: T; total: numb
 }
 
 async function downloadBlob(path: string): Promise<{ blob: Blob; filename: string }> {
-  const res = await fetch(`${BASE}${path}`, { method: 'GET' })
+  const res = await fetch(`${BASE}${path}`, { method: 'GET', headers: apiHeaders() })
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }))
     throw new ApiError(res.status, detail.detail ?? res.statusText)

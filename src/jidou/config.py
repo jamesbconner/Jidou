@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     app_name: str = "Jidou"
     debug: bool = False
 
+    # API key auth — when set, all /api routes require X-API-Key: <value>.
+    # Leave unset (or empty) to disable auth (useful for local development).
+    jidou_api_key: str | None = None
+
     # Database
     database_url: str = "postgresql+asyncpg://jidou:jidou_dev_password@localhost:5432/jidou"
 
