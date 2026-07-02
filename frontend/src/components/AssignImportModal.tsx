@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useAssignImportEpisode } from '@/hooks/useShows'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import type { EpisodeList } from '@/types/api'
 
 function pad2(n: number) {
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function AssignImportModal({ showId, episode, onClose }: Props) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const { data: episodes = [] } = useShowEpisodes(showId)
   const assign = useAssignImportEpisode()
   const [selected, setSelected] = useState('')
@@ -41,10 +43,15 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="assign-import-title"
+    >
+      <div ref={dialogRef} className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-zinc-100">
+          <h2 id="assign-import-title" className="text-sm font-semibold text-zinc-100">
             Assign imported file — S{pad2(episode.season_number)}E{pad2(episode.episode_number)} ·{' '}
             {episode.name}
           </h2>

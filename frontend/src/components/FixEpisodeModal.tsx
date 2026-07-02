@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useShowEpisodes, showKeys } from '@/hooks/useShows'
 import { fileKeys } from '@/hooks/useFiles'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { api } from '@/api/client'
 import type { FileRead } from '@/types/api'
 import { buildSeasonMap } from '@/utils/episodeUtils'
@@ -18,6 +19,7 @@ interface Props {
 export function FixEpisodeModal({ file, onClose }: Props) {
   const [selectedId, setSelectedId] = useState(file.episode_id?.toString() ?? '')
   const qc = useQueryClient()
+  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
 
   const { data: episodes = [] } = useShowEpisodes(file.show_id!)
 
@@ -52,11 +54,16 @@ export function FixEpisodeModal({ file, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="fix-episode-title"
+    >
+      <div ref={dialogRef} className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
-          <h2 className="text-sm font-semibold text-zinc-100">Fix episode assignment</h2>
+          <h2 id="fix-episode-title" className="text-sm font-semibold text-zinc-100">Fix episode assignment</h2>
           <button
             onClick={onClose}
             aria-label="Close dialog"
