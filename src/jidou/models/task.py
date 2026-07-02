@@ -11,7 +11,27 @@ from jidou.models.base import Base, TimestampMixin
 
 
 class TaskStatus(StrEnum):
-    """Status of a background task."""
+    """Lifecycle states for a background Celery task.
+
+    State machine::
+
+        pending ──► running ──► completed
+                       │
+                       ├──► failed
+                       │
+                       └──► cancelled
+
+    Transitions:
+        pending   → running     Celery worker picks up the task.
+        running   → completed   Task finishes without error.
+        running   → failed      An unhandled exception is raised inside the task.
+        running   → cancelled   User calls ``DELETE /api/tasks/{id}`` while the task is running.
+
+    Note:
+        ``failed`` and ``cancelled`` are terminal states — they do not retry
+        automatically.  Trigger a new task via ``POST /api/tasks/trigger`` to
+        re-run the operation.
+    """
 
     PENDING = "pending"
     RUNNING = "running"
