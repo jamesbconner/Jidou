@@ -3,7 +3,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
@@ -14,7 +14,6 @@ from sqlalchemy.orm import selectinload
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
-from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.episode_schema import BackingFile, EpisodeList
 from jidou.schemas.file_schema import FileRead
@@ -33,14 +32,6 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/shows", tags=["shows"])
-
-
-class _TrackingSnapshot(TypedDict):
-    """Tracking state captured from an Episode before the rematch bulk-delete."""
-
-    tracked_filename: str | None
-    tracked_source: str | None
-    file_tracked_at: datetime | None
 
 
 _tmdb = TMDBService()
@@ -484,9 +475,9 @@ async def rematch_show(
         HTTPException: 404 if the show is not found.
         HTTPException: 409 if the target TMDB ID is already tracked as a
             different show.
-        HTTPException: 502 if TMDB details cannot be fetched.
+        HTTPException: 502 if TMDB details or episode sync fails.
     """
-    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+    from jidou.orchestrators.show_rematch_orchestrator import ShowRematchOrchestrator
 
     stmt = select(Show).where(Show.id == show_id)
     show = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -506,189 +497,7 @@ async def rematch_show(
                 ),
             )
 
-    try:
-        data = await tmdb.get_details(payload.tmdb_id, media_type=payload.media_type)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
-
-    # TV uses "name" + "first_air_date"; movies use "title" + "release_date".
-    title: str = data.get("name") or data.get("title") or show.title
-    release_date: str | None = data.get("first_air_date") or data.get("release_date")
-    ep_runtimes: list[int] = data.get("episode_run_time") or []
-
-    # Update all TMDB-sourced fields; preserve user-managed ones.
-    show.tmdb_id = payload.tmdb_id
-    show.media_type = payload.media_type
-    show.title = title
-    show.overview = data.get("overview")
-    show.poster_path = data.get("poster_path")
-    show.backdrop_path = data.get("backdrop_path")
-    show.vote_average = data.get("vote_average")
-    show.vote_count = data.get("vote_count", 0)
-    show.release_date = release_date
-    show.original_language = data.get("original_language")
-    show.sys_name = _sanitize_sys_name(title)
-    show.genres = data.get("genres") or []
-    # TV uses origin_country (ISO list); movies use production_countries (objects).
-    tv_countries: list[str] = data.get("origin_country") or []
-    movie_countries: list[str] = [
-        c["iso_3166_1"] for c in (data.get("production_countries") or []) if "iso_3166_1" in c
-    ]
-    show.origin_country = tv_countries or movie_countries
-    show.last_air_date = data.get("last_air_date")
-    show.last_episode_to_air = data.get("last_episode_to_air")
-    show.next_episode_to_air = data.get("next_episode_to_air")
-    show.homepage = data.get("homepage")
-    show.status = data.get("status")
-    show.in_production = data.get("in_production")
-    show.number_of_seasons = data.get("number_of_seasons")
-    show.number_of_episodes = data.get("number_of_episodes")
-    show.networks = data.get("networks") or []
-    show.show_type = data.get("type")
-    show.runtime = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
-    show.tagline = data.get("tagline")
-    show.external_ids = data.get("external_ids")
-    show.episode_groups = data.get("episode_groups") or []
-
-    # Phase 1: Snapshot tracked episodes before the bulk delete so tracking state
-    # can be restored after the new TMDB episodes are synced.
-    old_tracking: dict[tuple[int, int], _TrackingSnapshot] = {}
-    if payload.preserve_tracking and payload.media_type != "movie":
-        tracked_stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.file_tracked.is_(True),
-        )
-        tracked_eps = (await db_session.execute(tracked_stmt)).scalars().all()
-        for ep in tracked_eps:
-            old_tracking[(ep.season_number, ep.episode_number)] = _TrackingSnapshot(
-                tracked_filename=ep.tracked_filename,
-                tracked_source=ep.tracked_source,
-                file_tracked_at=ep.file_tracked_at,
-            )
-        logger.debug(
-            "Tracking snapshot: show id=%d captured %d tracked episode(s)",
-            show_id,
-            len(old_tracking),
-        )
-
-    # Purge episodes from the old match — they belong to a different show.
-    await db_session.execute(
-        Episode.__table__.delete().where(Episode.show_id == show_id)  # type: ignore[attr-defined]
-    )
-
-    await db_session.flush()
-    logger.info("Re-matched show id=%d → tmdb_id=%d title=%r", show_id, payload.tmdb_id, title)
-
-    # Always purge stale orphan rows regardless of media_type so that rematching
-    # a TV show as a movie (or repeated rematches) never leaves ghost DQ entries.
-    await db_session.execute(
-        OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-            OrphanedTrackingRecord.show_id == show_id
-        )
-    )
-
-    # Movies have no episode structure; skip TV-specific season sync.
-    if payload.media_type != "movie":
-        try:
-            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
-        except Exception as exc:
-            logger.exception("Episode sync failed after rematch for show id=%d", show_id)
-            raise HTTPException(
-                status_code=502, detail="TMDB episode sync failed; rematch aborted"
-            ) from exc
-
-        # Phase 2: Restore tracking on new episodes matching by (season, episode) key.
-        # Phase 3: Re-link DownloadedFile rows whose episode_id was SET NULL by cascade.
-        if payload.preserve_tracking:
-            new_eps_stmt = select(Episode).where(Episode.show_id == show_id)
-            new_eps = (await db_session.execute(new_eps_stmt)).scalars().all()
-            ep_by_se: dict[tuple[int, int], Episode] = {
-                (e.season_number, e.episode_number): e for e in new_eps
-            }
-
-            migrated = 0
-            for key, state in old_tracking.items():
-                matched_ep = ep_by_se.get(key)
-                if matched_ep is not None:
-                    matched_ep.file_tracked = True
-                    matched_ep.file_tracked_at = state["file_tracked_at"]
-                    matched_ep.tracked_filename = state["tracked_filename"]
-                    matched_ep.tracked_source = state["tracked_source"]
-                    migrated += 1
-
-            orphan_stmt = select(DownloadedFile).where(
-                DownloadedFile.show_id == show_id,
-                DownloadedFile.episode_id.is_(None),
-                DownloadedFile.parsed_season.is_not(None),
-                DownloadedFile.parsed_episode.is_not(None),
-            )
-            orphaned_files = (await db_session.execute(orphan_stmt)).scalars().all()
-            relinked = 0
-            orphan_records_created = 0
-            # Track which (season, episode) keys Phase 3 already persisted as orphans
-            # so the unrecoverable_keys loop below can skip them and avoid duplicates.
-            phase3_orphan_keys: set[tuple[int, int]] = set()
-            for file in orphaned_files:
-                if file.parsed_season is not None and file.parsed_episode is not None:
-                    new_ep = ep_by_se.get((file.parsed_season, file.parsed_episode))
-                    if new_ep is not None:
-                        file.episode_id = new_ep.id
-                        relinked += 1
-                    else:
-                        # Downloaded file with no matching new episode — persist as orphan.
-                        db_session.add(
-                            OrphanedTrackingRecord(
-                                show_id=show_id,
-                                tracked_filename=file.local_path or file.original_filename,
-                                tracked_source="match",
-                                old_season_number=file.parsed_season,
-                                old_episode_number=file.parsed_episode,
-                                downloaded_file_id=file.id,
-                            )
-                        )
-                        phase3_orphan_keys.add((file.parsed_season, file.parsed_episode))
-                        orphan_records_created += 1
-
-            # All unrecoverable tracking keys (both "import" and "match") need an orphan
-            # record. For "match" keys already handled by Phase 3 (file found via parsed
-            # S/E), skip to avoid duplicates. "match" keys whose files lack parsed S/E
-            # numbers only appear here and would otherwise be silently dropped.
-            unrecoverable_keys = set(old_tracking.keys()) - set(ep_by_se.keys())
-            for key in unrecoverable_keys:
-                if key in phase3_orphan_keys:
-                    continue
-                state = old_tracking[key]
-                db_session.add(
-                    OrphanedTrackingRecord(
-                        show_id=show_id,
-                        tracked_filename=state["tracked_filename"],
-                        tracked_source=state["tracked_source"] or "match",
-                        old_season_number=key[0],
-                        old_episode_number=key[1],
-                        downloaded_file_id=None,
-                    )
-                )
-                orphan_records_created += 1
-
-            if unrecoverable_keys:
-                logger.warning(
-                    "Unrecoverable tracking records after rematch of show id=%d: %d persisted",
-                    show_id,
-                    orphan_records_created,
-                )
-
-            logger.info(
-                "Tracking migration: show id=%d migrated=%d relinked=%d orphans_created=%d",
-                show_id,
-                migrated,
-                relinked,
-                orphan_records_created,
-            )
-
-            await db_session.flush()
-
-    await db_session.refresh(show)
-    return show
+    return await ShowRematchOrchestrator(db_session, tmdb).rematch(show, payload)
 
 
 @router.post("/{show_id}/sync-episodes", response_model=list[EpisodeList])

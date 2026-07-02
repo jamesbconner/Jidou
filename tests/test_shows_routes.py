@@ -925,7 +925,7 @@ def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) ->
     try:
         with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
-            with patch("jidou.api.routes.shows.logger") as mock_logger:
+            with patch("jidou.orchestrators.show_rematch_orchestrator.logger") as mock_logger:
                 response = TestClient(app).post(
                     "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
                 )
