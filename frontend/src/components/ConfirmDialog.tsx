@@ -10,6 +10,15 @@ interface Props {
   danger?: boolean
 }
 
+const FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
 export function ConfirmDialog({
   title,
   description,
@@ -18,11 +27,12 @@ export function ConfirmDialog({
   onCancel,
   danger = false,
 }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const onCancelRef = useRef(onCancel)
   const [fired, setFired] = useState(false)
 
-  // Keep the ref current without re-running either effect.
+  // Keep ref current without triggering effects.
   onCancelRef.current = onCancel
 
   // Focus Cancel once on mount only.
@@ -30,11 +40,37 @@ export function ConfirmDialog({
     cancelRef.current?.focus()
   }, [])
 
-  // Escape key — reads from ref so the listener is registered once.
+  // Trap focus within the dialog + handle Escape.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancelRef.current()
+      if (e.key === 'Escape') {
+        onCancelRef.current()
+        return
+      }
+
+      if (e.key !== 'Tab' || !dialogRef.current) return
+
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+      )
+      if (focusable.length === 0) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
+
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
@@ -53,7 +89,7 @@ export function ConfirmDialog({
       aria-labelledby="confirm-dialog-title"
       aria-describedby="confirm-dialog-desc"
     >
-      <div className="w-full max-w-sm rounded-lg bg-zinc-900 shadow-xl">
+      <div ref={dialogRef} className="w-full max-w-sm rounded-lg bg-zinc-900 shadow-xl">
         <div className="px-5 py-4 space-y-2">
           <h2 id="confirm-dialog-title" className="text-sm font-semibold text-zinc-100">
             {title}
