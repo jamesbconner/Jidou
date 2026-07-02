@@ -13,7 +13,7 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
 
 # Expose port 80 (mapped to 3100 in docker-compose)
 EXPOSE 80
@@ -22,5 +22,6 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
 
-# Run nginx in foreground
-CMD ["nginx", "-g", "daemon off;"]
+# Substitute only $JIDOU_API_KEY at startup so nginx variables ($host, $uri,
+# etc.) are left intact, then start nginx in the foreground.
+CMD ["/bin/sh", "-c", "envsubst '$JIDOU_API_KEY' < /etc/nginx/nginx.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
