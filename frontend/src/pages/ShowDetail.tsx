@@ -14,6 +14,7 @@ import { useBeginEpisodeRematch } from '@/hooks/useFiles'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import type { EpisodeList, FileRead, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -34,6 +35,7 @@ function ShowRematchModal({
 }) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [pendingPick, setPendingPick] = useState<TmdbResult | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rematch = useRematchShow(showId)
 
@@ -49,16 +51,16 @@ function ShowRematchModal({
 
   function handlePick(r: TmdbResult) {
     if (r.id === currentTmdbId) return
-    if (
-      !window.confirm(
-        `Re-match to "${r.name ?? r.title}"?\n\nThis will replace all episode data for this show.`,
-      )
-    )
-      return
+    setPendingPick(r)
+  }
+
+  function handleConfirmRematch() {
+    if (!pendingPick) return
     rematch.mutate(
-      { tmdbId: r.id, mediaType: r.media_type ?? 'tv' },
+      { tmdbId: pendingPick.id, mediaType: pendingPick.media_type ?? 'tv' },
       { onSuccess: () => onClose() },
     )
+    setPendingPick(null)
   }
 
   return (
@@ -116,6 +118,15 @@ function ShowRematchModal({
           <p className="text-xs text-gray-500">Re-matching… episodes are being synced.</p>
         )}
       </div>
+      {pendingPick && (
+        <ConfirmDialog
+          title="Change TMDB match?"
+          description={`Re-match to "${pendingPick.name ?? pendingPick.title}"? This will replace all episode data for this show.`}
+          confirmLabel="Re-match"
+          onConfirm={handleConfirmRematch}
+          onCancel={() => setPendingPick(null)}
+        />
+      )}
     </div>
   )
 }
@@ -359,6 +370,7 @@ export default function ShowDetail() {
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
   const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
@@ -368,6 +380,7 @@ export default function ShowDetail() {
     setRematchOpen(false)
     setPathModalOpen(false)
     setContentTypeOpen(false)
+    setDeleteConfirmOpen(false)
     setFileForRematch(null)
     setFileForFixEps(null)
     setAssignImportEp(null)
@@ -391,7 +404,6 @@ export default function ShowDetail() {
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
 
   function handleDelete() {
-    if (!window.confirm(`Remove "${show!.title}" and all its episode data? This cannot be undone.`)) return
     setIsDeleting(true)
     deleteShow.mutate(showId, {
       onSuccess: () => navigate('/shows'),
@@ -483,7 +495,7 @@ export default function ShowDetail() {
             {/* Destructive action — upper right */}
             <div className="flex-shrink-0">
               <button
-                onClick={handleDelete}
+                onClick={() => setDeleteConfirmOpen(true)}
                 disabled={isDeleting}
                 className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
               >
@@ -621,6 +633,16 @@ export default function ShowDetail() {
       </section>
 
       {/* Modals */}
+      {deleteConfirmOpen && (
+        <ConfirmDialog
+          title="Remove show?"
+          description={`Remove "${show.title}" and all its episode data? This cannot be undone.`}
+          confirmLabel="Remove"
+          danger
+          onConfirm={() => { setDeleteConfirmOpen(false); handleDelete() }}
+          onCancel={() => setDeleteConfirmOpen(false)}
+        />
+      )}
       {pathModalOpen && (
         <EditPathModal
           current={show.local_path ?? null}
