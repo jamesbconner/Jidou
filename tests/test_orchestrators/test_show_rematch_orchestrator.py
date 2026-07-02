@@ -137,11 +137,11 @@ def _make_session(
 
     session.execute = AsyncMock(
         side_effect=[
-            tracked_result,   # snapshot query
-            delete_result,    # episode delete
-            delete_result,    # orphan record delete
-            new_eps_result,   # new episodes for restore
-            orphan_result,    # orphaned files for relink
+            tracked_result,  # snapshot query
+            delete_result,  # episode delete
+            delete_result,  # orphan record delete
+            new_eps_result,  # new episodes for restore
+            orphan_result,  # orphaned files for relink
             # Extras so the mock doesn't raise StopIteration on unexpected calls
             MagicMock(),
             MagicMock(),
@@ -494,9 +494,7 @@ async def test_sync_new_episodes_raises_502_on_failure() -> None:
 
     orch = ShowRematchOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=RuntimeError("TMDB down")
         )

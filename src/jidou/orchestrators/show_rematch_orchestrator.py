@@ -126,9 +126,7 @@ class ShowRematchOrchestrator:
         # TV uses origin_country (ISO list); movies use production_countries (objects).
         tv_countries: list[str] = data.get("origin_country") or []
         movie_countries: list[str] = [
-            c["iso_3166_1"]
-            for c in (data.get("production_countries") or [])
-            if "iso_3166_1" in c
+            c["iso_3166_1"] for c in (data.get("production_countries") or []) if "iso_3166_1" in c
         ]
         show.origin_country = tv_countries or movie_countries
         show.last_air_date = data.get("last_air_date")
