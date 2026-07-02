@@ -17,17 +17,44 @@ if TYPE_CHECKING:
 
 
 class FileStatus(StrEnum):
-    """Lifecycle status of a downloaded file."""
+    """Lifecycle states for a downloaded media file.
 
-    DISCOVERED = "discovered"  # Found on SFTP, not yet downloaded
-    DOWNLOADING = "downloading"  # Transfer in progress
-    DOWNLOADED = "downloaded"  # In staging area, awaiting parse/match
-    UNMATCHED = "unmatched"  # Parse/match failed; needs manual review
-    MATCHED = "matched"  # Matched to a show; ready to route
-    ROUTING = "routing"  # Being moved to final local path
-    ROUTED = "routed"  # In final location
-    ERROR = "error"  # Failed at any stage
-    PENDING = "pending"  # Legacy; replaced by DISCOVERED
+    State machine::
+
+        discovered ──► downloading ──► downloaded ──► matched ──► routing ──► routed
+                                            │                         │
+                                            └──► unmatched            └──► error
+                                                     │
+                                                     └──► matched  (manual/re-match)
+
+        routed ──► matched  (Fix Eps reassignment; triggers re-routing)
+        * ──► error         (any unexpected failure at any stage)
+
+    Transitions:
+        discovered  → downloading   Download task picks up the file.
+        downloading → downloaded    Transfer complete; file is in staging.
+        downloaded  → matched       Parse/match phase succeeds.
+        downloaded  → unmatched     Parse/match phase finds no episode; needs manual review.
+        unmatched   → matched       User resolves via UI, or match task re-runs successfully.
+        matched     → routing       Route task starts moving the file.
+        routing     → routed        File moved to its final library path.
+        routing     → error         File move fails (permissions, path missing, etc.).
+        routed      → matched       Fix Eps reassignment clears routing and re-queues.
+        *           → error         Unexpected exception at any stage.
+
+    Note:
+        ``pending`` is a legacy value; new records use ``discovered`` instead.
+    """
+
+    DISCOVERED = "discovered"
+    DOWNLOADING = "downloading"
+    DOWNLOADED = "downloaded"
+    UNMATCHED = "unmatched"
+    MATCHED = "matched"
+    ROUTING = "routing"
+    ROUTED = "routed"
+    ERROR = "error"
+    PENDING = "pending"  # legacy — replaced by DISCOVERED
 
 
 class MatchedBy(StrEnum):
