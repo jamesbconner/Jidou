@@ -20,11 +20,17 @@ export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
-  // Restore focus to the element that was active before the dialog opened.
+  // Capture the trigger during render — before autoFocus or any useEffect
+  // fires — so we always restore to the element that opened the dialog.
+  const triggerRef = useRef<Element | null>(
+    typeof document !== 'undefined' ? document.activeElement : null,
+  )
+
+  // Restore focus to the trigger on unmount.
   useEffect(() => {
-    const trigger = document.activeElement as HTMLElement | null
     return () => {
-      trigger?.focus()
+      const trigger = triggerRef.current
+      if (trigger instanceof HTMLElement) trigger.focus()
     }
   }, [])
 
@@ -45,6 +51,13 @@ export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
 
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
+
+      // If focus is outside the dialog entirely, pull it to the first element.
+      if (!ref.current.contains(document.activeElement)) {
+        e.preventDefault()
+        first.focus()
+        return
+      }
 
       if (e.shiftKey) {
         if (document.activeElement === first) {
