@@ -123,7 +123,7 @@ async def test_llm(
         return {
             "ok": False,
             "error": "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)",
-        }  # noqa: E501
+        }
 
     try:
         latency_s, model = await llm.test_connection()
