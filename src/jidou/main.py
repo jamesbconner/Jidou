@@ -4,11 +4,12 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from jidou.api import health
+from jidou.api.dependencies import verify_api_key
 from jidou.api.routes import (
     admin,
     config,
@@ -84,18 +85,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register routers
+    _auth = [Depends(verify_api_key)]
+
+    # Register routers — health and WebSocket are intentionally unauthenticated.
     app.include_router(health.router, prefix="/api")
-    app.include_router(shows.router, prefix="/api")
-    app.include_router(files.router, prefix="/api")
-    app.include_router(orphans.router, prefix="/api")
-    app.include_router(tasks.router, prefix="/api")
-    app.include_router(config.router, prefix="/api")
-    app.include_router(admin.router, prefix="/api")
-    app.include_router(watchlist.router, prefix="/api")
-    app.include_router(rss.router, prefix="/api")
-    app.include_router(import_routes.router, prefix="/api")
-    app.include_router(export_routes.router, prefix="/api")
+    app.include_router(shows.router, prefix="/api", dependencies=_auth)
+    app.include_router(files.router, prefix="/api", dependencies=_auth)
+    app.include_router(orphans.router, prefix="/api", dependencies=_auth)
+    app.include_router(tasks.router, prefix="/api", dependencies=_auth)
+    app.include_router(config.router, prefix="/api", dependencies=_auth)
+    app.include_router(admin.router, prefix="/api", dependencies=_auth)
+    app.include_router(watchlist.router, prefix="/api", dependencies=_auth)
+    app.include_router(rss.router, prefix="/api", dependencies=_auth)
+    app.include_router(import_routes.router, prefix="/api", dependencies=_auth)
+    app.include_router(export_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(ws_router)
 
     # Exception handlers for client errors
