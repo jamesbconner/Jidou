@@ -13,13 +13,26 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8192', changeOrigin: true },
-      '/docs': { target: 'http://localhost:8192', changeOrigin: true },
-      '/openapi.json': { target: 'http://localhost:8192', changeOrigin: true },
+      '/api': {
+        target: 'http://localhost:8192',
+        changeOrigin: true,
+        headers: { 'X-API-Key': process.env.JIDOU_API_KEY ?? '' },
+      },
+      '/docs': {
+        target: 'http://localhost:8192',
+        changeOrigin: true,
+        headers: { 'X-API-Key': process.env.JIDOU_API_KEY ?? '' },
+      },
+      '/openapi.json': {
+        target: 'http://localhost:8192',
+        changeOrigin: true,
+        headers: { 'X-API-Key': process.env.JIDOU_API_KEY ?? '' },
+      },
       '/ws': {
         target: 'ws://localhost:8192',
         ws: true,
         changeOrigin: true,
+        headers: { 'X-API-Key': process.env.JIDOU_API_KEY ?? '' },
       },
     },
   },
