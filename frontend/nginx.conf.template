@@ -24,14 +24,14 @@ server {
         proxy_pass http://jidou-api:8192/docs;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-API-Key "${JIDOU_API_KEY}";
+        proxy_set_header X-API-Key ${JIDOU_API_KEY};
     }
 
     location /openapi.json {
         proxy_pass http://jidou-api:8192/openapi.json;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-API-Key "${JIDOU_API_KEY}";
+        proxy_set_header X-API-Key ${JIDOU_API_KEY};
     }
 
     # API proxy - forward /api requests to FastAPI backend
@@ -41,7 +41,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-API-Key "${JIDOU_API_KEY}";
+        proxy_set_header X-API-Key ${JIDOU_API_KEY};
 
         # Timeout settings
         proxy_connect_timeout 60s;
@@ -59,7 +59,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-API-Key "${JIDOU_API_KEY}";
+        proxy_set_header X-API-Key ${JIDOU_API_KEY};
 
         # WebSocket timeout
         proxy_read_timeout 86400;
