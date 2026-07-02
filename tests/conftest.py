@@ -4,6 +4,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from jidou.api.dependencies import verify_api_key
+from jidou.main import app
+
+
+@pytest.fixture(autouse=True)
+def _disable_api_key_auth():
+    """Disable API key authentication for all tests.
+
+    When JIDOU_API_KEY is set in the local environment the verify_api_key
+    dependency rejects every unauthenticated TestClient request with 401.
+    Override it to a no-op so route tests remain independent of local env.
+    """
+    app.dependency_overrides[verify_api_key] = lambda: None
+    yield
+    app.dependency_overrides.pop(verify_api_key, None)
+
 
 @pytest.fixture(autouse=True)
 def _mock_external_services():
