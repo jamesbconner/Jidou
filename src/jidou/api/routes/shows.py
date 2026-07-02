@@ -2,7 +2,6 @@
 
 import logging
 import re
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,6 +26,7 @@ from jidou.schemas.show_schema import (
     ShowPaths,
     ShowRead,
 )
+from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -771,10 +771,6 @@ async def assign_import_episode(
             ),
         )
 
-    from datetime import UTC
-
-    now = datetime.now(UTC)
-
     if source_ep.id != target_ep.id:
         # Capture the filename target currently holds before overwriting it.
         # If target held a different import filename, swap it back to source so it
@@ -782,21 +778,12 @@ async def assign_import_episode(
         displaced = target_ep.tracked_filename
 
         if displaced and displaced != payload.filename:
-            source_ep.file_tracked = True
-            source_ep.file_tracked_at = now
-            source_ep.tracked_filename = displaced
-            source_ep.tracked_source = "import"
+            mark_episode_tracked(source_ep, displaced, "import")
         else:
-            source_ep.file_tracked = False
-            source_ep.file_tracked_at = None
-            source_ep.tracked_filename = None
-            source_ep.tracked_source = None
+            clear_episode_tracking(source_ep)
 
     # Assign the filename to the target episode.
-    target_ep.file_tracked = True
-    target_ep.file_tracked_at = now
-    target_ep.tracked_filename = payload.filename
-    target_ep.tracked_source = "import"
+    mark_episode_tracked(target_ep, payload.filename, "import")
 
     await db_session.flush()
     await db_session.commit()

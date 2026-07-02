@@ -1,7 +1,6 @@
 """API routes for orphaned tracking record management."""
 
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -13,6 +12,7 @@ from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.orphan_schema import OrphanRead, OrphanResolveRequest
+from jidou.services.episode_tracking import mark_episode_tracked
 
 logger = logging.getLogger(__name__)
 
@@ -170,10 +170,7 @@ async def resolve_orphan(
         # No linked file: write tracking directly onto the Episode row using the
         # source from the orphan record (may be "import" or "match" when the file
         # was deleted or lacked parsed S/E numbers).
-        ep.file_tracked = True
-        ep.file_tracked_at = datetime.now(UTC)
-        ep.tracked_filename = record.tracked_filename
-        ep.tracked_source = record.tracked_source
+        mark_episode_tracked(ep, record.tracked_filename, record.tracked_source)
         logger.info(
             "Resolved %s orphan id=%d → episode id=%d",
             record.tracked_source,
@@ -199,10 +196,7 @@ async def resolve_orphan(
             )
         file.show_id = record.show_id
         file.episode_id = payload.episode_id
-        ep.file_tracked = True
-        ep.file_tracked_at = datetime.now(UTC)
-        ep.tracked_filename = file.local_path or file.original_filename
-        ep.tracked_source = "match"
+        mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
         logger.info(
             "Resolved download orphan id=%d → file id=%d episode id=%d",
             orphan_id,

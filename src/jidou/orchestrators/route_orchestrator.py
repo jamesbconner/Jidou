@@ -4,7 +4,6 @@ import logging
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -14,6 +13,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.services.episode_tracking import mark_episode_tracked
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +105,7 @@ class RouteOrchestrator:
         if ep is None:
             return
 
-        ep.file_tracked = True
-        ep.file_tracked_at = datetime.now(UTC)
-        ep.tracked_filename = file.original_filename
-        ep.tracked_source = "match"
+        mark_episode_tracked(ep, file.original_filename, "match")
 
     async def run(
         self,
