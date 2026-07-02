@@ -9,7 +9,7 @@ Commands:
     format      Run ruff formatter
     types       Run mypy type checker
     security    Run bandit security linter
-    test        Run pytest
+    test        Run pytest (supports -k, -m, -x, --lf, --cov, -q)
     docker-up   Start Docker Compose services
     docker-down Stop Docker Compose services
     docker-build Rebuild Docker images
@@ -80,26 +80,59 @@ def types() -> None:
 @cli.command()
 def security() -> None:
     """Run bandit security linter."""
-    run("uv run bandit -r src/ -ll", check=True)
+    run("uv run bandit -r src/ -l", check=True)
 
 
 @cli.command()
-def test() -> None:
-    """Run pytest."""
-    run("uv run pytest -v", check=True)
+@click.option("-k", "--keyword", default=None, metavar="EXPR", help="Only run tests matching the expression.")
+@click.option("-m", "--marker", default=None, metavar="EXPR", help="Only run tests matching the marker expression.")
+@click.option("-x", "--exitfirst", is_flag=True, help="Stop after the first failure.")
+@click.option("--lf", "--last-failed", "last_failed", is_flag=True, help="Only re-run tests that failed last time.")
+@click.option("--cov", is_flag=True, help="Enable coverage reporting (outputs to terminal and XML).")
+@click.option("-q", "--quiet", is_flag=True, help="Less verbose output.")
+def test(
+    keyword: str | None,
+    marker: str | None,
+    exitfirst: bool,
+    last_failed: bool,
+    cov: bool,
+    quiet: bool,
+) -> None:
+    """Run pytest with optional filters and coverage."""
+    args = ["uv run pytest"]
+    if quiet:
+        args.append("-q")
+    else:
+        args.append("-v")
+    if keyword:
+        args.extend(["-k", f'"{keyword}"'])
+    if marker:
+        args.extend(["-m", f'"{marker}"'])
+    if exitfirst:
+        args.append("-x")
+    if last_failed:
+        args.append("--lf")
+    if cov:
+        args.extend(["--cov=src", "--cov-report=term-missing", "--cov-report=xml"])
+    run(" ".join(args), check=True)
 
 
 @cli.command()
 def check() -> None:
     """Run all checks (lint, format, types, security, test)."""
+    steps: list[tuple[str, str]] = [
+        ("lint", "uv run ruff check src/ tests/"),
+        ("format_check", "uv run ruff format --check src/ tests/"),
+        ("types", "uv run mypy src/"),
+        ("security", "uv run bandit -r src/ -l"),
+        ("test", "uv run pytest -v"),
+    ]
     failures = 0
-    steps = [lint, format_check, types, security, test]
-    for step in steps:
-        try:
-            step()
-        except SystemExit as exc:
+    for name, cmd in steps:
+        result = run(cmd)
+        if result.returncode != 0:
             failures += 1
-            click.echo(f"\n{step.__name__}() failed (exit code {exc.code})")
+            click.echo(f"\n{name} failed (exit code {result.returncode})")
     if failures:
         click.echo(f"\n{failures}/{len(steps)} step(s) failed")
         sys.exit(failures)
