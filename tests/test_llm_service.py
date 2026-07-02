@@ -120,7 +120,7 @@ class TestGracefulDegradation:
         client = _mock_http_client(MagicMock())
         client.post.side_effect = Exception("connection refused")
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             result = await openai_service.complete("test")
 
         assert result is None
@@ -136,7 +136,7 @@ class TestGracefulDegradation:
         client.post.side_effect = ConnectionError("broker down")
 
         with (
-            patch("httpx.AsyncClient", return_value=client),
+            patch("httpx2.AsyncClient", return_value=client),
             caplog.at_level(logging.WARNING, logger="jidou.services.llm_service"),
         ):
             await openai_service.complete("test")
@@ -155,7 +155,7 @@ class TestOpenAICompatible:
         """complete() returns a populated LLMResponse on success."""
         client = _mock_http_client(_openai_response("The answer is 42"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             result = await openai_service.complete("What is 6x7?")
 
         assert result is not None
@@ -170,7 +170,7 @@ class TestOpenAICompatible:
         """System message is sent as the first message with role='system'."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("hello", system="Be concise.")
 
         payload = client.post.call_args.kwargs["json"]
@@ -182,7 +182,7 @@ class TestOpenAICompatible:
         """Request is sent to /v1/chat/completions."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("test")
 
         url = client.post.call_args.args[0]
@@ -195,7 +195,7 @@ class TestOpenAICompatible:
         """LM Studio (OpenAI-compatible) also uses /v1/chat/completions."""
         client = _mock_http_client(_openai_response("response"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await lmstudio_service.complete("test")
 
         url = client.post.call_args.args[0]
@@ -209,7 +209,7 @@ class TestOpenAICompatible:
         """Bearer token is included in Authorization header."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("test")
 
         headers = client.post.call_args.kwargs["headers"]
@@ -220,7 +220,7 @@ class TestOpenAICompatible:
         """No Authorization header when api_key is empty (local models)."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await lmstudio_service.complete("test")
 
         headers = client.post.call_args.kwargs["headers"]
@@ -231,7 +231,7 @@ class TestOpenAICompatible:
         """model kwarg overrides the service-level model for a single call."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             result = await openai_service.complete("test", model="gpt-3.5-turbo")
 
         assert result is not None
@@ -251,7 +251,7 @@ class TestAnthropicProvider:
         """Anthropic complete() returns a populated LLMResponse."""
         client = _mock_http_client(_anthropic_response("42"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             result = await anthropic_service.complete("What is 6x7?")
 
         assert result is not None
@@ -263,7 +263,7 @@ class TestAnthropicProvider:
         """Anthropic uses /v1/messages, not /v1/chat/completions."""
         client = _mock_http_client(_anthropic_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await anthropic_service.complete("test")
 
         url = client.post.call_args.args[0]
@@ -274,7 +274,7 @@ class TestAnthropicProvider:
         """Anthropic system message is a top-level 'system' field, not in messages."""
         client = _mock_http_client(_anthropic_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await anthropic_service.complete("hello", system="Be concise.")
 
         payload = client.post.call_args.kwargs["json"]
@@ -286,7 +286,7 @@ class TestAnthropicProvider:
         """anthropic-version header is included in every request."""
         client = _mock_http_client(_anthropic_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await anthropic_service.complete("test")
 
         headers = client.post.call_args.kwargs["headers"]
@@ -304,7 +304,7 @@ class TestResponseCaching:
         """Identical calls must only issue one HTTP request; second is cached."""
         client = _mock_http_client(_openai_response("42"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             first = await openai_service.complete("What is 6x7?")
             second = await openai_service.complete("What is 6x7?")
 
@@ -318,7 +318,7 @@ class TestResponseCaching:
         """Different prompts must result in separate HTTP calls."""
         client = _mock_http_client(_openai_response("result"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("prompt A")
             await openai_service.complete("prompt B")
 
@@ -329,7 +329,7 @@ class TestResponseCaching:
         """bypass_cache=True always calls the provider even if cache is warm."""
         client = _mock_http_client(_openai_response("42"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("What is 6x7?")
             result = await openai_service.complete("What is 6x7?", bypass_cache=True)
 
@@ -344,7 +344,7 @@ class TestResponseCaching:
         """System message is part of the cache key."""
         client = _mock_http_client(_openai_response("42"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             await openai_service.complete("hello", system="Be concise.")
             await openai_service.complete("hello", system="Be verbose.")
 
@@ -355,7 +355,7 @@ class TestResponseCaching:
         """latency_seconds is populated on a fresh (non-cached) call."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             result = await openai_service.complete("test")
 
         assert result is not None
@@ -380,7 +380,7 @@ class TestTestConnection:
         """test_connection() returns (latency, model) tuple for OpenAI provider."""
         client = _mock_http_client(_openai_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             latency, model = await openai_service.test_connection()
 
         assert latency >= 0.0
@@ -391,7 +391,7 @@ class TestTestConnection:
         """test_connection() returns (latency, model) tuple for Anthropic provider."""
         client = _mock_http_client(_anthropic_response("ok"))
 
-        with patch("httpx.AsyncClient", return_value=client):
+        with patch("httpx2.AsyncClient", return_value=client):
             latency, model = await anthropic_service.test_connection()
 
         assert latency >= 0.0
