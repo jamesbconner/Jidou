@@ -174,7 +174,7 @@ async def create_watchlist_entry(
         if "status" in payload.model_fields_set and existing.status != payload.status:
             existing.status = WatchlistStatus(payload.status)
             await db_session.flush()
-            await db_session.refresh(existing, ["show"])
+            await db_session.refresh(existing)
             logger.debug(
                 "Show id=%d already on watchlist (entry id=%d); updated status to %s",
                 payload.show_id,
@@ -220,7 +220,7 @@ async def create_watchlist_entry(
         entry.id,
         entry.status,
     )
-    await db_session.refresh(entry, ["show"])
+    await db_session.refresh(entry)
     await _ensure_rss_stub(db_session, entry.show_id, entry.show.title)
     return entry
 
@@ -330,7 +330,7 @@ async def update_watchlist_entry(
         entry.position = payload.position
 
     await db_session.flush()
-    await db_session.refresh(entry, ["show"])
+    await db_session.refresh(entry)
     logger.info("Updated watchlist entry id=%d: %s", entry_id, payload.model_fields_set)
     return entry
 
