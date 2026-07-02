@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 
 interface Props {
@@ -19,16 +19,31 @@ export function ConfirmDialog({
   danger = false,
 }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const onCancelRef = useRef(onCancel)
+  const [fired, setFired] = useState(false)
 
+  // Keep the ref current without re-running either effect.
+  onCancelRef.current = onCancel
+
+  // Focus Cancel once on mount only.
   useEffect(() => {
     cancelRef.current?.focus()
+  }, [])
 
+  // Escape key — reads from ref so the listener is registered once.
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Escape') onCancelRef.current()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [])
+
+  function handleConfirm() {
+    if (fired) return
+    setFired(true)
+    onConfirm()
+  }
 
   return (
     <div
@@ -51,14 +66,16 @@ export function ConfirmDialog({
           <button
             ref={cancelRef}
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
+            disabled={fired}
+            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={handleConfirm}
+            disabled={fired}
             className={clsx(
-              'px-3 py-1.5 text-xs rounded text-white transition-colors',
+              'px-3 py-1.5 text-xs rounded text-white transition-colors disabled:opacity-50',
               danger
                 ? 'bg-red-600 hover:bg-red-500'
                 : 'bg-indigo-600 hover:bg-indigo-500',
