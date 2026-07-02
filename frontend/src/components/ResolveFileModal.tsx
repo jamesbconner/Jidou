@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
+import { useDebounce } from '@/hooks/useDebounce'
 import type { FileRead, TmdbSuggestion, TmdbSearchResponse, ContentType, AppConfig } from '@/types/api'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
@@ -16,10 +17,9 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [localPath, setLocalPath] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
-  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery)
+  const debouncedQuery = useDebounce(searchQuery, 300)
   const [customSearch, setCustomSearch] = useState(false)
   const [pathEdited, setPathEdited] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -41,7 +41,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
         `/shows/search?query=${encodeURIComponent(debouncedQuery)}&media_type=multi`,
       )
     },
-    enabled: customSearch && debouncedQuery.length >= 2,
+    enabled: customSearch && searchQuery.length >= 2 && debouncedQuery.length >= 2,
     staleTime: 60_000,
   })
 
@@ -78,16 +78,6 @@ export function ResolveFileModal({ file, onClose }: Props) {
           : config.local_tv_path
     setLocalPath(`${base}/${safeTitle}`)
   }, [selected, contentType, config, pathEdited])
-
-  // Debounce manual search input
-  useEffect(() => {
-    if (!customSearch) return
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => setDebouncedQuery(searchQuery), 300)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [searchQuery, customSearch])
 
   // Snap content type to match the TMDB media type on every selection change.
   // Anime requires manual override after selection.
@@ -154,7 +144,6 @@ export function ResolveFileModal({ file, onClose }: Props) {
                   onClick={() => {
                     setCustomSearch(true)
                     setSearchQuery(file.parsed_show_name ?? '')
-                    setDebouncedQuery(file.parsed_show_name ?? '')
                   }}
                   className="text-xs text-indigo-400 hover:text-indigo-300"
                 >
