@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from jidou.models.show import ContentType
+
 
 class ShowCreate(BaseModel):
     """Payload for adding a show to the database.
@@ -58,9 +60,7 @@ class ShowCreate(BaseModel):
     )
     runtime: int | None = Field(default=None, description="Episode or movie runtime in minutes")
     tagline: str | None = None
-    content_type: str | None = Field(
-        default=None, pattern="^(anime|tv|movie)$", description="Routing category"
-    )
+    content_type: ContentType | None = Field(default=None, description="Routing category")
     sys_name: str | None = Field(
         default=None,
         max_length=500,
@@ -79,9 +79,7 @@ class ShowPatch(BaseModel):
     left unchanged.  Use ``null`` to clear a field.
     """
 
-    content_type: str | None = Field(
-        default=None, pattern="^(anime|tv|movie)$", description="Routing category"
-    )
+    content_type: ContentType | None = Field(default=None, description="Routing category")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -115,7 +113,7 @@ class ShowRead(BaseModel):
     release_date: str | None = None
     original_language: str | None = None
     cached: bool
-    content_type: str | None = None
+    content_type: ContentType | None = None
     sys_name: str | None = None
     aliases: list[str] | None = None
     genres: list[dict[str, object]] | None = None
@@ -173,7 +171,7 @@ class ShowList(BaseModel):
     vote_average: float | None = None
     release_date: str | None = None
     original_language: str | None = None
-    content_type: str | None = None
+    content_type: ContentType | None = None
     sys_name: str | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
