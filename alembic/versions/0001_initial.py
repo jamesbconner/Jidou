@@ -204,6 +204,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_episodes_show_id", "episodes", ["show_id"])
     op.create_index("ix_episodes_tmdb_id", "episodes", ["tmdb_id"], unique=True)
+    # Composite index for queries that filter by both show_id and file_tracked
+    # (rematch, stats, tracking-state checks).  The leading show_id column also
+    # covers plain show_id-only lookups, making ix_episodes_show_id redundant for
+    # those queries — but we keep it for ORDER BY / range scans on show_id alone.
+    op.create_index("ix_episodes_show_id_file_tracked", "episodes", ["show_id", "file_tracked"])
 
     # -------------------------------------------------------------------------
     # downloaded_files
@@ -450,6 +455,7 @@ def downgrade() -> None:
     op.execute(sa.text("DROP TYPE IF EXISTS filestatus"))
     op.execute(sa.text("DROP TYPE IF EXISTS matchedby"))
 
+    op.drop_index("ix_episodes_show_id_file_tracked", table_name="episodes")
     op.drop_index("ix_episodes_tmdb_id", table_name="episodes")
     op.drop_index("ix_episodes_show_id", table_name="episodes")
     op.drop_table("episodes")
