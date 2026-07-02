@@ -217,7 +217,8 @@ def test_create_watchlist_entry() -> None:
             obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add_with_defaults)
         session.flush = AsyncMock()
@@ -312,7 +313,8 @@ def test_create_watchlist_entry_creates_rss_stub() -> None:
             added_objects.append(obj)
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
@@ -364,7 +366,8 @@ def test_create_watchlist_entry_skips_stub_if_sub_exists() -> None:
             added_objects.append(obj)
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
@@ -460,7 +463,8 @@ def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
             obj.updated_at = datetime.now(UTC)  # type: ignore[attr-defined]
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.expunge = MagicMock(side_effect=expunged_objects.append)
@@ -521,7 +525,8 @@ def test_create_watchlist_entry_links_exact_name_unlinked_sub() -> None:
             added_objects.append(obj)
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
@@ -579,7 +584,8 @@ def test_create_watchlist_entry_links_fuzzy_name_unlinked_sub() -> None:
             added_objects.append(obj)
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
@@ -643,7 +649,8 @@ def test_create_watchlist_entry_skips_link_when_fuzzy_ambiguous() -> None:
             added_objects.append(obj)
 
         def _refresh_with_show(obj: object, attrs: list[str] | None = None) -> None:
-            obj.show = show  # type: ignore[attr-defined]
+            if attrs is not None and "show" in attrs:
+                obj.show = show  # type: ignore[attr-defined]
 
         session.add = MagicMock(side_effect=_add)
         session.flush = AsyncMock()
