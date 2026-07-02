@@ -84,11 +84,11 @@ def security() -> None:
 
 
 @cli.command()
-@click.option("-k", "--keyword", default=None, metavar="EXPR", help="Only run tests matching the expression.")
-@click.option("-m", "--marker", default=None, metavar="EXPR", help="Only run tests matching the marker expression.")
+@click.option("-k", "--keyword", metavar="EXPR", help="Filter tests by name expression.")
+@click.option("-m", "--marker", metavar="EXPR", help="Filter tests by marker expression.")
 @click.option("-x", "--exitfirst", is_flag=True, help="Stop after the first failure.")
-@click.option("--lf", "--last-failed", "last_failed", is_flag=True, help="Only re-run tests that failed last time.")
-@click.option("--cov", is_flag=True, help="Enable coverage reporting (outputs to terminal and XML).")
+@click.option("--lf", "--last-failed", "last_failed", is_flag=True, help="Re-run last-failed only.")
+@click.option("--cov", is_flag=True, help="Enable coverage (term-missing + XML).")
 @click.option("-q", "--quiet", is_flag=True, help="Less verbose output.")
 def test(
     keyword: str | None,
