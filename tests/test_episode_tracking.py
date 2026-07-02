@@ -38,6 +38,14 @@ class TestMarkEpisodeTracked:
 
         assert ep.file_tracked_at == fixed
 
+    def test_preserves_none_tracked_at_from_snapshot(self) -> None:
+        """Explicitly passing tracked_at=None must store NULL, not datetime.now()."""
+        ep = _make_episode()
+        mark_episode_tracked(ep, "file.mkv", "match", tracked_at=None)
+
+        assert ep.file_tracked is True
+        assert ep.file_tracked_at is None
+
     def test_accepts_none_filename(self) -> None:
         ep = _make_episode()
         mark_episode_tracked(ep, None, "match")
