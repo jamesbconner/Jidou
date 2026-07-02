@@ -45,6 +45,7 @@ async def get_config() -> dict[str, Any]:
         "local_anime_path": settings.local_anime_path,
         "local_movie_path": settings.local_movie_path,
         "rss_config_path_set": bool(settings.rss_config_remote_path),
+        "api_key_enabled": bool(settings.jidou_api_key),
     }
 
 

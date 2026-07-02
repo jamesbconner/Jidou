@@ -292,6 +292,7 @@ export interface AppConfig {
   local_anime_path: string
   local_movie_path: string
   rss_config_path_set: boolean
+  api_key_enabled: boolean
 }
 
 // ─── RSS ──────────────────────────────────────────────────────────────────────

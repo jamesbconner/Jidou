@@ -18,6 +18,42 @@ def test_get_config_returns_200() -> None:
     # Basic fields should always be present
     assert "app_name" in body
     assert "debug" in body
+    assert "api_key_enabled" in body
+
+
+def test_get_config_api_key_enabled_reflects_setting() -> None:
+    """GET /api/config api_key_enabled is True when JIDOU_API_KEY is set."""
+    with patch("jidou.api.routes.config.settings") as mock_settings:
+        mock_settings.app_name = "jidou"
+        mock_settings.debug = False
+        mock_settings.database_url = "postgresql://user:pass@localhost/db"
+        mock_settings.redis_url = None
+        mock_settings.tmdb_api_key = "key"
+        mock_settings.tmdb_base_url = "https://api.themoviedb.org/3"
+        mock_settings.tmdb_rate_limit_per_second = 4.0
+        mock_settings.tmdb_cache_ttl = 86400
+        mock_settings.cors_origins = []
+        mock_settings.sftp_host = None
+        mock_settings.sftp_port = 22
+        mock_settings.sftp_username = None
+        mock_settings.sftp_remote_paths = None
+        mock_settings.llm_provider = "none"
+        mock_settings.llm_model = None
+        mock_settings.llm_base_url = None
+        mock_settings.llm_cache_ttl = 3600
+        mock_settings.local_tv_path = "/tv"
+        mock_settings.local_anime_path = "/anime"
+        mock_settings.local_movie_path = "/movies"
+        mock_settings.rss_config_remote_path = None
+        mock_settings.jidou_api_key = "secret"
+
+        response = TestClient(app).get("/api/config")
+        assert response.status_code == 200
+        assert response.json()["api_key_enabled"] is True
+
+        mock_settings.jidou_api_key = None
+        response = TestClient(app).get("/api/config")
+        assert response.json()["api_key_enabled"] is False
 
 
 def test_get_config_redacts_db_password() -> None:
