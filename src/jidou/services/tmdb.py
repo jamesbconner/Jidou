@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 
 from jidou.config import settings
 from jidou.services.cache import cache

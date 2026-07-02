@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 import jidou.services.tmdb as tmdb_module
@@ -51,7 +51,7 @@ async def _patched_http(
         patch.object(tmdb_module.cache, "get", AsyncMock(return_value=None)),
         patch.object(tmdb_module.cache, "set", mock_cache_set),
         patch.object(tmdb_module.rate_limiter, "acquire", _noop_acquire),
-        patch("httpx.AsyncClient", return_value=mock_client),
+        patch("httpx2.AsyncClient", return_value=mock_client),
     ):
         yield mock_client, mock_cache_set
 
@@ -261,7 +261,7 @@ class TestTMDBService:
             yield
 
         with (
-            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("httpx2.AsyncClient", return_value=mock_client),
             patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
         ):
             results = await asyncio.gather(
@@ -315,7 +315,7 @@ class TestTMDBService:
             yield
 
         with (
-            patch("httpx.AsyncClient", return_value=mock_client),
+            patch("httpx2.AsyncClient", return_value=mock_client),
             patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
         ):
             # Use media_type="movie" to get a distinct cache key from the
@@ -418,7 +418,7 @@ class TestTMDBRequestHTTPLayer:
         cached = {"results": [{"id": 1}], "cached": True}
         with (
             patch.object(tmdb_module.cache, "get", AsyncMock(return_value=cached)),
-            patch("httpx.AsyncClient") as mock_cls,
+            patch("httpx2.AsyncClient") as mock_cls,
         ):
             result = await tmdb_service.get_trending()
 

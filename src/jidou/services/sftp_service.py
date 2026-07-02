@@ -207,7 +207,9 @@ class SFTPService:
                 )
                 await asyncio.sleep(delay)
                 delay *= 2
-        assert last_exc is not None  # nosec B101 — type-narrowing only; loop always sets last_exc before this line
+        if last_exc is None:
+            raise RuntimeError("retry loop exhausted without capturing an exception")
+
         logger.error(
             "%s: all %d attempts failed; last error: %s",
             label,
