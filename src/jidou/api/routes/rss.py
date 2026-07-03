@@ -22,8 +22,10 @@ from jidou.schemas.rss_schema import (
     RssFeedRead,
     RssFeedUpdate,
     RssRegexSuggestion,
+    RssSubscriptionBulkPatchItem,
     RssSubscriptionCreate,
     RssSubscriptionRead,
+    RssSubscriptionRecommendation,
     RssSubscriptionUpdate,
 )
 from jidou.schemas.task_schema import TaskRead
@@ -236,6 +238,110 @@ async def create_subscription(
     created = (await db_session.execute(fetch_stmt)).scalar_one()
     logger.info("Created RSS subscription id=%d name=%r", created.id, created.name)
     return created
+
+
+_DEACTIVATE_STATUSES = frozenset({"Ended", "Cancelled"})
+_ACTIVATE_STATUSES = frozenset({"Returning Series", "In Production"})
+
+
+@router.get("/subscriptions/recommendations", response_model=list[RssSubscriptionRecommendation])
+async def get_subscription_recommendations(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[RssSubscriptionRecommendation]:
+    """Return subscriptions with health-check recommendations.
+
+    **Deactivate**: linked show's TMDB status is ``Ended`` or ``Cancelled``
+    and the subscription is currently active.
+
+    **Activate**: linked show's TMDB status is ``Returning Series`` or
+    ``In Production`` and the subscription is currently inactive.
+
+    Only subscriptions linked to a show are included; unlinked subscriptions
+    have no TMDB signal and are excluded.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        List of subscriptions with a ``recommendation`` field.
+    """
+    deactivate_stmt = (
+        _sub_stmt()
+        .join(Show, RssSubscription.show_id == Show.id)
+        .where(RssSubscription.active.is_(True))
+        .where(Show.status.in_(_DEACTIVATE_STATUSES))
+    )
+    activate_stmt = (
+        _sub_stmt()
+        .join(Show, RssSubscription.show_id == Show.id)
+        .where(RssSubscription.active.is_(False))
+        .where(Show.status.in_(_ACTIVATE_STATUSES))
+    )
+
+    deactivate_subs = list((await db_session.execute(deactivate_stmt)).scalars().all())
+    activate_subs = list((await db_session.execute(activate_stmt)).scalars().all())
+
+    results: list[RssSubscriptionRecommendation] = []
+    for sub in deactivate_subs:
+        base = RssSubscriptionRead.model_validate(sub)
+        results.append(
+            RssSubscriptionRecommendation.model_validate(
+                {**base.model_dump(), "recommendation": "deactivate"}
+            )
+        )
+    for sub in activate_subs:
+        base = RssSubscriptionRead.model_validate(sub)
+        results.append(
+            RssSubscriptionRecommendation.model_validate(
+                {**base.model_dump(), "recommendation": "activate"}
+            )
+        )
+
+    results.sort(key=lambda r: r.name.lower())
+    logger.debug(
+        "Subscription recommendations: %d deactivate, %d activate",
+        len(deactivate_subs),
+        len(activate_subs),
+    )
+    return results
+
+
+@router.patch("/subscriptions/bulk", response_model=list[RssSubscriptionRead])
+async def bulk_patch_subscriptions(
+    payload: list[RssSubscriptionBulkPatchItem],
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[RssSubscription]:
+    """Apply active-flag changes to multiple subscriptions in one transaction.
+
+    Used by the Recommendations tab to accept all suggested changes at once.
+    Unknown IDs are silently skipped — the caller should treat the returned
+    list as the source of truth for what was actually updated.
+
+    Args:
+        payload: List of ``{id, active}`` pairs.
+        db_session: DB session (injected).
+
+    Returns:
+        List of updated RssSubscription records.
+    """
+    if not payload:
+        return []
+
+    ids = [item.id for item in payload]
+    active_by_id = {item.id: item.active for item in payload}
+
+    stmt = _sub_stmt().where(RssSubscription.id.in_(ids))
+    subs = list((await db_session.execute(stmt)).scalars().all())
+
+    for sub in subs:
+        sub.active = active_by_id[sub.id]
+
+    await db_session.flush()
+
+    fetch_stmt = _sub_stmt().where(RssSubscription.id.in_([s.id for s in subs]))
+    updated = list((await db_session.execute(fetch_stmt)).scalars().all())
+    logger.info("Bulk-patched %d/%d subscriptions (active flags)", len(updated), len(ids))
+    return updated
 
 
 @router.get("/subscriptions/{sub_id}", response_model=RssSubscriptionRead)

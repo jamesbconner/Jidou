@@ -7,6 +7,8 @@ import type {
   RssSubscriptionRead,
   RssSubscriptionCreate,
   RssSubscriptionUpdate,
+  RssSubscriptionRecommendation,
+  RssSubscriptionBulkPatchItem,
   RssRegexSuggestion,
   TaskRead,
 } from '@/types/api'
@@ -16,6 +18,7 @@ export const rssKeys = {
   feeds: () => [...rssKeys.all, 'feeds'] as const,
   subscriptions: (filters?: { show_id?: number; feed_id?: number; enabled_only?: boolean }) =>
     [...rssKeys.all, 'subscriptions', filters ?? {}] as const,
+  recommendations: () => [...rssKeys.all, 'recommendations'] as const,
 }
 
 export function useRssFeeds() {
@@ -126,6 +129,25 @@ export function useTriggerRssPublish(dryRun = false) {
     mutationFn: () => api.post<TaskRead>(`/rss/publish?dry_run=${dryRun}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+export function useRssRecommendations() {
+  return useQuery({
+    queryKey: rssKeys.recommendations(),
+    queryFn: () => api.get<RssSubscriptionRecommendation[]>('/rss/subscriptions/recommendations'),
+  })
+}
+
+export function useBulkPatchRssSubscriptions() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: RssSubscriptionBulkPatchItem[]) =>
+      api.patch<RssSubscriptionRead[]>('/rss/subscriptions/bulk', items),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+      qc.invalidateQueries({ queryKey: rssKeys.recommendations() })
     },
   })
 }
