@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { AppConfig, ConnectionTestResult, TaskRead } from '@/types/api'
+import type { AppConfig, ConnectionTestResult, ServiceHealth, TaskRead } from '@/types/api'
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import clsx from 'clsx'
 
@@ -30,6 +30,8 @@ export default function Settings() {
     onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
   })
 
+  const showLlm = Boolean(config?.llm_provider && config.llm_provider.toLowerCase() !== 'none')
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
@@ -42,9 +44,9 @@ export default function Settings() {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-indigo-600 hover:underline"
+              className="px-3 py-1 bg-indigo-50 text-indigo-600 text-sm rounded border border-indigo-200 hover:bg-indigo-100"
             >
-              API docs →
+              API Docs →
             </a>
           </div>
           <ConfigRow label="App name" value={config.app_name} />
@@ -72,33 +74,64 @@ export default function Settings() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="font-semibold mb-3">Connection Tests</h2>
-        <div className="flex flex-wrap gap-3">
-          {[
-            { label: 'Test TMDB', mutation: testTmdb },
-            { label: 'Test SFTP', mutation: testSftp },
-            { label: 'Test Redis', mutation: testRedis },
-            ...(config?.llm_provider && config.llm_provider.toLowerCase() !== 'none'
-              ? [{ label: 'Test LLM', mutation: testLlm }]
-              : []),
-          ].map(({ label, mutation }) => (
-            <div key={label} className="flex items-center gap-2">
-              <button
-                onClick={() => mutation.mutate()}
-                disabled={mutation.isPending}
-                className="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
+      {/* Services — health status + on-demand connection tests in one place */}
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold">Services</h2>
+            {health && (
+              <span
+                className={clsx(
+                  'text-xs font-medium px-2 py-0.5 rounded-full',
+                  health.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
+                )}
               >
-                {label}
-              </button>
-              {mutation.data && (
-                <span className={clsx('text-xs', mutation.data.ok ? 'text-green-600' : 'text-red-600')}>
-                  {mutation.data.ok ? (mutation.data.message ?? 'OK') : mutation.data.error}
-                </span>
-              )}
-            </div>
-          ))}
+                {health.healthy ? '● Healthy' : '● Degraded'}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => refetchHealth()}
+            disabled={healthFetching}
+            className="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
+          >
+            {healthFetching ? 'Checking…' : 'Refresh'}
+          </button>
         </div>
+
+        <div className="space-y-1.5">
+          <ServiceRow
+            label="Database"
+            svc={health?.services.database}
+            test={null}
+          />
+          <ServiceRow
+            label="TMDB"
+            svc={health?.services.tmdb}
+            test={testTmdb}
+          />
+          <ServiceRow
+            label="SFTP"
+            svc={null}
+            test={testSftp}
+          />
+          <ServiceRow
+            label="Redis"
+            svc={health?.services.redis}
+            test={testRedis}
+          />
+          {showLlm && (
+            <ServiceRow
+              label="LLM"
+              svc={health?.services.llm}
+              test={testLlm}
+            />
+          )}
+        </div>
+
+        {!health && (
+          <p className="text-xs text-gray-400 italic">Click Refresh to check service health</p>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
@@ -184,52 +217,61 @@ export default function Settings() {
           </p>
         )}
       </div>
+    </div>
+  )
+}
 
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="font-semibold">System Health</h2>
-            {health && (
-              <span
-                className={clsx(
-                  'text-xs font-medium px-2 py-0.5 rounded-full',
-                  health.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700',
-                )}
-              >
-                {health.healthy ? '● Healthy' : '● Degraded'}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={() => refetchHealth()}
-            disabled={healthFetching}
-            className="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
-          >
-            {healthFetching ? 'Checking…' : 'Refresh'}
-          </button>
-        </div>
-        {health ? (
-          <div className="space-y-2">
-            {(Object.entries(health.services) as [string, typeof health.services.database][]).map(([name, svc]) => (
-              <div key={name} className="flex items-center gap-3 text-sm">
-                <span className={clsx('w-4 text-center', svc.ok ? 'text-green-600' : 'text-red-600')}>
-                  {svc.ok ? '✓' : '✗'}
-                </span>
-                <span className="w-20 text-gray-700 capitalize">{name}</span>
-                <span className="text-xs text-gray-500">
-                  {svc.latency_ms != null
-                    ? `${svc.latency_ms} ms`
-                    : svc.model
-                      ? `${svc.provider} / ${svc.model}`
-                      : svc.error ?? (svc.configured === false ? 'not configured' : '')}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">Click Refresh to check service health</p>
+interface TestMutation {
+  mutate: () => void
+  isPending: boolean
+  data?: ConnectionTestResult
+}
+
+function ServiceRow({
+  label,
+  svc,
+  test,
+}: {
+  label: string
+  svc: ServiceHealth | null | undefined
+  test: TestMutation | null
+}) {
+  const detail = svc
+    ? svc.latency_ms != null
+      ? `${svc.latency_ms} ms`
+      : svc.model
+        ? `${svc.provider} / ${svc.model}`
+        : svc.error ?? (svc.configured === false ? 'not configured' : '')
+    : ''
+
+  return (
+    <div className="flex items-center gap-3 text-sm min-h-[1.75rem]">
+      <span
+        className={clsx(
+          'w-4 text-center shrink-0 font-medium',
+          svc == null ? 'text-gray-300' : svc.ok ? 'text-green-600' : 'text-red-600',
         )}
-      </div>
+      >
+        {svc == null ? '–' : svc.ok ? '✓' : '✗'}
+      </span>
+      <span className="w-20 text-gray-700 shrink-0">{label}</span>
+      <span className="text-xs text-gray-500 flex-1">{detail}</span>
+      {test && (
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => test.mutate()}
+            disabled={test.isPending}
+            className="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50"
+          >
+            {test.isPending ? 'Testing…' : 'Test'}
+          </button>
+          {test.data && (
+            <span className={clsx('text-xs', test.data.ok ? 'text-green-600' : 'text-red-600')}>
+              {test.data.ok ? (test.data.message ?? 'OK') : test.data.error}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
