@@ -201,8 +201,11 @@ class TestSeedOrchestrator:
         )
 
         assert result.files_seeded == 5
-        # At least one progress call from listing + at least one from batch commits
-        assert len(progress_calls) >= 2
+        # 5 files with batch_size=2 → 3 batches → 3 progress calls (insert phase only)
+        assert len(progress_calls) == 3
+        # All calls use total_pending as denominator — no mid-run scale switch
+        totals = {total for _, total, _ in progress_calls}
+        assert totals == {5}
 
     @pytest.mark.asyncio
     async def test_multiple_remote_paths(self) -> None:

@@ -12,7 +12,6 @@ database regardless of its current status and never mutates existing rows.
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -38,11 +37,6 @@ class SeedResult:
     files_skipped: int
     skipped_by_status: dict[str, int] = field(default_factory=dict)
     dry_run: bool = False
-
-
-class _ExistingRow(NamedTuple):
-    remote_path: str
-    status: str
 
 
 class SeedOrchestrator:
@@ -99,8 +93,7 @@ class SeedOrchestrator:
         all_remote: list[tuple[str, str, int]] = []  # (name, path, size)
 
         for idx, remote_path in enumerate(self.remote_paths, 1):
-            if on_progress:
-                await on_progress(idx, total_paths, f"Listing {remote_path}")
+            logger.info("Listing remote path %d/%d: %s", idx, total_paths, remote_path)
             try:
                 remote_files = await self.sftp.list_remote_files_recursive(remote_path)
             except Exception:

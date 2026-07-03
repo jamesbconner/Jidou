@@ -103,7 +103,7 @@ async def _seed_remote(celery_task_id: str, dry_run: bool = False) -> str:
                     }
                 )
 
-            remote_paths = settings.sftp_remote_paths_list
+            remote_paths = settings.sftp_remote_paths_list or ["/"]
             result = await SeedOrchestrator(
                 session,
                 sftp,
