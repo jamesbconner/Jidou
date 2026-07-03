@@ -1,10 +1,12 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
-import type { AppConfig, ConnectionTestResult } from '@/types/api'
+import type { AppConfig, ConnectionTestResult, TaskRead } from '@/types/api'
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import clsx from 'clsx'
 
 export default function Settings() {
+  const navigate = useNavigate()
   const { data: config } = useQuery({
     queryKey: ['config'],
     queryFn: () => api.get<AppConfig>('/config'),
@@ -18,6 +20,15 @@ export default function Settings() {
   const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = useAdminCache()
   const flushCache = useFlushCache()
   const { data: health, refetch: refetchHealth, isFetching: healthFetching } = useAdminHealth()
+
+  const seedDryRun = useMutation({
+    mutationFn: () => api.post<TaskRead>('/tasks/trigger', { task_type: 'seed', dry_run: true }),
+    onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
+  })
+  const seedLive = useMutation({
+    mutationFn: () => api.post<TaskRead>('/tasks/trigger', { task_type: 'seed', dry_run: false }),
+    onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
+  })
 
   return (
     <div className="space-y-8">
@@ -136,6 +147,41 @@ export default function Settings() {
         )}
         {flushCache.data && (
           <p className="text-xs text-gray-500">Cleared {flushCache.data.cleared} entries</p>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <h2 className="font-semibold">SFTP Baseline Files</h2>
+        <p className="text-sm text-gray-600">
+          Run once before enabling the download schedule when taking over from a legacy service.
+          Inventories all existing files on the SFTP server and marks them as{' '}
+          <span className="font-mono text-xs bg-slate-100 text-slate-600 px-1 rounded">seeded</span>{' '}
+          so Jidou will never re-download them. The operation is idempotent — safe to re-run.
+        </p>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => seedDryRun.mutate()}
+            disabled={seedDryRun.isPending || seedLive.isPending}
+            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
+          >
+            {seedDryRun.isPending ? 'Running dry run…' : 'Dry Run'}
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm('Mark all current SFTP files as seeded? This cannot be undone without deleting seeded records from the database.')) {
+                seedLive.mutate()
+              }
+            }}
+            disabled={seedDryRun.isPending || seedLive.isPending}
+            className="px-3 py-1.5 text-sm rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+          >
+            {seedLive.isPending ? 'Running…' : 'Run Baseline'}
+          </button>
+        </div>
+        {(seedDryRun.isError || seedLive.isError) && (
+          <p className="text-xs text-red-600">
+            {String((seedDryRun.error ?? seedLive.error) || 'Unknown error')}
+          </p>
         )}
       </div>
 

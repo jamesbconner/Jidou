@@ -52,9 +52,11 @@ const TASK_DESCRIPTIONS: Record<TaskType, string> = {
   db_import: 'Imports show and episode metadata from a structured CSV or database export.',
   rss_import: 'Downloads the remote YaRSS2 config and syncs feeds and subscriptions into the database.',
   rss_publish: 'Composes the Jidou database state into a YaRSS2 config and uploads it to the remote server.',
+  seed: 'One-time baseline: marks all pre-existing SFTP files as SEEDED so they are never re-downloaded.',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+// 'seed' is intentionally excluded — it is triggered from Settings, not here.
 const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish']
 
 export default function Tasks() {

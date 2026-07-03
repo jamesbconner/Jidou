@@ -235,6 +235,7 @@ def upgrade() -> None:
                 "routing",
                 "routed",
                 "error",
+                "seeded",
                 name="filestatus",
                 create_constraint=True,
             ),

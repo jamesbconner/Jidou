@@ -148,6 +148,7 @@ export type FileStatus =
   | 'routing'
   | 'routed'
   | 'error'
+  | 'seeded'
 
 export interface FileList {
   id: number
@@ -209,7 +210,7 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled'
 
-export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync' | 'import' | 'db_import' | 'rss_import' | 'rss_publish'
+export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync' | 'import' | 'db_import' | 'rss_import' | 'rss_publish' | 'seed'
 
 export interface TaskList {
   id: number

@@ -40,5 +40,6 @@ celery_app.conf.update(
         "jidou.workers.import_tasks",
         "jidou.workers.db_import_tasks",
         "jidou.workers.rss_tasks",
+        "jidou.workers.seed_tasks",
     ],
 )
