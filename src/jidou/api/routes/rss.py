@@ -268,14 +268,12 @@ async def get_subscription_recommendations(
         .join(Show, RssSubscription.show_id == Show.id)
         .where(RssSubscription.active.is_(True))
         .where(Show.status.in_(_DEACTIVATE_STATUSES))
-        .order_by(RssSubscription.name.asc())
     )
     activate_stmt = (
         _sub_stmt()
         .join(Show, RssSubscription.show_id == Show.id)
         .where(RssSubscription.active.is_(False))
         .where(Show.status.in_(_ACTIVATE_STATUSES))
-        .order_by(RssSubscription.name.asc())
     )
 
     deactivate_subs = list((await db_session.execute(deactivate_stmt)).scalars().all())

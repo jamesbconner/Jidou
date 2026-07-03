@@ -921,7 +921,6 @@ function RecommendationsTab() {
   const activateCount = recs.filter((r) => r.recommendation === 'activate').length
 
   const handleAcceptAll = () => {
-    if (visible.length === 0) return
     const items = visible.map((r) => ({ id: r.id, active: r.recommendation === 'activate' }))
     bulkPatch.mutate(items)
   }
@@ -1033,7 +1032,7 @@ function RecommendationsTab() {
                   <td className="px-3 py-2">
                     <button
                       onClick={() => handleAcceptOne(rec)}
-                      disabled={patch.isPending}
+                      disabled={patch.isPending || bulkPatch.isPending}
                       className="text-xs text-indigo-600 hover:underline disabled:opacity-50"
                     >
                       Accept
