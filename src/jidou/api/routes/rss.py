@@ -340,9 +340,7 @@ async def bulk_patch_subscriptions(
 
     fetch_stmt = _sub_stmt().where(RssSubscription.id.in_([s.id for s in subs]))
     updated = list((await db_session.execute(fetch_stmt)).scalars().all())
-    logger.info(
-        "Bulk-patched %d/%d subscriptions (active flags)", len(updated), len(ids)
-    )
+    logger.info("Bulk-patched %d/%d subscriptions (active flags)", len(updated), len(ids))
     return updated
 
 
