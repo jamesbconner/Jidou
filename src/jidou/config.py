@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     celery_broker_url: str | None = None
     celery_result_backend: str | None = None
 
+    # Celery beat — scheduled task configuration.
+    # Hours are comma-separated UTC hours (e.g. "2,14" fires at 02:00 and 14:00 UTC).
+    # Set _ENABLED to true to activate the schedule; restart required to change.
+    sync_schedule_enabled: bool = False
+    sync_schedule_hours: str = "2"
+    rss_import_schedule_enabled: bool = False
+    rss_import_schedule_hours: str = "2"
+
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
         # Use Redis as Celery broker/backend if not explicitly set
