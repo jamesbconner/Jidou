@@ -18,10 +18,17 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _make_show(*, id: int = 1) -> MagicMock:
+def _make_show(
+    *,
+    id: int = 1,
+    status: str | None = None,
+    poster_path: str | None = None,
+) -> MagicMock:
     s = MagicMock(spec=Show)
     s.id = id
     s.title = f"Test Show {id}"
+    s.status = status
+    s.poster_path = poster_path
     return s
 
 
@@ -800,3 +807,139 @@ def test_suggest_regex_503_for_invalid_regex_output() -> None:
             assert "invalid regex" in r.json()["detail"].lower()
         finally:
             app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/subscriptions/recommendations
+# ---------------------------------------------------------------------------
+
+
+def test_get_recommendations_returns_deactivate_and_activate() -> None:
+    """Recommendations endpoint classifies ended/active subs as deactivate and
+    returning-series/inactive subs as activate."""
+    from jidou.database import get_session
+
+    show_ended = _make_show(id=1, status="Ended")
+    sub_active = _make_sub(id=1, name="Cancelled Show", active=True, show_id=1)
+    sub_active.show = show_ended
+
+    show_returning = _make_show(id=2, status="Returning Series")
+    sub_inactive = _make_sub(id=2, name="Returning Show", active=False, show_id=2)
+    sub_inactive.show = show_returning
+
+    deactivate_result = MagicMock()
+    deactivate_result.scalars.return_value.all.return_value = [sub_active]
+    activate_result = MagicMock()
+    activate_result.scalars.return_value.all.return_value = [sub_inactive]
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[deactivate_result, activate_result]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/recommendations")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 2
+        by_name = {d["name"]: d for d in data}
+        assert by_name["Cancelled Show"]["recommendation"] == "deactivate"
+        assert by_name["Cancelled Show"]["show"]["status"] == "Ended"
+        assert by_name["Returning Show"]["recommendation"] == "activate"
+        assert by_name["Returning Show"]["show"]["status"] == "Returning Series"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_recommendations_empty_when_no_matching_subs() -> None:
+    """Recommendations endpoint returns empty list when no subscriptions qualify."""
+    from jidou.database import get_session
+
+    empty_result = MagicMock()
+    empty_result.scalars.return_value.all.return_value = []
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[empty_result, empty_result]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/recommendations")
+        assert r.status_code == 200
+        assert r.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_recommendations_sorted_by_name() -> None:
+    """Results are sorted alphabetically by subscription name."""
+    from jidou.database import get_session
+
+    show_a = _make_show(id=1, status="Ended")
+    sub_z = _make_sub(id=1, name="Zebra Show", active=True, show_id=1)
+    sub_z.show = show_a
+
+    show_b = _make_show(id=2, status="Ended")
+    sub_a = _make_sub(id=2, name="Aardvark Show", active=True, show_id=2)
+    sub_a.show = show_b
+
+    deactivate_result = MagicMock()
+    deactivate_result.scalars.return_value.all.return_value = [sub_z, sub_a]
+    activate_result = MagicMock()
+    activate_result.scalars.return_value.all.return_value = []
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[deactivate_result, activate_result]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/recommendations")
+        assert r.status_code == 200
+        names = [d["name"] for d in r.json()]
+        assert names == sorted(names, key=str.lower)
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/rss/subscriptions/bulk
+# ---------------------------------------------------------------------------
+
+
+def test_bulk_patch_subscriptions_updates_active_flags() -> None:
+    """Bulk PATCH applies active-flag changes and returns updated records."""
+    from jidou.database import get_session
+
+    sub1 = _make_sub(id=1, name="Show A", active=True)
+    sub2 = _make_sub(id=2, name="Show B", active=False)
+
+    fetch_result = MagicMock()
+    fetch_result.scalars.return_value.all.return_value = [sub1, sub2]
+    refetch_result = MagicMock()
+    refetch_result.scalars.return_value.all.return_value = [sub1, sub2]
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.execute = AsyncMock(side_effect=[fetch_result, refetch_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        r = TestClient(app).patch(
+            "/api/rss/subscriptions/bulk",
+            json=[{"id": 1, "active": False}, {"id": 2, "active": True}],
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_bulk_patch_subscriptions_empty_payload_returns_empty() -> None:
+    """Bulk PATCH with an empty list returns 200 with an empty array without a DB round-trip."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(many=[])
+    try:
+        r = TestClient(app).patch("/api/rss/subscriptions/bulk", json=[])
+        assert r.status_code == 200
+        assert r.json() == []
+    finally:
+        app.dependency_overrides.clear()

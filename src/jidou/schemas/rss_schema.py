@@ -25,6 +25,7 @@ class RssShowBrief(BaseModel):
     id: int
     title: str
     status: str | None
+    poster_path: str | None
 
 
 class RssFeedCreate(BaseModel):
