@@ -9,8 +9,7 @@ import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.seed_orchestrator import SeedOrchestrator, SeedResult
-
+from jidou.orchestrators.seed_orchestrator import SeedOrchestrator
 
 # ---------------------------------------------------------------------------
 # Helpers
