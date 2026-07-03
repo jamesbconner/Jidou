@@ -13,6 +13,7 @@ import type {
   TaskRead,
 } from '@/types/api'
 import {
+  rssKeys,
   useRssFeeds,
   useRssSubscriptions,
   useCreateRssSubscription,
@@ -913,6 +914,7 @@ function RecommendationsTab() {
   const patch = usePatchRssSubscription()
   const bulkPatch = useBulkPatchRssSubscriptions()
   const [filter, setFilter] = useState<'all' | 'activate' | 'deactivate'>('all')
+  const qc = useQueryClient()
 
   const visible = recs.filter((r) => filter === 'all' || r.recommendation === filter)
   const deactivateCount = recs.filter((r) => r.recommendation === 'deactivate').length
@@ -925,7 +927,10 @@ function RecommendationsTab() {
   }
 
   const handleAcceptOne = (rec: RssSubscriptionRecommendation) => {
-    patch.mutate({ id: rec.id, update: { active: rec.recommendation === 'activate' } })
+    patch.mutate(
+      { id: rec.id, update: { active: rec.recommendation === 'activate' } },
+      { onSuccess: () => qc.invalidateQueries({ queryKey: rssKeys.recommendations() }) },
+    )
   }
 
   if (isLoading) return <p className="text-sm text-gray-400 py-6">Loading recommendations…</p>
