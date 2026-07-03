@@ -95,6 +95,11 @@ services:
       - LOCAL_MOVIE_PATH=${LOCAL_MOVIE_PATH:-/data/media/movies}
       # RSS
       - RSS_CONFIG_REMOTE_PATH=${RSS_CONFIG_REMOTE_PATH:-}
+      # Schedules — mirrored here so /api/config reports correct enabled status
+      - SYNC_SCHEDULE_ENABLED=${SYNC_SCHEDULE_ENABLED:-false}
+      - SYNC_SCHEDULE_HOURS=${SYNC_SCHEDULE_HOURS:-2}
+      - RSS_IMPORT_SCHEDULE_ENABLED=${RSS_IMPORT_SCHEDULE_ENABLED:-false}
+      - RSS_IMPORT_SCHEDULE_HOURS=${RSS_IMPORT_SCHEDULE_HOURS:-2}
       # Application
       - DEBUG=${DEBUG:-true}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3100}

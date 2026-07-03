@@ -1,8 +1,10 @@
 """Beat-triggered wrapper tasks for scheduled sync and RSS import.
 
-Each task acts as a guard layer: it checks the database for an already-active
-task of the same type before dispatching the real worker task.  This prevents
-overlapping runs when a previous execution is still in progress.
+Each task acts as a guard layer: it atomically checks the database for an
+already-active task of the same type and, if none is found, pre-creates a
+pending BackgroundTask row before dispatching the real worker task.  Pre-creating
+the row before ``apply_async`` closes the race window where a second beat fire
+could see no active task and dispatch a duplicate.
 """
 
 import asyncio
@@ -15,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from jidou.config import settings
 from jidou.models.task import BackgroundTask, TaskStatus
+from jidou.services.progress import create_task_record
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +25,38 @@ logger = logging.getLogger(__name__)
 _ACTIVE_STATUSES = {TaskStatus.PENDING.value, TaskStatus.RUNNING.value}
 
 
-async def _is_task_active(task_type: str) -> bool:
-    """Return True if any task of *task_type* is currently pending or running.
+async def _try_claim_task(task_type: str, task_id: str) -> bool:
+    """Check for an active task and, if none, insert a pending row.
+
+    Opens its own DB engine so it works outside a FastAPI request context.
+    The check and insert are sequential within one session — the same
+    trade-off the API route makes.
 
     Args:
-        task_type: The task type string to check (e.g. ``"sync"``).
+        task_type: Task type string (e.g. ``"sync"``).
+        task_id: Pre-generated Celery task ID for the new pending row.
 
     Returns:
-        True when an overlapping task is detected.
+        ``True`` if the task was claimed (pending row inserted) and dispatch
+        should proceed.  ``False`` if an active task of the same type was
+        already detected.
     """
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     try:
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with session_factory() as session:
-            stmt = select(func.count()).where(
-                BackgroundTask.task_type == task_type,
-                BackgroundTask.status.in_(_ACTIVE_STATUSES),
-            )
-            count: int = (await session.execute(stmt)).scalar_one()
-            return count > 0
+            count: int = (
+                await session.execute(
+                    select(func.count()).where(
+                        BackgroundTask.task_type == task_type,
+                        BackgroundTask.status.in_(_ACTIVE_STATUSES),
+                    )
+                )
+            ).scalar_one()
+            if count > 0:
+                return False
+            await create_task_record(session, task_id, task_type, dry_run=False)
+            return True
     finally:
         await engine.dispose()
 
@@ -68,26 +84,26 @@ def scheduled_rss_import_task() -> str:
 
 
 async def _scheduled_sync() -> str:
-    if await _is_task_active("sync"):
+    task_id = str(uuid.uuid4())
+    if not await _try_claim_task("sync", task_id):
         logger.info("Scheduled sync skipped: a sync task is already active")
         return "skipped"
 
     from jidou.workers.sync_tasks import sync_all_task
 
-    task_id = str(uuid.uuid4())
     sync_all_task.apply_async(args=[False], task_id=task_id)
     logger.info("Scheduled sync dispatched: task_id=%s", task_id)
     return task_id
 
 
 async def _scheduled_rss_import() -> str:
-    if await _is_task_active("rss_import"):
+    task_id = str(uuid.uuid4())
+    if not await _try_claim_task("rss_import", task_id):
         logger.info("Scheduled RSS import skipped: an rss_import task is already active")
         return "skipped"
 
     from jidou.workers.rss_tasks import rss_import_task
 
-    task_id = str(uuid.uuid4())
     rss_import_task.apply_async(args=[False], task_id=task_id)
     logger.info("Scheduled RSS import dispatched: task_id=%s", task_id)
     return task_id
