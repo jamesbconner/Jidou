@@ -25,6 +25,7 @@ from jidou.api.routes import (
 from jidou.api.websocket import ws_router
 from jidou.config import settings
 from jidou.database import close_db, init_db
+from jidou.services.llm_service import create_llm_service
 from jidou.services.pubsub_subscriber import pubsub_subscriber
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     # Startup
     logger.info("Starting %s...", settings.app_name)
+    app.state.llm_service = create_llm_service(settings)
+    logger.info(
+        "LLM service initialised (provider=%s model=%s)",
+        settings.llm_provider,
+        settings.llm_model or "<none>",
+    )
     if settings.debug:
         try:
             await init_db()

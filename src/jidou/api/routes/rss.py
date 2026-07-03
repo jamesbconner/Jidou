@@ -10,6 +10,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jidou.api.dependencies import get_llm_service
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
@@ -28,6 +29,7 @@ from jidou.schemas.rss_schema import (
     RssSubscriptionUpdate,
 )
 from jidou.schemas.task_schema import TaskRead
+from jidou.services.llm_service import LLMService
 from jidou.services.progress import create_task_record
 from jidou.services.rss_config import (
     compose_rss_config,
@@ -473,6 +475,10 @@ def _sanitize_label(text: str) -> str:
     return collapsed[:_MAX_LABEL_LEN]
 
 
+# Upper token bound for the regex suggester.  Local models routinely add a
+# preamble before the JSON; 1024 gives them room without risking truncation.
+_REGEX_MAX_TOKENS: int = 1024
+
 _REGEX_SYSTEM_PROMPT = (
     "You are exclusively a BitTorrent RSS regex generator. "
     "Your only function is to produce Python-compatible regex patterns in JSON format. "
@@ -494,6 +500,7 @@ _REGEX_SYSTEM_PROMPT = (
 async def suggest_regex(
     sub_id: int,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> RssRegexSuggestion:
     """Generate an LLM regex suggestion for an RSS subscription filter.
 
@@ -514,19 +521,13 @@ async def suggest_regex(
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
-    from jidou.services.llm_service import LLMService
+    import json
 
     stmt = _sub_stmt().where(RssSubscription.id == sub_id)
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
     if sub is None:
         raise HTTPException(status_code=404, detail="RSS subscription not found")
 
-    llm = LLMService(
-        provider=settings.llm_provider,
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model=settings.llm_model,
-    )
     if not llm.is_available():
         raise HTTPException(
             status_code=422,
@@ -541,15 +542,33 @@ async def suggest_regex(
         else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
 
-    response = await llm.complete(prompt=user_prompt, system=_REGEX_SYSTEM_PROMPT)
+    response = await llm.complete(
+        prompt=user_prompt,
+        system=_REGEX_SYSTEM_PROMPT,
+        max_tokens=_REGEX_MAX_TOKENS,
+    )
     if response is None:
         raise HTTPException(status_code=503, detail="LLM provider call failed.")
 
-    import json
+    if response.finish_reason == "length":
+        logger.warning(
+            "LLM regex suggestion truncated at %d tokens for sub_id=%d",
+            response.completion_tokens,
+            sub_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"LLM response was truncated at {response.completion_tokens} tokens "
+                f"(max_tokens={_REGEX_MAX_TOKENS}). "
+                "Try a model with a larger context window."
+            ),
+        )
 
-    # Strip markdown code fences that some models add despite the system prompt
+    # Strip markdown code fences that some models add despite the system prompt.
+    # Language tags may be uppercase (```JSON) or mixed-case — match case-insensitively.
     raw = response.content.strip()
-    raw = re.sub(r"^```[a-z]*\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"^```[a-zA-Z0-9]*\s*", "", raw, flags=re.MULTILINE)
     raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
 
     try:

@@ -51,22 +51,33 @@ def no_provider_service() -> LLMService:
 # ---------------------------------------------------------------------------
 
 
-def _openai_response(content: str, prompt: int = 10, completion: int = 20) -> MagicMock:
+def _openai_response(
+    content: str,
+    prompt: int = 10,
+    completion: int = 20,
+    finish_reason: str = "stop",
+) -> MagicMock:
     resp = MagicMock()
     resp.raise_for_status = MagicMock()
     resp.json.return_value = {
-        "choices": [{"message": {"content": content}}],
+        "choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
         "usage": {"prompt_tokens": prompt, "completion_tokens": completion},
     }
     return resp
 
 
-def _anthropic_response(content: str, input_tokens: int = 5, output_tokens: int = 15) -> MagicMock:
+def _anthropic_response(
+    content: str,
+    input_tokens: int = 5,
+    output_tokens: int = 15,
+    stop_reason: str = "end_turn",
+) -> MagicMock:
     resp = MagicMock()
     resp.raise_for_status = MagicMock()
     resp.json.return_value = {
         "content": [{"text": content}],
         "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        "stop_reason": stop_reason,
     }
     return resp
 
@@ -421,3 +432,131 @@ class TestUnsupportedProvider:
 
         result = await svc.complete("test prompt")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# max_tokens regression tests (fix/llm-service-hardening)
+# ---------------------------------------------------------------------------
+
+
+class TestMaxTokens:
+    @pytest.mark.asyncio
+    async def test_max_tokens_sent_in_openai_payload(self, openai_service: LLMService) -> None:
+        """max_tokens is present in the HTTP request body."""
+        client = _mock_http_client(_openai_response("ok"))
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            await openai_service.complete("hello", max_tokens=512)
+
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["max_tokens"] == 512
+
+    @pytest.mark.asyncio
+    async def test_different_max_tokens_bypass_cache(self, openai_service: LLMService) -> None:
+        """Calls with the same prompt but different max_tokens use separate cache entries."""
+        client = _mock_http_client(_openai_response("result"))
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            await openai_service.complete("same prompt", max_tokens=256)
+            await openai_service.complete("same prompt", max_tokens=4096)
+
+        assert client.post.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_not_cached(self, openai_service: LLMService) -> None:
+        """A response with finish_reason='length' is not written to the cache."""
+        truncated = _openai_response("partial JSON {", finish_reason="length")
+        normal = _openai_response("ok")
+        client = _mock_http_client(truncated)
+        client.post.side_effect = [truncated, normal]
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            first = await openai_service.complete("prompt", max_tokens=16)
+            second = await openai_service.complete("prompt", max_tokens=16)
+
+        # Both should hit the provider because the truncated response was not cached
+        assert client.post.call_count == 2
+        assert first is not None and first.finish_reason == "length"
+        assert second is not None and second.finish_reason == "stop"
+
+    @pytest.mark.asyncio
+    async def test_finish_reason_populated_on_response(self, openai_service: LLMService) -> None:
+        """LLMResponse.finish_reason reflects the provider's finish_reason."""
+        client = _mock_http_client(_openai_response("ok", finish_reason="stop"))
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            result = await openai_service.complete("hello")
+
+        assert result is not None
+        assert result.finish_reason == "stop"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_max_tokens_mapped_to_length(
+        self, anthropic_service: LLMService
+    ) -> None:
+        """Anthropic stop_reason='max_tokens' is normalised to finish_reason='length'."""
+        client = _mock_http_client(_anthropic_response("partial", stop_reason="max_tokens"))
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            result = await anthropic_service.complete("hello", max_tokens=8)
+
+        assert result is not None
+        assert result.finish_reason == "length"
+
+
+# ---------------------------------------------------------------------------
+# Empty choices guard
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyChoicesGuard:
+    @pytest.mark.asyncio
+    async def test_empty_choices_returns_none(self, openai_service: LLMService) -> None:
+        """complete() returns None (not KeyError) when provider returns empty choices."""
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"choices": [], "usage": {}}
+        client = _mock_http_client(resp)
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            result = await openai_service.complete("test")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_empty_choices_logs_warning(
+        self, openai_service: LLMService, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An empty choices list is logged at WARNING level."""
+        import logging
+
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"choices": [], "usage": {}}
+        client = _mock_http_client(resp)
+
+        with (
+            patch("httpx2.AsyncClient", return_value=client),
+            caplog.at_level(logging.WARNING, logger="jidou.services.llm_service"),
+        ):
+            await openai_service.complete("test")
+
+        assert any("LLM call failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# test_connection() max_tokens regression
+# ---------------------------------------------------------------------------
+
+
+class TestConnectionMaxTokens:
+    @pytest.mark.asyncio
+    async def test_connection_uses_minimal_max_tokens(self, openai_service: LLMService) -> None:
+        """test_connection() sends a small max_tokens cap, not the 1024 default."""
+        client = _mock_http_client(_openai_response("ok"))
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            await openai_service.test_connection()
+
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["max_tokens"] <= 10
