@@ -55,6 +55,10 @@ class FileStatus(StrEnum):
     ROUTED = "routed"
     ERROR = "error"
     PENDING = "pending"  # legacy — replaced by DISCOVERED
+    # Terminal state set by the one-time baseline seed operation.  No outbound
+    # transitions; excluded from every pipeline orchestrator's status whitelist
+    # and from the manual re-match allowlist in the files API.
+    SEEDED = "seeded"
 
 
 class MatchedBy(StrEnum):

@@ -115,9 +115,9 @@ async def trigger_task(
 ) -> BackgroundTask:
     """Trigger a new background task.
 
-    Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``.
+    Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``, ``seed``.
     """
-    if payload.task_type not in {"download", "scan", "match", "route", "sync"}:
+    if payload.task_type not in {"download", "scan", "match", "route", "sync", "seed"}:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown task type: {payload.task_type}",
@@ -129,6 +129,7 @@ async def trigger_task(
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.route_tasks import route_files_task
     from jidou.workers.scan_tasks import scan_remote_task
+    from jidou.workers.seed_tasks import seed_remote_task
     from jidou.workers.sync_tasks import sync_all_task
 
     # Pre-generate task ID so the DB row exists before the worker can start.
@@ -156,6 +157,8 @@ async def trigger_task(
             route_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "sync":
             sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
+        elif payload.task_type == "seed":
+            seed_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
     except Exception as exc:
         logger.exception("Broker dispatch failed for task %s", task_id)
         await update_task_status(
