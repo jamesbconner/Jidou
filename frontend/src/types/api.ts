@@ -331,6 +331,7 @@ export interface RssFeedUpdate {
 export interface RssShowBrief {
   id: number
   title: string
+  status: string | null
   poster_path: string | null
 }
 
@@ -392,6 +393,15 @@ export interface RssRegexSuggestion {
   regex_exclude: string
   model: string
   cached: boolean
+}
+
+export interface RssSubscriptionRecommendation extends RssSubscriptionRead {
+  recommendation: 'activate' | 'deactivate'
+}
+
+export interface RssSubscriptionBulkPatchItem {
+  id: number
+  active: boolean
 }
 
 export interface ConnectionTestResult {

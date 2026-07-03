@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -23,6 +24,7 @@ class RssShowBrief(BaseModel):
 
     id: int
     title: str
+    status: str | None
 
 
 class RssFeedCreate(BaseModel):
@@ -139,6 +141,19 @@ class RssSubscriptionRead(BaseModel):
     show: RssShowBrief | None
     created_at: datetime
     updated_at: datetime
+
+
+class RssSubscriptionRecommendation(RssSubscriptionRead):
+    """RSS subscription with a computed health-check recommendation."""
+
+    recommendation: Literal["activate", "deactivate"]
+
+
+class RssSubscriptionBulkPatchItem(BaseModel):
+    """Single item in a bulk-patch request."""
+
+    id: int
+    active: bool
 
 
 class RssRegexSuggestion(BaseModel):
