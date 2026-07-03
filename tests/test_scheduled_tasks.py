@@ -101,6 +101,42 @@ class TestTryClaimTask:
 
 
 # ---------------------------------------------------------------------------
+# _dispatch_scheduled — orphan cleanup on apply_async failure
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchScheduled:
+    @pytest.mark.asyncio
+    async def test_deletes_pending_row_when_apply_async_raises(self) -> None:
+        """If apply_async fails, the pre-created pending row must be removed."""
+        from jidou.workers.scheduled_tasks import _dispatch_scheduled
+
+        mock_task = MagicMock()
+        mock_task.apply_async = MagicMock(side_effect=RuntimeError("broker down"))
+
+        with patch(
+            "jidou.workers.scheduled_tasks._delete_task_record",
+            new_callable=AsyncMock,
+        ) as mock_delete, pytest.raises(RuntimeError, match="broker down"):
+            await _dispatch_scheduled("sync", mock_task, "dead-id")
+
+        mock_delete.assert_awaited_once_with("dead-id")
+
+    @pytest.mark.asyncio
+    async def test_returns_task_id_on_success(self) -> None:
+        """Returns the task_id when apply_async succeeds."""
+        from jidou.workers.scheduled_tasks import _dispatch_scheduled
+
+        mock_task = MagicMock()
+        mock_task.apply_async = MagicMock()
+
+        result = await _dispatch_scheduled("sync", mock_task, "ok-id")
+
+        assert result == "ok-id"
+        mock_task.apply_async.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # scheduled_sync_task
 # ---------------------------------------------------------------------------
 
@@ -132,34 +168,29 @@ class TestScheduledSyncTask:
             result = scheduled_sync_task()  # type: ignore[call-arg]
         assert result == "fake-uuid"
 
-    def test_dispatches_with_dry_run_false(self) -> None:
-        """The dispatched sync task always receives dry_run=False from scheduler."""
-        dispatched_args: list[Any] = []
-
-        async def fake_scheduled_sync() -> str:
-            from jidou.workers.sync_tasks import sync_all_task
-
-            sync_all_task.apply_async(args=[False], task_id="test-id")
-            dispatched_args.extend([False])
-            return "test-id"
+    def test_real_dispatch_passes_dry_run_false(self) -> None:
+        """The real _scheduled_sync calls apply_async(args=[False]) on the Celery task."""
+        mock_task = MagicMock()
+        mock_task.apply_async = MagicMock()
 
         p1, p2 = _patch_db(active_count=0)
-        mock_apply = MagicMock()
         with (
             p1,
             p2,
-            patch("jidou.workers.sync_tasks.sync_all_task") as mock_sync,
             patch(
-                "jidou.workers.scheduled_tasks._scheduled_sync",
-                side_effect=fake_scheduled_sync,
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
             ),
+            patch("jidou.workers.sync_tasks.sync_all_task", mock_task),
         ):
-            mock_sync.apply_async = mock_apply
             from jidou.workers.scheduled_tasks import scheduled_sync_task
 
             scheduled_sync_task()  # type: ignore[call-arg]
 
-        assert dispatched_args == [False]
+        mock_task.apply_async.assert_called_once()
+        _, kwargs = mock_task.apply_async.call_args
+        assert kwargs["args"] == [False]
 
 
 # ---------------------------------------------------------------------------

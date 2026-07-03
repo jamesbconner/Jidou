@@ -10,6 +10,7 @@ could see no active task and dispatch a duplicate.
 import asyncio
 import logging
 import uuid
+from typing import Any
 
 from celery import shared_task
 from sqlalchemy import func, select
@@ -41,8 +42,9 @@ async def _try_claim_task(task_type: str, task_id: str) -> bool:
         should proceed.  ``False`` if an active task of the same type was
         already detected.
     """
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = None
     try:
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         async with session_factory() as session:
             count: int = (
@@ -58,7 +60,8 @@ async def _try_claim_task(task_type: str, task_id: str) -> bool:
             await create_task_record(session, task_id, task_type, dry_run=False)
             return True
     finally:
-        await engine.dispose()
+        if engine is not None:
+            await engine.dispose()
 
 
 @shared_task  # type: ignore[untyped-decorator]
@@ -83,6 +86,67 @@ def scheduled_rss_import_task() -> str:
     return asyncio.run(_scheduled_rss_import())
 
 
+async def _dispatch_scheduled(task_type: str, celery_task: Any, task_id: str) -> str:
+    """Claim a pending slot then dispatch the Celery task.
+
+    Deletes the pre-created pending row if ``apply_async`` fails so that future
+    beat fires are not permanently blocked by an orphaned PENDING record.
+
+    Args:
+        task_type: Type label used in the overlap guard and log messages.
+        celery_task: Celery task object exposing ``apply_async``.
+        task_id: Pre-generated task ID (matches the pending row).
+
+    Returns:
+        The dispatched task ID.
+
+    Raises:
+        Exception: Re-raises any ``apply_async`` failure after cleanup.
+    """
+    try:
+        celery_task.apply_async(args=[False], task_id=task_id)
+    except Exception:
+        logger.exception(
+            "Scheduled %s dispatch failed; removing orphaned pending row task_id=%s",
+            task_type,
+            task_id,
+        )
+        await _delete_task_record(task_id)
+        raise
+    logger.info("Scheduled %s dispatched: task_id=%s", task_type, task_id)
+    return task_id
+
+
+async def _delete_task_record(celery_task_id: str) -> None:
+    """Remove a BackgroundTask row by Celery task ID.
+
+    Called only when dispatch fails after the pending row was already committed,
+    to avoid permanently blocking the overlap guard.
+
+    Args:
+        celery_task_id: The Celery task identifier of the row to remove.
+    """
+    from sqlalchemy import delete
+
+    engine = None
+    try:
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as session:
+            await session.execute(
+                delete(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+            )
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "Failed to remove orphaned pending row task_id=%s; manual cleanup may be required",
+            celery_task_id,
+        )
+    finally:
+        if engine is not None:
+            await engine.dispose()
+
+
 async def _scheduled_sync() -> str:
     task_id = str(uuid.uuid4())
     if not await _try_claim_task("sync", task_id):
@@ -91,9 +155,7 @@ async def _scheduled_sync() -> str:
 
     from jidou.workers.sync_tasks import sync_all_task
 
-    sync_all_task.apply_async(args=[False], task_id=task_id)
-    logger.info("Scheduled sync dispatched: task_id=%s", task_id)
-    return task_id
+    return await _dispatch_scheduled("sync", sync_all_task, task_id)
 
 
 async def _scheduled_rss_import() -> str:
@@ -104,6 +166,4 @@ async def _scheduled_rss_import() -> str:
 
     from jidou.workers.rss_tasks import rss_import_task
 
-    rss_import_task.apply_async(args=[False], task_id=task_id)
-    logger.info("Scheduled RSS import dispatched: task_id=%s", task_id)
-    return task_id
+    return await _dispatch_scheduled("rss_import", rss_import_task, task_id)
