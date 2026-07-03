@@ -244,20 +244,28 @@ function ServiceRow({
         : svc.error ?? (svc.configured === false ? 'not configured' : '')
     : ''
 
+  // Indicator: prefer health-endpoint data; fall back to most recent test result
+  // so services without a health key (e.g. SFTP) still show ✓/✗ after a test.
+  const ok = svc != null ? svc.ok : test?.data?.ok
+  const indicatorColor =
+    ok === true ? 'text-green-600' : ok === false ? 'text-red-600' : 'text-gray-300'
+  const indicatorChar = ok === true ? '✓' : ok === false ? '✗' : '–'
+
   return (
     <div className="flex items-center gap-3 text-sm min-h-[1.75rem]">
-      <span
-        className={clsx(
-          'w-4 text-center shrink-0 font-medium',
-          svc == null ? 'text-gray-300' : svc.ok ? 'text-green-600' : 'text-red-600',
-        )}
-      >
-        {svc == null ? '–' : svc.ok ? '✓' : '✗'}
+      <span className={clsx('w-4 text-center shrink-0 font-medium', indicatorColor)}>
+        {indicatorChar}
       </span>
       <span className="w-20 text-gray-700 shrink-0">{label}</span>
       <span className="text-xs text-gray-500 flex-1">{detail}</span>
       {test && (
         <div className="flex items-center gap-2 shrink-0">
+          {/* Result left of button so the button stays anchored to the right */}
+          {test.data && (
+            <span className={clsx('text-xs', test.data.ok ? 'text-green-600' : 'text-red-600')}>
+              {test.data.ok ? 'OK' : test.data.error}
+            </span>
+          )}
           <button
             onClick={() => test.mutate()}
             disabled={test.isPending}
@@ -265,11 +273,6 @@ function ServiceRow({
           >
             {test.isPending ? 'Testing…' : 'Test'}
           </button>
-          {test.data && (
-            <span className={clsx('text-xs', test.data.ok ? 'text-green-600' : 'text-red-600')}>
-              {test.data.ok ? (test.data.message ?? 'OK') : test.data.error}
-            </span>
-          )}
         </div>
       )}
     </div>
