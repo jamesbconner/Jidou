@@ -236,13 +236,20 @@ function ServiceRow({
   svc: ServiceHealth | null | undefined
   test: TestMutation | null
 }) {
-  const detail = svc
+  let detail = svc
     ? svc.latency_ms != null
       ? `${svc.latency_ms} ms`
       : svc.model
         ? `${svc.provider} / ${svc.model}`
         : svc.error ?? (svc.configured === false ? 'not configured' : '')
     : ''
+
+  // Health check returns no latency_ms for LLM (config-only probe). Surface the
+  // timing from the most recent Test result so the detail column stays consistent.
+  if (svc && svc.latency_ms == null && test?.data?.ok && test.data.message) {
+    const ms = test.data.message.match(/^(\d+\.?\d*ms)/)?.[1]
+    if (ms) detail = `${ms} · ${detail}`
+  }
 
   // Indicator: prefer health-endpoint data; fall back to most recent test result
   // so services without a health key (e.g. SFTP) still show ✓/✗ after a test.
