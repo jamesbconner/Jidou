@@ -402,6 +402,13 @@ async def update_show_aliases(
 
     normalised = list(dict.fromkeys(a.strip().lower() for a in payload.aliases if a.strip()))
     existing_sources: dict[str, list[str]] = show.aliases_sources or {}
+    if not show.aliases_sources and show.aliases:
+        # Legacy shows pre-date the structured aliases_sources column.  Their
+        # flat aliases were never split into tmdb/llm/user buckets.  Merge them
+        # into the user list on first structured write so they aren't silently
+        # dropped (generate_aliases can resplit them when the user regenerates).
+        legacy = [a for a in show.aliases if a not in normalised]
+        normalised = normalised + legacy
     new_sources = {
         "tmdb": existing_sources.get("tmdb") or [],
         "llm": existing_sources.get("llm") or [],

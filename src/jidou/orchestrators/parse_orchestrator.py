@@ -416,11 +416,23 @@ class ParseOrchestrator:
 
     @staticmethod
     def _add_alias(show: Show, alias: str) -> None:
-        """Add a normalised alias to show.aliases (in-place, no duplicate)."""
+        """Add a normalised alias to show.aliases and aliases_sources (in-place, no duplicate).
+
+        Mirrors the alias into ``aliases_sources["user"]`` so the structured
+        PUT /shows/{id}/aliases endpoint does not silently drop it when the
+        user next edits aliases via the UI (which reads from aliases_sources).
+        """
         norm = _sanitize_alias(alias)
+        # Flat GIN-indexed column — used for fast show lookup during parsing.
         current: list[str] = list(show.aliases) if show.aliases else []
         if norm not in current:
             show.aliases = [*current, norm]
+        # Structured source map — used by the UI and the PUT endpoint.
+        sources: dict[str, list[str]] = dict(show.aliases_sources) if show.aliases_sources else {}
+        user_aliases: list[str] = list(sources.get("user") or [])
+        if norm not in user_aliases:
+            sources["user"] = [*user_aliases, norm]
+            show.aliases_sources = sources
 
     async def run(
         self,
