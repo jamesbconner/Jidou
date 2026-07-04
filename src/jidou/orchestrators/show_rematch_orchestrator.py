@@ -15,6 +15,7 @@ from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
+from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,12 @@ class ShowRematchOrchestrator:
         tmdb: TMDB service instance.
     """
 
-    def __init__(self, session: AsyncSession, tmdb: TMDBService) -> None:
+    def __init__(
+        self, session: AsyncSession, tmdb: TMDBService, llm: LLMService | None = None
+    ) -> None:
         self.session = session
         self.tmdb = tmdb
+        self.llm = llm
 
     async def rematch(self, show: Show, payload: RematchRequest) -> Show:
         """Execute the full rematch pipeline and return the updated Show.
@@ -64,8 +68,19 @@ class ShowRematchOrchestrator:
         Raises:
             HTTPException: 502 if TMDB details or episode sync fails.
         """
+        from jidou.orchestrators.alias_orchestrator import generate_aliases
+
         data = await self._fetch_tmdb_details(payload)
         self._apply_tmdb_metadata(show, payload, data)
+
+        try:
+            await generate_aliases(show, self.tmdb, llm=self.llm)
+        except Exception:
+            logger.warning(
+                "Alias generation failed during rematch for show id=%d; continuing",
+                show.id,
+                exc_info=True,
+            )
 
         old_tracking = await self._snapshot_tracking(show.id, payload)
 

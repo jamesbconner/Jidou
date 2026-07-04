@@ -269,6 +269,26 @@ class TMDBService:
     # Images
     # ------------------------------------------------------------------
 
+    async def get_alternative_titles(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
+        """Get alternative titles for a show or movie from TMDB.
+
+        TV response has ``results`` key; movie response has ``titles`` key.
+        Both contain objects with ``iso_3166_1``, ``title``, and ``type`` fields.
+
+        Args:
+            tmdb_id: The TMDB identifier.
+            media_type: Either ``"movie"`` or ``"tv"``.
+
+        Returns:
+            Raw TMDB response dict.
+
+        Raises:
+            ValueError: If *media_type* is invalid.
+        """
+        if media_type not in {"movie", "tv"}:
+            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        return await self._request(f"/{media_type}/{tmdb_id}/alternative_titles")
+
     async def get_external_ids(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get external IDs (IMDb, TVDB, etc.) for a show or movie.
 

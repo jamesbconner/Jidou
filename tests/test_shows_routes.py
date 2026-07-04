@@ -9,6 +9,18 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 
 
+def _make_tmdb_mock() -> AsyncMock:
+    """Return an AsyncMock TMDB service with get_alternative_titles pre-configured.
+
+    Without this, AsyncMock's auto-created child mocks for
+    get_alternative_titles may leave unawaited coroutines that cascade as
+    ERROR-at-setup failures in subsequent tests.
+    """
+    mock = AsyncMock()
+    mock.get_alternative_titles = AsyncMock(return_value={"results": []})
+    return mock
+
+
 def _make_show(
     *,
     id: int = 1,
@@ -36,6 +48,7 @@ def _make_show(
     s.content_type = None
     s.sys_name = None
     s.aliases = None
+    s.aliases_sources = None
     s.genres = None
     s.origin_country = None
     s.last_air_date = None
@@ -664,7 +677,7 @@ def test_rematch_show_returns_200_on_success() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(show)
@@ -687,7 +700,7 @@ def test_rematch_show_uses_payload_media_type() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(show)
@@ -721,7 +734,7 @@ def test_rematch_show_movie_applies_movie_fields() -> None:
         "status": "Released",
         "networks": [],
     }
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=movie_data)
 
     app.dependency_overrides[get_session] = _rematch_session(show)
@@ -772,7 +785,7 @@ def test_rematch_show_returns_502_when_tmdb_fetch_fails() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(side_effect=Exception("TMDB unavailable"))
 
     app.dependency_overrides[get_session] = _rematch_session(show)
@@ -790,7 +803,7 @@ def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(show)
@@ -829,7 +842,7 @@ def test_rematch_show_migrates_tracking_to_new_episodes() -> None:
     new_ep.tracked_filename = None
     new_ep.tracked_source = None
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(
@@ -870,7 +883,7 @@ def test_rematch_show_relinks_orphaned_downloaded_files() -> None:
     orphan.parsed_season = 2
     orphan.parsed_episode = 1
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(
@@ -913,7 +926,7 @@ def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) ->
     new_ep.episode_number = 1
     new_ep.file_tracked = False
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(
@@ -946,7 +959,7 @@ def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     app.dependency_overrides[get_session] = _rematch_session(
@@ -971,7 +984,7 @@ def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     captured: list[AsyncMock] = []
@@ -1019,7 +1032,7 @@ def test_rematch_show_movie_skips_tracking_phases() -> None:
         "status": "Released",
         "networks": [],
     }
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=movie_data)
 
     app.dependency_overrides[get_session] = _rematch_session(show, media_type="movie")
@@ -1054,7 +1067,7 @@ def test_rematch_show_movie_purges_orphan_rows() -> None:
         "status": "Released",
         "networks": [],
     }
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=movie_data)
 
     captured: list[AsyncMock] = []
@@ -1102,7 +1115,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_import() -> None:
     new_ep.episode_number = 1
     new_ep.file_tracked = False
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     added_objects: list[object] = []
@@ -1172,7 +1185,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_downloaded_file() -> Non
     new_ep.episode_number = 1
     new_ep.file_tracked = False
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     added_objects: list[object] = []
@@ -1241,7 +1254,7 @@ def test_rematch_phase3_orphan_uses_local_path_when_set() -> None:
     new_ep.episode_number = 1
     new_ep.file_tracked = False
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     added_objects: list[object] = []
@@ -1308,7 +1321,7 @@ def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> No
     new_ep.episode_number = 1
     new_ep.file_tracked = False
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     tmdb_mock.get_details = AsyncMock(return_value=_TMDB_DETAIL)
 
     added_objects: list[object] = []
@@ -1375,7 +1388,7 @@ def test_sync_episodes_returns_updated_episode_list() -> None:
         session.execute = AsyncMock(side_effect=[show_result, ep_result])
         yield session
 
-    tmdb_mock = AsyncMock()
+    tmdb_mock = _make_tmdb_mock()
     app.dependency_overrides[get_session] = _sync_session
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:

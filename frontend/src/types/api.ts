@@ -51,6 +51,7 @@ export interface ShowRead extends ShowList {
   vote_count: number
   cached: boolean
   aliases: string[] | null
+  aliases_sources: { tmdb: string[]; llm: string[]; user: string[] } | null
   updated_at: string
 }
 
