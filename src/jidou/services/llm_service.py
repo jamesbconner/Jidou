@@ -92,6 +92,7 @@ class LLMService:
         model: str = "",
         cache_ttl: int = 3600,
         timeout: float = 30.0,
+        no_think: bool = True,
     ) -> None:
         try:
             self._provider = LLMProvider(provider.lower())
@@ -99,6 +100,7 @@ class LLMService:
             logger.warning("Unknown LLM provider %r — falling back to 'none'", provider)
             self._provider = LLMProvider.NONE
 
+        self._no_think = no_think
         self._api_key = api_key
         effective_base = (
             base_url.rstrip("/") if base_url else _DEFAULT_BASE_URLS.get(self._provider, "")
@@ -169,6 +171,7 @@ class LLMService:
         model: str | None = None,
         bypass_cache: bool = False,
         max_tokens: int = 1024,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse | None:
         """Generate a chat completion.
 
@@ -181,6 +184,9 @@ class LLMService:
             max_tokens: Maximum tokens the model may generate. Applies to all
                 providers. Keeps local models (Ollama, LM Studio) from running
                 indefinitely and helps avoid HTTP read timeouts.
+            response_format: Optional JSON schema structured output spec
+                (OpenAI ``response_format`` shape). Only applied for
+                OpenAI-compatible providers; silently ignored for Anthropic.
 
         Returns:
             :class:`LLMResponse` on success, ``None`` on any failure
@@ -220,6 +226,7 @@ class LLMService:
                     prompt=prompt,
                     model=effective_model,
                     max_tokens=max_tokens,
+                    response_format=response_format,
                 )
             elif self._provider == LLMProvider.ANTHROPIC:
                 (
@@ -287,6 +294,7 @@ class LLMService:
         prompt: str,
         model: str,
         max_tokens: int = 8192,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, int, int, str]:
         """Call an OpenAI-compatible ``/v1/chat/completions`` endpoint.
 
@@ -295,6 +303,8 @@ class LLMService:
             prompt: User message.
             model: Model identifier.
             max_tokens: Maximum tokens the model may generate.
+            response_format: Optional JSON schema structured output spec
+                (OpenAI ``response_format`` shape).
 
         Returns:
             Tuple of ``(content, prompt_tokens, completion_tokens, finish_reason)``.
@@ -306,13 +316,18 @@ class LLMService:
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        # /no_think suppresses chain-of-thought on Qwen3 and similar reasoning
+        # models that ignore the equivalent system-prompt instruction.
+        user_content = f"/no_think\n{prompt}" if self._no_think else prompt
+        messages.append({"role": "user", "content": user_content})
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         payload: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
@@ -415,4 +430,5 @@ def create_llm_service(settings: Settings) -> LLMService:
         model=settings.llm_model,
         cache_ttl=settings.llm_cache_ttl,
         timeout=settings.llm_timeout,
+        no_think=settings.llm_no_think,
     )

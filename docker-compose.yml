@@ -78,6 +78,7 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      - LLM_NO_THINK=${LLM_NO_THINK:-true}
       # SFTP
       - SFTP_HOST=${SFTP_HOST:-}
       - SFTP_PORT=${SFTP_PORT:-22}
@@ -174,6 +175,7 @@ services:
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_CACHE_TTL=${LLM_CACHE_TTL:-3600}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-30}
+      - LLM_NO_THINK=${LLM_NO_THINK:-true}
       # SFTP
       - SFTP_HOST=${SFTP_HOST:-}
       - SFTP_PORT=${SFTP_PORT:-22}
