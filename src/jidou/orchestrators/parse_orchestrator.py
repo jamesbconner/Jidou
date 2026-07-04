@@ -392,13 +392,26 @@ class ParseOrchestrator:
         season: int | None,
         episode: int | None,
     ) -> Episode | None:
-        """Look up a specific episode, or return None."""
-        if season is None or episode is None:
+        """Look up a specific episode, or return None.
+
+        When season is provided, matches on (season_number, episode_number).
+        When season is None but episode is known, falls back to
+        absolute_episode_number — common for anime distributed without season
+        indicators (e.g. ``"Bleach - 213.mkv"``).
+        """
+        if episode is None:
             return None
+        if season is not None:
+            stmt = select(Episode).where(
+                (Episode.show_id == show_id)
+                & (Episode.season_number == season)
+                & (Episode.episode_number == episode)
+            )
+            return (await self.session.execute(stmt)).scalar_one_or_none()
+        # season is None — try absolute episode number (anime absolute numbering)
         stmt = select(Episode).where(
             (Episode.show_id == show_id)
-            & (Episode.season_number == season)
-            & (Episode.episode_number == episode)
+            & (Episode.absolute_episode_number == episode)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 

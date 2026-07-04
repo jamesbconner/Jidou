@@ -154,12 +154,12 @@ async def test_llm_match_returns_none_when_llm_unavailable() -> None:
 
 @pytest.mark.asyncio
 async def test_llm_match_success_returns_season_episode() -> None:
-    """_llm_match parses '2 7' response into (2, 7)."""
+    """_llm_match parses JSON {season, episode} response into (2, 7)."""
     session = MagicMock()
     llm = MagicMock()
     llm.is_available.return_value = True
     llm_resp = MagicMock()
-    llm_resp.content = "2 7"
+    llm_resp.content = '{"season": 2, "episode": 7}'
     llm.complete = AsyncMock(return_value=llm_resp)
 
     orch = MatchOrchestrator(session, llm=llm)
@@ -169,13 +169,13 @@ async def test_llm_match_success_returns_season_episode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_match_unknown_returns_none() -> None:
-    """_llm_match returns None when LLM replies UNKNOWN."""
+async def test_llm_match_null_fields_returns_none() -> None:
+    """_llm_match returns None when LLM replies with null season/episode."""
     session = MagicMock()
     llm = MagicMock()
     llm.is_available.return_value = True
     llm_resp = MagicMock()
-    llm_resp.content = "UNKNOWN"
+    llm_resp.content = '{"season": null, "episode": null}'
     llm.complete = AsyncMock(return_value=llm_resp)
 
     orch = MatchOrchestrator(session, llm=llm)
@@ -198,7 +198,7 @@ async def test_llm_match_none_response_returns_none() -> None:
 
 @pytest.mark.asyncio
 async def test_llm_match_bad_format_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-    """_llm_match returns None and logs warning for non-integer LLM response."""
+    """_llm_match returns None and logs a warning when the LLM reply is not valid JSON."""
     import logging
 
     session = MagicMock()
@@ -213,7 +213,7 @@ async def test_llm_match_bad_format_returns_none(caplog: pytest.LogCaptureFixtur
         result = await orch._llm_match("weird_file.mkv", "Test Show", [])
 
     assert result is None
-    assert "non-integer" in caplog.text
+    assert "invalid JSON" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ async def test_run_llm_fallback_when_heuristic_fails() -> None:
     llm = MagicMock()
     llm.is_available.return_value = True
     llm_resp = MagicMock()
-    llm_resp.content = "1 7"
+    llm_resp.content = '{"season": 1, "episode": 7}'
     llm.complete = AsyncMock(return_value=llm_resp)
 
     session = _make_session([(file, show)], [ep])

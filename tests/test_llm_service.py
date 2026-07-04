@@ -559,4 +559,5 @@ class TestConnectionMaxTokens:
             await openai_service.test_connection()
 
         payload = client.post.call_args.kwargs["json"]
-        assert payload["max_tokens"] <= 10
+        # 20 tokens: enough for a JSON schema response, far below the 1024 default.
+        assert payload["max_tokens"] <= 25

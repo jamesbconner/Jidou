@@ -265,12 +265,15 @@ async def test_run_tmdb_exception_handled_and_sync_continues():
     result_show.scalar_one_or_none.return_value = show
     result_ep = MagicMock()
     result_ep.scalar.return_value = False  # no episodes → triggers sync
+    # Phase 4.5 gap-fill query: no shows need re-sync after the rollback.
+    result_gap = MagicMock()
+    result_gap.scalars.return_value.all.return_value = []
 
     session = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
-    session.execute = AsyncMock(side_effect=[result_show, result_ep])
+    session.execute = AsyncMock(side_effect=[result_show, result_ep, result_gap])
 
     sftp = MagicMock()
     sftp.max_workers = 4
