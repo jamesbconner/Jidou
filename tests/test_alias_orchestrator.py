@@ -39,7 +39,7 @@ def _make_tmdb(alt_titles_response: dict) -> MagicMock:
     return t
 
 
-def _make_llm(response_text: str = '["aot", "shingeki"]') -> MagicMock:
+def _make_llm(response_text: str = '{"aliases": ["aot", "shingeki"]}') -> MagicMock:
     llm = MagicMock()
     llm.is_available.return_value = True
     response = MagicMock()
@@ -141,7 +141,7 @@ async def test_generate_aliases_no_llm() -> None:
 async def test_generate_aliases_with_llm() -> None:
     show = _make_show()
     tmdb = _make_tmdb({"results": [{"iso_3166_1": "JP", "title": "進撃の巨人", "type": ""}]})
-    llm = _make_llm('["aot", "shingeki no kyojin"]')
+    llm = _make_llm('{"aliases": ["aot", "shingeki no kyojin"]}')
 
     await generate_aliases(show, tmdb, llm=llm)
 
@@ -187,7 +187,7 @@ async def test_generate_aliases_tmdb_failure_keeps_existing() -> None:
 async def test_generate_aliases_llm_invalid_json_falls_back_to_empty() -> None:
     show = _make_show()
     tmdb = _make_tmdb({"results": []})
-    llm = _make_llm("not valid json at all")
+    llm = _make_llm('{"aliases": "not a list"}')
 
     await generate_aliases(show, tmdb, llm=llm)
 

@@ -18,6 +18,27 @@ logger = logging.getLogger(__name__)
 _PROMPT_FILE = Path(__file__).parent.parent / "services" / "prompts" / "alias_normalize.txt"
 _ALIAS_SYSTEM: str = _PROMPT_FILE.read_text(encoding="utf-8")
 
+# Structured output schema (OpenAI response_format shape).  Wrapping the array
+# in an object is required — the spec does not allow a bare array root.
+_ALIAS_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "show_aliases",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "aliases": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                }
+            },
+            "required": ["aliases"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 # TMDB country codes whose alternative titles are included verbatim on the
 # no-LLM path.  JP covers Japanese originals; US/GB cover English titles;
 # KR covers Korean dramas.
@@ -80,7 +101,12 @@ async def _llm_aliases(
         f"TMDB alternative titles:\n{tmdb_list_str}\n\n"
         "Generate additional aliases."
     )
-    response = await llm.complete(prompt=prompt, system=_ALIAS_SYSTEM, max_tokens=512)
+    response = await llm.complete(
+        prompt=prompt,
+        system=_ALIAS_SYSTEM,
+        max_tokens=512,
+        response_format=_ALIAS_RESPONSE_FORMAT,
+    )
     if response is None:
         logger.warning("LLM returned no response for alias generation of %r", show_title)
         return []
@@ -90,9 +116,19 @@ async def _llm_aliases(
         text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
 
     try:
-        result = json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("LLM returned invalid JSON for alias generation of %r: %r", show_title, text)
+        return []
+
+    # Schema wraps the array in {"aliases": [...]}.  Fall back to bare list for
+    # providers that ignore response_format.
+    if isinstance(parsed, dict):
+        result = parsed.get("aliases", [])
+    elif isinstance(parsed, list):
+        result = parsed
+    else:
+        logger.warning("LLM alias response had unexpected shape for %r", show_title)
         return []
 
     if not isinstance(result, list):

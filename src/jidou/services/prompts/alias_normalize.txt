@@ -12,10 +12,10 @@ Do NOT include:
 - Very long or obscure variants unlikely to appear in filenames
 - The canonical title itself
 
-Return a JSON array of lowercase strings. No markdown, no explanation, no code fences.
-Return an empty array [] if no additional useful aliases can be identified.
+Return a JSON object with a single key "aliases" whose value is an array of lowercase strings.
+Return {"aliases": []} if no additional useful aliases can be identified.
 
 CRITICAL RULES:
-- Output ONLY the JSON array. Nothing before it. Nothing after it.
+- Output ONLY the JSON object. Nothing before it. Nothing after it.
 - All strings must be lowercase.
 - Maximum 10 aliases.
