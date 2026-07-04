@@ -1,6 +1,14 @@
 import type { ContentType, MediaPaths } from '@/types/api'
 
 /**
+ * Sanitize a show title for use as a folder name by replacing filesystem-illegal
+ * characters with underscores.
+ */
+export function sanitizeFolderName(title: string): string {
+  return title.replace(/[\\/:*?"<>|]/g, '_').trim()
+}
+
+/**
  * Translate a container-side path to the equivalent host-side path using the
  * media_paths mapping from the config API.
  *
@@ -14,7 +22,10 @@ export function toHostPath(containerPath: string, mediaPaths: MediaPaths): strin
       // Mirror the separator style of the host base so Windows paths render
       // with backslashes and POSIX paths use forward slashes.
       const sep = host.includes('\\') ? '\\' : '/'
-      return host + relative.replace(/\//g, sep)
+      // Strip any trailing separator from host to avoid double-separator when
+      // the env var was set with a trailing slash/backslash.
+      const hostBase = host.replace(/[/\\]+$/, '')
+      return hostBase + relative.replace(/\//g, sep)
     }
   }
   return containerPath
@@ -30,7 +41,10 @@ export function toContainerPath(
   mediaPaths: MediaPaths,
 ): string {
   const base = mediaPaths[contentType].container
-  return `${base}/${folderName.replace(/\\/g, '/')}`
+  // Strip leading slashes from folderName so a user-typed leading slash does
+  // not produce a double-slash in the stored path (e.g. /data/media/tv//Show).
+  const sanitized = folderName.replace(/\\/g, '/').replace(/^\/+/, '')
+  return `${base}/${sanitized}`
 }
 
 /**
@@ -58,7 +72,7 @@ export function parseContainerPath(
     }
   }
 
-  // Fallback: extract the last path segment.
-  const parts = containerPath.replace(/\\/g, '/').split('/')
+  // Fallback: extract the last non-empty path segment.
+  const parts = containerPath.replace(/\\/g, '/').split('/').filter(Boolean)
   return { contentType: 'tv', folderName: parts[parts.length - 1] ?? '' }
 }

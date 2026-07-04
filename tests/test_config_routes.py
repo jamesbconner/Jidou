@@ -44,6 +44,9 @@ def test_get_config_api_key_enabled_reflects_setting() -> None:
         mock_settings.local_tv_path = "/tv"
         mock_settings.local_anime_path = "/anime"
         mock_settings.local_movie_path = "/movies"
+        mock_settings.local_tv_host_path = "/tv"
+        mock_settings.local_anime_host_path = "/anime"
+        mock_settings.local_movie_host_path = "/movies"
         mock_settings.rss_config_remote_path = None
         mock_settings.jidou_api_key = "secret"
 
@@ -86,6 +89,18 @@ def test_get_config_redacts_redis_password() -> None:
         mock_settings.llm_model = ""
         mock_settings.llm_base_url = ""
         mock_settings.llm_cache_ttl = 3600
+        mock_settings.local_tv_path = "/data/media/tv"
+        mock_settings.local_anime_path = "/data/media/anime"
+        mock_settings.local_movie_path = "/data/media/movies"
+        mock_settings.local_tv_host_path = "/data/media/tv"
+        mock_settings.local_anime_host_path = "/data/media/anime"
+        mock_settings.local_movie_host_path = "/data/media/movies"
+        mock_settings.rss_config_remote_path = None
+        mock_settings.jidou_api_key = None
+        mock_settings.sync_schedule_enabled = False
+        mock_settings.sync_schedule_hours = "2"
+        mock_settings.rss_import_schedule_enabled = False
+        mock_settings.rss_import_schedule_hours = "2"
         response = TestClient(app).get("/api/config")
     assert response.status_code == 200
     body = response.json()

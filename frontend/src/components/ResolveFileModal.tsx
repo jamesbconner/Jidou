@@ -4,7 +4,7 @@ import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
-import { toContainerPath, toHostPath } from '@/utils/paths'
+import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, TmdbSearchResponse, ContentType, AppConfig } from '@/types/api'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
@@ -72,8 +72,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
   // suggestion updates automatically.
   useEffect(() => {
     if (!selected || folderEdited) return
-    const safeTitle = (selected.title ?? '').replace(/[\\/:*?"<>|]/g, '_').trim()
-    setFolderName(safeTitle)
+    setFolderName(sanitizeFolderName(selected.title ?? ''))
   }, [selected, folderEdited])
 
   // Snap content type to match the TMDB media type on every selection change.
@@ -257,6 +256,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 {config && folderName.trim() && (
                   <div className="text-xs text-zinc-500 font-mono">
                     {toHostPath(toContainerPath(contentType, folderName.trim(), config.media_paths), config.media_paths)}
+                  </div>
+                )}
+                {selected && !folderName.trim() && (
+                  <div className="text-xs text-amber-400">
+                    This result has no title — enter a folder name above to continue.
                   </div>
                 )}
                 <div className="text-xs text-zinc-500">

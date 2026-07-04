@@ -6,7 +6,7 @@ import { useShows } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { api } from '@/api/client'
-import { toHostPath, toContainerPath } from '@/utils/paths'
+import { toHostPath, toContainerPath, sanitizeFolderName } from '@/utils/paths'
 import type {
   FileRead,
   ShowList,
@@ -81,15 +81,8 @@ export function RematchModal({ file, onClose }: Props) {
   useEffect(() => {
     if (!selectedTmdb) return
     setContentType(selectedTmdb.media_type === 'movie' ? 'movie' : 'tv')
-    const safeTitle = (selectedTmdb.name ?? selectedTmdb.title ?? '')
-      .replace(/[\\/:*?"<>|]/g, '_')
-      .trim()
-    setFolderName(safeTitle)
+    setFolderName(sanitizeFolderName(selectedTmdb.name ?? selectedTmdb.title ?? ''))
   }, [selectedTmdb])
-
-  function handleContentTypeChange(t: ContentType) {
-    setContentType(t)
-  }
 
   function switchMode(next: 'library' | 'tmdb') {
     setMode(next)
@@ -318,7 +311,7 @@ export function RematchModal({ file, onClose }: Props) {
                                   name="rematch_content_type"
                                   value={t}
                                   checked={contentType === t}
-                                  onChange={() => handleContentTypeChange(t)}
+                                  onChange={() => setContentType(t)}
                                   className="accent-indigo-500"
                                 />
                                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -338,6 +331,11 @@ export function RematchModal({ file, onClose }: Props) {
                           {config && folderName.trim() && (
                             <div className="text-xs text-zinc-500 font-mono">
                               {toHostPath(toContainerPath(contentType, folderName.trim(), config.media_paths), config.media_paths)}
+                            </div>
+                          )}
+                          {!folderName.trim() && (
+                            <div className="text-xs text-amber-400">
+                              This result has no title — enter a folder name above to continue.
                             </div>
                           )}
                         </div>
