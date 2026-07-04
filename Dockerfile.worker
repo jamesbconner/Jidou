@@ -34,9 +34,13 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Copy application source (may be overridden by docker-compose mount in dev)
 COPY src/ ./src/
 
-# Run as non-root user for security
+# Run as non-root user for security.
+# Pre-create /data/celerybeat so Docker initialises the named volume with
+# appuser ownership on first mount (empty volumes inherit from the image).
 RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    mkdir -p /data/celerybeat && \
+    chown appuser:appuser /data/celerybeat
 USER appuser
 
 # Run Celery worker — concurrency and prefetch are configurable via env vars.
