@@ -1,6 +1,6 @@
 """Tests for the alias orchestrator."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -9,7 +9,6 @@ from jidou.orchestrators.alias_orchestrator import (
     _extract_tmdb_aliases,
     generate_aliases,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
