@@ -240,7 +240,8 @@ function EditPathModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!mediaPaths || !folderName.trim()) { onSave(null); return }
+    if (!mediaPaths) return
+    if (!folderName.trim()) { onSave(null); return }
     onSave(toContainerPath(contentType, folderName.trim(), mediaPaths))
   }
 
@@ -295,7 +296,7 @@ function EditPathModal({
             </button>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !mediaPaths}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
               {isPending ? 'Saving…' : folderName.trim() ? 'Save' : 'Clear path'}

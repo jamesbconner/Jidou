@@ -142,7 +142,7 @@ export function RematchModal({ file, onClose }: Props) {
     if (!selectedTmdb) return false
     const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
     if (existing) return existing.local_path != null
-    return folderName.trim().length > 0
+    return !!config && folderName.trim().length > 0
   })()
 
   const errorMsg = (() => {
