@@ -199,6 +199,15 @@ class TestScheduledSyncTask:
 
 
 class TestScheduledRssImportTask:
+    def test_skips_when_rss_config_path_not_set(self) -> None:
+        """Skips without claiming a slot when RSS_CONFIG_REMOTE_PATH is not configured."""
+        with patch("jidou.workers.scheduled_tasks.settings") as mock_settings:
+            mock_settings.rss_config_remote_path = ""
+            from jidou.workers.scheduled_tasks import scheduled_rss_import_task
+
+            result = scheduled_rss_import_task()  # type: ignore[call-arg]
+        assert result == "skipped"
+
     def test_skips_when_rss_import_is_active(self) -> None:
         """Guard skips when an rss_import task is already running."""
         p1, p2 = _patch_db(active_count=1)

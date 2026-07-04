@@ -353,7 +353,7 @@ function computeNextRun(hoursStr: string): Date | null {
   const nowUtcHour = now.getUTCHours()
   const nowUtcMin = now.getUTCMinutes()
 
-  const nextHour = hours.find((h) => h > nowUtcHour || (h === nowUtcHour && nowUtcMin === 0))
+  const nextHour = hours.find((h) => h > nowUtcHour)
   const next = new Date()
   if (nextHour !== undefined) {
     next.setUTCHours(nextHour, 0, 0, 0)

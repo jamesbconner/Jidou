@@ -159,6 +159,10 @@ async def _scheduled_sync() -> str:
 
 
 async def _scheduled_rss_import() -> str:
+    if not settings.rss_config_remote_path:
+        logger.warning("Scheduled RSS import skipped: RSS_CONFIG_REMOTE_PATH is not configured")
+        return "skipped"
+
     task_id = str(uuid.uuid4())
     if not await _try_claim_task("rss_import", task_id):
         logger.info("Scheduled RSS import skipped: an rss_import task is already active")
