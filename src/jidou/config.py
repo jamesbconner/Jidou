@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_cache_ttl: int = Field(default=3600, ge=60)
     llm_timeout: float = Field(default=30.0, ge=1.0)
+    llm_no_think: bool = True
 
     # Celery
     celery_broker_url: str | None = None

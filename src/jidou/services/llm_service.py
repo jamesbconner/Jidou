@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -92,6 +93,7 @@ class LLMService:
         model: str = "",
         cache_ttl: int = 3600,
         timeout: float = 30.0,
+        no_think: bool = True,
     ) -> None:
         try:
             self._provider = LLMProvider(provider.lower())
@@ -99,6 +101,7 @@ class LLMService:
             logger.warning("Unknown LLM provider %r — falling back to 'none'", provider)
             self._provider = LLMProvider.NONE
 
+        self._no_think = no_think
         self._api_key = api_key
         effective_base = (
             base_url.rstrip("/") if base_url else _DEFAULT_BASE_URLS.get(self._provider, "")
@@ -157,9 +160,14 @@ class LLMService:
 
     @staticmethod
     def _make_cache_key(
-        provider: str, model: str, system: str | None, prompt: str, max_tokens: int
+        provider: str,
+        model: str,
+        system: str | None,
+        prompt: str,
+        max_tokens: int,
+        response_format: dict[str, Any] | None,
     ) -> str:
-        raw = f"{provider}:{model}:{system or ''}:{prompt}:{max_tokens}"
+        raw = f"{provider}:{model}:{system or ''}:{prompt}:{max_tokens}:{response_format!r}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
     async def complete(
@@ -169,6 +177,7 @@ class LLMService:
         model: str | None = None,
         bypass_cache: bool = False,
         max_tokens: int = 1024,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse | None:
         """Generate a chat completion.
 
@@ -181,6 +190,9 @@ class LLMService:
             max_tokens: Maximum tokens the model may generate. Applies to all
                 providers. Keeps local models (Ollama, LM Studio) from running
                 indefinitely and helps avoid HTTP read timeouts.
+            response_format: Optional JSON schema structured output spec
+                (OpenAI ``response_format`` shape). Only applied for
+                OpenAI-compatible providers; silently ignored for Anthropic.
 
         Returns:
             :class:`LLMResponse` on success, ``None`` on any failure
@@ -192,7 +204,7 @@ class LLMService:
 
         effective_model = model or self._model
         cache_key = self._make_cache_key(
-            self._provider, effective_model, system, prompt, max_tokens
+            self._provider, effective_model, system, prompt, max_tokens, response_format
         )
 
         if not bypass_cache:
@@ -220,6 +232,7 @@ class LLMService:
                     prompt=prompt,
                     model=effective_model,
                     max_tokens=max_tokens,
+                    response_format=response_format,
                 )
             elif self._provider == LLMProvider.ANTHROPIC:
                 (
@@ -287,6 +300,7 @@ class LLMService:
         prompt: str,
         model: str,
         max_tokens: int = 8192,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, int, int, str]:
         """Call an OpenAI-compatible ``/v1/chat/completions`` endpoint.
 
@@ -295,6 +309,8 @@ class LLMService:
             prompt: User message.
             model: Model identifier.
             max_tokens: Maximum tokens the model may generate.
+            response_format: Optional JSON schema structured output spec
+                (OpenAI ``response_format`` shape).
 
         Returns:
             Tuple of ``(content, prompt_tokens, completion_tokens, finish_reason)``.
@@ -306,13 +322,18 @@ class LLMService:
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        # /no_think suppresses chain-of-thought on Qwen3 and similar reasoning
+        # models that ignore the equivalent system-prompt instruction.
+        user_content = f"/no_think\n{prompt}" if self._no_think else prompt
+        messages.append({"role": "user", "content": user_content})
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         payload: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
@@ -323,6 +344,8 @@ class LLMService:
             response.raise_for_status()
             data: dict[str, Any] = response.json()
 
+        logger.debug("Raw provider response: %s", json.dumps(data, indent=2, default=str))
+
         choices: list[dict[str, Any]] = data.get("choices") or []
         if not choices:
             raise ValueError(
@@ -330,7 +353,14 @@ class LLMService:
                 "(content_filter, token-boundary truncation, or unsupported model)"
             )
         choice = choices[0]
-        content: str = choice["message"]["content"]
+        # Use .get() so a provider that omits content entirely (rather than
+        # sending an empty string) doesn't raise KeyError before the fallback.
+        content: str = choice["message"].get("content") or ""
+        # Qwen3 and some other reasoning models (via LM Studio) emit the answer
+        # in reasoning_content and leave content empty when structured output is
+        # active.  Fall back to reasoning_content so the caller gets the JSON.
+        if not content:
+            content = (choice["message"].get("reasoning_content") or "").strip()
         finish_reason: str = choice.get("finish_reason") or ""
         usage: dict[str, int] = data.get("usage", {})
         return (
@@ -415,4 +445,5 @@ def create_llm_service(settings: Settings) -> LLMService:
         model=settings.llm_model,
         cache_ttl=settings.llm_cache_ttl,
         timeout=settings.llm_timeout,
+        no_think=settings.llm_no_think,
     )

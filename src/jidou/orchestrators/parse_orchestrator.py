@@ -157,6 +157,44 @@ def _heuristic_parse(filename: str) -> dict[str, object]:
 
 _CONFIDENCE_THRESHOLD = 0.7
 
+# JSON schema for structured LLM output (OpenAI response_format shape).
+# Passed to OpenAI-compatible providers; Anthropic ignores it and relies on
+# the system prompt text instead.
+_PARSE_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "filename_parse",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "show_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "crc32": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "content_type": {
+                    "anyOf": [
+                        {"type": "string", "enum": ["anime", "tv", "movie"]},
+                        {"type": "null"},
+                    ]
+                },
+                "confidence": {"type": "number"},
+                "reasoning": {"type": "string"},
+            },
+            "required": [
+                "show_name",
+                "season",
+                "episode",
+                "crc32",
+                "content_type",
+                "confidence",
+                "reasoning",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 @dataclass
 class ParseResult:
@@ -252,12 +290,14 @@ class ParseOrchestrator:
         response = await self.llm.complete(
             prompt=f"Given this filename: {filename}{hint_line}",
             system=_PARSE_SYSTEM,
+            response_format=_PARSE_RESPONSE_FORMAT,
         )
         if response is None:
             logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
             return _heuristic_parse(filename)
 
         text = response.content.strip()
+        # Strip markdown fences — some providers emit them even with structured output.
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
 
@@ -280,6 +320,7 @@ class ParseOrchestrator:
             "show_name": parsed.get("show_name"),
             "season": int(raw_season) if raw_season is not None else None,
             "episode": int(raw_episode) if raw_episode is not None else None,
+            "crc32": parsed.get("crc32"),
             "content_type": parsed.get("content_type"),
             "confidence": float(parsed.get("confidence") or 0.0),
             "llm_ok": True,
