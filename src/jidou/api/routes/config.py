@@ -48,6 +48,10 @@ async def get_config() -> dict[str, Any]:
         "local_movie_path": settings.local_movie_path,
         "rss_config_path_set": bool(settings.rss_config_remote_path),
         "api_key_enabled": bool(settings.jidou_api_key),
+        "sync_schedule_enabled": settings.sync_schedule_enabled,
+        "sync_schedule_hours": settings.sync_schedule_hours,
+        "rss_import_schedule_enabled": settings.rss_import_schedule_enabled,
+        "rss_import_schedule_hours": settings.rss_import_schedule_hours,
     }
 
 

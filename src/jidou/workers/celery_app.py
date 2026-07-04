@@ -3,6 +3,7 @@
 import logging
 
 from celery import Celery
+from celery.schedules import crontab
 
 from jidou.config import settings
 
@@ -41,5 +42,37 @@ celery_app.conf.update(
         "jidou.workers.db_import_tasks",
         "jidou.workers.rss_tasks",
         "jidou.workers.seed_tasks",
+        "jidou.workers.scheduled_tasks",
     ],
 )
+
+# ---------------------------------------------------------------------------
+# Beat schedule — built from env-var settings at startup; restart to change.
+# Each enabled schedule fires the thin overlap-guard wrapper task, which
+# checks for an already-active run before dispatching the real worker task.
+# ---------------------------------------------------------------------------
+_beat_schedule: dict[str, object] = {}
+
+if settings.sync_schedule_enabled:
+    _beat_schedule["scheduled-sync"] = {
+        "task": "jidou.workers.scheduled_tasks.scheduled_sync_task",
+        "schedule": crontab(hour=settings.sync_schedule_hours, minute="0"),
+        "options": {"queue": "jidou"},
+    }
+    logger.info(
+        "Sync beat schedule enabled: daily at hour(s) %s UTC",
+        settings.sync_schedule_hours,
+    )
+
+if settings.rss_import_schedule_enabled:
+    _beat_schedule["scheduled-rss-import"] = {
+        "task": "jidou.workers.scheduled_tasks.scheduled_rss_import_task",
+        "schedule": crontab(hour=settings.rss_import_schedule_hours, minute="0"),
+        "options": {"queue": "jidou"},
+    }
+    logger.info(
+        "RSS import beat schedule enabled: daily at hour(s) %s UTC",
+        settings.rss_import_schedule_hours,
+    )
+
+celery_app.conf.beat_schedule = _beat_schedule

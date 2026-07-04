@@ -294,6 +294,10 @@ export interface AppConfig {
   local_movie_path: string
   rss_config_path_set: boolean
   api_key_enabled: boolean
+  sync_schedule_enabled: boolean
+  sync_schedule_hours: string
+  rss_import_schedule_enabled: boolean
+  rss_import_schedule_hours: string
 }
 
 // ─── RSS ──────────────────────────────────────────────────────────────────────
