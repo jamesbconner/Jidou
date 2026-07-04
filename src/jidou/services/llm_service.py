@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -259,6 +260,12 @@ class LLMService:
             return None
 
         elapsed = time.monotonic() - start
+
+        # Strip chain-of-thought blocks that reasoning models (DeepSeek-R1, Qwen3, etc.)
+        # emit in content when /no_think is not honoured or thinking is explicitly enabled.
+        content = re.sub(
+            r"<think(?:ing)?>.*?</think(?:ing)?>", "", content, flags=re.DOTALL
+        ).strip()
 
         if finish_reason == "length":
             logger.warning(
