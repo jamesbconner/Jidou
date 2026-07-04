@@ -207,7 +207,6 @@ export default function Settings() {
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
         <h2 className="font-semibold">SFTP Baseline Files</h2>
         <p className="text-sm text-gray-600">
-          Run once before enabling the download schedule when taking over from a legacy service.
           Inventories all existing files on the SFTP server and marks them as{' '}
           <span className="font-mono text-xs bg-slate-100 text-slate-600 px-1 rounded">seeded</span>{' '}
           so Jidou will never re-download them. The operation is idempotent — safe to re-run.
