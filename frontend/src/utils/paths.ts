@@ -9,7 +9,7 @@ import type { ContentType, MediaPaths } from '@/types/api'
  */
 export function toHostPath(containerPath: string, mediaPaths: MediaPaths): string {
   for (const { container, host } of Object.values(mediaPaths)) {
-    if (containerPath.startsWith(container)) {
+    if (containerPath === container || containerPath.startsWith(container + '/')) {
       const relative = containerPath.slice(container.length)
       // Mirror the separator style of the host base so Windows paths render
       // with backslashes and POSIX paths use forward slashes.

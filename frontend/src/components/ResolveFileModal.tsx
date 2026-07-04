@@ -292,7 +292,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
             </button>
             <button
               onClick={handleConfirm}
-              disabled={!selected || !folderName.trim() || rematch.isPending}
+              disabled={!selected || !folderName.trim() || !config || rematch.isPending}
               className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {rematch.isPending ? 'Matching…' : 'Confirm match'}
