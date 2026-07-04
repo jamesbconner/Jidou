@@ -644,7 +644,7 @@ async def test_llm_pick_candidate_resolves_article_mismatch() -> None:
     original = {"id": 61889, "name": "Marvel's Daredevil", "media_type": "tv"}
 
     mock_response = MagicMock()
-    mock_response.content = "2"  # LLM picks candidate 2 = original Daredevil
+    mock_response.content = '{"match": 2}'  # LLM picks candidate 2 = original Daredevil
     # is_available is sync; only complete is async.
     llm = MagicMock()
     llm.is_available.return_value = True

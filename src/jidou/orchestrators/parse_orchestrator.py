@@ -410,8 +410,7 @@ class ParseOrchestrator:
             return (await self.session.execute(stmt)).scalar_one_or_none()
         # season is None — try absolute episode number (anime absolute numbering)
         stmt = select(Episode).where(
-            (Episode.show_id == show_id)
-            & (Episode.absolute_episode_number == episode)
+            (Episode.show_id == show_id) & (Episode.absolute_episode_number == episode)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
