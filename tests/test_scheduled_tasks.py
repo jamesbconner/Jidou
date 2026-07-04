@@ -114,10 +114,13 @@ class TestDispatchScheduled:
         mock_task = MagicMock()
         mock_task.apply_async = MagicMock(side_effect=RuntimeError("broker down"))
 
-        with patch(
-            "jidou.workers.scheduled_tasks._delete_task_record",
-            new_callable=AsyncMock,
-        ) as mock_delete, pytest.raises(RuntimeError, match="broker down"):
+        with (
+            patch(
+                "jidou.workers.scheduled_tasks._delete_task_record",
+                new_callable=AsyncMock,
+            ) as mock_delete,
+            pytest.raises(RuntimeError, match="broker down"),
+        ):
             await _dispatch_scheduled("sync", mock_task, "dead-id")
 
         mock_delete.assert_awaited_once_with("dead-id")
