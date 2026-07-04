@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   useShow,
   useShowEpisodes,
@@ -15,7 +16,9 @@ import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import type { EpisodeList, FileRead, TmdbResult } from '@/types/api'
+import { api } from '@/api/client'
+import { toHostPath, toContainerPath, parseContainerPath } from '@/utils/paths'
+import type { EpisodeList, FileRead, TmdbResult, AppConfig, ContentType } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
@@ -212,11 +215,33 @@ function EditPathModal({
   onClose: () => void
   isPending: boolean
 }) {
-  const [draft, setDraft] = useState(current ?? '')
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.get<AppConfig>('/config'),
+    staleTime: 60_000,
+  })
+
+  const mediaPaths = config?.media_paths
+  const parsed = mediaPaths ? parseContainerPath(current, mediaPaths) : null
+  const [contentType, setContentType] = useState<ContentType>(parsed?.contentType ?? 'tv')
+  const [folderName, setFolderName] = useState(parsed?.folderName ?? '')
+
+  // Re-parse when mediaPaths loads after mount.
+  useEffect(() => {
+    if (!mediaPaths) return
+    const p = parseContainerPath(current, mediaPaths)
+    setContentType(p.contentType)
+    setFolderName(p.folderName)
+  }, [mediaPaths]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hostPreview = mediaPaths && folderName.trim()
+    ? toHostPath(toContainerPath(contentType, folderName.trim(), mediaPaths), mediaPaths)
+    : null
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave(draft.trim() || null)
+    if (!mediaPaths || !folderName.trim()) { onSave(null); return }
+    onSave(toContainerPath(contentType, folderName.trim(), mediaPaths))
   }
 
   return (
@@ -224,13 +249,41 @@ function EditPathModal({
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
         <h3 className="font-semibold mb-4">Edit Local Path</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="border rounded px-3 py-2 text-sm w-full font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="/media/shows/example  or  Z:\media\shows\example"
-            autoFocus
-          />
+          {/* Content type — determines which volume base is used */}
+          <div className="space-y-1">
+            <label className="text-sm text-gray-600">Content type</label>
+            <div className="flex gap-4">
+              {(['tv', 'anime', 'movie'] as ContentType[]).map((t) => (
+                <label key={t} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="edit_content_type"
+                    value={t}
+                    checked={contentType === t}
+                    onChange={() => setContentType(t)}
+                    className="accent-blue-600"
+                  />
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Show folder name */}
+          <div className="space-y-1">
+            <label className="text-sm text-gray-600">Show folder name</label>
+            <input
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              className="border rounded px-3 py-2 text-sm w-full font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Show Name"
+              autoFocus
+            />
+            {hostPreview && (
+              <p className="text-xs text-gray-500 font-mono">{hostPreview}</p>
+            )}
+          </div>
+
           <div className="flex gap-2 justify-end">
             <button
               type="button"
@@ -242,7 +295,7 @@ function EditPathModal({
             </button>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !folderName.trim()}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
               {isPending ? 'Saving…' : 'Save'}
@@ -360,6 +413,11 @@ export default function ShowDetail() {
   const navigate = useNavigate()
 
   const { data: show, isLoading } = useShow(showId)
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.get<AppConfig>('/config'),
+    staleTime: 60_000,
+  })
   const { data: episodes = [] } = useShowEpisodes(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
@@ -510,7 +568,9 @@ export default function ShowDetail() {
       <section className="bg-white rounded-lg shadow p-4">
         <h2 className="font-semibold mb-1">Local path</h2>
         {show.local_path ? (
-          <p className="font-mono text-sm text-gray-700 break-all">{show.local_path}</p>
+          <p className="font-mono text-sm text-gray-700 break-all">
+            {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
+          </p>
         ) : (
           <p className="text-sm text-gray-400 italic">Not set</p>
         )}

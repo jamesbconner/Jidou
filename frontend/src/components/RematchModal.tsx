@@ -6,6 +6,7 @@ import { useShows } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { api } from '@/api/client'
+import { toHostPath, toContainerPath } from '@/utils/paths'
 import type {
   FileRead,
   ShowList,
@@ -31,8 +32,7 @@ export function RematchModal({ file, onClose }: Props) {
   const [selectedLibraryShow, setSelectedLibraryShow] = useState<ShowList | null>(null)
   const [selectedTmdb, setSelectedTmdb] = useState<TmdbResult | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')
-  const [localPath, setLocalPath] = useState('')
-  const [pathEdited, setPathEdited] = useState(false)
+  const [folderName, setFolderName] = useState('')
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -76,35 +76,19 @@ export function RematchModal({ file, onClose }: Props) {
     [allShows],
   )
 
-  // When a TMDB result is selected: derive content type from media_type and auto-fill path.
-  // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep
-  // (the first effect would read stale contentType before the second effect could update it).
+  // When a TMDB result is selected: derive content type from media_type and auto-fill folder.
+  // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep.
   useEffect(() => {
-    if (!selectedTmdb || !config) return
-    const newType: ContentType = selectedTmdb.media_type === 'movie' ? 'movie' : 'tv'
-    setContentType(newType)
-    setPathEdited(false)
+    if (!selectedTmdb) return
+    setContentType(selectedTmdb.media_type === 'movie' ? 'movie' : 'tv')
     const safeTitle = (selectedTmdb.name ?? selectedTmdb.title ?? '')
       .replace(/[\\/:*?"<>|]/g, '_')
       .trim()
-    const base = newType === 'movie' ? config.local_movie_path : config.local_tv_path
-    setLocalPath(`${base}/${safeTitle}`)
-  }, [selectedTmdb, config])
+    setFolderName(safeTitle)
+  }, [selectedTmdb])
 
   function handleContentTypeChange(t: ContentType) {
     setContentType(t)
-    if (!pathEdited && selectedTmdb && config) {
-      const safeTitle = (selectedTmdb.name ?? selectedTmdb.title ?? '')
-        .replace(/[\\/:*?"<>|]/g, '_')
-        .trim()
-      const base =
-        t === 'anime'
-          ? config.local_anime_path
-          : t === 'movie'
-            ? config.local_movie_path
-            : config.local_tv_path
-      setLocalPath(`${base}/${safeTitle}`)
-    }
   }
 
   function switchMode(next: 'library' | 'tmdb') {
@@ -112,6 +96,7 @@ export function RematchModal({ file, onClose }: Props) {
     setSearchQuery('')
     setSelectedLibraryShow(null)
     setSelectedTmdb(null)
+    setFolderName('')
     rematch.reset()
   }
 
@@ -128,12 +113,15 @@ export function RematchModal({ file, onClose }: Props) {
             selectedTmdb.media_type === 'tv' || selectedTmdb.media_type === 'movie'
               ? selectedTmdb.media_type
               : undefined
+          const containerPath = config && folderName.trim()
+            ? toContainerPath(contentType, folderName.trim(), config.media_paths)
+            : undefined
           await rematch.mutateAsync({
             id: file.id,
             payload: {
               tmdb_id: selectedTmdb.id,
               tmdb_media_type: mediaType ?? null,
-              local_path: localPath || undefined,
+              local_path: containerPath,
               content_type: contentType,
             },
           })
@@ -154,7 +142,7 @@ export function RematchModal({ file, onClose }: Props) {
     if (!selectedTmdb) return false
     const existing = libraryByTmdbId.get(`${selectedTmdb.id}:${selectedTmdb.media_type ?? ''}`)
     if (existing) return existing.local_path != null
-    return localPath.trim().length > 0
+    return folderName.trim().length > 0
   })()
 
   const errorMsg = (() => {
@@ -240,7 +228,9 @@ export function RematchModal({ file, onClose }: Props) {
                   <div className="font-medium text-zinc-200">{s.title}</div>
                   <div className="text-zinc-500">
                     #{s.id}
-                    {s.local_path ? ` · ${s.local_path}` : ' · no local path set'}
+                    {s.local_path
+                      ? ` · ${config ? toHostPath(s.local_path, config.media_paths) : s.local_path}`
+                      : ' · no local path set'}
                   </div>
                 </button>
               ))}
@@ -337,17 +327,19 @@ export function RematchModal({ file, onClose }: Props) {
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <div className="text-xs text-zinc-400">Local path</div>
+                          <div className="text-xs text-zinc-400">Show folder name</div>
                           <input
                             type="text"
-                            value={localPath}
-                            onChange={(e) => {
-                              setLocalPath(e.target.value)
-                              setPathEdited(true)
-                            }}
-                            placeholder="/media/tv/Show Name"
+                            value={folderName}
+                            onChange={(e) => setFolderName(e.target.value)}
+                            placeholder="Show Name"
                             className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                           />
+                          {config && folderName.trim() && (
+                            <div className="text-xs text-zinc-500 font-mono">
+                              {toHostPath(toContainerPath(contentType, folderName.trim(), config.media_paths), config.media_paths)}
+                            </div>
+                          )}
                         </div>
                       </>
                     )}
