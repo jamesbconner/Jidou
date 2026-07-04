@@ -89,10 +89,16 @@ services:
       - SFTP_MAX_RETRIES=${SFTP_MAX_RETRIES:-3}
       - SFTP_RETRY_DELAY=${SFTP_RETRY_DELAY:-1.0}
       - LOCAL_STAGING_PATH=${LOCAL_STAGING_PATH:-/data/staging}
-      # Media base paths
+      # Media base paths (container-side — used for file I/O)
       - LOCAL_TV_PATH=${LOCAL_TV_PATH:-/data/media/tv}
       - LOCAL_ANIME_PATH=${LOCAL_ANIME_PATH:-/data/media/anime}
       - LOCAL_MOVIE_PATH=${LOCAL_MOVIE_PATH:-/data/media/movies}
+      # Media host paths — passed into the container so /api/config can expose
+      # the path the user recognises (e.g. D:\shows\tv) instead of the
+      # container-internal path.  Defaults to container path (Linux/macOS no-op).
+      - LOCAL_TV_HOST_PATH=${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}
+      - LOCAL_ANIME_HOST_PATH=${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}
+      - LOCAL_MOVIE_HOST_PATH=${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}
       # RSS
       - RSS_CONFIG_REMOTE_PATH=${RSS_CONFIG_REMOTE_PATH:-}
       # Schedules — mirrored here so /api/config reports correct enabled status
