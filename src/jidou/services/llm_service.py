@@ -286,7 +286,7 @@ class LLMService:
         system: str | None,
         prompt: str,
         model: str,
-        max_tokens: int = 1024,
+        max_tokens: int = 8192,
     ) -> tuple[str, int, int, str]:
         """Call an OpenAI-compatible ``/v1/chat/completions`` endpoint.
 
