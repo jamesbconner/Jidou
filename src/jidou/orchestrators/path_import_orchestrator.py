@@ -46,9 +46,10 @@ _LLM_SYSTEM = (
     "You are a filename-to-episode matcher. "
     "Given a show title, a filename, and a numbered episode list, "
     "identify which episode the file belongs to. "
-    "Reply with ONLY two integers: season_number episode_number (space-separated). "
-    "Example: 2 7\n"
-    "If you cannot determine the match, reply with exactly: UNKNOWN"
+    "Reply with ONLY a compact JSON object: "
+    '{"season": <integer or null>, "episode": <integer or null>}. '
+    "Use null for season or episode if you cannot determine the match. "
+    "No other text, no markdown, no explanation."
 )
 
 _LLM_SHOW_MATCH_SYSTEM = (
@@ -60,16 +61,67 @@ _LLM_SHOW_MATCH_SYSTEM = (
     "A sequel or spin-off with a shared word is NOT a match unless the directory "
     "clearly refers to that specific entry. "
     'Example: "Daredevil" matches "Marvel\'s Daredevil" but NOT "Daredevil: Born Again". '
-    "Reply with ONLY the candidate number (1, 2, 3, ...) or NONE if no candidate matches."
+    'Reply with ONLY a compact JSON object: {"match": <candidate number (1, 2, 3, ...) or null>}. '
+    "Use null if no candidate matches. No other text, no markdown, no explanation."
 )
 
 _LLM_EPISODE_PARSE_SYSTEM = (
     "You are a TV episode filename parser. "
     "Extract only the season and episode numbers from the filename. "
     "Reply with ONLY a compact JSON object: "
-    '{"season": <integer or null>, "episode": <integer or null>} '
+    '{"season": <integer or null>, "episode": <integer or null>}. '
     "No other text, no markdown, no explanation."
 )
+
+_LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "episode_match",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+            "required": ["season", "episode"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_LLM_SHOW_MATCH_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "show_match",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "match": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+            "required": ["match"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_LLM_EPISODE_PARSE_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "episode_parse",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+            "required": ["season", "episode"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 def _sanitize_sys_name(title: str) -> str:
@@ -597,6 +649,7 @@ class PathImportOrchestrator:
             response = await self.llm.complete(
                 prompt=f"Filename: {filename}{hint}",
                 system=_LLM_EPISODE_PARSE_SYSTEM,
+                response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
             )
         except Exception:
             logger.warning("LLM episode-parse failed for %r", filename)
@@ -753,7 +806,11 @@ class PathImportOrchestrator:
         prompt = f'Directory: "{show_dir}"\n\nCandidates:\n' + "\n".join(lines)
 
         try:
-            response = await self.llm.complete(prompt=prompt, system=_LLM_SHOW_MATCH_SYSTEM)
+            response = await self.llm.complete(
+                prompt=prompt,
+                system=_LLM_SHOW_MATCH_SYSTEM,
+                response_format=_LLM_SHOW_MATCH_RESPONSE_FORMAT,
+            )
         except Exception:
             logger.warning("LLM show-match failed for %r", show_dir)
             return None
@@ -762,13 +819,23 @@ class PathImportOrchestrator:
             return None
 
         text = response.content.strip()
-        if text == "NONE":
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("LLM returned invalid JSON for show-match of %r: %r", show_dir, text)
+            return None
+
+        raw_match = parsed.get("match") if isinstance(parsed, dict) else None
+        if raw_match is None:
             return None
 
         try:
-            idx = int(text) - 1
-        except ValueError:
-            logger.warning("LLM returned unexpected format %r for show dir %r", text, show_dir)
+            idx = int(raw_match) - 1
+        except (TypeError, ValueError):
+            logger.warning("LLM returned non-integer match %r for show dir %r", raw_match, show_dir)
             return None
 
         if 0 <= idx < len(shortlist):
@@ -819,7 +886,11 @@ class PathImportOrchestrator:
         prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
 
         try:
-            response = await self.llm.complete(prompt=prompt, system=_LLM_SYSTEM)
+            response = await self.llm.complete(
+                prompt=prompt,
+                system=_LLM_SYSTEM,
+                response_format=_LLM_MATCH_RESPONSE_FORMAT,
+            )
         except Exception:
             logger.warning("LLM match failed for %r in show %r", filename, show_title)
             return None
@@ -828,18 +899,28 @@ class PathImportOrchestrator:
             return None
 
         text = response.content.strip()
-        if text == "UNKNOWN":
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, text)
             return None
 
-        parts = text.split()
-        if len(parts) != 2:
-            logger.warning("LLM returned unexpected format %r for %r", text, filename)
+        if not isinstance(parsed, dict):
+            logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, text)
+            return None
+
+        raw_season = parsed.get("season")
+        raw_episode = parsed.get("episode")
+        if raw_season is None or raw_episode is None:
             return None
 
         try:
-            season, episode_num = int(parts[0]), int(parts[1])
-        except ValueError:
-            logger.warning("LLM returned non-integer response %r for %r", text, filename)
+            season, episode_num = int(raw_season), int(raw_episode)
+        except (TypeError, ValueError):
+            logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
             return None
 
         stmt = select(Episode).where(
