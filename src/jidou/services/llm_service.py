@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -338,6 +339,8 @@ class LLMService:
             response.raise_for_status()
             data: dict[str, Any] = response.json()
 
+        logger.debug("Raw provider response: %s", json.dumps(data, indent=2, default=str))
+
         choices: list[dict[str, Any]] = data.get("choices") or []
         if not choices:
             raise ValueError(
@@ -346,6 +349,11 @@ class LLMService:
             )
         choice = choices[0]
         content: str = choice["message"]["content"]
+        # Qwen3 and some other reasoning models (via LM Studio) emit the answer
+        # in reasoning_content and leave content empty when structured output is
+        # active.  Fall back to reasoning_content so the caller gets the JSON.
+        if not content:
+            content = (choice["message"].get("reasoning_content") or "").strip()
         finish_reason: str = choice.get("finish_reason") or ""
         usage: dict[str, int] = data.get("usage", {})
         return (
