@@ -160,9 +160,14 @@ class LLMService:
 
     @staticmethod
     def _make_cache_key(
-        provider: str, model: str, system: str | None, prompt: str, max_tokens: int
+        provider: str,
+        model: str,
+        system: str | None,
+        prompt: str,
+        max_tokens: int,
+        response_format: dict[str, Any] | None,
     ) -> str:
-        raw = f"{provider}:{model}:{system or ''}:{prompt}:{max_tokens}"
+        raw = f"{provider}:{model}:{system or ''}:{prompt}:{max_tokens}:{response_format!r}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
     async def complete(
@@ -199,7 +204,7 @@ class LLMService:
 
         effective_model = model or self._model
         cache_key = self._make_cache_key(
-            self._provider, effective_model, system, prompt, max_tokens
+            self._provider, effective_model, system, prompt, max_tokens, response_format
         )
 
         if not bypass_cache:
@@ -348,7 +353,9 @@ class LLMService:
                 "(content_filter, token-boundary truncation, or unsupported model)"
             )
         choice = choices[0]
-        content: str = choice["message"]["content"]
+        # Use .get() so a provider that omits content entirely (rather than
+        # sending an empty string) doesn't raise KeyError before the fallback.
+        content: str = choice["message"].get("content") or ""
         # Qwen3 and some other reasoning models (via LM Studio) emit the answer
         # in reasoning_content and leave content empty when structured output is
         # active.  Fall back to reasoning_content so the caller gets the JSON.
