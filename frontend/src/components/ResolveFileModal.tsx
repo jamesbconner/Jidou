@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, TmdbSearchResponse, ContentType, AppConfig } from '@/types/api'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
@@ -17,11 +18,11 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [selected, setSelected] = useState<TmdbSuggestion | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')
-  const [localPath, setLocalPath] = useState('')
+  const [folderName, setFolderName] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
   const debouncedQuery = useDebounce(searchQuery, 300)
   const [customSearch, setCustomSearch] = useState(false)
-  const [pathEdited, setPathEdited] = useState(false)
+  const [folderEdited, setFolderEdited] = useState(false)
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -66,32 +67,28 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const displayResults = customSearch ? searchAsSuggestions : (suggestions?.results ?? [])
   const isLoading = customSearch ? searchLoading : suggestionsLoading
 
-  // Suggest local path when selection or content type changes, but not if the
-  // user has already typed a custom path (pathEdited guard).  Changing the
-  // selected show resets pathEdited so the suggestion updates automatically.
+  // Suggest folder name when selection changes, but not if the user has already
+  // typed a custom name.  Changing the selected show resets folderEdited so the
+  // suggestion updates automatically.
   useEffect(() => {
-    if (!selected || !config || pathEdited) return
-    const safeTitle = (selected.title ?? '').replace(/[\\/:*?"<>|]/g, '_').trim()
-    const base =
-      contentType === 'anime'
-        ? config.local_anime_path
-        : contentType === 'movie'
-          ? config.local_movie_path
-          : config.local_tv_path
-    setLocalPath(`${base}/${safeTitle}`)
-  }, [selected, contentType, config, pathEdited])
+    if (!selected || folderEdited) return
+    setFolderName(sanitizeFolderName(selected.title ?? ''))
+  }, [selected, folderEdited])
 
   // Snap content type to match the TMDB media type on every selection change.
   // Anime requires manual override after selection.
-  // Also reset pathEdited so the path suggestion updates for the new show.
+  // Also reset folderEdited so the suggestion updates for the new show.
   useEffect(() => {
     if (!selected) return
     setContentType(selected.media_type === 'movie' ? 'movie' : 'tv')
-    setPathEdited(false)
+    setFolderEdited(false)
   }, [selected])
 
   function handleConfirm() {
-    if (!selected) return
+    if (!selected || !config) return
+    const containerPath = folderName.trim()
+      ? toContainerPath(contentType, folderName.trim(), config.media_paths)
+      : undefined
     rematch.mutate(
       {
         id: file.id,
@@ -100,7 +97,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
           tmdb_media_type: (selected.media_type === 'tv' || selected.media_type === 'movie')
             ? selected.media_type
             : undefined,
-          local_path: localPath || undefined,
+          local_path: containerPath,
           content_type: contentType,
         },
       },
@@ -246,18 +243,28 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 </div>
               </div>
 
-              {/* Local path */}
+              {/* Show folder name */}
               <div className="space-y-1">
-                <label className="text-xs text-zinc-400">Local path</label>
+                <label className="text-xs text-zinc-400">Show folder name</label>
                 <input
                   type="text"
-                  value={localPath}
-                  onChange={(e) => { setLocalPath(e.target.value); setPathEdited(true) }}
-                  placeholder="/media/tv/Show Name"
+                  value={folderName}
+                  onChange={(e) => { setFolderName(e.target.value); setFolderEdited(true) }}
+                  placeholder="Show Name"
                   className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                 />
+                {config && folderName.trim() && (
+                  <div className="text-xs text-zinc-500 font-mono">
+                    {toHostPath(toContainerPath(contentType, folderName.trim(), config.media_paths), config.media_paths)}
+                  </div>
+                )}
+                {selected && !folderName.trim() && (
+                  <div className="text-xs text-amber-400">
+                    This result has no title — enter a folder name above to continue.
+                  </div>
+                )}
                 <div className="text-xs text-zinc-500">
-                  Files will be placed in Season NN/ subdirectories under this path.
+                  Files will be placed in Season NN/ subdirectories under this folder.
                 </div>
               </div>
             </div>
@@ -289,7 +296,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
             </button>
             <button
               onClick={handleConfirm}
-              disabled={!selected || !localPath || rematch.isPending}
+              disabled={!selected || !folderName.trim() || !config || rematch.isPending}
               className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {rematch.isPending ? 'Matching…' : 'Confirm match'}

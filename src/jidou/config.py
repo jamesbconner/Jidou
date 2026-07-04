@@ -62,10 +62,17 @@ class Settings(BaseSettings):
     # Local staging area for downloaded files awaiting parse/match/route
     local_staging_path: str = "/data/staging"
 
-    # Base paths for routed media — used to suggest local_path when resolving unmatched files
+    # Container-side base paths — used by Python for file I/O and path construction.
     local_tv_path: str = "/data/media/tv"
     local_anime_path: str = "/data/media/anime"
     local_movie_path: str = "/data/media/movies"
+
+    # Host-side equivalents — exposed to the UI so it can display paths the user
+    # recognises instead of internal container paths.  Defaults match the container
+    # paths so Linux/macOS deployments (where they are the same) need no extra config.
+    local_tv_host_path: str = "/data/media/tv"
+    local_anime_host_path: str = "/data/media/anime"
+    local_movie_host_path: str = "/data/media/movies"
 
     # LLM
     llm_provider: str = "none"

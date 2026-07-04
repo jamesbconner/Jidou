@@ -276,6 +276,17 @@ export type WsMessage =
 
 // ─── Config ───────────────────────────────────────────────────────────────
 
+export interface MediaPathEntry {
+  container: string
+  host: string
+}
+
+export interface MediaPaths {
+  tv: MediaPathEntry
+  anime: MediaPathEntry
+  movie: MediaPathEntry
+}
+
 export interface AppConfig {
   app_name: string
   debug: boolean
@@ -289,9 +300,7 @@ export interface AppConfig {
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
-  local_tv_path: string
-  local_anime_path: string
-  local_movie_path: string
+  media_paths: MediaPaths
   rss_config_path_set: boolean
   api_key_enabled: boolean
   sync_schedule_enabled: boolean
