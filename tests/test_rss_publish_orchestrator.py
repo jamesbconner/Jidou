@@ -891,3 +891,39 @@ def test_publish_endpoint_202_when_path_configured() -> None:
 
     app.dependency_overrides.clear()
     assert resp.status_code == 202
+
+
+def test_publish_endpoint_503_when_broker_unavailable() -> None:
+    """POST /api/rss/publish returns 503 when the Celery broker is unreachable."""
+    from fastapi.testclient import TestClient
+
+    from jidou.database import get_session
+    from jidou.main import app
+    from jidou.models.task import BackgroundTask
+
+    task = MagicMock(spec=BackgroundTask)
+    task.id = 1
+    task.status = "pending"
+    task.completed_at = None
+
+    session = _make_session()
+
+    async def _mock_session() -> MagicMock:
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+
+    with (
+        patch("jidou.api.routes.rss.settings") as mock_settings,
+        patch("jidou.api.routes.rss.create_task_record", new=AsyncMock(return_value=task)),
+        patch("jidou.workers.rss_tasks.rss_publish_task") as mock_task,
+        TestClient(app) as client,
+    ):
+        mock_settings.rss_config_remote_path = "/remote/yarss2.conf"
+        mock_task.apply_async = MagicMock(side_effect=RuntimeError("Celery broker down"))
+        resp = client.post("/api/rss/publish")
+
+    app.dependency_overrides.clear()
+    assert resp.status_code == 503
+    assert "broker" in resp.json()["detail"].lower()
+    session.commit.assert_called_once()

@@ -1491,3 +1491,211 @@ async def test_fetch_trending_skips_items_without_id() -> None:
 
     # Only the item with an id should have been counted
     assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# seed_tasks
+# ---------------------------------------------------------------------------
+
+
+def test_seed_task_soft_timeout_calls_mark_timed_out() -> None:
+    """SoftTimeLimitExceeded in seed_remote_task must call mark_task_timed_out."""
+    from jidou.workers.seed_tasks import seed_remote_task
+
+    mark_calls: list[str] = []
+
+    async def fake_mark(celery_task_id: str) -> None:
+        mark_calls.append(celery_task_id)
+
+    with (
+        patch(
+            "jidou.workers.seed_tasks._seed_remote",
+            new_callable=AsyncMock,
+            side_effect=SoftTimeLimitExceeded(),
+        ),
+        patch("jidou.workers.seed_tasks.mark_task_timed_out", side_effect=fake_mark),
+        pytest.raises(SoftTimeLimitExceeded),
+    ):
+        seed_remote_task(dry_run=False)
+
+    assert len(mark_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_remote_skips_redelivery() -> None:
+    """_seed_remote exits early when task is already terminal."""
+    from jidou.models.task import TaskStatus
+    from jidou.workers.seed_tasks import _seed_remote
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
+
+    with (
+        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.seed_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=terminal,
+        ),
+        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
+    ):
+        result = await _seed_remote("tid-s1", dry_run=False)
+
+    assert result == "tid-s1"
+    mock_update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_seed_remote_success_path() -> None:
+    """_seed_remote runs the orchestrator and marks the task COMPLETED."""
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.seed_orchestrator import SeedResult
+    from jidou.workers.seed_tasks import _seed_remote
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    seed_result = SeedResult(
+        paths_scanned=1,
+        paths_failed=0,
+        files_found=3,
+        files_seeded=3,
+        files_skipped=0,
+    )
+
+    with (
+        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.seed_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers.seed_tasks.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.SFTPService"),
+        patch(
+            "jidou.workers.seed_tasks.SeedOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=seed_result,
+        ),
+    ):
+        result = await _seed_remote("tid-s2", dry_run=False)
+
+    assert result == "tid-s2"
+    mock_engine.dispose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_seed_remote_on_progress_is_invoked() -> None:
+    """The on_progress closure body in _seed_remote executes when the orchestrator calls it."""
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.seed_orchestrator import SeedResult
+    from jidou.workers.seed_tasks import _seed_remote
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    seed_result = SeedResult(
+        paths_scanned=1,
+        paths_failed=0,
+        files_found=1,
+        files_seeded=1,
+        files_skipped=0,
+    )
+
+    async def fake_run(*args: object, **kwargs: object) -> SeedResult:
+        on_progress = kwargs.get("on_progress")
+        if callable(on_progress):
+            await on_progress(1, 1, "seeding")  # type: ignore[operator]
+        return seed_result
+
+    with (
+        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.seed_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.SFTPService"),
+        patch("jidou.workers.seed_tasks.SeedOrchestrator.run", side_effect=fake_run),
+    ):
+        result = await _seed_remote("tid-sop1", dry_run=False)
+
+    assert result == "tid-sop1"
+
+
+@pytest.mark.asyncio
+async def test_seed_remote_cancellation_marks_cancelled() -> None:
+    """TaskCancelledError in _seed_remote updates status to CANCELLED."""
+    from jidou.models.task import TaskStatus
+    from jidou.services.progress import TaskCancelledError
+    from jidou.workers.seed_tasks import _seed_remote
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+
+    with (
+        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.seed_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.SFTPService"),
+        patch(
+            "jidou.workers.seed_tasks.SeedOrchestrator.run",
+            new_callable=AsyncMock,
+            side_effect=TaskCancelledError("cancelled"),
+        ),
+    ):
+        result = await _seed_remote("tid-sc1", dry_run=False)
+
+    assert result == "tid-sc1"
+    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
+    assert len(cancelled_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_seed_remote_exception_marks_failed() -> None:
+    """Unexpected exception in _seed_remote marks task FAILED and re-raises."""
+    from jidou.models.task import TaskStatus
+    from jidou.workers.seed_tasks import _seed_remote
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+
+    with (
+        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.seed_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.seed_tasks.SFTPService"),
+        patch(
+            "jidou.workers.seed_tasks.SeedOrchestrator.run",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("sftp connection lost"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        await _seed_remote("tid-s3", dry_run=False)
+
+    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
+    assert len(failed_calls) >= 1
