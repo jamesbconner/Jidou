@@ -255,7 +255,7 @@ function EditPathModal({
           <div className="space-y-1">
             <label className="text-sm text-gray-600">Content type</label>
             <div className="flex gap-4">
-              {(['tv', 'anime', 'movie'] as ContentType[]).map((t) => (
+              {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
                 <label key={t} className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="radio"

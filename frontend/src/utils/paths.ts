@@ -57,7 +57,7 @@ export function parseContainerPath(
   containerPath: string | null,
   mediaPaths: MediaPaths,
 ): { contentType: ContentType; folderName: string } {
-  if (!containerPath) return { contentType: 'tv', folderName: '' }
+  if (!containerPath) return { contentType: 'anime', folderName: '' }
 
   const entries: Array<[ContentType, string]> = [
     ['tv', mediaPaths.tv.container],
