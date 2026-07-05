@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncssh
 import pytest
 
 from jidou.services.sftp_service import DownloadProgress, SFTPService, UploadResult
@@ -88,6 +89,142 @@ class TestSFTPServiceInit:
         kwargs = svc._connect_kwargs()
         assert kwargs["client_keys"] == ["/home/u/.ssh/id_rsa"]
         assert "password" not in kwargs
+
+    def test_max_workers_property_returns_configured_value(self) -> None:
+        """max_workers exposes the constructor value read-only."""
+        svc = SFTPService(host="h", username="u", max_workers=16)
+        assert svc.max_workers == 16
+
+
+# ---------------------------------------------------------------------------
+# _execute_with_retry — this is the core resilience logic behind every
+# network call; paramiko/asyncssh connections can drop mid-transfer, so
+# these tests pin down exactly what gets retried, what doesn't, and the
+# backoff timing.
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteWithRetry:
+    @pytest.mark.asyncio
+    async def test_succeeds_after_transient_failures(self, sftp_service: SFTPService) -> None:
+        """A transient error on early attempts does not prevent eventual success."""
+        attempts = 0
+
+        async def factory() -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise asyncssh.DisconnectError(2, "connection reset")
+            return "ok"
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await sftp_service._execute_with_retry("test op", factory)
+
+        assert result == "ok"
+        assert attempts == 3
+
+    @pytest.mark.asyncio
+    async def test_exhausts_retries_and_raises_last_error(self, sftp_service: SFTPService) -> None:
+        """After max_retries attempts, the most recent transient error is re-raised."""
+        sftp_service._max_retries = 2  # 3 total attempts
+        attempts = 0
+
+        async def factory() -> str:
+            nonlocal attempts
+            attempts += 1
+            raise asyncssh.DisconnectError(2, f"failure {attempts}")
+
+        with (
+            patch("asyncio.sleep", new=AsyncMock()),
+            pytest.raises(asyncssh.DisconnectError, match="failure 3"),
+        ):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert attempts == 3  # initial attempt + 2 retries
+
+    @pytest.mark.asyncio
+    async def test_permanent_error_is_not_retried(self, sftp_service: SFTPService) -> None:
+        """Non-transient SFTP errors (e.g. file not found) propagate on the first attempt."""
+        attempts = 0
+
+        async def factory() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise asyncssh.SFTPError(2, "no such file")
+
+        with pytest.raises(asyncssh.SFTPError):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_backoff_delay_doubles_between_attempts(self, sftp_service: SFTPService) -> None:
+        """Each retry waits twice as long as the previous, starting at retry_delay."""
+        sftp_service._retry_delay = 1.0
+        sftp_service._max_retries = 3
+        delays: list[float] = []
+
+        async def factory() -> None:
+            raise ConnectionError("refused")
+
+        async def fake_sleep(seconds: float) -> None:
+            delays.append(seconds)
+
+        with (
+            patch("asyncio.sleep", side_effect=fake_sleep),
+            pytest.raises(ConnectionError),
+        ):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert delays == [1.0, 2.0, 4.0]
+
+    @pytest.mark.asyncio
+    async def test_zero_max_retries_fails_after_single_attempt(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """max_retries=0 means one attempt total; failure raises immediately."""
+        sftp_service._max_retries = 0
+        attempts = 0
+
+        async def factory() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise TimeoutError("timed out")
+
+        with pytest.raises(TimeoutError):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert attempts == 1
+
+
+# ---------------------------------------------------------------------------
+# _parse_mtime
+# ---------------------------------------------------------------------------
+
+
+class TestParseMtime:
+    def test_returns_none_when_mtime_is_none(self, sftp_service: SFTPService) -> None:
+        """Missing mtime attribute yields None rather than raising."""
+        entry = _make_entry("ep01.mkv", 100, mtime=None)
+        assert sftp_service._parse_mtime(entry) is None
+
+    def test_returns_none_on_non_numeric_mtime(self, sftp_service: SFTPService) -> None:
+        """A malformed (non-numeric) mtime value is swallowed and returns None."""
+        entry = _make_entry("ep01.mkv", 100)
+        entry.attrs.mtime = "not-a-timestamp"
+        assert sftp_service._parse_mtime(entry) is None
+
+    def test_returns_none_when_fromtimestamp_raises_oserror(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """An out-of-range timestamp that datetime rejects returns None, not a crash."""
+        entry = _make_entry("ep01.mkv", 100, mtime=_old_mtime())
+
+        with patch(
+            "jidou.services.sftp_service.datetime",
+        ) as mock_datetime:
+            mock_datetime.fromtimestamp.side_effect = OSError("timestamp out of range")
+            assert sftp_service._parse_mtime(entry) is None
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +555,45 @@ class TestListRemoteFilesRecursive:
         assert len(files) == 1
         assert files[0].name == "ep01.mkv"
 
+    @pytest.mark.asyncio
+    async def test_pattern_filters_files_in_subdirectory(self, sftp_service: SFTPService) -> None:
+        """Glob pattern is applied to files found inside subdirectories too."""
+        root_entries = [_make_entry("Season 01", 0, is_dir=True)]
+        season_entries = [
+            _make_entry("ep01.mkv", 1000, mtime=_old_mtime()),
+            _make_entry("ep01.srt", 50, mtime=_old_mtime()),
+        ]
+
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            files = await sftp_service.list_remote_files_recursive(path="/show", pattern="*.mkv")
+
+        assert len(files) == 1
+        assert files[0].name == "ep01.mkv"
+
+    @pytest.mark.asyncio
+    async def test_excludes_recently_modified_file_in_subdirectory(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A file still being uploaded inside a subdirectory is skipped, like at the root."""
+        fresh_mtime = int(time.time()) - 5
+        root_entries = [_make_entry("Season 01", 0, is_dir=True)]
+        season_entries = [
+            _make_entry("ep01.mkv", 1000, mtime=_old_mtime()),
+            _make_entry("ep02.mkv", 1000, mtime=fresh_mtime),
+        ]
+
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            files = await sftp_service.list_remote_files_recursive(path="/show")
+
+        assert len(files) == 1
+        assert files[0].name == "ep01.mkv"
+
 
 # ---------------------------------------------------------------------------
 # download_file
@@ -577,6 +753,73 @@ class TestDownloadFiles:
             )
 
         mock_connect.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# download_bytes
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadBytes:
+    @pytest.mark.asyncio
+    async def test_dry_run_returns_empty_bytes_without_connecting(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """dry_run=True must not open any SSH connection and returns b''."""
+        with patch("asyncssh.connect") as mock_connect:
+            result = await sftp_service.download_bytes("/remote/config.json", dry_run=True)
+
+        mock_connect.assert_not_called()
+        assert result == b""
+
+    @pytest.mark.asyncio
+    async def test_download_bytes_reads_and_returns_content(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Non-dry-run opens the remote file for read and returns its bytes."""
+        payload = b'{"shows": []}'
+        mock_fh = AsyncMock()
+        mock_fh.__aenter__ = AsyncMock(return_value=mock_fh)
+        mock_fh.read = AsyncMock(return_value=payload)
+        mock_sftp = AsyncMock()
+        mock_sftp.open = MagicMock(return_value=mock_fh)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.download_bytes("/remote/config.json")
+
+        mock_sftp.open.assert_called_once_with("/remote/config.json", "rb")
+        assert result == payload
+
+    @pytest.mark.asyncio
+    async def test_download_bytes_retries_transient_failure(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A transient connection error is retried and eventually succeeds."""
+        payload = b"recovered content"
+        mock_fh = AsyncMock()
+        mock_fh.__aenter__ = AsyncMock(return_value=mock_fh)
+        mock_fh.read = AsyncMock(return_value=payload)
+        mock_sftp = AsyncMock()
+        mock_sftp.open = MagicMock(return_value=mock_fh)
+
+        attempts = 0
+        real_connect = _make_conn(mock_sftp)
+
+        def flaky_connect(**kwargs: object) -> MagicMock:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise asyncssh.DisconnectError(2, "connection reset")
+            return real_connect
+
+        with (
+            patch("asyncssh.connect", side_effect=flaky_connect),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await sftp_service.download_bytes("/remote/config.json")
+
+        assert result == payload
+        assert attempts == 2
 
 
 # ---------------------------------------------------------------------------
