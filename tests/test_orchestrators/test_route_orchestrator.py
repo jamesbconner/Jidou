@@ -513,3 +513,93 @@ async def test_run_on_progress_called_per_file() -> None:
     calls = on_progress.call_args_list
     assert calls[0].args[0] == 1
     assert calls[1].args[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# run() — on_event callback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_on_event_called_for_skip() -> None:
+    """on_event is called when a file is skipped (no local_path)."""
+    file = _make_file()
+    show = _make_show(local_path=None)
+    session = _make_session([(file, show)])
+
+    on_event = AsyncMock()
+
+    orch = RouteOrchestrator(session)
+    await orch.run(on_event=on_event)
+
+    # on_event should be called for the skipped file
+    assert on_event.call_count >= 1
+    # Find the skip event
+    skip_calls = [c for c in on_event.call_args_list if "skip" in c[0][1].lower()]
+    assert len(skip_calls) > 0
+
+
+@pytest.mark.asyncio
+async def test_run_on_event_called_for_dry_run() -> None:
+    """on_event is called in dry_run mode with dry-run indicator."""
+    file = _make_file()
+    show = _make_show()
+    session = _make_session([(file, show)])
+
+    on_event = AsyncMock()
+
+    orch = RouteOrchestrator(session)
+    await orch.run(dry_run=True, on_event=on_event)
+
+    # on_event should be called with dry-run message
+    assert on_event.call_count >= 1
+    dry_run_calls = [c for c in on_event.call_args_list if "dry run" in c[0][1].lower()]
+    assert len(dry_run_calls) > 0
+
+
+@pytest.mark.asyncio
+async def test_run_on_event_called_on_successful_route(tmp_path: Path) -> None:
+    """on_event is called with success details after file is routed."""
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"v")
+
+    file = _make_file(filename="ep.mkv", local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    on_event = AsyncMock()
+
+    orch = RouteOrchestrator(session)
+    await orch.run(on_event=on_event)
+
+    # on_event should be called with success message
+    success_calls = [c for c in on_event.call_args_list if "routed" in c[0][1].lower()]
+    assert len(success_calls) > 0
+    # Verify context includes file_id and show name
+    assert success_calls[0].args[0] == "info"  # level
+    assert success_calls[0].args[2] is not None  # context dict
+
+
+@pytest.mark.asyncio
+async def test_run_on_event_called_on_routing_failure(tmp_path: Path) -> None:
+    """on_event is called with error details if routing fails."""
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"v")
+
+    file = _make_file(local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    on_event = AsyncMock()
+
+    # Patch shutil.move to raise an error
+    with patch("shutil.move", side_effect=OSError("disk full")):
+        orch = RouteOrchestrator(session)
+        await orch.run(on_event=on_event)
+
+    # on_event should be called with error message
+    error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
+    assert len(error_calls) > 0
+    assert "disk full" in error_calls[0].args[1]
