@@ -108,9 +108,7 @@ async def _sync_all(
                     }
                 )
 
-            async def on_event(
-                level: str, msg: str, ctx: dict[str, object] | None = None
-            ) -> None:
+            async def on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
                 async with session_factory() as event_session:
                     await append_task_event(event_session, celery_task_id, level, msg, ctx)
 
