@@ -531,10 +531,16 @@ class PathImportOrchestrator:
 
         title: str = data.get("name") or show_dir
 
-        # Store the directory name as an alias when it differs from the English title.
+        # Store the directory name as a user alias when it differs from the
+        # English title.  Written into both columns from the start so
+        # generate_aliases (called below) preserves it via aliases_sources["user"]
+        # rather than relying on the migration guard for a null aliases_sources.
         aliases: list[str] = []
+        aliases_sources: dict[str, list[str]] | None = None
         if show_dir.lower() != title.lower():
-            aliases.append(show_dir.lower())
+            dir_alias = show_dir.lower()
+            aliases.append(dir_alias)
+            aliases_sources = {"user": [dir_alias]}
 
         # Supplemental TMDB calls are best-effort.
         ext_ids: dict[str, Any] = {}
@@ -564,7 +570,8 @@ class PathImportOrchestrator:
             original_language=data.get("original_language"),
             content_type=self.content_type,
             sys_name=_sanitize_sys_name(title),
-            aliases=aliases,
+            aliases=aliases or None,
+            aliases_sources=aliases_sources,
             genres=data.get("genres") or [],
             origin_country=data.get("origin_country") or [],
             last_air_date=data.get("last_air_date"),
