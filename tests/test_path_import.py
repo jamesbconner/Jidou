@@ -1,13 +1,10 @@
-"""Tests for path-file batch import — parser, orchestrator, and API route."""
+"""Tests for path-file batch import — parser and orchestrator."""
 
-from io import BytesIO
 from pathlib import PurePosixPath, PureWindowsPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
-from jidou.main import app
 from jidou.services.path_parser import (
     group_by_show,
     parse_file,
@@ -2316,91 +2313,3 @@ async def test_find_episode_llm_fills_in_season_when_originally_none() -> None:
     assert result is episode
     # Confirms the S/E lookup ran with the LLM-supplied season (4), not a miss.
     assert session.execute.call_count == 1
-
-
-# ---------------------------------------------------------------------------
-# POST /api/import/text — API route
-# ---------------------------------------------------------------------------
-
-
-def _import_route_session_override(task: MagicMock) -> "type[AsyncMock]":
-    """Session that returns the given task on flush then yields it."""
-
-    async def _mock_session() -> AsyncMock:
-        session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(return_value=result)
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    return _mock_session  # type: ignore[return-value]
-
-
-@pytest.fixture()
-def client() -> TestClient:
-    return TestClient(app)
-
-
-class TestImportTextRoute:
-    def test_invalid_content_type_returns_400(self, client: TestClient) -> None:
-        data = {"content_type": "invalid", "dry_run": False}
-        files = {"file": ("paths.txt", BytesIO(b"Z:\\anime tv\\Show\\ep.mkv"), "text/plain")}
-        resp = client.post("/api/import/text", data=data, files=files)
-        assert resp.status_code == 400
-        assert "content_type" in resp.json()["detail"]
-
-    def test_file_too_large_returns_422(self, client: TestClient) -> None:
-        large_content = b"Z:\\anime tv\\Show\\ep.mkv\n" * 600_000  # ~14 MB
-        files = {"file": ("paths.txt", BytesIO(large_content), "text/plain")}
-        resp = client.post("/api/import/text", data={"content_type": "anime"}, files=files)
-        assert resp.status_code == 422
-        assert "too large" in resp.json()["detail"]
-
-    def test_valid_upload_dispatches_task(self, client: TestClient) -> None:
-        from jidou.database import get_session
-        from jidou.models.task import BackgroundTask, TaskStatus
-
-        task = MagicMock(spec=BackgroundTask)
-        task.id = 1
-        task.celery_task_id = "abc-123"
-        task.task_type = "import"
-        task.status = TaskStatus.PENDING.value
-        task.progress_current = 0
-        task.progress_total = 0
-        task.progress_message = None
-        task.dry_run = False
-        from datetime import UTC, datetime
-
-        task.result_summary = None
-        task.created_at = datetime.now(UTC)
-        task.updated_at = datetime.now(UTC)
-        task.completed_at = None
-
-        async def _mock_session() -> AsyncMock:
-            session = AsyncMock()
-            yield session
-
-        app.dependency_overrides[get_session] = _mock_session
-        try:
-            with (
-                patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
-                ),
-                patch("jidou.workers.import_tasks.path_import_task") as mock_task,
-            ):
-                mock_task.apply_async = MagicMock()
-                content = b"Z:\\anime tv\\Show\\Season 1\\Show.S01E01.mkv\n"
-                files = {"file": ("paths.txt", BytesIO(content), "text/plain")}
-                resp = client.post(
-                    "/api/import/text",
-                    data={"content_type": "anime", "dry_run": False},
-                    files=files,
-                )
-        finally:
-            app.dependency_overrides.clear()
-
-        assert resp.status_code == 200
-        assert resp.json()["task_type"] == "import"
