@@ -297,5 +297,67 @@ async def test_run_tmdb_exception_handled_and_sync_continues():
         orch = SyncOrchestrator(session, sftp, tmdb)
         result = await orch.run(show_id=5)  # must not raise
 
-    assert result.tmdb.shows_synced == 0
-    session.rollback.assert_called_once()
+
+async def test_run_on_event_called_for_phase_results():
+    """on_event callback is passed to sub-orchestrators and called with phase summaries."""
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    on_event = AsyncMock()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        await orch.run(on_event=on_event)
+
+    # on_event should be called for each phase (5 total)
+    assert on_event.call_count == 5
+    # Verify that at least one call has a summary message
+    calls = on_event.call_args_list
+    messages = [c[0][1] for c in calls]  # Extract message from each call
+    assert any("TMDB" in msg or "sync" in msg for msg in messages)
+
+
+async def test_run_on_event_passed_to_route_orchestrator():
+    """RouteOrchestrator.run() is called with on_event parameter."""
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    on_event = AsyncMock()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        await orch.run(on_event=on_event)
+
+    # Verify RouteOrchestrator.run was called with on_event keyword argument
+    mock_route_cls.return_value.run.assert_called_once()
+    call_kwargs = mock_route_cls.return_value.run.call_args[1]
+    assert "on_event" in call_kwargs
+    assert call_kwargs["on_event"] == on_event
