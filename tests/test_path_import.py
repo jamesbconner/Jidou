@@ -1001,6 +1001,1324 @@ async def test_orchestrator_does_not_overwrite_existing_local_path() -> None:
 
 
 # ---------------------------------------------------------------------------
+# run() — on_progress plumbing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_calls_on_progress_per_show() -> None:
+    """on_progress is invoked once per unique show directory with correct idx/total."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\ShowA\ep01.mkv",
+            show_dir="ShowA",
+            show_root=r"Z:\anime tv\ShowA",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\ShowB\ep01.mkv",
+            show_dir="ShowB",
+            show_root=r"Z:\anime tv\ShowB",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        ),
+    ]
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    progress_calls: list[tuple[int, int, str]] = []
+
+    async def on_progress(current: int, total: int, message: str) -> None:
+        progress_calls.append((current, total, message))
+
+    stub_result = MagicMock(action="not_found", episodes_tracked=0, episodes_unmatched=1)
+    with patch.object(orch, "_import_show", AsyncMock(return_value=stub_result)):
+        await orch.run(entries, on_progress=on_progress)
+
+    assert len(progress_calls) == 2
+    assert progress_calls[0][0] == 1
+    assert progress_calls[0][1] == 2
+    assert progress_calls[1][0] == 2
+    assert progress_calls[1][1] == 2
+
+
+# ---------------------------------------------------------------------------
+# _import_show — existing show with unsynced episodes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_import_show_syncs_episodes_when_none_synced() -> None:
+    """Existing show with zero synced episodes triggers a TMDB episode sync."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)  # ep_count == 0 -> triggers sync
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        result = await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_called_once_with(show)
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_episode_sync_failure_logged_not_raised() -> None:
+    """A TMDB episode-sync failure for an existing show is logged, not raised."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)
+    no_ep = MagicMock()
+    no_ep.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=no_ep)
+    session.commit = AsyncMock()
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=RuntimeError("TMDB down")
+        )
+        result = await orch.run(entries)  # must not raise
+
+    error_events = [(lvl, msg) for lvl, msg in events if lvl == "error"]
+    assert len(error_events) == 1
+    assert "Episode sync failed" in error_events[0][1]
+    assert result.shows_found == 1
+    assert result.episodes_unmatched == 1
+
+
+# ---------------------------------------------------------------------------
+# _import_show — dry-run estimation for a brand-new (unpersisted) show
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dry_run_new_show_estimates_from_entries() -> None:
+    """dry_run + newly-created show (id=None) estimates counts from parsed entries directly."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\extras.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    show = MagicMock()
+    show.id = None  # dry-run "created" show has no id yet
+    show.title = "Show"
+    show.tmdb_id = 5
+    show.local_path = None
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        result = await orch.run(entries)
+
+    assert result.episodes_tracked == 1
+    assert result.episodes_unmatched == 1
+    assert result.show_results[0].unmatched_paths == [entries[1].raw_path]
+    # _find_episode must never be reached in this path.
+    session.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _import_show — already-tracked episode, mixed results, and dry-run commit skip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_import_show_already_tracked_episode_not_double_counted() -> None:
+    """A previously-tracked episode found again keeps file_tracked=True but isn't re-counted."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+    episode.file_tracked = True  # already tracked from a prior import/match
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        result = await orch.run(entries)
+
+    assert episode.file_tracked is True
+    assert result.episodes_tracked == 0  # not newly tracked, so not counted
+
+
+@pytest.mark.asyncio
+async def test_import_show_mixed_matched_and_unmatched_entries() -> None:
+    """A show with one matched and one unmatched entry reports accurate mixed counts and events."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\Show.S01E01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\Show.S01E99.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=99,
+            is_absolute=False,
+        ),
+    ]
+
+    show = _make_show()
+    matched_episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    hit = MagicMock()
+    hit.scalar_one_or_none.return_value = matched_episode
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    # entry 1: S/E lookup hits.
+    # entry 2: S/E lookup misses -> falls through (season==1) to absolute miss -> row-number miss.
+    session.execute = AsyncMock(side_effect=[hit, miss, miss, miss])
+    session.commit = AsyncMock()
+
+    events: list[tuple[str, str, object]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg, ctx))
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        result = await orch.run(entries)
+
+    assert result.episodes_tracked == 1
+    assert result.episodes_unmatched == 1
+
+    no_match_events = [(lvl, msg, ctx) for lvl, msg, ctx in events if "No match" in msg]
+    assert len(no_match_events) == 1
+    assert no_match_events[0][0] == "warn"
+    assert no_match_events[0][2]["season"] == 1
+    assert no_match_events[0][2]["episode"] == 99
+
+    summary_events = [(lvl, msg) for lvl, msg, _ in events if "unmatched file" in msg]
+    assert len(summary_events) == 1
+    assert summary_events[0][0] == "warn"
+
+
+@pytest.mark.asyncio
+async def test_import_show_emits_info_summary_when_all_tracked() -> None:
+    """When every entry for a show is matched, an info-level summary event is emitted."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    tracked_events = [(lvl, msg) for lvl, msg in events if msg.startswith("Tracked ")]
+    assert len(tracked_events) == 1
+    assert tracked_events[0][0] == "info"
+
+
+@pytest.mark.asyncio
+async def test_import_show_dry_run_does_not_commit() -> None:
+    """dry_run=True must never call session.commit()."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.id = 1  # already exists — not the "new dry-run show" early-return path
+
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=show)):
+        await orch.run(entries)
+
+    session.commit.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_create_show — TMDB call failures
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_search_exception_returns_not_found() -> None:
+    """A TMDB search failure is caught, emits an error event, and returns not_found."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(side_effect=RuntimeError("TMDB API down"))
+
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+    show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert show is None
+    assert action == "not_found"
+    error_events = [(lvl, msg) for lvl, msg in events if lvl == "error"]
+    assert len(error_events) == 1
+    assert "TMDB search failed" in error_events[0][1]
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_get_details_exception_returns_not_found() -> None:
+    """A TMDB get_details failure after a successful search is caught, returns not_found."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(side_effect=RuntimeError("TMDB API down"))
+
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+    show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert show is None
+    assert action == "not_found"
+    error_events = [(lvl, msg) for lvl, msg in events if lvl == "error"]
+    assert any("get_details failed" in msg for _, msg in error_events)
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_supplemental_calls_failure_does_not_block_creation() -> None:
+    """get_external_ids and get_episode_groups failures are best-effort; show is still created."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(side_effect=RuntimeError("external ids down"))
+    tmdb.get_episode_groups = AsyncMock(side_effect=RuntimeError("episode groups down"))
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    assert show.external_ids == {}
+    assert show.episode_groups == []
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_create_show — IntegrityError race condition on insert
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_integrity_error_finds_existing_show() -> None:
+    """A race-condition IntegrityError on insert falls back to a DB lookup by title."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+    existing_show = _make_show(id=99, tmdb_id=42, title="SomeShow")
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup key")))
+    session.rollback = AsyncMock()
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)):
+        show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "found"
+    assert show is existing_show
+    session.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_integrity_error_no_fallback_returns_not_found() -> None:
+    """IntegrityError with no fallback match returns not_found."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup key")))
+    session.rollback = AsyncMock()
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+        show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert show is None
+    assert action == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# _tmdb_create_show — episode sync and alias generation failures (new show)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_episode_sync_failure_still_returns_created() -> None:
+    """Episode sync failure for a newly-created show is logged; show creation still succeeds."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=RuntimeError("sync failed")
+        )
+        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    error_events = [
+        (lvl, msg) for lvl, msg in events if lvl == "error" and "Episode sync failed" in msg
+    ]
+    assert len(error_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_alias_generation_failure_logged_not_raised() -> None:
+    """A generate_aliases failure does not prevent the show from being returned as created."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.scalar = AsyncMock(return_value=10)
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        with patch(
+            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            AsyncMock(side_effect=RuntimeError("alias generation blew up")),
+        ):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+
+
+# ---------------------------------------------------------------------------
+# _llm_parse_episode — additional failure paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_complete_raises_returns_none_none() -> None:
+    """An exception from llm.complete() is caught; (None, None) is returned."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("LLM provider down"))
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.file.mkv")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_response_none_returns_none_none() -> None:
+    """llm.complete() returning None (provider unavailable) yields (None, None)."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=None)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.file.mkv")
+    assert season is None
+    assert episode is None
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_non_integer_values_return_none_none() -> None:
+    """Non-integer season/episode values in the LLM's JSON are handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": "two", "episode": 1}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    season, episode = await orch._llm_parse_episode("some.file.mkv")
+    assert season is None
+    assert episode is None
+
+
+# ---------------------------------------------------------------------------
+# _find_episode — additional lookup branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_episode_season_gt_1_miss_goes_to_llm_match() -> None:
+    """A season>1 S/E miss skips absolute fallbacks and goes straight to the LLM."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    session = AsyncMock()
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=miss)
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\Season 3\Show.S03E99.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=3,
+        episode=99,
+        is_absolute=False,
+    )
+
+    with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
+        result = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
+
+    assert result is None
+    mock_llm_match.assert_called_once()
+    # Only ONE execute call (the S/E lookup) — absolute/row-number lookups must be skipped.
+    assert session.execute.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_find_episode_absolute_number_column_hit() -> None:
+    """No season known; absolute_episode_number column match is used directly."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    episode = _make_episode(id=5, show_id=1, season=1, episode=146)
+    episode.absolute_episode_number = 146
+
+    session = AsyncMock()
+    abs_hit = MagicMock()
+    abs_hit.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=abs_hit)
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\anime tv\HxH\HxH - 146.mkv",
+        show_dir="HxH",
+        show_root=r"Z:\anime tv\HxH",
+        season=None,
+        episode=146,
+        is_absolute=True,
+    )
+
+    result = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
+    assert result is episode
+    assert session.execute.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_find_episode_falls_through_to_llm_match_when_all_lookups_fail() -> None:
+    """When absolute and row-number lookups both miss, falls back to the LLM."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    session = AsyncMock()
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=miss)
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\anime tv\HxH\HxH - 999.mkv",
+        show_dir="HxH",
+        show_root=r"Z:\anime tv\HxH",
+        season=None,
+        episode=999,
+        is_absolute=True,
+    )
+
+    with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
+        result = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
+
+    assert result is None
+    mock_llm_match.assert_called_once()
+    # absolute lookup + row-number lookup = 2 execute calls before giving up.
+    assert session.execute.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _llm_pick_candidate — additional failure paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_complete_raises_returns_none() -> None:
+    """An exception from llm.complete() is caught; None is returned."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_response_none_returns_none() -> None:
+    """llm.complete() returning None yields None."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=None)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_invalid_json_returns_none() -> None:
+    """Malformed JSON from the LLM is handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = "I'm not sure which one matches."
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_non_integer_match_returns_none() -> None:
+    """A non-integer 'match' value in the LLM's JSON is handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"match": "one"}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_out_of_range_index_returns_none() -> None:
+    """An out-of-range candidate index from the LLM is handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"match": 99}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _llm_match — unit tests
+# ---------------------------------------------------------------------------
+
+
+def _make_ep_row(season: int, episode: int, name: str = "Episode") -> MagicMock:
+    """Build a mock Episode row for the LLM episode-list prompt."""
+    ep = MagicMock()
+    ep.season_number = season
+    ep.episode_number = episode
+    ep.name = name
+    return ep
+
+
+@pytest.mark.asyncio
+async def test_llm_match_unavailable_returns_none() -> None:
+    """When no LLM is configured, _llm_match returns None immediately."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock())  # no llm
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+    session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_llm_match_no_episodes_returns_none() -> None:
+    """When the show has no episode rows at all, returns None without calling the LLM."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock()
+
+    session = AsyncMock()
+    empty = MagicMock()
+    empty.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=empty)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+    llm.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_llm_match_complete_raises_returns_none() -> None:
+    """An exception from llm.complete() is caught; None is returned."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_match_response_none_returns_none() -> None:
+    """llm.complete() returning None yields None."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=None)
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_match_invalid_json_returns_none() -> None:
+    """Malformed JSON from the LLM is handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = "not json at all"
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_match_non_dict_json_returns_none() -> None:
+    """Valid JSON that isn't a dict (e.g. a bare list) is handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = "[1, 2, 3]"
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_match_missing_season_or_episode_returns_none() -> None:
+    """A JSON response missing season or episode is treated as no match."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": null, "episode": null}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_match_non_integer_season_episode_returns_none() -> None:
+    """Non-integer season/episode values in the LLM's JSON are handled gracefully."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": "one", "episode": 1}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    # Only ONE execute() call is expected — the initial episode-list query.  The
+    # non-integer season/episode values must short-circuit before any S/E lookup.
+    session.execute = AsyncMock(return_value=eps_result)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+    assert session.execute.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_match_success_returns_episode() -> None:
+    """A valid LLM match resolves to the correct Episode row via a fresh S/E lookup."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 1, "episode": 5}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    matched_episode = _make_episode(id=5, show_id=1, season=1, episode=5)
+
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 5, "The One")]
+
+    match_result = MagicMock()
+    match_result.scalar_one_or_none.return_value = matched_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, match_result])
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is matched_episode
+
+
+@pytest.mark.asyncio
+async def test_llm_match_markdown_fence_stripped() -> None:
+    """JSON wrapped in a code fence is still parsed correctly."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = '```json\n{"season": 2, "episode": 3}\n```'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    matched_episode = _make_episode(id=7, show_id=1, season=2, episode=3)
+
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(2, 3)]
+    match_result = MagicMock()
+    match_result.scalar_one_or_none.return_value = matched_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, match_result])
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is matched_episode
+
+
+@pytest.mark.asyncio
+async def test_llm_match_db_lookup_miss_returns_none() -> None:
+    """A parsed season/episode with no matching Episode row in the DB returns None."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 9, "episode": 99}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1)]
+    miss_result = MagicMock()
+    miss_result.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, miss_result])
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\ep.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=1,
+        is_absolute=True,
+    )
+
+    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_markdown_fence_stripped() -> None:
+    """JSON wrapped in a code fence is still parsed correctly."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '```json\n{"match": 1}\n```'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result == {"name": "Show", "id": 1}
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_null_match_returns_none() -> None:
+    """A valid JSON response with match=null means the LLM found no confident match."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"match": null}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_episode_llm_fills_in_season_when_originally_none() -> None:
+    """When both season and episode are unknown, the LLM's season is adopted too."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    episode = _make_episode(id=8, show_id=1, season=4, episode=12)
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 4, "episode": 12}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    hit = MagicMock()
+    hit.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=hit)
+
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\some_unusual_filename.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,  # regex could not determine season
+        episode=None,  # regex could not determine episode either
+        is_absolute=True,
+    )
+
+    result = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
+    assert result is episode
+    # Confirms the S/E lookup ran with the LLM-supplied season (4), not a miss.
+    assert session.execute.call_count == 1
+
+
+# ---------------------------------------------------------------------------
 # POST /api/import/text — API route
 # ---------------------------------------------------------------------------
 
