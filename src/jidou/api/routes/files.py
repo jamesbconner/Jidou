@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -508,6 +508,12 @@ async def manual_match_file(
                         show.id,
                         show.tmdb_id,
                     )
+                except SQLAlchemyError:
+                    # DB failure during sync's internal commit — session is now
+                    # in a broken state; propagate so the caller gets a 500
+                    # rather than silently issuing more queries against a dead
+                    # transaction (mirrors the same guard in POST /shows).
+                    raise
                 except Exception:
                     logger.warning(
                         "Episode sync failed for show id=%d; "
