@@ -87,14 +87,13 @@ class SyncOrchestrator:
         Args:
             tmdb_orch: Already-constructed TMDB orchestrator sharing this session.
         """
-        # Find distinct show_ids that need help.
+        # Find distinct show_ids that need help — includes anime (parsed_season=None).
         gap_stmt = (
             select(DownloadedFile.show_id)
             .distinct()
             .where(
                 DownloadedFile.status == FileStatus.MATCHED,
                 DownloadedFile.episode_id.is_(None),
-                DownloadedFile.parsed_season.is_not(None),
                 DownloadedFile.parsed_episode.is_not(None),
                 DownloadedFile.show_id.is_not(None),
             )
@@ -121,24 +120,42 @@ class SyncOrchestrator:
                 await self.session.rollback()
                 continue
 
-            # Retry episode lookup for the affected files.
+            # Retry episode lookup for the affected files (anime or regular).
             retry_stmt = select(DownloadedFile).where(
                 DownloadedFile.status == FileStatus.MATCHED,
                 DownloadedFile.episode_id.is_(None),
                 DownloadedFile.show_id == sid,
-                DownloadedFile.parsed_season.is_not(None),
                 DownloadedFile.parsed_episode.is_not(None),
             )
             files = list((await self.session.execute(retry_stmt)).scalars().all())
             for file in files:
-                ep_stmt = select(Episode).where(
-                    Episode.show_id == sid,
-                    Episode.season_number == file.parsed_season,
-                    Episode.episode_number == file.parsed_episode,
-                )
-                ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                if file.parsed_season is not None:
+                    ep_stmt = select(Episode).where(
+                        Episode.show_id == sid,
+                        Episode.season_number == file.parsed_season,
+                        Episode.episode_number == file.parsed_episode,
+                    )
+                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                else:
+                    # Anime absolute-number fallback: try absolute first, then Season 1.
+                    ep_stmt = select(Episode).where(
+                        Episode.show_id == sid,
+                        Episode.absolute_episode_number == file.parsed_episode,
+                    )
+                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                    if ep is None:
+                        ep_stmt = select(Episode).where(
+                            Episode.show_id == sid,
+                            Episode.season_number == 1,
+                            Episode.episode_number == file.parsed_episode,
+                        )
+                        ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+
                 if ep is not None:
                     file.episode_id = ep.id
+                    if file.parsed_season is None and ep.season_number is not None:
+                        # Backfill so RouteOrchestrator lands in Season NN, not show root.
+                        file.parsed_season = ep.season_number
                     logger.debug(
                         "Phase 4.5: resolved episode_id=%d for file id=%d (%r)",
                         ep.id,
@@ -146,7 +163,9 @@ class SyncOrchestrator:
                         file.original_filename,
                     )
 
-        await self.session.commit()
+            # Commit per show so a rollback on a later show doesn't clobber
+            # episode_id writes that already succeeded for earlier shows.
+            await self.session.commit()
 
     async def run(
         self,

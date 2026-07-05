@@ -440,6 +440,12 @@ class ParseOrchestrator:
             show.aliases = [*current, norm]
         # Structured source map — used by the UI and the PUT endpoint.
         sources: dict[str, list[str]] = dict(show.aliases_sources) if show.aliases_sources else {}
+        if not show.aliases_sources and show.aliases:
+            # First-time write on a legacy show: seed the user bucket from all
+            # existing flat aliases so that generate_aliases or a UI save doesn't
+            # orphan them when it rebuilds show.aliases from sources only.
+            sources["user"] = list(show.aliases)
+            show.aliases_sources = sources  # persist even if norm is already present
         user_aliases: list[str] = list(sources.get("user") or [])
         if norm not in user_aliases:
             sources["user"] = [*user_aliases, norm]
