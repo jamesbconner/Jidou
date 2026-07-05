@@ -836,3 +836,40 @@ def test_import_endpoint_202_when_path_configured() -> None:
         mock_task.apply_async.assert_called_once()
     finally:
         app.dependency_overrides.clear()
+
+
+def test_import_endpoint_503_when_broker_unavailable() -> None:
+    """POST /api/rss/import returns 503 when the Celery broker is unreachable."""
+    from fastapi.testclient import TestClient
+
+    from jidou.database import get_session
+    from jidou.main import app
+    from jidou.models.task import BackgroundTask
+
+    task = MagicMock(spec=BackgroundTask)
+    task.id = 1
+    task.status = "pending"
+    task.completed_at = None
+
+    session = _make_session()
+    session.commit = AsyncMock()
+
+    async def _mock_session() -> MagicMock:
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        with (
+            patch("jidou.api.routes.rss.settings") as mock_settings,
+            patch("jidou.api.routes.rss.create_task_record", new=AsyncMock(return_value=task)),
+            patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
+        ):
+            mock_settings.rss_config_remote_path = "/remote/yarss2.conf"
+            mock_task.apply_async = MagicMock(side_effect=RuntimeError("Celery broker down"))
+            r = TestClient(app).post("/api/rss/import")
+
+        assert r.status_code == 503
+        assert "broker" in r.json()["detail"].lower()
+        session.commit.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()

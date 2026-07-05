@@ -96,6 +96,7 @@ def _session_override(
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
+        session.add = MagicMock()  # AsyncSession.add() is synchronous, not a coroutine
         session.flush = AsyncMock()
         session.delete = AsyncMock()
 
@@ -340,6 +341,34 @@ def test_list_subscriptions_enabled_only_filter() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_subscriptions_filters_by_show_id() -> None:
+    """GET /subscriptions?show_id=N applies the show_id filter clause."""
+    from jidou.database import get_session
+
+    sub = _make_sub(show_id=5)
+    app.dependency_overrides[get_session] = _session_override(many=[sub])
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions?show_id=5")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_subscriptions_filters_by_feed_id() -> None:
+    """GET /subscriptions?feed_id=N applies the feed_id filter clause."""
+    from jidou.database import get_session
+
+    sub = _make_sub(feed_id=3)
+    app.dependency_overrides[get_session] = _session_override(many=[sub])
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions?feed_id=3")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # GET /api/rss/subscriptions/{id}
 # ---------------------------------------------------------------------------
@@ -526,6 +555,117 @@ def test_update_subscription_bad_show_id_returns_404() -> None:
         r = TestClient(app).patch("/api/rss/subscriptions/1", json={"show_id": 999})
         assert r.status_code == 404
         assert "Show" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_subscription_bad_feed_id_returns_404() -> None:
+    """A non-existent feed_id on create returns 404, not 500."""
+    from jidou.database import get_session
+
+    feed_not_found = MagicMock()
+    feed_not_found.scalar_one_or_none.return_value = None
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[feed_not_found])
+    try:
+        r = TestClient(app).post(
+            "/api/rss/subscriptions",
+            json={"name": "Test", "feed_id": 999},
+        )
+        assert r.status_code == 404
+        assert "feed" in r.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_subscription_success_returns_201() -> None:
+    """POST /subscriptions with no feed_id/show_id creates the subscription."""
+    from jidou.database import get_session
+
+    created = _make_sub(id=5, feed_id=None, show_id=None, name="New Sub")
+    app.dependency_overrides[get_session] = _session_override(single=created)
+    try:
+        r = TestClient(app).post(
+            "/api/rss/subscriptions",
+            json={"name": "New Sub"},
+        )
+        assert r.status_code == 201
+        assert r.json()["name"] == "New Sub"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_subscription_valid_feed_and_show_id_succeeds() -> None:
+    """POST /subscriptions with an existing feed_id and show_id succeeds."""
+    from jidou.database import get_session
+
+    feed = _make_feed()
+    show = _make_show()
+    created = _make_sub(id=6, feed_id=1, show_id=1, name="Linked Sub")
+
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = feed
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    created_result = MagicMock()
+    created_result.scalar_one.return_value = created
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[feed_result, show_result, created_result]
+    )
+    try:
+        r = TestClient(app).post(
+            "/api/rss/subscriptions",
+            json={"name": "Linked Sub", "feed_id": 1, "show_id": 1},
+        )
+        assert r.status_code == 201
+        assert r.json()["name"] == "Linked Sub"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_subscription_valid_feed_id_succeeds() -> None:
+    """PATCH /subscriptions/{id} with a valid, existing feed_id succeeds."""
+    from jidou.database import get_session
+
+    sub = _make_sub()
+    feed = _make_feed(id=2)
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = feed
+    updated_result = MagicMock()
+    updated_result.scalar_one.return_value = sub
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[sub_result, feed_result, updated_result]
+    )
+    try:
+        r = TestClient(app).patch("/api/rss/subscriptions/1", json={"feed_id": 2})
+        assert r.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_subscription_valid_show_id_succeeds() -> None:
+    """PATCH /subscriptions/{id} with a valid, existing show_id succeeds."""
+    from jidou.database import get_session
+
+    sub = _make_sub()
+    show = _make_show()
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    updated_result = MagicMock()
+    updated_result.scalar_one.return_value = sub
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[sub_result, show_result, updated_result]
+    )
+    try:
+        r = TestClient(app).patch("/api/rss/subscriptions/1", json={"show_id": 1})
+        assert r.status_code == 200
     finally:
         app.dependency_overrides.clear()
 
@@ -1023,5 +1163,217 @@ def test_bulk_patch_subscriptions_empty_payload_returns_empty() -> None:
         r = TestClient(app).patch("/api/rss/subscriptions/bulk", json=[])
         assert r.status_code == 200
         assert r.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/download
+# ---------------------------------------------------------------------------
+
+
+def test_download_config_no_snapshot_returns_404() -> None:
+    """GET /download with no stored snapshot returns 404."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        r = TestClient(app).get("/api/rss/download")
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_download_config_unparseable_snapshot_returns_500() -> None:
+    """GET /download with a corrupt stored snapshot returns 500."""
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+
+    bad_snapshot = MagicMock(spec=RssConfigSnapshot)
+    bad_snapshot.raw_content = "not valid json at all"
+
+    app.dependency_overrides[get_session] = _session_override(single=bad_snapshot)
+    try:
+        r = TestClient(app).get("/api/rss/download")
+        assert r.status_code == 500
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_download_config_composes_and_returns_file() -> None:
+    """GET /download composes current DB state into a YaRSS2 config file attachment."""
+    import json
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+    from jidou.services.rss_config import parse_rss_config
+
+    header = {"file": 1, "format": 1}
+    body: dict[str, object] = {
+        "cookies": {},
+        "general": {"update_interval": 30},
+        "rssfeeds": {"0": {"name": "Old", "url": "https://old.example/feed"}},
+        "subscriptions": {"0": {"name": "Old Sub"}},
+    }
+    raw = json.dumps(header, separators=(",", ":")) + json.dumps(body, separators=(",", ":"))
+
+    snapshot = MagicMock(spec=RssConfigSnapshot)
+    snapshot.raw_content = raw
+
+    feed = _make_feed(id=1, remote_key="0")
+    # sub_with_key already has a remote_key (falls into the "keep existing key"
+    # branch); sub_without_key has none and must be assigned the next free key.
+    sub_with_key = _make_sub(id=1, remote_key="2", feed_id=1, name="Has Key")
+    sub_with_key.feed = feed
+    sub_without_key = _make_sub(id=2, remote_key=None, feed_id=1, name="No Key")
+    sub_without_key.feed = feed
+
+    snapshot_result = MagicMock()
+    snapshot_result.scalar_one_or_none.return_value = snapshot
+    feeds_result = MagicMock()
+    feeds_result.scalars.return_value.all.return_value = [feed]
+    subs_result = MagicMock()
+    subs_result.scalars.return_value.all.return_value = [sub_with_key, sub_without_key]
+    keys_result = MagicMock()
+    keys_result.scalars.return_value.all.return_value = ["0", "2"]
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[snapshot_result, feeds_result, subs_result, keys_result]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/download")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/octet-stream"
+        assert 'filename="yarss2.conf"' in r.headers["content-disposition"]
+
+        _, new_body = parse_rss_config(r.content.decode("utf-8"))
+        rssfeeds = new_body["rssfeeds"]
+        assert isinstance(rssfeeds, dict)
+        # The DB feed's own name/url always overlay the old snapshot's values.
+        assert rssfeeds["0"]["url"] == feed.url
+        assert rssfeeds["0"]["name"] == feed.name
+        subscriptions = new_body["subscriptions"]
+        assert isinstance(subscriptions, dict)
+        # sub_with_key keeps its existing key; sub_without_key gets the next
+        # free key above the max of the snapshot's "0" and the DB's "2" -> "3".
+        assert subscriptions["2"]["name"] == "Has Key"
+        assert subscriptions["3"]["name"] == "No Key"
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/snapshots
+# ---------------------------------------------------------------------------
+
+
+def test_list_snapshots_returns_summaries() -> None:
+    """GET /snapshots returns id/type/created_at/content_length summaries."""
+    from jidou.database import get_session
+
+    row = MagicMock()
+    row.id = 1
+    row.snapshot_type = "import"
+    row.created_at = _now()
+    row.content_length = 512
+
+    result = MagicMock()
+    result.all.return_value = [row]
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        r = TestClient(app).get("/api/rss/snapshots")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["id"] == 1
+        assert data[0]["snapshot_type"] == "import"
+        assert data[0]["content_length"] == 512
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_snapshots_empty() -> None:
+    """GET /snapshots with no stored snapshots returns an empty list."""
+    from jidou.database import get_session
+
+    result = MagicMock()
+    result.all.return_value = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        r = TestClient(app).get("/api/rss/snapshots")
+        assert r.status_code == 200
+        assert r.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_snapshots_respects_limit_param() -> None:
+    """GET /snapshots?limit=N is accepted and does not error."""
+    from jidou.database import get_session
+
+    result = MagicMock()
+    result.all.return_value = []
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        r = TestClient(app).get("/api/rss/snapshots?limit=5")
+        assert r.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/snapshots/{id}
+# ---------------------------------------------------------------------------
+
+
+def test_get_snapshot_returns_full_content() -> None:
+    """GET /snapshots/{id} returns the full raw_content for one snapshot."""
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+
+    snapshot = MagicMock(spec=RssConfigSnapshot)
+    snapshot.id = 7
+    snapshot.snapshot_type = "pre_publish"
+    snapshot.created_at = _now()
+    snapshot.raw_content = '{"file":1}{"subscriptions":{}}'
+
+    app.dependency_overrides[get_session] = _session_override(single=snapshot)
+    try:
+        r = TestClient(app).get("/api/rss/snapshots/7")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["id"] == 7
+        assert data["snapshot_type"] == "pre_publish"
+        assert data["raw_content"] == snapshot.raw_content
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_snapshot_404() -> None:
+    """GET /snapshots/{id} for a missing snapshot returns 404."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        r = TestClient(app).get("/api/rss/snapshots/999")
+        assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
