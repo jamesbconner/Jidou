@@ -227,7 +227,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
               <div className="space-y-1">
                 <label className="text-xs text-zinc-400">Content type</label>
                 <div className="flex gap-3">
-                  {(['tv', 'anime', 'movie'] as ContentType[]).map((t) => (
+                  {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
                     <label key={t} className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
                       <input
                         type="radio"
