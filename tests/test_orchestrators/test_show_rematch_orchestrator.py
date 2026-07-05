@@ -225,11 +225,11 @@ def test_apply_tmdb_metadata_stores_adult_flag() -> None:
     assert show.adult is True
 
 
-def test_apply_tmdb_metadata_preserves_adult_flag_when_response_omits_it() -> None:
-    """A TMDB response missing 'adult' (common for TV) does not clear a known flag."""
+def test_apply_tmdb_metadata_preserves_adult_flag_on_same_entity_refresh() -> None:
+    """Refreshing the same TMDB entity keeps a known adult flag when the response omits it."""
     session = MagicMock()
     tmdb = MagicMock()
-    show = _make_show()
+    show = _make_show(tmdb_id=200)  # same tmdb_id as the rematch payload below
     show.adult = True
     payload = _make_payload(tmdb_id=200, media_type="tv")
     data = _make_tmdb_data(title="Still Adult Show")
@@ -239,6 +239,22 @@ def test_apply_tmdb_metadata_preserves_adult_flag_when_response_omits_it() -> No
     orch._apply_tmdb_metadata(show, payload, data)
 
     assert show.adult is True
+
+
+def test_apply_tmdb_metadata_clears_adult_flag_on_identity_change() -> None:
+    """Rematching to a different tmdb_id does not carry over the old show's adult flag."""
+    session = MagicMock()
+    tmdb = MagicMock()
+    show = _make_show(tmdb_id=100)  # different tmdb_id from the rematch payload below
+    show.adult = True
+    payload = _make_payload(tmdb_id=200, media_type="tv")
+    data = _make_tmdb_data(title="Different Show")
+    assert "adult" not in data
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    orch._apply_tmdb_metadata(show, payload, data)
+
+    assert show.adult is None
 
 
 def test_apply_tmdb_metadata_movie_uses_title_field() -> None:

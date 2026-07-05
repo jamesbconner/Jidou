@@ -126,6 +126,9 @@ class ShowRematchOrchestrator:
         title: str = data.get("name") or data.get("title") or show.title
         release_date: str | None = data.get("first_air_date") or data.get("release_date")
         ep_runtimes: list[int] = data.get("episode_run_time") or []
+        # Captured before tmdb_id is overwritten below, so the adult fallback
+        # can tell a same-entity refresh from a genuine identity swap.
+        is_same_entity = show.tmdb_id == payload.tmdb_id
 
         show.tmdb_id = payload.tmdb_id
         show.media_type = payload.media_type
@@ -159,10 +162,14 @@ class ShowRematchOrchestrator:
         show.tagline = data.get("tagline")
         show.external_ids = data.get("external_ids")
         show.episode_groups = data.get("episode_groups") or []
-        # TMDB TV detail responses often omit "adult" entirely; falling back
-        # to the current value (rather than None) avoids silently clearing a
-        # known adult flag just because this particular response left it out.
-        show.adult = data.get("adult", show.adult)
+        # TMDB TV detail responses often omit "adult" entirely. When
+        # refreshing the same TMDB entity, fall back to the existing value so
+        # an omitted field doesn't silently clear a known adult flag. When
+        # rematching to a *different* tmdb_id, the old value belongs to a
+        # different title and must not carry over — fall back to None
+        # (unknown) instead.
+        adult_fallback = show.adult if is_same_entity else None
+        show.adult = data.get("adult", adult_fallback)
 
     async def _snapshot_tracking(
         self,
