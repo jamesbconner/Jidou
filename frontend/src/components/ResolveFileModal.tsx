@@ -75,12 +75,12 @@ export function ResolveFileModal({ file, onClose }: Props) {
     setFolderName(sanitizeFolderName(selected.title ?? ''))
   }, [selected, folderEdited])
 
-  // Snap content type to match the TMDB media type on every selection change.
-  // Anime requires manual override after selection.
-  // Also reset folderEdited so the suggestion updates for the new show.
+  // Snap content type when selection changes: movies snap to 'movie', everything
+  // else defaults to 'anime' (the most common use case).  Reset folderEdited so
+  // the folder name suggestion updates for the new show.
   useEffect(() => {
     if (!selected) return
-    setContentType(selected.media_type === 'movie' ? 'movie' : 'tv')
+    setContentType(selected.media_type === 'movie' ? 'movie' : 'anime')
     setFolderEdited(false)
   }, [selected])
 
