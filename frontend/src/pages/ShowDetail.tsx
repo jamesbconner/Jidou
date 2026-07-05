@@ -524,7 +524,7 @@ export default function ShowDetail() {
           />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold">{show.title}</h1>
               <p className="text-gray-500 text-sm mt-1">
