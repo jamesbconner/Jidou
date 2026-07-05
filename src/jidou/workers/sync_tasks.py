@@ -13,6 +13,7 @@ from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
 from jidou.services.llm_service import create_llm_service
 from jidou.services.progress import (
     TaskCancelledError,
+    append_task_event,
     check_task_cancelled,
     create_task_record,
     emit_progress,
@@ -107,6 +108,12 @@ async def _sync_all(
                     }
                 )
 
+            async def on_event(
+                level: str, msg: str, ctx: dict[str, object] | None = None
+            ) -> None:
+                async with session_factory() as event_session:
+                    await append_task_event(event_session, celery_task_id, level, msg, ctx)
+
             result = await SyncOrchestrator(
                 session,
                 sftp,
@@ -117,7 +124,7 @@ async def _sync_all(
                 local_tv_path=settings.local_tv_path,
                 local_anime_path=settings.local_anime_path,
                 local_movie_path=settings.local_movie_path,
-            ).run(dry_run=dry_run, on_phase=on_phase)
+            ).run(dry_run=dry_run, on_phase=on_phase, on_event=on_event)
 
             # Mark complete — gate the WebSocket event on the DB update landing.
             completed = await update_task_status(
