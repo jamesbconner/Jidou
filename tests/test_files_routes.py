@@ -1034,6 +1034,78 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
         app.dependency_overrides.clear()
 
 
+def test_match_file_tmdb_id_creates_show_with_adult_flag() -> None:
+    """The Show created via manual match carries TMDB's adult flag."""
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.models.show import Show
+
+    f = _make_file(id=2, status=FileStatus.UNMATCHED)
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    tmdb_data = {
+        "id": 1397,
+        "name": "Adult Show",
+        "overview": "Not for kids.",
+        "poster_path": "/poster.jpg",
+        "backdrop_path": None,
+        "vote_average": 5.0,
+        "vote_count": 10,
+        "first_air_date": "2020-01-20",
+        "original_language": "en",
+        "adult": True,
+    }
+
+    captured: dict[str, object] = {}
+
+    async def _tmdb_match_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        no_show_result = MagicMock()
+        no_show_result.scalar_one_or_none.return_value = None
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+
+        def _add(obj: object) -> None:
+            if isinstance(obj, Show):
+                obj.id = 43  # type: ignore[attr-defined]
+                obj.local_path = "/media/tv/Adult Show"  # type: ignore[attr-defined]
+                captured["adult"] = obj.adult  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        yield session
+
+    app.dependency_overrides[get_session] = _tmdb_match_session
+    try:
+        with patch(
+            "jidou.api.routes.files.TMDBService",
+            autospec=True,
+        ) as mock_tmdb:
+            mock_tmdb.return_value.get_details.return_value = tmdb_data
+            mock_tmdb.return_value.get_external_ids.return_value = {}
+            mock_tmdb.return_value.get_episode_groups.return_value = {}
+            mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
+            mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
+            response = TestClient(app).post(
+                "/api/files/2/match",
+                json={
+                    "tmdb_id": 1397,
+                    "local_path": "/media/tv/Adult Show",
+                    "content_type": "tv",
+                },
+            )
+        assert response.status_code == 200
+        assert captured["adult"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_match_file_tmdb_id_without_local_path_returns_422() -> None:
     """POST /api/files/{id}/match with tmdb_id but no local_path returns 422."""
     from unittest.mock import patch

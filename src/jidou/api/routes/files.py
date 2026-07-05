@@ -473,6 +473,7 @@ async def manual_match_file(
                 sys_name=_sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,
+                adult=data.get("adult"),
                 cached=False,
             )
             db_session.add(show)

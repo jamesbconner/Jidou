@@ -1483,6 +1483,37 @@ async def test_tmdb_create_show_supplemental_calls_failure_does_not_block_creati
     assert show.episode_groups == []
 
 
+async def test_tmdb_create_show_stores_adult_flag() -> None:
+    """A TMDB details response with adult=true is stored on the created Show."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42, "adult": True})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    assert show.adult is True
+
+
 # ---------------------------------------------------------------------------
 # _tmdb_create_show — IntegrityError race condition on insert
 # ---------------------------------------------------------------------------

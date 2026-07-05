@@ -159,6 +159,7 @@ class ShowRematchOrchestrator:
         show.tagline = data.get("tagline")
         show.external_ids = data.get("external_ids")
         show.episode_groups = data.get("episode_groups") or []
+        show.adult = data.get("adult")
 
     async def _snapshot_tracking(
         self,

@@ -225,6 +225,7 @@ export default function Shows() {
       original_language: r.original_language,
       genre_ids: r.genre_ids ?? null,
       origin_country: r.origin_country ?? null,
+      adult: r.adult ?? null,
     })
   }
 

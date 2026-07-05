@@ -70,6 +70,10 @@ class ShowCreate(BaseModel):
         default=None,
         description="Absolute path to the show's root directory on the local filesystem",
     )
+    adult: bool | None = Field(
+        default=None,
+        description="TMDB adult-content flag; None means unknown",
+    )
 
 
 class ShowPatch(BaseModel):
@@ -138,6 +142,7 @@ class ShowRead(BaseModel):
     runtime: int | None = None
     tagline: str | None = None
     local_path: str | None = None
+    adult: bool | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -195,6 +200,7 @@ class ShowList(BaseModel):
     runtime: int | None = None
     tagline: str | None = None
     local_path: str | None = None
+    adult: bool | None = None
     episode_count: int = 0
     matched_file_count: int = 0
     created_at: datetime

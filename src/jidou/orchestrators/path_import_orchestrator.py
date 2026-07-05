@@ -588,6 +588,7 @@ class PathImportOrchestrator:
             show_type=data.get("type"),
             runtime=runtime,
             tagline=data.get("tagline"),
+            adult=data.get("adult"),
         )
 
         if self.dry_run:

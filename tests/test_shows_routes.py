@@ -200,6 +200,40 @@ def test_create_show_returns_201_on_new() -> None:
         app.dependency_overrides.clear()
 
 
+def test_create_show_stores_adult_flag() -> None:
+    """POST /api/shows with adult=true constructs the Show with adult=True."""
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 998
+            from datetime import UTC, datetime
+
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _new_session
+    try:
+        response = TestClient(app).post(
+            "/api/shows",
+            json={"tmdb_id": 998, "title": "Adult Show", "media_type": "tv", "adult": True},
+        )
+        assert response.status_code == 201
+        assert response.json()["adult"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_create_show_returns_existing_if_duplicate_tmdb_id() -> None:
     """POST /api/shows with a duplicate TMDB ID must return the existing record."""
     from jidou.database import get_session
