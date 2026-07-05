@@ -495,6 +495,26 @@ async def manual_match_file(
                     show.title,
                     show.id,
                 )
+            # Sync episodes immediately so the episode lookup below has data to
+            # work with.  Mirrors the inline sync in POST /shows.  Failures are
+            # non-fatal — episodes will arrive on the next pipeline run.
+            if show.media_type != "movie":
+                try:
+                    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+                    await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
+                    logger.info(
+                        "Synced episodes for show id=%d tmdb_id=%d via manual match",
+                        show.id,
+                        show.tmdb_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Episode sync failed for show id=%d; "
+                        "episodes will sync on next pipeline run",
+                        show.id,
+                        exc_info=True,
+                    )
         else:
             # Show exists — only fill in local_path / content_type if not already set.
             # Never silently overwrite a configured path; the user should explicitly
@@ -534,31 +554,57 @@ async def manual_match_file(
     file.status = FileStatus.MATCHED
     file.error_message = None
 
-    # Populate parsed_season / parsed_episode from filename heuristic so
-    # RouteOrchestrator can place the file in Season NN/ instead of show root.
+    # Populate parsed_season / parsed_episode from the filename heuristic when
+    # neither is known yet (i.e. the file was never processed by the LLM pipeline).
     # Run BEFORE stale-episode clearing so we know the new episode_id and can
     # skip the clear when the file stays on the same episode.
     if file.parsed_season is None and file.parsed_episode is None:
         se = _heuristic_se(file.original_filename)
         if se is not None:
             file.parsed_season, file.parsed_episode = se
+
+    # Resolve episode_id from whatever season/episode info we now have.
+    # Handles three cases:
+    #   1. Regular TV: season + episode both known → exact match.
+    #   2. Anime (season=None, episode=N): absolute_episode_number, then Season-1 fallback.
+    #   3. No episode info at all: skip; route task will resolve later.
+    ep: Episode | None = None
+    if file.parsed_episode is not None:
+        if file.parsed_season is not None:
             ep_stmt = select(Episode).where(
-                (Episode.show_id == show.id)
-                & (Episode.season_number == file.parsed_season)
-                & (Episode.episode_number == file.parsed_episode)
+                Episode.show_id == show.id,
+                Episode.season_number == file.parsed_season,
+                Episode.episode_number == file.parsed_episode,
             )
             ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-            if ep is not None:
-                file.episode_id = ep.id
-                # Only dismiss the orphan once an episode is confirmed; keeping it
-                # when episode_id stays None preserves DQ visibility until the
-                # route task resolves the link.
-                await db_session.execute(
-                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-                        OrphanedTrackingRecord.downloaded_file_id == file.id
-                    )
+        else:
+            # Anime: try absolute episode number first, then Season 1.
+            ep_stmt = select(Episode).where(
+                Episode.show_id == show.id,
+                Episode.absolute_episode_number == file.parsed_episode,
+            )
+            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+            if ep is None:
+                ep_stmt = select(Episode).where(
+                    Episode.show_id == show.id,
+                    Episode.season_number == 1,
+                    Episode.episode_number == file.parsed_episode,
                 )
-                mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
+                ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+            if ep is not None and ep.season_number is not None:
+                file.parsed_season = ep.season_number  # enables Season NN routing
+
+        if ep is not None:
+            file.episode_id = ep.id
+            # Only dismiss the orphan once an episode is confirmed; keeping it
+            # when episode_id stays None preserves DQ visibility until the
+            # route task resolves the link.
+            await db_session.execute(
+                OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                    OrphanedTrackingRecord.downloaded_file_id == file.id
+                )
+            )
+            mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
 
     # Clear stale tracking on the old episode only when the episode actually
     # changed.  Running this after the heuristic avoids falsely clearing
