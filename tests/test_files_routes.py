@@ -1014,6 +1014,9 @@ def test_match_file_tmdb_id_creates_show_and_matches() -> None:
             # sync_show_episodes calls get_show_seasons; return empty seasons so
             # no episode upserts occur (avoids real TMDB calls in the test).
             mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
+            # generate_aliases calls get_alternative_titles; return empty result
+            # so no aliases are generated (avoids real TMDB calls in the test).
+            mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
             response = TestClient(app).post(
                 "/api/files/1/match",
                 json={

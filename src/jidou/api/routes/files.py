@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jidou.api.dependencies import get_llm_service
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
@@ -18,6 +19,7 @@ from jidou.models.show import Show
 from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
+from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -329,6 +331,7 @@ async def manual_match_file(
     file_id: int,
     payload: FileMatchRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> DownloadedFile:
     """Assign a show to an unmatched file, or reset it for automatic re-matching.
 
@@ -521,6 +524,28 @@ async def manual_match_file(
                         show.id,
                         exc_info=True,
                     )
+            # Generate TMDB alternative-title aliases and LLM aliases so the
+            # show is immediately searchable under all its known names.
+            # Mirrors the inline alias generation in POST /shows.
+            try:
+                from jidou.orchestrators.alias_orchestrator import generate_aliases
+
+                await generate_aliases(show, tmdb, llm=llm)
+                await db_session.flush()
+                logger.info(
+                    "Generated aliases for show id=%d tmdb_id=%d via manual match",
+                    show.id,
+                    show.tmdb_id,
+                )
+            except SQLAlchemyError:
+                raise
+            except Exception:
+                logger.warning(
+                    "Alias generation failed for show id=%d; "
+                    "aliases can be regenerated via the Manage Aliases modal",
+                    show.id,
+                    exc_info=True,
+                )
         else:
             # Show exists — only fill in local_path / content_type if not already set.
             # Never silently overwrite a configured path; the user should explicitly

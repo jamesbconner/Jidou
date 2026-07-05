@@ -205,6 +205,12 @@ async def generate_aliases(
     # 4. Preserve existing user aliases.
     existing: dict[str, list[str]] = show.aliases_sources or {}
     user_aliases: list[str] = existing.get("user") or []
+    # Migration guard: shows created via import or before aliases_sources was
+    # introduced may have flat entries in show.aliases with no corresponding
+    # sources structure (aliases_sources is None).  Fold them into the user
+    # bucket now so they are preserved rather than silently wiped.
+    if not user_aliases and show.aliases_sources is None and show.aliases:
+        user_aliases = list(show.aliases)
 
     # 5. Build new sources dict and flat union.
     new_sources: dict[str, list[str]] = {
