@@ -12,6 +12,7 @@ from jidou.models.task import TaskStatus
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator
 from jidou.services.progress import (
     TaskCancelledError,
+    append_task_event,
     check_task_cancelled,
     create_task_record,
     emit_progress,
@@ -86,9 +87,16 @@ async def _route_files(
                     }
                 )
 
+            async def on_event(
+                level: str, msg: str, ctx: dict[str, object] | None = None
+            ) -> None:
+                async with session_factory() as event_session:
+                    await append_task_event(event_session, celery_task_id, level, msg, ctx)
+
             result = await RouteOrchestrator(session).run(
                 dry_run=dry_run,
                 on_progress=on_progress,
+                on_event=on_event,
             )
 
             total_processed = result.files_routed + result.files_failed

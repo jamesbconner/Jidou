@@ -5,6 +5,7 @@ import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,6 +141,7 @@ class RouteOrchestrator:
         self,
         dry_run: bool = False,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> RouteResult:
         """Route all MATCHED files to their final locations.
 
@@ -149,6 +151,8 @@ class RouteOrchestrator:
         Args:
             dry_run: Log what would happen without moving any files.
             on_progress: Optional async callback(current, total, message).
+            on_event: Optional async callback(level, message, ctx) for
+                structured per-file event log entries.
 
         Returns:
             RouteResult with counts.
@@ -174,6 +178,13 @@ class RouteOrchestrator:
                     show.id,
                     file.id,
                 )
+                if on_event:
+                    await on_event(
+                        "warn",
+                        f"Skipped {file.original_filename!r}: "
+                        f"show {show.title!r} has no local path configured",
+                        {"file_id": file.id, "show_id": show.id},
+                    )
                 if not dry_run:
                     file.status = FileStatus.ERROR
                     file.error_message = "Show has no local_path configured"
@@ -206,6 +217,12 @@ class RouteOrchestrator:
                     file.local_path or file.original_filename,
                     dest,
                 )
+                if on_event:
+                    await on_event(
+                        "info",
+                        f"[Dry run] Would route {file.original_filename!r} → {dest}",
+                        {"file_id": file.id, "dest": str(dest)},
+                    )
                 files_routed += 1
                 continue
 
@@ -229,6 +246,12 @@ class RouteOrchestrator:
                         "Retry: staging gone but dest exists for file id=%d; marking ROUTED",
                         file.id,
                     )
+                    if on_event:
+                        await on_event(
+                            "info",
+                            f"Already routed (retry): {file.original_filename!r} → {dest}",
+                            {"file_id": file.id, "dest": str(dest)},
+                        )
                     file.local_path = str(dest)
                     file.status = FileStatus.ROUTED
                     file.error_message = None
@@ -265,6 +288,12 @@ class RouteOrchestrator:
                         file.id,
                         dest,
                     )
+                    if on_event:
+                        await on_event(
+                            "info",
+                            f"Already at destination: {file.original_filename!r}",
+                            {"file_id": file.id, "dest": str(dest)},
+                        )
                     file.status = FileStatus.ROUTED
                     file.error_message = None
                     files_routed += 1
@@ -285,6 +314,12 @@ class RouteOrchestrator:
                     file.error_message = None
                     files_routed += 1
                     logger.info("Routed %s → %s", source, dest)
+                    if on_event:
+                        await on_event(
+                            "info",
+                            f"Routed {file.original_filename!r} → {dest}",
+                            {"file_id": file.id, "show": show.title, "dest": str(dest)},
+                        )
 
                     await self._update_episode_tracking(file, show.id)
 
@@ -295,6 +330,12 @@ class RouteOrchestrator:
                     file.original_filename,
                     exc,
                 )
+                if on_event:
+                    await on_event(
+                        "error",
+                        f"Failed to route {file.original_filename!r}: {exc}",
+                        {"file_id": file.id, "error": str(exc)},
+                    )
                 # Reset local_path to the original staging path so a future retry
                 # can still locate the source file.
                 file.local_path = staging_path

@@ -291,7 +291,7 @@ class SyncOrchestrator:
         # Phase 5: Route MATCHED files to final local paths
         if on_phase:
             await on_phase(5, _TOTAL_PHASES, "Routing matched files")
-        route_result = await RouteOrchestrator(self.session).run(dry_run=dry_run)
+        route_result = await RouteOrchestrator(self.session).run(dry_run=dry_run, on_event=on_event)
         if on_event:
             await on_event(
                 "info",
