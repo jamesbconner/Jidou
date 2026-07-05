@@ -17,7 +17,7 @@ interface Props {
 export function ResolveFileModal({ file, onClose }: Props) {
   const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [selected, setSelected] = useState<TmdbSuggestion | null>(null)
-  const [contentType, setContentType] = useState<ContentType>('tv')
+  const [contentType, setContentType] = useState<ContentType>('anime')
   const [folderName, setFolderName] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
   const debouncedQuery = useDebounce(searchQuery, 300)
