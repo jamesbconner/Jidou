@@ -530,7 +530,7 @@ async def test_run_on_event_called_for_skip() -> None:
     on_event = AsyncMock()
 
     orch = RouteOrchestrator(session)
-    result = await orch.run(on_event=on_event)
+    await orch.run(on_event=on_event)
 
     # on_event should be called for the skipped file
     assert on_event.call_count >= 1

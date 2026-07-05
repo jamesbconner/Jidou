@@ -299,7 +299,7 @@ async def test_run_on_progress_after_batch():
 
 
 async def test_run_outer_exception_on_progress_reset_downloading():
-    """When outer exception (outside gather) occurs, DOWNLOADING files are marked ERROR and DB is flushed."""
+    """Outer exception (outside gather) marks DOWNLOADING files ERROR and flushes."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")
 
     count_result = MagicMock()
@@ -377,9 +377,11 @@ async def test_run_outer_exception_non_gather_resets_downloading():
         gather_calls += 1
         raise RuntimeError("Injected outer exception")
 
-    with patch("asyncio.gather", side_effect=raise_on_gather):
-        with pytest.raises(RuntimeError):
-            await orch.run()
+    with (
+        patch("asyncio.gather", side_effect=raise_on_gather),
+        pytest.raises(RuntimeError),
+    ):
+        await orch.run()
 
     # File should be reset to ERROR with "Download interrupted" message
     assert file1.status == FileStatus.ERROR
