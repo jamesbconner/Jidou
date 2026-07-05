@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -138,13 +139,30 @@ class LLMService:
         if not self.is_available():
             raise RuntimeError("LLM provider is not configured (provider='none' or model unset)")
 
+        # Structured output suppresses reasoning on models that require both
+        # /no_think and a schema constraint to skip chain-of-thought.
+        _ping_format: dict[str, Any] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "ping",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {"result": {"type": "string"}},
+                    "required": ["result"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
         start = time.monotonic()
         if self._provider in _OPENAI_COMPATIBLE:
             await self._call_openai_compatible(
                 system=None,
-                prompt="Reply with the single word: ok",
+                prompt='/no_think\nReply with {"result": "ok"}',
                 model=self._model,
-                max_tokens=5,
+                max_tokens=20,
+                response_format=_ping_format,
             )
         elif self._provider == LLMProvider.ANTHROPIC:
             await self._call_anthropic(
@@ -259,6 +277,12 @@ class LLMService:
             return None
 
         elapsed = time.monotonic() - start
+
+        # Strip chain-of-thought blocks that reasoning models (DeepSeek-R1, Qwen3, etc.)
+        # emit in content when /no_think is not honoured or thinking is explicitly enabled.
+        content = re.sub(
+            r"<think(?:ing)?>.*?</think(?:ing)?>", "", content, flags=re.DOTALL
+        ).strip()
 
         if finish_reason == "length":
             logger.warning(

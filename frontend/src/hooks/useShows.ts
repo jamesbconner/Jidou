@@ -134,6 +134,27 @@ export function useRematchShow(showId: number) {
   })
 }
 
+export function useUpdateShowAliases(showId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (aliases: string[]) =>
+      api.put<ShowRead>(`/shows/${showId}/aliases`, { aliases }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
+    },
+  })
+}
+
+export function useRegenerateShowAliases(showId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<ShowRead>(`/shows/${showId}/aliases/regenerate`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
+    },
+  })
+}
+
 export function useAssignImportEpisode() {
   const qc = useQueryClient()
   return useMutation({

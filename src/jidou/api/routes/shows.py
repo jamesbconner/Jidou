@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jidou.api.dependencies import get_llm_service
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
@@ -27,6 +28,7 @@ from jidou.schemas.show_schema import (
     ShowRead,
 )
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
+from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -223,6 +225,7 @@ async def create_show(
     payload: ShowCreate,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
     tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> Show:
     """Add a show to the database (upsert by TMDB ID).
 
@@ -291,6 +294,20 @@ async def create_show(
                 show.tmdb_id,
                 exc_info=True,
             )
+
+    try:
+        from jidou.orchestrators.alias_orchestrator import generate_aliases
+
+        await generate_aliases(show, tmdb, llm=llm)
+        await db_session.flush()
+    except Exception:
+        logger.warning(
+            "Alias generation failed for new show id=%d tmdb_id=%d"
+            " — aliases can be regenerated via POST /shows/{id}/aliases/regenerate",
+            show.id,
+            show.tmdb_id,
+            exc_info=True,
+        )
 
     await db_session.refresh(show)
     return show
@@ -381,11 +398,65 @@ async def update_show_aliases(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
+    from jidou.orchestrators.alias_orchestrator import _build_flat_aliases
+
     normalised = list(dict.fromkeys(a.strip().lower() for a in payload.aliases if a.strip()))
-    show.aliases = normalised or None
+    existing_sources: dict[str, list[str]] = show.aliases_sources or {}
+    if not show.aliases_sources and show.aliases:
+        # Legacy shows pre-date the structured aliases_sources column.  Their
+        # flat aliases were never split into tmdb/llm/user buckets.  Merge them
+        # into the user list on first structured write so they aren't silently
+        # dropped (generate_aliases can resplit them when the user regenerates).
+        legacy = [a for a in show.aliases if a not in normalised]
+        normalised = normalised + legacy
+    new_sources = {
+        "tmdb": existing_sources.get("tmdb") or [],
+        "llm": existing_sources.get("llm") or [],
+        "user": normalised,
+    }
+    show.aliases_sources = new_sources
+    show.aliases = _build_flat_aliases(new_sources)
     await db_session.flush()
     await db_session.refresh(show)
-    logger.info("Updated aliases for show id=%d: %r", show_id, show.aliases)
+    logger.info("Updated user aliases for show id=%d: %r", show_id, normalised)
+    return show
+
+
+@router.post("/{show_id}/aliases/regenerate", response_model=ShowRead)
+async def regenerate_show_aliases(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
+) -> Show:
+    """Regenerate TMDB and LLM alias sources for a show.
+
+    Fetches fresh alternative titles from TMDB, runs the LLM normalizer (if
+    configured), and rebuilds both ``aliases_sources`` and the flat ``aliases``
+    column.  User-defined aliases in ``aliases_sources.user`` are preserved.
+
+    Args:
+        show_id: Database primary key of the show.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+        llm: LLM service (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    from jidou.orchestrators.alias_orchestrator import generate_aliases
+
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    await generate_aliases(show, tmdb, llm=llm)
+    await db_session.flush()
+    await db_session.refresh(show)
     return show
 
 
@@ -454,6 +525,7 @@ async def rematch_show(
     payload: RematchRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
     tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> Show:
     """Re-match a show to a different TMDB entry.
 
@@ -497,7 +569,7 @@ async def rematch_show(
                 ),
             )
 
-    return await ShowRematchOrchestrator(db_session, tmdb).rematch(show, payload)
+    return await ShowRematchOrchestrator(db_session, tmdb, llm=llm).rematch(show, payload)
 
 
 @router.post("/{show_id}/sync-episodes", response_model=list[EpisodeList])

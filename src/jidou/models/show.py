@@ -40,6 +40,9 @@ class Show(TimestampMixin, Base):
     sys_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Alternative names used to match parsed filenames; stored as a JSON array
     aliases: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # Source-tagged alias dict: {"tmdb": [...], "llm": [...], "user": [...]}
+    # aliases is the materialized flat union used for GIN-indexed lookup.
+    aliases_sources: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB, nullable=True)
     # TMDB genres array: [{"id": 16, "name": "Animation"}, ...]
     genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
     # ISO 3166-1 origin country codes: ["JP", "US", ...]

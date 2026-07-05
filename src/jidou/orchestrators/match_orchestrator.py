@@ -1,5 +1,6 @@
 """Orchestrator for matching downloaded files to episodes via heuristic + LLM."""
 
+import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -30,10 +31,28 @@ _LLM_SYSTEM = (
     "You are a filename-to-episode matcher. "
     "Given a show title, a filename, and a numbered episode list, "
     "identify which episode the file belongs to. "
-    "Reply with ONLY two integers: season_number episode_number (space-separated). "
-    "Example: 2 7\n"
-    "If you cannot determine the match, reply with exactly: UNKNOWN"
+    "Reply with ONLY a compact JSON object: "
+    '{"season": <integer or null>, "episode": <integer or null>}. '
+    "Use null for season or episode if you cannot determine the match. "
+    "No other text, no markdown, no explanation."
 )
+
+_LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "episode_match",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            },
+            "required": ["season", "episode"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 @dataclass
@@ -104,21 +123,37 @@ class MatchOrchestrator:
         )
         prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
 
-        response = await self.llm.complete(prompt=prompt, system=_LLM_SYSTEM)
+        response = await self.llm.complete(
+            prompt=prompt,
+            system=_LLM_SYSTEM,
+            response_format=_LLM_MATCH_RESPONSE_FORMAT,
+        )
         if response is None:
             return None
 
         text = response.content.strip()
-        if text == "UNKNOWN":
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, text)
             return None
 
-        parts = text.split()
-        if len(parts) == 2:
-            try:
-                return int(parts[0]), int(parts[1])
-            except ValueError:
-                logger.warning("LLM returned non-integer response: %r", text)
-        return None
+        if not isinstance(parsed, dict):
+            logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, text)
+            return None
+
+        raw_season = parsed.get("season")
+        raw_episode = parsed.get("episode")
+        if raw_season is None or raw_episode is None:
+            return None
+        try:
+            return int(raw_season), int(raw_episode)
+        except (TypeError, ValueError):
+            logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
+            return None
 
     async def run(
         self,

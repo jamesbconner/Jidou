@@ -16,6 +16,7 @@ import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { AliasModal } from '@/components/AliasModal'
 import { api } from '@/api/client'
 import { toHostPath, toContainerPath, parseContainerPath } from '@/utils/paths'
 import type { EpisodeList, FileRead, TmdbResult, AppConfig, ContentType } from '@/types/api'
@@ -429,6 +430,7 @@ export default function ShowDetail() {
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
+  const [aliasModalOpen, setAliasModalOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
@@ -439,6 +441,7 @@ export default function ShowDetail() {
     setRematchOpen(false)
     setPathModalOpen(false)
     setContentTypeOpen(false)
+    setAliasModalOpen(false)
     setDeleteConfirmOpen(false)
     setFileForRematch(null)
     setFileForFixEps(null)
@@ -607,6 +610,12 @@ export default function ShowDetail() {
           >
             {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
           </button>
+          <button
+            onClick={() => setAliasModalOpen(true)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            Manage Aliases
+          </button>
           {syncEpisodes.isSuccess && <span className="text-xs text-green-600">Episodes synced</span>}
           {syncEpisodes.isError && (
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
@@ -738,6 +747,12 @@ export default function ShowDetail() {
           }}
           isPending={patchShow.isPending}
           error={patchShow.error as Error | null}
+        />
+      )}
+      {aliasModalOpen && (
+        <AliasModal
+          show={show}
+          onClose={() => setAliasModalOpen(false)}
         />
       )}
       {fileForRematch && (

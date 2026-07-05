@@ -99,10 +99,39 @@ class RouteOrchestrator:
                         OrphanedTrackingRecord.downloaded_file_id == file.id
                     )
                 )
+        elif file.parsed_episode is not None:
+            # Absolute episode number fallback: season was not parsed (common for
+            # anime distributed without season indicators).  Match on the
+            # TMDB-provided absolute_episode_number field when season is None.
+            ep_result = await self.session.execute(
+                select(Episode).where(
+                    Episode.show_id == show_id,
+                    Episode.absolute_episode_number == file.parsed_episode,
+                )
+            )
+            ep = ep_result.scalar_one_or_none()
+            if ep is not None:
+                file.episode_id = ep.id
+                await self.session.execute(
+                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+                        OrphanedTrackingRecord.downloaded_file_id == file.id
+                    )
+                )
         else:
             ep = None
 
         if ep is None:
+            logger.warning(
+                "Cannot track episode for file id=%d (%r): "
+                "episode_id=%s parsed_season=%s parsed_episode=%s — "
+                "no matching episode row found (show_id=%d)",
+                file.id,
+                file.original_filename,
+                file.episode_id,
+                file.parsed_season,
+                file.parsed_episode,
+                show_id,
+            )
             return
 
         mark_episode_tracked(ep, file.original_filename, "match")
@@ -154,9 +183,19 @@ class RouteOrchestrator:
                 continue
 
             is_movie = (show.content_type or show.media_type) == "movie"
+            # For anime parsed without a season (season=None), the ParseOrchestrator
+            # now backfills parsed_season from the resolved episode.  For files that
+            # were matched before that fix, recover the season from the episode row
+            # here so the file doesn't land at the show root.
+            effective_season = file.parsed_season
+            if effective_season is None and not is_movie and file.episode_id is not None:
+                ep_stmt = select(Episode).where(Episode.id == file.episode_id)
+                ep_row = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                if ep_row is not None:
+                    effective_season = ep_row.season_number
             dest = _final_path_for(
                 show.local_path,
-                file.parsed_season,
+                effective_season,
                 file.original_filename,
                 is_movie=is_movie,
             )

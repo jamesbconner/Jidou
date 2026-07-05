@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator, DownloadResult
@@ -71,6 +72,101 @@ class SyncOrchestrator:
         self.local_anime_path = local_anime_path
         self.local_movie_path = local_movie_path
 
+    async def _fill_missing_episodes(self, tmdb_orch: TMDBOrchestrator) -> None:
+        """Re-sync TMDB for shows whose MATCHED files have no resolved episode_id.
+
+        Runs after ParseOrchestrator.  For each show that has MATCHED files
+        with (parsed_season, parsed_episode) set but episode_id=None, force a
+        full TMDB episode refresh then retry the episode lookup — writing
+        episode_id back onto the file so RouteOrchestrator can track it.
+
+        This fixes the stale-cache case: shows marked cached=True in Phase 1
+        are skipped by sync_all_shows, so new seasons/episodes don't reach the
+        DB until this phase catches them.
+
+        Args:
+            tmdb_orch: Already-constructed TMDB orchestrator sharing this session.
+        """
+        # Find distinct show_ids that need help — includes anime (parsed_season=None).
+        gap_stmt = (
+            select(DownloadedFile.show_id)
+            .distinct()
+            .where(
+                DownloadedFile.status == FileStatus.MATCHED,
+                DownloadedFile.episode_id.is_(None),
+                DownloadedFile.parsed_episode.is_not(None),
+                DownloadedFile.show_id.is_not(None),
+            )
+        )
+        show_ids = list((await self.session.execute(gap_stmt)).scalars().all())
+
+        if not show_ids:
+            return
+
+        logger.info(
+            "Phase 4.5: re-syncing TMDB for %d show(s) with unresolved episode rows",
+            len(show_ids),
+        )
+
+        for sid in show_ids:
+            show_stmt = select(Show).where(Show.id == sid)
+            show = (await self.session.execute(show_stmt)).scalar_one_or_none()
+            if show is None:
+                continue
+            try:
+                await tmdb_orch.sync_show_episodes(show)
+            except Exception:
+                logger.exception("Phase 4.5: TMDB re-sync failed for show id=%d", sid)
+                await self.session.rollback()
+                continue
+
+            # Retry episode lookup for the affected files (anime or regular).
+            retry_stmt = select(DownloadedFile).where(
+                DownloadedFile.status == FileStatus.MATCHED,
+                DownloadedFile.episode_id.is_(None),
+                DownloadedFile.show_id == sid,
+                DownloadedFile.parsed_episode.is_not(None),
+            )
+            files = list((await self.session.execute(retry_stmt)).scalars().all())
+            for file in files:
+                if file.parsed_season is not None:
+                    ep_stmt = select(Episode).where(
+                        Episode.show_id == sid,
+                        Episode.season_number == file.parsed_season,
+                        Episode.episode_number == file.parsed_episode,
+                    )
+                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                else:
+                    # Anime absolute-number fallback: try absolute first, then Season 1.
+                    ep_stmt = select(Episode).where(
+                        Episode.show_id == sid,
+                        Episode.absolute_episode_number == file.parsed_episode,
+                    )
+                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                    if ep is None:
+                        ep_stmt = select(Episode).where(
+                            Episode.show_id == sid,
+                            Episode.season_number == 1,
+                            Episode.episode_number == file.parsed_episode,
+                        )
+                        ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+
+                if ep is not None:
+                    file.episode_id = ep.id
+                    if file.parsed_season is None and ep.season_number is not None:
+                        # Backfill so RouteOrchestrator lands in Season NN, not show root.
+                        file.parsed_season = ep.season_number
+                    logger.debug(
+                        "Phase 4.5: resolved episode_id=%d for file id=%d (%r)",
+                        ep.id,
+                        file.id,
+                        file.original_filename,
+                    )
+
+            # Commit per show so a rollback on a later show doesn't clobber
+            # episode_id writes that already succeeded for earlier shows.
+            await self.session.commit()
+
     async def run(
         self,
         show_id: int | None = None,
@@ -92,10 +188,11 @@ class SyncOrchestrator:
         # Phase 1: TMDB episode cache — skipped entirely in dry_run.
         if on_phase:
             await on_phase(1, _TOTAL_PHASES, "Syncing TMDB episode data")
+        _tmdb_orch: TMDBOrchestrator | None = None
         if dry_run:
             tmdb_result = TMDBSyncResult(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
         else:
-            tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
+            _tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
             if show_id is not None:
                 show_stmt = select(Show).where(Show.id == show_id)
                 show = (await self.session.execute(show_stmt)).scalar_one_or_none()
@@ -104,7 +201,7 @@ class SyncOrchestrator:
                     has_episodes = (await self.session.execute(select(ep_exists))).scalar()
                     if not show.cached or not has_episodes:
                         try:
-                            tmdb_result = await tmdb_orch.sync_show_episodes(show)
+                            tmdb_result = await _tmdb_orch.sync_show_episodes(show)
                         except Exception:
                             logger.exception("Failed to sync TMDB for show id=%d", show.id)
                             await self.session.rollback()
@@ -120,7 +217,7 @@ class SyncOrchestrator:
                         shows_synced=0, episodes_upserted=0, episodes_skipped=0
                     )
             else:
-                tmdb_result = await tmdb_orch.sync_all_shows()
+                tmdb_result = await _tmdb_orch.sync_all_shows()
 
         # Phase 2: Scan all remote paths
         if on_phase:
@@ -146,6 +243,14 @@ class SyncOrchestrator:
             local_anime_path=self.local_anime_path,
             local_movie_path=self.local_movie_path,
         ).run(dry_run=dry_run)
+
+        # Phase 4.5: Episode gap fill — re-sync TMDB for shows where the parser
+        # matched a show but couldn't resolve an episode row.  This handles
+        # already-cached shows whose DB episode list is stale (new seasons/
+        # episodes released since the last sync).  Only triggered when there are
+        # MATCHED files with a known (season, episode) but no episode_id.
+        if not dry_run and _tmdb_orch is not None:
+            await self._fill_missing_episodes(_tmdb_orch)
 
         # Phase 5: Route MATCHED files to final local paths
         if on_phase:

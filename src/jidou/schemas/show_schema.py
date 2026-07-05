@@ -91,7 +91,11 @@ class ShowPaths(BaseModel):
 
 
 class ShowAliasesUpdate(BaseModel):
-    """Payload for replacing the full aliases list on a show."""
+    """Payload for replacing the user-defined alias list on a show.
+
+    Only the ``user`` source is modified; TMDB and LLM aliases are preserved
+    and the flat ``aliases`` column is rebuilt as their union.
+    """
 
     aliases: list[str] = Field(default_factory=list)
 
@@ -116,6 +120,7 @@ class ShowRead(BaseModel):
     content_type: ContentType | None = None
     sys_name: str | None = None
     aliases: list[str] | None = None
+    aliases_sources: dict[str, list[str]] | None = None
     genres: list[dict[str, object]] | None = None
     origin_country: list[str] | None = None
     last_air_date: str | None = None

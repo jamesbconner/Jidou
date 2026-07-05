@@ -392,23 +392,64 @@ class ParseOrchestrator:
         season: int | None,
         episode: int | None,
     ) -> Episode | None:
-        """Look up a specific episode, or return None."""
-        if season is None or episode is None:
+        """Look up a specific episode, or return None.
+
+        When season is provided, matches on (season_number, episode_number).
+        When season is None but episode is known, falls back to
+        absolute_episode_number — common for anime distributed without season
+        indicators (e.g. ``"Bleach - 213.mkv"``).
+        """
+        if episode is None:
             return None
+        if season is not None:
+            stmt = select(Episode).where(
+                (Episode.show_id == show_id)
+                & (Episode.season_number == season)
+                & (Episode.episode_number == episode)
+            )
+            return (await self.session.execute(stmt)).scalar_one_or_none()
+        # season is None — try absolute episode number (anime absolute numbering)
+        stmt = select(Episode).where(
+            (Episode.show_id == show_id) & (Episode.absolute_episode_number == episode)
+        )
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            return ep
+        # Absolute lookup missed — TMDB often leaves absolute_episode_number null for
+        # shows that live in a single season.  Fall back to Season 1, Episode N, which
+        # is correct for the vast majority of anime distributed without season markers.
         stmt = select(Episode).where(
             (Episode.show_id == show_id)
-            & (Episode.season_number == season)
+            & (Episode.season_number == 1)
             & (Episode.episode_number == episode)
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
     def _add_alias(show: Show, alias: str) -> None:
-        """Add a normalised alias to show.aliases (in-place, no duplicate)."""
+        """Add a normalised alias to show.aliases and aliases_sources (in-place, no duplicate).
+
+        Mirrors the alias into ``aliases_sources["user"]`` so the structured
+        PUT /shows/{id}/aliases endpoint does not silently drop it when the
+        user next edits aliases via the UI (which reads from aliases_sources).
+        """
         norm = _sanitize_alias(alias)
+        # Flat GIN-indexed column — used for fast show lookup during parsing.
         current: list[str] = list(show.aliases) if show.aliases else []
         if norm not in current:
             show.aliases = [*current, norm]
+        # Structured source map — used by the UI and the PUT endpoint.
+        sources: dict[str, list[str]] = dict(show.aliases_sources) if show.aliases_sources else {}
+        if not show.aliases_sources and show.aliases:
+            # First-time write on a legacy show: seed the user bucket from all
+            # existing flat aliases so that generate_aliases or a UI save doesn't
+            # orphan them when it rebuilds show.aliases from sources only.
+            sources["user"] = list(show.aliases)
+            show.aliases_sources = sources  # persist even if norm is already present
+        user_aliases: list[str] = list(sources.get("user") or [])
+        if norm not in user_aliases:
+            sources["user"] = [*user_aliases, norm]
+            show.aliases_sources = sources
 
     async def run(
         self,
@@ -515,6 +556,11 @@ class ParseOrchestrator:
                     file.show_id = show.id
                     ep = await self._find_episode(show.id, season, episode)
                     file.episode_id = ep.id if ep is not None else None
+                    # When the LLM returned season=None (anime absolute numbering),
+                    # backfill parsed_season from the resolved episode so RouteOrchestrator
+                    # can place the file in the correct Season NN directory.
+                    if ep is not None and season is None and ep.season_number is not None:
+                        file.parsed_season = ep.season_number
                     if ep is not None:
                         await self.session.execute(
                             OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]

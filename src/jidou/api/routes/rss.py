@@ -477,6 +477,23 @@ def _sanitize_label(text: str) -> str:
 # preamble before the JSON; 1024 gives them room without risking truncation.
 _REGEX_MAX_TOKENS: int = 1024
 
+_REGEX_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "rss_regex",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "regex_include": {"type": "string"},
+                "regex_exclude": {"type": "string"},
+            },
+            "required": ["regex_include", "regex_exclude"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 _REGEX_SYSTEM_PROMPT = (
     "You are exclusively a BitTorrent RSS regex generator. "
     "Your only function is to produce Python-compatible regex patterns in JSON format. "
@@ -544,6 +561,7 @@ async def suggest_regex(
         prompt=user_prompt,
         system=_REGEX_SYSTEM_PROMPT,
         max_tokens=_REGEX_MAX_TOKENS,
+        response_format=_REGEX_RESPONSE_FORMAT,
     )
     if response is None:
         raise HTTPException(status_code=503, detail="LLM provider call failed.")
