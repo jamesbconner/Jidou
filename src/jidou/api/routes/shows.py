@@ -2,6 +2,7 @@
 
 import logging
 import re
+from pathlib import PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -79,6 +80,27 @@ def _infer_content_type(payload: ShowCreate) -> str:
     if is_animated and is_japanese:
         return "anime"
     return "tv"
+
+
+def _auto_local_path(content_type: str, sys_name: str) -> str:
+    """Compute the default local path for a new show from configured media roots.
+
+    Args:
+        content_type: One of ``"anime"``, ``"movie"``, or ``"tv"``.
+        sys_name: Filesystem-safe show directory name.
+
+    Returns:
+        Absolute container-side path string.
+    """
+    from jidou.config import settings
+
+    if content_type == "movie":
+        base = settings.local_movie_path
+    elif content_type == "anime":
+        base = settings.local_anime_path
+    else:
+        base = settings.local_tv_path
+    return str(PurePosixPath(base) / sys_name)
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +278,8 @@ async def create_show(
         data["sys_name"] = _sanitize_sys_name(payload.title)
     if not data.get("content_type"):
         data["content_type"] = _infer_content_type(payload)
+    if not data.get("local_path"):
+        data["local_path"] = _auto_local_path(data["content_type"], data["sys_name"])
     # genre_ids is a ShowCreate-only field (search card shape); Show has no such column.
     data.pop("genre_ids", None)
 
