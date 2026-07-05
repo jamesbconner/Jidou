@@ -225,6 +225,22 @@ def test_apply_tmdb_metadata_stores_adult_flag() -> None:
     assert show.adult is True
 
 
+def test_apply_tmdb_metadata_preserves_adult_flag_when_response_omits_it() -> None:
+    """A TMDB response missing 'adult' (common for TV) does not clear a known flag."""
+    session = MagicMock()
+    tmdb = MagicMock()
+    show = _make_show()
+    show.adult = True
+    payload = _make_payload(tmdb_id=200, media_type="tv")
+    data = _make_tmdb_data(title="Still Adult Show")
+    assert "adult" not in data
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    orch._apply_tmdb_metadata(show, payload, data)
+
+    assert show.adult is True
+
+
 def test_apply_tmdb_metadata_movie_uses_title_field() -> None:
     """Movie responses use 'title' + 'release_date' instead of 'name' + 'first_air_date'."""
     session = MagicMock()

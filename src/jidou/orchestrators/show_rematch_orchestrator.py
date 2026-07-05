@@ -159,7 +159,10 @@ class ShowRematchOrchestrator:
         show.tagline = data.get("tagline")
         show.external_ids = data.get("external_ids")
         show.episode_groups = data.get("episode_groups") or []
-        show.adult = data.get("adult")
+        # TMDB TV detail responses often omit "adult" entirely; falling back
+        # to the current value (rather than None) avoids silently clearing a
+        # known adult flag just because this particular response left it out.
+        show.adult = data.get("adult", show.adult)
 
     async def _snapshot_tracking(
         self,
