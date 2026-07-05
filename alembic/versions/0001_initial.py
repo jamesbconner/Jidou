@@ -4,9 +4,10 @@ Revision ID: 0001_initial
 Revises:
 Create Date: 2026-07-01
 
-Squashed from migrations 0001-0009.  The service had not yet reached
-production, so all incremental migrations are collapsed here into a single
-authoritative initial state.
+Squashed from migrations 0001-0009, then re-squashed to fold in
+0002_add_aliases_sources and the new shows.adult column.  The service has
+not yet reached production, so all incremental migrations are collapsed
+here into a single authoritative initial state.
 
 Dev databases should be wiped and recreated:
     docker compose down -v && docker compose up -d
@@ -47,7 +48,9 @@ def upgrade() -> None:
         sa.Column("content_type", sa.String(length=20), nullable=True),
         sa.Column("sys_name", sa.String(length=500), nullable=True),
         sa.Column("aliases", JSONB(), nullable=True),
+        sa.Column("aliases_sources", JSONB(), nullable=True),
         sa.Column("genres", JSONB(), nullable=True),
+        sa.Column("adult", sa.Boolean(), nullable=True),
         sa.Column("origin_country", JSONB(), nullable=True),
         sa.Column("last_air_date", sa.String(length=20), nullable=True),
         sa.Column("last_episode_to_air", JSONB(), nullable=True),

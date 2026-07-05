@@ -357,6 +357,7 @@ export default function Watchlist() {
         genre_ids: result.genre_ids ?? null,
         origin_country: result.origin_country ?? null,
         release_date: result.first_air_date ?? result.release_date,
+        adult: result.adult ?? null,
       },
       {
         onSuccess: (show) => createWatchlistEntry.mutate(

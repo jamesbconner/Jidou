@@ -355,6 +355,7 @@ def _build_show(row: dict[str, Any]) -> Show:
         runtime=row.get("runtime"),
         tagline=row.get("tagline"),
         local_path=row.get("local_path"),
+        adult=row.get("adult"),
     )
 
 
@@ -388,6 +389,7 @@ def _update_show(show: Show, row: dict[str, Any]) -> None:
     show.show_type = row.get("show_type", show.show_type)
     show.runtime = row.get("runtime", show.runtime)
     show.tagline = row.get("tagline", show.tagline)
+    show.adult = row.get("adult", show.adult)
     # Preserve live local_path if backup value is absent.
     backup_local_path = row.get("local_path")
     if backup_local_path is not None:

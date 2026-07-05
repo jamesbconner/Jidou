@@ -40,6 +40,7 @@ export interface ShowList {
   tagline: string | null
   original_language: string | null
   local_path: string | null
+  adult: boolean | null
   episode_count: number
   matched_file_count: number
   created_at: string
@@ -84,6 +85,7 @@ export interface ShowCreate {
   tagline?: string | null
   genre_ids?: number[] | null
   content_type?: string | null
+  adult?: boolean | null
 }
 
 export interface ShowPaths {
@@ -567,6 +569,7 @@ export interface TmdbResult {
   original_language: string
   genre_ids?: number[] | null
   origin_country?: string[] | null
+  adult?: boolean | null
 }
 
 export interface TmdbSearchResponse {

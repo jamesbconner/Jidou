@@ -66,6 +66,16 @@ class TestBuildShow:
         show = _build_show({"tmdb_id": 1, "title": "S"})
         assert show.vote_count == 0
 
+    def test_adult_flag_mapped_from_row(self) -> None:
+        """adult is mapped from the backup row when present."""
+        show = _build_show({"tmdb_id": 1, "title": "S", "adult": True})
+        assert show.adult is True
+
+    def test_adult_flag_defaults_to_none(self) -> None:
+        """adult defaults to None when absent from the backup row."""
+        show = _build_show({"tmdb_id": 1, "title": "S"})
+        assert show.adult is None
+
 
 # ---------------------------------------------------------------------------
 # _update_show
@@ -103,6 +113,22 @@ class TestUpdateShow:
         assert show.in_production is True
         assert show.number_of_seasons == 4
         assert show.runtime == 45
+
+    def test_updates_adult_flag_from_backup(self) -> None:
+        """adult is updated when the backup row provides it."""
+        show = MagicMock()
+        show.local_path = None
+        show.adult = None
+        _update_show(show, {"adult": True})
+        assert show.adult is True
+
+    def test_preserves_adult_flag_when_backup_absent(self) -> None:
+        """adult is preserved when the backup row has no adult key."""
+        show = MagicMock()
+        show.local_path = None
+        show.adult = True
+        _update_show(show, {"title": "Show"})
+        assert show.adult is True
 
 
 # ---------------------------------------------------------------------------

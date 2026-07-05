@@ -45,6 +45,9 @@ class Show(TimestampMixin, Base):
     aliases_sources: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB, nullable=True)
     # TMDB genres array: [{"id": 16, "name": "Animation"}, ...]
     genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    # TMDB "adult" flag. NULL means unknown (never populated from a TMDB
+    # response) and is treated as non-adult by dashboard filtering.
+    adult: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # ISO 3166-1 origin country codes: ["JP", "US", ...]
     origin_country: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     # Date the show last aired (TV only)
