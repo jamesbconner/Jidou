@@ -620,6 +620,25 @@ class PathImportOrchestrator:
             logger.exception("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id)
             # Show row exists; proceed to episode matching with whatever was synced.
 
+        # Generate TMDB alternative-title aliases and LLM aliases.  The
+        # directory-name alias (stored in show.aliases at construction time when
+        # it differs from the English title) is preserved via the migration guard
+        # in generate_aliases (aliases_sources is None → fold into user bucket).
+        try:
+            from jidou.orchestrators.alias_orchestrator import generate_aliases
+
+            await generate_aliases(show, self.tmdb, llm=self.llm)
+            await self.session.flush()
+            await self._emit("info", f"Generated aliases for '{title}'")
+        except Exception:
+            logger.warning(
+                "Alias generation failed for %r (tmdb_id=%d); "
+                "aliases can be regenerated via the Manage Aliases modal",
+                title,
+                tmdb_id,
+                exc_info=True,
+            )
+
         return show, "created"
 
     async def _llm_parse_episode(
