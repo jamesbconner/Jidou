@@ -21,18 +21,38 @@ function makeWrapper() {
     )
 }
 
+// vi.spyOn(globalThis, 'fetch') triggers a worker crash on Node >=22.1.x
+// (https://github.com/nodejs/node/issues/54735) — property-descriptor
+// manipulation on the native fetch/undici binding is implicated. A plain
+// assignment achieves the same mockability without touching the native
+// descriptor, and is restored explicitly since test files now share one
+// global context (see vitest.config.ts isolate: false).
+const originalFetch = globalThis.fetch
+
 beforeEach(() => {
-  vi.spyOn(globalThis, 'fetch')
+  globalThis.fetch = vi.fn()
 })
 
 afterEach(() => {
+  globalThis.fetch = originalFetch
   vi.restoreAllMocks()
 })
 
+// Duck-types the subset of the Fetch Response interface api/client.ts
+// actually reads (.ok, .status, .json()) instead of constructing a real
+// Response — the native/undici Response implementation triggers a worker
+// crash on Node >=22.1.x (https://github.com/nodejs/node/issues/54735).
+function mockResponse(body: unknown = null, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: '',
+    json: async () => body,
+  } as Response
+}
+
 function mockWatchlistAndShows(watchlistData: WatchlistList[]) {
-  vi.mocked(fetch).mockResolvedValue(
-    new Response(JSON.stringify(watchlistData), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-  )
+  vi.mocked(fetch).mockResolvedValue(mockResponse(watchlistData))
 }
 
 describe('Watchlist page', () => {
@@ -99,10 +119,8 @@ describe('Watchlist page', () => {
   test('Remove button calls DELETE endpoint', async () => {
     mockWatchlistAndShows(entries)
     vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify(entries), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(mockResponse(entries))
+      .mockResolvedValueOnce(mockResponse(null, 204))
 
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getAllByText('Remove')).toHaveLength(2))
