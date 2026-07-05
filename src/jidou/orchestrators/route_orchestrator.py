@@ -183,9 +183,19 @@ class RouteOrchestrator:
                 continue
 
             is_movie = (show.content_type or show.media_type) == "movie"
+            # For anime parsed without a season (season=None), the ParseOrchestrator
+            # now backfills parsed_season from the resolved episode.  For files that
+            # were matched before that fix, recover the season from the episode row
+            # here so the file doesn't land at the show root.
+            effective_season = file.parsed_season
+            if effective_season is None and not is_movie and file.episode_id is not None:
+                ep_stmt = select(Episode).where(Episode.id == file.episode_id)
+                ep_row = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                if ep_row is not None:
+                    effective_season = ep_row.season_number
             dest = _final_path_for(
                 show.local_path,
-                file.parsed_season,
+                effective_season,
                 file.original_filename,
                 is_movie=is_movie,
             )

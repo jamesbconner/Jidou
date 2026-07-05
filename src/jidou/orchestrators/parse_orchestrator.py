@@ -412,6 +412,17 @@ class ParseOrchestrator:
         stmt = select(Episode).where(
             (Episode.show_id == show_id) & (Episode.absolute_episode_number == episode)
         )
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            return ep
+        # Absolute lookup missed — TMDB often leaves absolute_episode_number null for
+        # shows that live in a single season.  Fall back to Season 1, Episode N, which
+        # is correct for the vast majority of anime distributed without season markers.
+        stmt = select(Episode).where(
+            (Episode.show_id == show_id)
+            & (Episode.season_number == 1)
+            & (Episode.episode_number == episode)
+        )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
@@ -539,6 +550,11 @@ class ParseOrchestrator:
                     file.show_id = show.id
                     ep = await self._find_episode(show.id, season, episode)
                     file.episode_id = ep.id if ep is not None else None
+                    # When the LLM returned season=None (anime absolute numbering),
+                    # backfill parsed_season from the resolved episode so RouteOrchestrator
+                    # can place the file in the correct Season NN directory.
+                    if ep is not None and season is None and ep.season_number is not None:
+                        file.parsed_season = ep.season_number
                     if ep is not None:
                         await self.session.execute(
                             OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]

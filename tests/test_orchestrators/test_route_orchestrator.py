@@ -443,6 +443,50 @@ async def test_run_episode_tracking_resolved_via_parsed_numbers(tmp_path: Path) 
 
 
 # ---------------------------------------------------------------------------
+# run() — anime absolute episode routing (parsed_season=None, episode_id set)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_anime_no_season_routes_to_season_dir_via_episode_id(tmp_path: Path) -> None:
+    """Anime file with parsed_season=None but episode_id set routes to Season NN via episode row."""
+    staging = tmp_path / "staging" / "[SubsPlease] Kill Ao - 12 (1080p) [9C22A8A0].mkv"
+    staging.parent.mkdir()
+    staging.write_bytes(b"video")
+
+    show_dir = tmp_path / "media" / "anime" / "Kill Ao"
+    file = _make_file(
+        filename="[SubsPlease] Kill Ao - 12 (1080p) [9C22A8A0].mkv",
+        local_path=str(staging),
+        episode_id=12,
+        parsed_season=None,  # LLM found no season indicator
+        parsed_episode=12,
+    )
+    show = _make_show(local_path=str(show_dir), content_type="anime", media_type="tv")
+    ep = _make_episode(ep_id=12, season=1, ep_num=12)
+
+    # Execute order: files query → season-lookup-by-episode-id → episode-tracking-by-episode-id
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    season_ep_result = MagicMock()
+    season_ep_result.scalar_one_or_none.return_value = ep
+    tracking_ep_result = MagicMock()
+    tracking_ep_result.scalar_one_or_none.return_value = ep
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[files_result, season_ep_result, tracking_ep_result])
+
+    orch = RouteOrchestrator(session)
+    result = await orch.run()
+
+    assert result.files_routed == 1
+    expected = show_dir / "Season 01" / "[SubsPlease] Kill Ao - 12 (1080p) [9C22A8A0].mkv"
+    assert expected.exists()
+    assert ep.file_tracked is True
+
+
+# ---------------------------------------------------------------------------
 # run() — on_progress callback
 # ---------------------------------------------------------------------------
 
