@@ -297,6 +297,9 @@ async def test_run_tmdb_exception_handled_and_sync_continues():
         orch = SyncOrchestrator(session, sftp, tmdb)
         result = await orch.run(show_id=5)  # must not raise
 
+    assert result.tmdb.shows_synced == 0
+    session.rollback.assert_called_once()
+
 
 async def test_run_on_event_called_for_phase_results():
     """on_event callback is passed to sub-orchestrators and called with phase summaries."""
