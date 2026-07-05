@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,6 +173,7 @@ class SyncOrchestrator:
         show_id: int | None = None,
         dry_run: bool = False,
         on_phase: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> SyncResult:
         """Execute all 5 phases in order, reporting phase-level progress.
 
@@ -181,6 +183,8 @@ class SyncOrchestrator:
             dry_run: Passed through to each orchestrator.
             on_phase: Optional async callback(current_phase, total_phases, message).
                 May raise TaskCancelledError; propagates uncaught.
+            on_event: Optional async callback(level, message, ctx) for structured
+                event log entries — wired to append_task_event in the task layer.
 
         Returns:
             SyncResult with results from each phase.
@@ -218,6 +222,17 @@ class SyncOrchestrator:
                     )
             else:
                 tmdb_result = await _tmdb_orch.sync_all_shows()
+        if on_event:
+            await on_event(
+                "info",
+                f"TMDB sync: {tmdb_result.shows_synced} shows refreshed, "
+                f"{tmdb_result.episodes_upserted} episodes upserted"
+                + (" (skipped — dry run)" if dry_run else ""),
+                {
+                    "shows_synced": tmdb_result.shows_synced,
+                    "episodes_upserted": tmdb_result.episodes_upserted,
+                },
+            )
 
         # Phase 2: Scan all remote paths
         if on_phase:
@@ -225,6 +240,13 @@ class SyncOrchestrator:
         scan_result = await ScanOrchestrator(self.session, self.sftp, self.remote_paths).run(
             dry_run=dry_run
         )
+        if on_event:
+            await on_event(
+                "info",
+                f"Scan: {scan_result.files_created} new file(s) discovered"
+                + (" (dry run)" if dry_run else ""),
+                {"files_created": scan_result.files_created},
+            )
 
         # Phase 3: Download DISCOVERED files to staging
         if on_phase:
@@ -232,6 +254,13 @@ class SyncOrchestrator:
         dl_result = await DownloadOrchestrator(
             self.session, self.sftp, self.local_staging_path
         ).run(dry_run=dry_run, max_workers=self.sftp.max_workers)
+        if on_event:
+            await on_event(
+                "info",
+                f"Download: {dl_result.files_downloaded} file(s) downloaded"
+                + (" (dry run)" if dry_run else ""),
+                {"files_downloaded": dl_result.files_downloaded},
+            )
 
         # Phase 4: Parse filenames and match to shows
         if on_phase:
@@ -243,6 +272,13 @@ class SyncOrchestrator:
             local_anime_path=self.local_anime_path,
             local_movie_path=self.local_movie_path,
         ).run(dry_run=dry_run)
+        if on_event:
+            await on_event(
+                "info",
+                f"Parse: {parse_result.files_matched} file(s) matched to shows"
+                + (" (dry run)" if dry_run else ""),
+                {"files_matched": parse_result.files_matched},
+            )
 
         # Phase 4.5: Episode gap fill — re-sync TMDB for shows where the parser
         # matched a show but couldn't resolve an episode row.  This handles
@@ -255,7 +291,14 @@ class SyncOrchestrator:
         # Phase 5: Route MATCHED files to final local paths
         if on_phase:
             await on_phase(5, _TOTAL_PHASES, "Routing matched files")
-        route_result = await RouteOrchestrator(self.session).run(dry_run=dry_run)
+        route_result = await RouteOrchestrator(self.session).run(dry_run=dry_run, on_event=on_event)
+        if on_event:
+            await on_event(
+                "info",
+                f"Route: {route_result.files_routed} file(s) routed to final paths"
+                + (" (dry run)" if dry_run else ""),
+                {"files_routed": route_result.files_routed},
+            )
 
         return SyncResult(
             tmdb=tmdb_result,
