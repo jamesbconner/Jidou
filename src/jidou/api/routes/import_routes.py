@@ -17,6 +17,30 @@ _MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB — more than enough for any path li
 _MAX_DB_BYTES = 100 * 1024 * 1024  # 100 MB for database exports
 
 
+def _decode_upload(raw: bytes) -> str:
+    """Decode an uploaded file's bytes to text, honoring a UTF-16 BOM.
+
+    Tools that generate path lists (e.g. PowerShell's ``>`` redirection)
+    commonly write UTF-16LE with a BOM. Without an explicit check, that BOM
+    (``\\xff\\xfe``) is never valid UTF-8, so ``utf-8-sig`` decoding fails and
+    falls through to ``latin-1`` — which never raises, but silently turns
+    every character into itself-plus-a-NUL byte, breaking every path/regex
+    check downstream with no error ever surfacing.
+
+    Args:
+        raw: Raw uploaded file bytes.
+
+    Returns:
+        Decoded text content.
+    """
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
 @router.post("/text", response_model=TaskRead)
 async def import_text(
     file: UploadFile,
@@ -65,10 +89,7 @@ async def import_text(
         raise HTTPException(status_code=422, detail="File too large (limit: 10 MB)")
 
     # Decode; tolerate Windows / Unix line endings and BOM.
-    try:
-        file_content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        file_content = raw.decode("latin-1")
+    file_content = _decode_upload(raw)
 
     # Delayed import to avoid circular references with the Celery app.
     from jidou.workers.import_tasks import path_import_task
@@ -127,10 +148,7 @@ async def import_database(
     if len(raw) > _MAX_DB_BYTES:
         raise HTTPException(status_code=422, detail="File too large (limit: 100 MB)")
 
-    try:
-        file_content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        file_content = raw.decode("latin-1")
+    file_content = _decode_upload(raw)
 
     import json
 

@@ -6,8 +6,46 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from jidou.api.routes.import_routes import _decode_upload
 from jidou.main import app
 from jidou.models.task import BackgroundTask, TaskStatus
+
+
+class TestDecodeUpload:
+    """Tests for the shared _decode_upload helper."""
+
+    def test_decodes_plain_utf8(self) -> None:
+        """Plain UTF-8 content (no BOM) decodes as-is."""
+        assert _decode_upload(b"Z:\\anime\\Show\\ep.mkv") == "Z:\\anime\\Show\\ep.mkv"
+
+    def test_decodes_utf8_with_bom(self) -> None:
+        """UTF-8 BOM is stripped."""
+        raw = b"\xef\xbb\xbf" + b"Z:\\anime\\Show\\ep.mkv"
+        assert _decode_upload(raw) == "Z:\\anime\\Show\\ep.mkv"
+
+    def test_decodes_utf16_le_with_bom(self) -> None:
+        """UTF-16LE with BOM (PowerShell's `>` redirection default) decodes correctly.
+
+        This is the exact failure mode that previously produced a silent
+        zero-entries import: utf-8-sig can't decode a UTF-16 BOM, so it fell
+        through to latin-1, which never raises but turns every character
+        into itself-plus-a-NUL-byte, breaking every downstream regex.
+        """
+        text = "Z:\\anime tv\\Show\\Season 01\\Show.S01E01.mkv"
+        raw = text.encode("utf-16")  # Python prepends the LE BOM by default
+        assert _decode_upload(raw) == text
+
+    def test_decodes_utf16_be_with_bom(self) -> None:
+        """UTF-16BE with BOM also decodes correctly."""
+        text = "Z:\\anime tv\\Show\\Season 01\\Show.S01E01.mkv"
+        raw = text.encode("utf-16-be")
+        raw_with_bom = b"\xfe\xff" + raw
+        assert _decode_upload(raw_with_bom) == text
+
+    def test_falls_back_to_latin1_for_non_utf8_non_utf16(self) -> None:
+        """Bytes that are neither valid UTF-8 nor UTF-16-BOM-prefixed fall back to Latin-1."""
+        raw = b"Caf\xe9.mkv"  # 'é' in Latin-1, invalid as UTF-8 continuation
+        assert _decode_upload(raw) == "Café.mkv"
 
 
 class TestImportText:
@@ -143,6 +181,63 @@ class TestImportText:
 
                 assert resp.status_code == 200
                 mock_task.apply_async.assert_called()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_import_text_decodes_utf16_file_before_dispatch(self) -> None:
+        """A UTF-16LE-encoded upload (e.g. from PowerShell `>` redirection) is
+        decoded to real text before being handed to the Celery task — not the
+        NUL-interleaved garbage latin-1 fallback would previously produce.
+        """
+        client = TestClient(app)
+
+        task = MagicMock(spec=BackgroundTask)
+        task.id = 1
+        task.celery_task_id = "abc-123"
+        task.task_type = "import"
+        task.status = TaskStatus.PENDING.value
+        task.progress_current = 0
+        task.progress_total = 0
+        task.progress_message = None
+        task.dry_run = False
+        task.result_summary = None
+
+        from datetime import UTC, datetime
+
+        task.created_at = datetime.now(UTC)
+        task.updated_at = datetime.now(UTC)
+        task.completed_at = None
+
+        async def _mock_session() -> AsyncMock:
+            session = AsyncMock()
+            yield session
+
+        from jidou.database import get_session
+
+        app.dependency_overrides[get_session] = _mock_session
+
+        try:
+            with (
+                patch(
+                    "jidou.api.routes.import_routes.create_task_record",
+                    AsyncMock(return_value=task),
+                ),
+                patch("jidou.workers.import_tasks.path_import_task") as mock_task,
+            ):
+                mock_task.apply_async = MagicMock()
+
+                text = "Z:\\anime tv\\Show\\Season 01\\Show.S01E01.mkv\n"
+                content = text.encode("utf-16")  # LE with BOM, PowerShell's default
+                files = {"file": ("paths.txt", BytesIO(content), "text/plain")}
+                resp = client.post(
+                    "/api/import/text",
+                    data={"content_type": "anime", "dry_run": False},
+                    files=files,
+                )
+
+                assert resp.status_code == 200
+                dispatched_content = mock_task.apply_async.call_args.kwargs["args"][0]
+                assert dispatched_content == text
         finally:
             app.dependency_overrides.clear()
 
