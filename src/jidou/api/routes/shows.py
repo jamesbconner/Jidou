@@ -875,12 +875,46 @@ async def assign_import_episode(
 
         if displaced and displaced != payload.filename:
             mark_episode_tracked(source_ep, displaced, "import")
+            await _resync_synthetic_file_episode(db_session, displaced, source_ep.id)
         else:
             clear_episode_tracking(source_ep)
 
     # Assign the filename to the target episode.
     mark_episode_tracked(target_ep, payload.filename, "import")
+    await _resync_synthetic_file_episode(db_session, payload.filename, target_ep.id)
 
     await db_session.flush()
     await db_session.commit()
     return {"ok": True}
+
+
+async def _resync_synthetic_file_episode(
+    db_session: AsyncSession,
+    filename: str,
+    episode_id: int,
+) -> None:
+    """Repoint a path-imported file's synthetic DownloadedFile at its new episode.
+
+    Path-import creates a display-only ``DownloadedFile(status=ROUTED)`` row
+    for each tracked filename (see ``PathImportOrchestrator``), keyed by a
+    ``synthetic-import://<filename>`` ``remote_path``. ``assign_import_episode``
+    only moved ``Episode.tracked_filename``/``tracked_source`` between rows —
+    without this, the synthetic file's ``episode_id`` would still point at
+    whichever episode held the filename before the reassignment, so the Files
+    page would list it under the wrong (or no longer tracked) episode.
+
+    A no-op if no such row exists yet (e.g. data imported before this
+    convention existed).
+
+    Args:
+        db_session: DB session (injected).
+        filename: The raw path used as both ``Episode.tracked_filename`` and
+            the synthetic file's ``remote_path`` suffix.
+        episode_id: The episode the file should now be linked to.
+    """
+    stmt = select(DownloadedFile).where(
+        DownloadedFile.remote_path == f"synthetic-import://{filename}"
+    )
+    synthetic_file = (await db_session.execute(stmt)).scalar_one_or_none()
+    if synthetic_file is not None:
+        synthetic_file.episode_id = episode_id

@@ -2078,7 +2078,17 @@ def test_assign_import_swaps_when_target_already_tracked() -> None:
         target_result.scalar_one_or_none.return_value = target_ep
         source_result = MagicMock()
         source_result.scalar_one_or_none.return_value = source_ep
-        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        no_synthetic_file = MagicMock()
+        no_synthetic_file.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(
+            side_effect=[
+                show_result,
+                target_result,
+                source_result,
+                no_synthetic_file,  # resync for displaced filename -> source_ep
+                no_synthetic_file,  # resync for payload.filename -> target_ep
+            ]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session
@@ -2099,6 +2109,67 @@ def test_assign_import_swaps_when_target_already_tracked() -> None:
         assert source_ep.tracked_filename == "/media/show/ep10.mkv"
         assert source_ep.tracked_source == "import"
         assert source_ep.file_tracked is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_assign_import_repoints_synthetic_files_to_new_episodes() -> None:
+    """Swapping filenames also repoints each synthetic DownloadedFile's episode_id.
+
+    Without this, the display-only file created by path-import (see
+    PathImportOrchestrator._create_synthetic_import_file) would keep pointing
+    at whichever episode held the filename before reassignment, so the Files
+    page would list it under the wrong episode.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    source_ep = _make_tracked_episode(id=5, show_id=1)
+    source_ep.tracked_filename = "/media/show/ep05.mkv"
+    source_ep.tracked_source = "import"
+    target_ep = _make_tracked_episode(id=10, show_id=1)
+    target_ep.tracked_filename = "/media/show/ep10.mkv"
+    target_ep.tracked_source = "import"
+
+    displaced_file = MagicMock(episode_id=10)  # currently on target_ep
+    reassigned_file = MagicMock(episode_id=5)  # currently on source_ep
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        target_result = MagicMock()
+        target_result.scalar_one_or_none.return_value = target_ep
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source_ep
+        displaced_file_result = MagicMock()
+        displaced_file_result.scalar_one_or_none.return_value = displaced_file
+        reassigned_file_result = MagicMock()
+        reassigned_file_result.scalar_one_or_none.return_value = reassigned_file
+        session.execute = AsyncMock(
+            side_effect=[
+                show_result,
+                target_result,
+                source_result,
+                displaced_file_result,  # resync for displaced ("ep10.mkv") -> source_ep
+                reassigned_file_result,  # resync for payload ("ep05.mkv") -> target_ep
+            ]
+        )
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/assign-import",
+            json={"filename": "/media/show/ep05.mkv"},
+        )
+        assert response.status_code == 200
+        # The file for "ep10.mkv" (displaced back to source) now points at source_ep.
+        assert displaced_file.episode_id == source_ep.id
+        # The file for "ep05.mkv" (assigned to target) now points at target_ep.
+        assert reassigned_file.episode_id == target_ep.id
     finally:
         app.dependency_overrides.clear()
 
@@ -2124,7 +2195,16 @@ def test_assign_import_clears_source_when_target_untracked() -> None:
         target_result.scalar_one_or_none.return_value = target_ep
         source_result = MagicMock()
         source_result.scalar_one_or_none.return_value = source_ep
-        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        no_synthetic_file = MagicMock()
+        no_synthetic_file.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(
+            side_effect=[
+                show_result,
+                target_result,
+                source_result,
+                no_synthetic_file,  # resync for payload.filename -> target_ep
+            ]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session
@@ -2163,7 +2243,16 @@ def test_assign_import_no_op_when_source_equals_target() -> None:
         target_result.scalar_one_or_none.return_value = ep
         source_result = MagicMock()
         source_result.scalar_one_or_none.return_value = ep  # same episode
-        session.execute = AsyncMock(side_effect=[show_result, target_result, source_result])
+        no_synthetic_file = MagicMock()
+        no_synthetic_file.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(
+            side_effect=[
+                show_result,
+                target_result,
+                source_result,
+                no_synthetic_file,  # resync for payload.filename -> target_ep
+            ]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session

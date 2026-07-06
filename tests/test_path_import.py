@@ -403,8 +403,16 @@ async def test_orchestrator_finds_existing_show() -> None:
     ep_result = MagicMock()
     ep_result.scalar_one_or_none.return_value = episode
 
-    session.execute.side_effect = [show_result, ep_result]
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = None
+
+    session.execute.side_effect = [show_result, ep_result, dedup_result]
     session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
 
     tmdb = AsyncMock()
 
@@ -481,8 +489,16 @@ async def test_orchestrator_absolute_episode_fallback() -> None:
     s1_hit = MagicMock()
     s1_hit.scalar_one_or_none.return_value = episode
 
-    session.execute.side_effect = [show_result, abs_miss, s1_hit]
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = None
+
+    session.execute.side_effect = [show_result, abs_miss, s1_hit, dedup_result]
     session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
 
     tmdb = AsyncMock()
 
@@ -1246,6 +1262,187 @@ async def test_import_show_already_tracked_episode_not_double_counted() -> None:
     assert result.episodes_tracked == 0  # not newly tracked, so not counted
 
 
+# ---------------------------------------------------------------------------
+# _create_synthetic_import_file — display-only ROUTED DownloadedFile
+# ---------------------------------------------------------------------------
+
+
+def _make_import_session(
+    episode: MagicMock, existing_synthetic_file: MagicMock | None
+) -> AsyncMock:
+    """Session whose first execute() resolves _find_episode, second resolves
+    the synthetic-file dedup check inside _create_synthetic_import_file.
+    """
+    session = AsyncMock()
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = existing_synthetic_file
+    session.execute = AsyncMock(side_effect=[ep_result, dedup_result])
+
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.mark.asyncio
+async def test_import_show_creates_synthetic_routed_file_for_newly_tracked_episode() -> None:
+    """A newly-tracked imported episode gets a display-only, already-ROUTED DownloadedFile."""
+    from jidou.models.downloaded_file import FileStatus
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    raw_path = r"Z:\anime tv\Show\Season 01\ep01.mkv"
+    entries = [
+        ParsedPathEntry(
+            raw_path=raw_path,
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)  # file_tracked=False
+
+    session = _make_import_session(episode, existing_synthetic_file=None)
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    session.add.assert_called_once()
+    created_file = session.add.call_args[0][0]
+    assert created_file.show_id == show.id
+    assert created_file.episode_id == episode.id
+    assert created_file.remote_path == f"synthetic-import://{raw_path}"
+    assert created_file.local_path == raw_path
+    assert created_file.status == FileStatus.ROUTED
+
+
+@pytest.mark.asyncio
+async def test_import_show_skips_synthetic_file_when_already_exists() -> None:
+    """Re-importing the same path is idempotent — no duplicate DownloadedFile created."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    raw_path = r"Z:\anime tv\Show\Season 01\ep01.mkv"
+    entries = [
+        ParsedPathEntry(
+            raw_path=raw_path,
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)  # file_tracked=False
+
+    session = _make_import_session(episode, existing_synthetic_file=MagicMock())
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_does_not_create_synthetic_file_for_already_tracked_episode() -> None:
+    """An episode already tracked (via download or a prior import) never gets a new file record."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+    episode.file_tracked = True  # already tracked
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_dry_run_does_not_create_synthetic_file() -> None:
+    """Dry-run mode never creates a DownloadedFile, even for a newly-matched episode."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)  # file_tracked=False
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.add = MagicMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    session.add.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_import_show_mixed_matched_and_unmatched_entries() -> None:
     """A show with one matched and one unmatched entry reports accurate mixed counts and events."""
@@ -1278,12 +1475,19 @@ async def test_import_show_mixed_matched_and_unmatched_entries() -> None:
     hit.scalar_one_or_none.return_value = matched_episode
     miss = MagicMock()
     miss.scalar_one_or_none.return_value = None
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
 
     session = AsyncMock()
-    # entry 1: S/E lookup hits.
+    # entry 1: S/E lookup hits, then the synthetic-file dedup check (no existing row).
     # entry 2: S/E lookup misses -> falls through (season==1) to absolute miss -> row-number miss.
-    session.execute = AsyncMock(side_effect=[hit, miss, miss, miss])
+    session.execute = AsyncMock(side_effect=[hit, dedup_miss, miss, miss, miss])
     session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
 
     events: list[tuple[str, str, object]] = []
 
