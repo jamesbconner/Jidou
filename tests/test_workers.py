@@ -1246,6 +1246,60 @@ async def test_path_import_success_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> None:
+    """A file with real content but zero parseable entries (e.g. wrong
+    encoding) emits a warn event instead of completing silently with no
+    indication of what went wrong.
+    """
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.path_import_orchestrator import PathImportResult
+    from jidou.workers.import_tasks import _path_import
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    empty_result = PathImportResult()
+    mock_append_event = AsyncMock()
+
+    with (
+        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.import_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers.import_tasks.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.append_task_event", mock_append_event),
+        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
+        patch("jidou.workers.import_tasks.TMDBService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
+        patch(
+            "jidou.workers.import_tasks.PathImportOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=empty_result,
+        ),
+    ):
+        result = await _path_import(
+            "tid-pi-empty",
+            "Z:\\anime\\Show\\Season 01\\Show.S01E01.mkv\n",
+            "anime",
+            False,
+        )
+
+    assert result == "tid-pi-empty"
+    warn_calls = [c for c in mock_append_event.call_args_list if c.args[2] == "warn"]
+    assert warn_calls, "expected a warn event for zero entries from a non-trivial file"
+    assert "0 usable entries" in warn_calls[0].args[3]
+
+
+@pytest.mark.asyncio
 async def test_path_import_exception_marks_failed() -> None:
     """Exception in _path_import marks task FAILED and re-raises."""
     from jidou.models.task import TaskStatus

@@ -92,6 +92,21 @@ async def _path_import(
             entries = parse_file(file_content)
             total_shows = len({e.show_dir for e in entries})
 
+            # parse_file() never raises — an unparseable line is simply skipped
+            # (e.g. wrong encoding, unexpected format) — so a file that's
+            # clearly non-trivial but yields zero entries would otherwise
+            # complete silently with all-zero counts and no indication why.
+            nontrivial_lines = sum(1 for line in file_content.splitlines() if line.strip())
+            if not entries and nontrivial_lines > 0:
+                warning = (
+                    f"Parsed 0 usable entries from {nontrivial_lines} non-blank line(s) — "
+                    "check the file's encoding (UTF-16 exports from PowerShell's `>` "
+                    "redirection are a common cause) and that each line is an absolute "
+                    "path ending in a recognized media extension."
+                )
+                logger.warning("Path import %s: %s", celery_task_id, warning)
+                await append_task_event(session, celery_task_id, "warn", warning)
+
             await update_task_status(
                 session,
                 celery_task_id,
