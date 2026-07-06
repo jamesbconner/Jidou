@@ -44,6 +44,95 @@ def test_final_path_movie_with_season_still_uses_root() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _season_dir_name — existing "Season #" convention detection
+# ---------------------------------------------------------------------------
+
+
+def test_season_dir_defaults_to_padded_for_new_show(tmp_path: Path) -> None:
+    """A show directory with no season subdirectories yet defaults to zero-padded."""
+    show_dir = tmp_path / "Show"
+    show_dir.mkdir()
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_defaults_to_padded_when_show_dir_missing(tmp_path: Path) -> None:
+    """A show directory that doesn't exist on disk yet still defaults to zero-padded."""
+    show_dir = tmp_path / "NotYetCreated"
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_reuses_existing_unpadded_directory_for_same_season(tmp_path: Path) -> None:
+    """A file for a season already routed as 'Season #' lands in that same directory."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 3").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 3" / "ep.mkv"
+
+
+def test_season_dir_reuses_existing_padded_directory_for_same_season(tmp_path: Path) -> None:
+    """A file for a season already routed as 'Season ##' lands in that same directory."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 03").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_infers_unpadded_convention_from_sibling_seasons(tmp_path: Path) -> None:
+    """A new season adopts the unpadded style already used by the show's other seasons."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Season 2").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 3" / "ep.mkv"
+
+
+def test_season_dir_infers_padded_convention_from_sibling_seasons(tmp_path: Path) -> None:
+    """A new season adopts the padded style already used by the show's other seasons."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 01").mkdir(parents=True)
+    (show_dir / "Season 02").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_defaults_to_padded_on_mixed_sibling_conventions(tmp_path: Path) -> None:
+    """Ambiguous sibling conventions (both styles present) fall back to zero-padded."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Season 02").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_double_digit_siblings_are_uninformative(tmp_path: Path) -> None:
+    """Only double-digit season directories exist (identical either way) — defaults to padded."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 10").mkdir(parents=True)
+    (show_dir / "Season 11").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=3, filename="ep.mkv")
+    assert path == show_dir / "Season 03" / "ep.mkv"
+
+
+def test_season_dir_ignores_non_season_directories(tmp_path: Path) -> None:
+    """Unrelated subdirectories (extras, specials) don't affect convention detection."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 1").mkdir(parents=True)
+    (show_dir / "Extras").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=2, filename="ep.mkv")
+    assert path == show_dir / "Season 2" / "ep.mkv"
+
+
+def test_season_dir_ten_and_above_ignores_padding_ambiguity(tmp_path: Path) -> None:
+    """Season 10+ has only one possible spelling, so the unpadded convention doesn't apply."""
+    show_dir = tmp_path / "Show"
+    (show_dir / "Season 1").mkdir(parents=True)
+    path = _final_path_for(str(show_dir), season=10, filename="ep.mkv")
+    assert path == show_dir / "Season 10" / "ep.mkv"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

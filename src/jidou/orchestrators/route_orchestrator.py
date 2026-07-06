@@ -1,6 +1,7 @@
 """Orchestrator for routing MATCHED files from staging to their final local paths."""
 
 import logging
+import re
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -18,6 +19,64 @@ from jidou.services.episode_tracking import mark_episode_tracked
 
 logger = logging.getLogger(__name__)
 
+_SEASON_DIR_RE = re.compile(r"^Season\s+(\d+)$")
+
+
+def _season_dir_name(show_dir: Path, season: int) -> str:
+    """Determine the season directory name to use, honouring an existing convention.
+
+    Some shows have season directories named "Season #" (no zero-padding)
+    rather than the default "Season ##" — a mix that can happen when a show
+    was seeded or imported before this convention was adopted, or just
+    matches how the source distributed it. This is only ambiguous for
+    single-digit seasons (2 digits and up look identical either way), so:
+
+    1. If a directory for *this exact season* already exists, in either
+       format, reuse it — a season already in progress must never get a
+       second, differently-formatted directory partway through.
+    2. Otherwise, infer the convention from the show's other single-digit
+       season directories, so a show with "Season 1"/"Season 2" gets
+       "Season 3" for newly arrived episodes instead of "Season 03".
+    3. Default to zero-padded "Season NN" when there is no existing
+       directory to reuse and no convention to infer (new show, or only
+       double-digit seasons present so far).
+
+    Args:
+        show_dir: The show's root directory on the local filesystem.
+        season: The season number being routed.
+
+    Returns:
+        The directory name to use, e.g. ``"Season 03"`` or ``"Season 3"``.
+    """
+    padded = f"Season {season:02d}"
+    unpadded = f"Season {season}"
+
+    if season < 10 and (show_dir / unpadded).is_dir():
+        return unpadded
+    if (show_dir / padded).is_dir():
+        return padded
+
+    try:
+        entries = [p.name for p in show_dir.iterdir() if p.is_dir()]
+    except OSError:
+        entries = []
+
+    saw_unpadded = False
+    saw_padded = False
+    for name in entries:
+        match = _SEASON_DIR_RE.match(name)
+        if not match:
+            continue
+        num_str = match.group(1)
+        if int(num_str) >= 10:
+            continue  # Same spelling either way — not informative.
+        if len(num_str) == 1:
+            saw_unpadded = True
+        elif num_str.startswith("0"):
+            saw_padded = True
+
+    return unpadded if saw_unpadded and not saw_padded else padded
+
 
 def _final_path_for(
     show_local_path: str,
@@ -27,9 +86,11 @@ def _final_path_for(
 ) -> Path:
     """Compute the final routed path for a MATCHED file.
 
-    TV/anime episodes land in ``show_local_path/Season NN/filename``.
-    Movies land directly in ``show_local_path/filename``.
-    Files with no season number are placed at the show root.
+    TV/anime episodes land in ``show_local_path/Season NN/filename`` (or
+    ``Season N`` when that's the convention already established for this
+    show — see :func:`_season_dir_name`). Movies land directly in
+    ``show_local_path/filename``. Files with no season number are placed at
+    the show root.
 
     Args:
         show_local_path: Root directory for the show on the local filesystem.
@@ -43,7 +104,7 @@ def _final_path_for(
     base = Path(show_local_path)
     if is_movie or season is None:
         return base / filename
-    return base / f"Season {season:02d}" / filename
+    return base / _season_dir_name(base, season) / filename
 
 
 @dataclass
