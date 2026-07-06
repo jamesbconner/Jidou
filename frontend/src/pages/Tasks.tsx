@@ -183,7 +183,7 @@ export default function Tasks() {
             onChange={(e) => handleMaxRecordsChange(e.target.value)}
             className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {[50, 100, 200, 500].map((n) => (
+            {[1, 5, 10, 25, 50, 100, 200, 500].map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
             <option value="all">All</option>

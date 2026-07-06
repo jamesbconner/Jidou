@@ -28,10 +28,14 @@ function formatTs(iso: string): string {
 }
 
 export function TaskEventLog({ events, live = false }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (live) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Scroll only the log container itself, not scrollIntoView() on a child,
+    // which can cascade up through ancestor scrollables (including the page)
+    // and yank the viewport down every time a new event arrives.
+    const el = containerRef.current
+    if (live && el) el.scrollTop = el.scrollHeight
   }, [events.length, live])
 
   if (events.length === 0) {
@@ -41,7 +45,7 @@ export function TaskEventLog({ events, live = false }: Props) {
   }
 
   return (
-    <div className="max-h-64 overflow-y-auto text-xs font-mono space-y-0.5 pr-1">
+    <div ref={containerRef} className="max-h-64 overflow-y-auto text-xs font-mono space-y-0.5 pr-1">
       {events.map((ev, i) => (
         <div key={i} className="flex items-start gap-2">
           <span className="text-gray-400 shrink-0 tabular-nums">{formatTs(ev.ts)}</span>
@@ -59,7 +63,6 @@ export function TaskEventLog({ events, live = false }: Props) {
           </span>
         </div>
       ))}
-      <div ref={bottomRef} />
     </div>
   )
 }
