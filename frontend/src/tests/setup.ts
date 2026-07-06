@@ -10,3 +10,14 @@ import '@testing-library/jest-dom'
 globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number =>
   setTimeout(() => cb(Date.now()), 0) as unknown as number
 globalThis.cancelAnimationFrame = (id: number): void => clearTimeout(id)
+
+// jsdom does not implement ResizeObserver at all. CardCarousel (and any
+// future component that measures its own size) needs some implementation
+// present so mounting it in tests doesn't throw ReferenceError; jsdom never
+// reports real layout changes anyway, so a no-op observer is sufficient.
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
