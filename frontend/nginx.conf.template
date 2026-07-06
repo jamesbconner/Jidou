@@ -5,6 +5,14 @@ server {
     listen 80;
     server_name localhost;
 
+    # nginx's default (1M) is far below the backend's own upload limits —
+    # 10 MB for path-list text imports and 100 MB for database backup
+    # imports (see _MAX_FILE_BYTES / _MAX_DB_BYTES in import_routes.py) —
+    # so uploads over 1 MB were rejected here with a 413 before ever
+    # reaching FastAPI. Sized to the larger of the two with headroom for
+    # multipart/form-data overhead.
+    client_max_body_size 110M;
+
     # Root directory for the built SPA
     root /usr/share/nginx/html;
     index index.html;
