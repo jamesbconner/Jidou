@@ -26,7 +26,15 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True)  # type: ignore[untyped-decorator]
+# Overrides the app-wide 50min/60min limits (celery_app.py) for this task
+# specifically. A bulk path-list import can span hundreds of previously-unseen
+# shows, each requiring several sequential TMDB calls (search, details,
+# external IDs, episode groups, per-season episode sync, alias generation) —
+# all serialized behind TMDB_RATE_LIMIT_PER_SECOND (default: 1 call/2s per
+# CLAUDE.md's rate-limiting policy). A few hundred new shows can legitimately
+# take multiple hours, well past the global default meant for quick,
+# single-file-scoped tasks (route/match/scan/sync).
+@shared_task(bind=True, time_limit=25200, soft_time_limit=21600)  # type: ignore[untyped-decorator]
 def path_import_task(  # type: ignore[no-untyped-def]
     self,
     file_content: str,

@@ -552,6 +552,21 @@ async def test_sync_all_exception_marks_failed() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_path_import_task_has_extended_time_limits() -> None:
+    """path_import_task overrides the app-wide 50min/60min limits.
+
+    A bulk import can span hundreds of TMDB-rate-limited new shows and
+    legitimately take hours, well past the global default meant for quick
+    per-file tasks — regression test for the celery_app.py-wide default
+    being silently reapplied if the decorator override were ever removed.
+    """
+    from jidou.workers.celery_app import celery_app
+    from jidou.workers.import_tasks import path_import_task
+
+    assert path_import_task.soft_time_limit > celery_app.conf.task_soft_time_limit
+    assert path_import_task.time_limit > celery_app.conf.task_time_limit
+
+
 def test_path_import_task_soft_timeout_calls_mark_timed_out() -> None:
     """SoftTimeLimitExceeded in path_import_task must call mark_task_timed_out."""
     from jidou.workers.import_tasks import path_import_task
