@@ -100,8 +100,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # frontend/tsconfig.json is a solution-style config with an empty
+      # `files` array and only project references — `tsc --noEmit` against
+      # it type-checks nothing and always exits 0, silently passing real
+      # type errors in src/. `tsc -b` (matching the repo's own `build`
+      # script) follows the references and actually checks tsconfig.app.json
+      # and tsconfig.node.json.
       - name: TypeScript type check
-        run: npx tsc --noEmit
+        run: npx tsc -b
 
       # ESLint is a devDependency and has a `lint` script, but the repo has no
       # eslint.config.js (flat config) yet, so it cannot run here. Add an
