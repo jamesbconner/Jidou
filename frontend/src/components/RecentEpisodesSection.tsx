@@ -23,7 +23,7 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
     'jidou.dashboard.recentEpisodes',
     DEFAULT_PREFS,
   )
-  const { data: episodes = [], isLoading } = useRecentEpisodes(prefs)
+  const { data: episodes = [], isLoading, isError } = useRecentEpisodes(prefs)
   const { data: genreOptions = [] } = useDashboardGenres()
 
   return (
@@ -44,13 +44,19 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
       </div>
 
       {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
-      {!isLoading && episodes.length === 0 && (
+      {isError && <p className="text-sm text-red-500">Failed to load recently added episodes.</p>}
+      {!isLoading && !isError && episodes.length === 0 && (
         <p className="text-sm text-gray-400">No recently added episodes match these filters.</p>
       )}
       {episodes.length > 0 && (
         <CardCarousel>
           {episodes.map((episode) => (
-            <RecentEpisodeCard key={episode.id} episode={episode} onClick={onCardClick} />
+            <RecentEpisodeCard
+              key={episode.id}
+              episode={episode}
+              sort={prefs.sort}
+              onClick={onCardClick}
+            />
           ))}
         </CardCarousel>
       )}

@@ -32,4 +32,15 @@ describe('useLocalStorageState', () => {
     const { result } = renderHook(() => useLocalStorageState('test.key', { count: 0 }))
     expect(result.current[0]).toEqual({ count: 0 })
   })
+
+  test('merges a partial stored object with the default rather than replacing it', () => {
+    // Simulates a stored value from before a new field (e.g. `limit`) was
+    // added to the prefs shape — the missing field must fall back to the
+    // default instead of becoming undefined.
+    window.localStorage.setItem('test.key', JSON.stringify({ sort: 'release' }))
+    const { result } = renderHook(() =>
+      useLocalStorageState('test.key', { sort: 'tracked', limit: 12 }),
+    )
+    expect(result.current[0]).toEqual({ sort: 'release', limit: 12 })
+  })
 })

@@ -20,7 +20,7 @@ interface Props {
 
 export function RecentShowsSection({ onCardClick }: Props) {
   const [prefs, setPrefs] = useLocalStorageState<Prefs>('jidou.dashboard.recentShows', DEFAULT_PREFS)
-  const { data: shows = [], isLoading } = useRecentShows(prefs)
+  const { data: shows = [], isLoading, isError } = useRecentShows(prefs)
   const { data: genreOptions = [] } = useDashboardGenres()
 
   return (
@@ -41,13 +41,14 @@ export function RecentShowsSection({ onCardClick }: Props) {
       </div>
 
       {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
-      {!isLoading && shows.length === 0 && (
+      {isError && <p className="text-sm text-red-500">Failed to load recently added shows.</p>}
+      {!isLoading && !isError && shows.length === 0 && (
         <p className="text-sm text-gray-400">No recently added shows match these filters.</p>
       )}
       {shows.length > 0 && (
         <CardCarousel>
           {shows.map((show) => (
-            <RecentShowCard key={show.id} show={show} onClick={onCardClick} />
+            <RecentShowCard key={show.id} show={show} sort={prefs.sort} onClick={onCardClick} />
           ))}
         </CardCarousel>
       )}

@@ -19,9 +19,13 @@ export function CardCarousel({ children }: Props) {
   }, [])
 
   useEffect(() => {
-    updateScrollState()
     const el = trackRef.current
     if (!el) return
+    // New children (e.g. filter/sort/limit change) should start scrolled to
+    // the beginning — otherwise a stale scrollLeft from the previous result
+    // set can leave the new items off-screen or show a blank strip.
+    el.scrollLeft = 0
+    updateScrollState()
     const observer = new ResizeObserver(updateScrollState)
     observer.observe(el)
     return () => observer.disconnect()

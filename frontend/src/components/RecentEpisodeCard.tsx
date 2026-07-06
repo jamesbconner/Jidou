@@ -1,17 +1,21 @@
 import type { RecentEpisodeItem } from '@/types/api'
+import type { RecentSort } from '@/hooks/useDashboard'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
 
 interface Props {
   episode: RecentEpisodeItem
+  sort: RecentSort
   onClick: (episode: RecentEpisodeItem) => void
 }
 
 /** A single episode card in the dashboard's "Recently Added Episodes" carousel. */
-export function RecentEpisodeCard({ episode, onClick }: Props) {
+export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
   const image = episode.still_path ?? episode.show.poster_path
-  // file_tracked_at is a full timestamp; the dashboard only shows the date.
-  const date = (episode.file_tracked_at ?? episode.air_date)?.slice(0, 10) ?? '—'
+  // Show whichever date the current sort actually orders by, rather than
+  // always preferring file_tracked_at — with "release" sort selected, the
+  // list is ordered by air_date, so the card should reflect that.
+  const date = (sort === 'tracked' ? episode.file_tracked_at : episode.air_date)?.slice(0, 10) ?? '—'
 
   return (
     <button
