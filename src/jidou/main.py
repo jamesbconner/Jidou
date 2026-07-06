@@ -22,6 +22,9 @@ from jidou.api.routes import (
     tasks,
     watchlist,
 )
+from jidou.api.routes import (
+    settings as settings_routes,
+)
 from jidou.api.websocket import ws_router
 from jidou.config import settings
 from jidou.database import close_db, init_db
@@ -101,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(orphans.router, prefix="/api", dependencies=_auth)
     app.include_router(tasks.router, prefix="/api", dependencies=_auth)
     app.include_router(config.router, prefix="/api", dependencies=_auth)
+    app.include_router(settings_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(admin.router, prefix="/api", dependencies=_auth)
     app.include_router(watchlist.router, prefix="/api", dependencies=_auth)
     app.include_router(rss.router, prefix="/api", dependencies=_auth)

@@ -312,6 +312,16 @@ export interface AppConfig {
   rss_import_schedule_hours: string
 }
 
+// ─── Runtime settings ──────────────────────────────────────────────────────────
+
+export interface AppSettings {
+  show_adult_content: boolean
+}
+
+export interface AppSettingsPatch {
+  show_adult_content?: boolean
+}
+
 // ─── RSS ──────────────────────────────────────────────────────────────────────
 
 export interface RssFeedRead {
