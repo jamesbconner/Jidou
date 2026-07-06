@@ -13,6 +13,7 @@ from jidou.api.dependencies import verify_api_key
 from jidou.api.routes import (
     admin,
     config,
+    dashboard,
     export_routes,
     files,
     import_routes,
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router, prefix="/api", dependencies=_auth)
     app.include_router(settings_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(admin.router, prefix="/api", dependencies=_auth)
+    app.include_router(dashboard.router, prefix="/api", dependencies=_auth)
     app.include_router(watchlist.router, prefix="/api", dependencies=_auth)
     app.include_router(rss.router, prefix="/api", dependencies=_auth)
     app.include_router(import_routes.router, prefix="/api", dependencies=_auth)
