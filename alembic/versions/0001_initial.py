@@ -5,9 +5,9 @@ Revises:
 Create Date: 2026-07-01
 
 Squashed from migrations 0001-0009, then re-squashed to fold in
-0002_add_aliases_sources and the new shows.adult column.  The service has
-not yet reached production, so all incremental migrations are collapsed
-here into a single authoritative initial state.
+0002_add_aliases_sources, shows.adult, and the app_settings table.  The
+service has not yet reached production, so all incremental migrations are
+collapsed here into a single authoritative initial state.
 
 Dev databases should be wiped and recreated:
     docker compose down -v && docker compose up -d
@@ -431,8 +431,32 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
+    # -------------------------------------------------------------------------
+    # app_settings
+    # -------------------------------------------------------------------------
+    op.create_table(
+        "app_settings",
+        sa.Column("key", sa.String(length=200), nullable=False),
+        sa.Column("value", JSONB(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("key"),
+    )
+
 
 def downgrade() -> None:
+    op.drop_table("app_settings")
+
     op.drop_table("rss_config_snapshots")
 
     op.drop_index("ix_rss_subscriptions_unique_stub_per_show", table_name="rss_subscriptions")

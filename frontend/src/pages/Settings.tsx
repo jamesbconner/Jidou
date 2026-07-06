@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
 import type { AppConfig, ConnectionTestResult, ServiceHealth, TaskRead } from '@/types/api'
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
+import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
 
 export default function Settings() {
@@ -20,6 +21,9 @@ export default function Settings() {
   const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = useAdminCache()
   const flushCache = useFlushCache()
   const { data: health, refetch: refetchHealth, isFetching: healthFetching } = useAdminHealth()
+
+  const { data: appSettings } = useAppSettings()
+  const updateAppSettings = useUpdateAppSettings()
 
   const seedDryRun = useMutation({
     mutationFn: () => api.post<TaskRead>('/tasks/trigger', { task_type: 'seed', dry_run: true }),
@@ -73,6 +77,30 @@ export default function Settings() {
           <ConfigRow label="Database" value={config.database_url ?? 'Not configured'} />
         </div>
       )}
+
+      {/* Dashboard — user-editable at runtime, unlike the env-backed Configuration card above */}
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <h2 className="font-semibold">Dashboard</h2>
+        <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+          <span className="text-gray-700">
+            Show adult content
+            <span className="block text-xs text-gray-400 font-normal">
+              Adult-flagged shows and episodes are always tracked; this only controls whether
+              they appear in the dashboard's recently-added carousels.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={appSettings?.show_adult_content ?? false}
+            disabled={!appSettings || updateAppSettings.isPending}
+            onChange={(e) =>
+              updateAppSettings.mutate({ show_adult_content: e.target.checked })
+            }
+            className="h-4 w-4 shrink-0 accent-indigo-600"
+          />
+        </label>
+      </div>
 
       {/* Services — health status + on-demand connection tests in one place */}
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
