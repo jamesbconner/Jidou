@@ -322,6 +322,54 @@ export interface AppSettingsPatch {
   show_adult_content?: boolean
 }
 
+// ─── Dashboard ─────────────────────────────────────────────────────────────────
+
+export interface RecentShowItem {
+  id: number
+  tmdb_id: number
+  title: string
+  media_type: string
+  content_type: string | null
+  poster_path: string | null
+  backdrop_path: string | null
+  overview: string | null
+  tagline: string | null
+  vote_average: number | null
+  genres: TmdbGenre[] | null
+  release_date: string | null
+  status: string | null
+  number_of_seasons: number | null
+  number_of_episodes: number | null
+  runtime: number | null
+  created_at: string
+  adult: boolean | null
+}
+
+export interface DashboardShowSummary {
+  id: number
+  title: string
+  content_type: string | null
+  media_type: string
+  poster_path: string | null
+  vote_average: number | null
+  genres: TmdbGenre[] | null
+  adult: boolean | null
+}
+
+export interface RecentEpisodeItem {
+  id: number
+  show_id: number
+  season_number: number
+  episode_number: number
+  name: string
+  overview: string | null
+  air_date: string | null
+  file_tracked_at: string | null
+  still_path: string | null
+  runtime: number | null
+  show: DashboardShowSummary
+}
+
 // ─── RSS ──────────────────────────────────────────────────────────────────────
 
 export interface RssFeedRead {

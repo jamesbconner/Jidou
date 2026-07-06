@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer,
@@ -7,7 +8,20 @@ import { api } from '@/api/client'
 import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
-import type { AdminStats, FileTimelineEntry, PipelineStatusEntry } from '@/types/api'
+import { RecentShowsSection } from '@/components/RecentShowsSection'
+import { RecentEpisodesSection } from '@/components/RecentEpisodesSection'
+import { MediaDetailModal } from '@/components/MediaDetailModal'
+import type {
+  AdminStats,
+  FileTimelineEntry,
+  PipelineStatusEntry,
+  RecentShowItem,
+  RecentEpisodeItem,
+} from '@/types/api'
+
+type ModalItem =
+  | { kind: 'show'; show: RecentShowItem }
+  | { kind: 'episode'; episode: RecentEpisodeItem }
 
 // Colours for the pipeline status donut
 const STATUS_COLOURS: Record<string, string> = {
@@ -52,6 +66,7 @@ function StatCard({ label, value, sub, tooltip, alert = false }: StatCardProps) 
 export default function Dashboard() {
   const { data: activeTasks = [] } = useActiveTasks()
   const cancelTask = useCancelTask()
+  const [modalItem, setModalItem] = useState<ModalItem | null>(null)
 
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -199,6 +214,12 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Recently added carousels */}
+      <RecentShowsSection onCardClick={(show) => setModalItem({ kind: 'show', show })} />
+      <RecentEpisodesSection
+        onCardClick={(episode) => setModalItem({ kind: 'episode', episode })}
+      />
+
       {/* Active tasks */}
       <section>
         <h2 className="text-lg font-semibold mb-3">Active Tasks</h2>
@@ -214,6 +235,8 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      {modalItem && <MediaDetailModal item={modalItem} onClose={() => setModalItem(null)} />}
     </div>
   )
 }
