@@ -20,19 +20,39 @@ function makeWrapper() {
     createElement(QueryClientProvider, { client: qc }, children)
 }
 
+// Duck-types the subset of the Fetch Response interface api/client.ts
+// actually reads (.ok, .status, .json()) instead of constructing a real
+// Response — the native/undici Response implementation triggers a worker
+// crash on Node >=22.1.x (https://github.com/nodejs/node/issues/54735).
+function mockResponse(body: unknown = null, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: '',
+    json: async () => body,
+  } as Response
+}
+
+// vi.spyOn(globalThis, 'fetch') triggers a worker crash on Node >=22.1.x
+// (https://github.com/nodejs/node/issues/54735) — property-descriptor
+// manipulation on the native fetch/undici binding is implicated. A plain
+// assignment achieves the same mockability without touching the native
+// descriptor, and is restored explicitly since test files now share one
+// global context (see vitest.config.ts isolate: false).
+const originalFetch = globalThis.fetch
+
 beforeEach(() => {
-  vi.spyOn(globalThis, 'fetch')
+  globalThis.fetch = vi.fn()
 })
 
 afterEach(() => {
+  globalThis.fetch = originalFetch
   vi.restoreAllMocks()
 })
 
 describe('useWatchlist', () => {
   test('returns watchlist entries from API', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify([sample]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    )
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([sample]))
     const { result } = renderHook(() => useWatchlist(), { wrapper: makeWrapper() })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
@@ -40,9 +60,7 @@ describe('useWatchlist', () => {
   })
 
   test('passes status filter as query param', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    )
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
     renderHook(() => useWatchlist('watching'), { wrapper: makeWrapper() })
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     const url = vi.mocked(fetch).mock.calls[0][0] as string
@@ -53,10 +71,7 @@ describe('useWatchlist', () => {
 describe('useCreateWatchlistEntry', () => {
   test('POSTs to /api/watchlist and returns the new entry', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ ...sample, updated_at: new Date().toISOString() }), {
-        status: 201,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+      mockResponse({ ...sample, updated_at: new Date().toISOString() }, 201),
     )
     const { result } = renderHook(() => useCreateWatchlistEntry(), { wrapper: makeWrapper() })
     result.current.mutate({ show_id: 42, status: 'watching' })
@@ -68,7 +83,7 @@ describe('useCreateWatchlistEntry', () => {
 
 describe('useDeleteWatchlistEntry', () => {
   test('sends DELETE to /api/watchlist/{id}', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(null, 204))
     const { result } = renderHook(() => useDeleteWatchlistEntry(), { wrapper: makeWrapper() })
     result.current.mutate(1)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -92,43 +107,31 @@ describe('useReorderWatchlist', () => {
     }
   }
 
-  test('PATCHes all entries with their new 1-based positions', async () => {
-    const patchResponse = (id: number, pos: number) =>
-      new Response(
-        JSON.stringify({ ...makeEntry(id, pos), updated_at: new Date().toISOString() }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      )
+  test('POSTs a single batched request with 1-based positions', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(null, 204))
 
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(patchResponse(1, 1))
-      .mockResolvedValueOnce(patchResponse(2, 2))
-      .mockResolvedValueOnce(patchResponse(3, 3))
-
-    // item.position values are intentionally stale to confirm they are not used
+    // item.position values are intentionally stale to confirm they are not used —
+    // the hook derives position from array order, not from item.position.
     const items = [makeEntry(1, 99), makeEntry(2, 99), makeEntry(3, 99)]
     const { result } = renderHook(() => useReorderWatchlist(), { wrapper: makeWrapper() })
     result.current.mutate(items)
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    const patchCalls = vi.mocked(fetch).mock.calls.filter(
-      (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
-    )
-    expect(patchCalls).toHaveLength(3)
-    expect(patchCalls[0][0]).toContain('/api/watchlist/1')
-    expect(patchCalls[1][0]).toContain('/api/watchlist/2')
-    expect(patchCalls[2][0]).toContain('/api/watchlist/3')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toContain('/api/watchlist/reorder')
+    expect((init as RequestInit).method).toBe('POST')
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual([
+      { id: 1, position: 1 },
+      { id: 2, position: 2 },
+      { id: 3, position: 3 },
+    ])
   })
 
-  test('throws if any PATCH fails', async () => {
-    const patchResponse = (id: number, pos: number) =>
-      new Response(
-        JSON.stringify({ ...makeEntry(id, pos), updated_at: new Date().toISOString() }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      )
-
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(patchResponse(1, 1))
-      .mockResolvedValueOnce(new Response('Server error', { status: 500 }))
+  test('throws if the batched POST fails', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      mockResponse({ detail: 'Watchlist entries not found: [2]' }, 404),
+    )
 
     const items = [makeEntry(1, 1), makeEntry(2, 2)]
     const { result } = renderHook(() => useReorderWatchlist(), { wrapper: makeWrapper() })
