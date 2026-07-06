@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { useRecentEpisodes, useDashboardGenres, type RecentSort } from '@/hooks/useDashboard'
 import { CardCarousel } from '@/components/CardCarousel'
@@ -15,7 +16,7 @@ interface Prefs {
 const DEFAULT_PREFS: Prefs = { sort: 'tracked', contentType: '', genre: '', limit: 12 }
 
 interface Props {
-  onCardClick: (episode: RecentEpisodeItem) => void
+  onCardClick: (episode: RecentEpisodeItem, sort: RecentSort) => void
 }
 
 export function RecentEpisodesSection({ onCardClick }: Props) {
@@ -25,6 +26,22 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
   )
   const { data: episodes = [], isLoading, isError } = useRecentEpisodes(prefs)
   const { data: genreOptions = [] } = useDashboardGenres()
+
+  // Memoized so CardCarousel's children reference only changes when the
+  // actual result set or sort changes — not on every unrelated parent
+  // re-render, which would otherwise reset the user's scroll position.
+  const cards = useMemo(
+    () =>
+      episodes.map((episode) => (
+        <RecentEpisodeCard
+          key={episode.id}
+          episode={episode}
+          sort={prefs.sort}
+          onClick={(clicked) => onCardClick(clicked, prefs.sort)}
+        />
+      )),
+    [episodes, prefs.sort, onCardClick],
+  )
 
   return (
     <section className="bg-white rounded-lg shadow p-4 space-y-3">
@@ -48,18 +65,7 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
       {!isLoading && !isError && episodes.length === 0 && (
         <p className="text-sm text-gray-400">No recently added episodes match these filters.</p>
       )}
-      {episodes.length > 0 && (
-        <CardCarousel>
-          {episodes.map((episode) => (
-            <RecentEpisodeCard
-              key={episode.id}
-              episode={episode}
-              sort={prefs.sort}
-              onClick={onCardClick}
-            />
-          ))}
-        </CardCarousel>
-      )}
+      {episodes.length > 0 && <CardCarousel>{cards}</CardCarousel>}
     </section>
   )
 }

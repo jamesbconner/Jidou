@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer,
@@ -11,6 +11,7 @@ import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { RecentShowsSection } from '@/components/RecentShowsSection'
 import { RecentEpisodesSection } from '@/components/RecentEpisodesSection'
 import { MediaDetailModal } from '@/components/MediaDetailModal'
+import type { RecentSort } from '@/hooks/useDashboard'
 import type {
   AdminStats,
   FileTimelineEntry,
@@ -20,8 +21,8 @@ import type {
 } from '@/types/api'
 
 type ModalItem =
-  | { kind: 'show'; show: RecentShowItem }
-  | { kind: 'episode'; episode: RecentEpisodeItem }
+  | { kind: 'show'; show: RecentShowItem; sort: RecentSort }
+  | { kind: 'episode'; episode: RecentEpisodeItem; sort: RecentSort }
 
 // Colours for the pipeline status donut
 const STATUS_COLOURS: Record<string, string> = {
@@ -67,6 +68,18 @@ export default function Dashboard() {
   const { data: activeTasks = [] } = useActiveTasks()
   const cancelTask = useCancelTask()
   const [modalItem, setModalItem] = useState<ModalItem | null>(null)
+  // Stable across re-renders so RecentShowsSection/RecentEpisodesSection can
+  // safely memoize their card lists on it without invalidating on every
+  // unrelated parent re-render (dashboard polling, sibling state updates).
+  const openShowModal = useCallback(
+    (show: RecentShowItem, sort: RecentSort) => setModalItem({ kind: 'show', show, sort }),
+    [],
+  )
+  const openEpisodeModal = useCallback(
+    (episode: RecentEpisodeItem, sort: RecentSort) =>
+      setModalItem({ kind: 'episode', episode, sort }),
+    [],
+  )
 
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -215,10 +228,8 @@ export default function Dashboard() {
       </div>
 
       {/* Recently added carousels */}
-      <RecentShowsSection onCardClick={(show) => setModalItem({ kind: 'show', show })} />
-      <RecentEpisodesSection
-        onCardClick={(episode) => setModalItem({ kind: 'episode', episode })}
-      />
+      <RecentShowsSection onCardClick={openShowModal} />
+      <RecentEpisodesSection onCardClick={openEpisodeModal} />
 
       {/* Active tasks */}
       <section>

@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
+import type { RecentSort } from '@/hooks/useDashboard'
 import type { RecentShowItem, RecentEpisodeItem } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
 
 type MediaItem =
-  | { kind: 'show'; show: RecentShowItem }
-  | { kind: 'episode'; episode: RecentEpisodeItem }
+  | { kind: 'show'; show: RecentShowItem; sort: RecentSort }
+  | { kind: 'episode'; episode: RecentEpisodeItem; sort: RecentSort }
 
 interface Props {
   item: MediaItem
@@ -33,7 +34,16 @@ export function MediaDetailModal({ item, onClose }: Props) {
   const genres = item.kind === 'show' ? item.show.genres : item.episode.show.genres
   const contentType = item.kind === 'show' ? item.show.content_type : item.episode.show.content_type
   const tagline = item.kind === 'show' ? item.show.tagline : null
-  const date = item.kind === 'show' ? item.show.release_date : item.episode.air_date
+  // Mirror the card's date logic exactly, so the modal never disagrees with
+  // the card that opened it.
+  const date =
+    item.kind === 'show'
+      ? item.sort === 'tracked'
+        ? item.show.created_at
+        : item.show.release_date
+      : item.sort === 'tracked'
+        ? item.episode.file_tracked_at
+        : item.episode.air_date
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

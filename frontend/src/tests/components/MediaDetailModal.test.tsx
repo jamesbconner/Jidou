@@ -59,7 +59,7 @@ const episode: RecentEpisodeItem = {
 
 describe('MediaDetailModal', () => {
   test('show variant renders title, synopsis, rating, and genres', () => {
-    renderModal({ kind: 'show', show })
+    renderModal({ kind: 'show', show, sort: 'tracked' })
     expect(screen.getAllByText('Test Show').length).toBeGreaterThan(0)
     expect(screen.getByText('A show about testing.')).toBeInTheDocument()
     expect(screen.getByText('★ 8.4')).toBeInTheDocument()
@@ -67,26 +67,46 @@ describe('MediaDetailModal', () => {
   })
 
   test('episode variant renders show name and SxxEyy', () => {
-    renderModal({ kind: 'episode', episode })
+    renderModal({ kind: 'episode', episode, sort: 'tracked' })
     expect(screen.getByText('The Pilot')).toBeInTheDocument()
     expect(screen.getByText(/Test Show — S01E03/)).toBeInTheDocument()
     expect(screen.getByText('First episode overview.')).toBeInTheDocument()
   })
 
   test('Escape key triggers onClose', () => {
-    const onClose = renderModal({ kind: 'show', show })
+    const onClose = renderModal({ kind: 'show', show, sort: 'tracked' })
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   test('close button triggers onClose', () => {
-    const onClose = renderModal({ kind: 'show', show })
+    const onClose = renderModal({ kind: 'show', show, sort: 'tracked' })
     fireEvent.click(screen.getByLabelText('Close'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   test('view show link points at the correct show id', () => {
-    renderModal({ kind: 'episode', episode })
+    renderModal({ kind: 'episode', episode, sort: 'tracked' })
     expect(screen.getByText('View show →')).toHaveAttribute('href', '/shows/1')
+  })
+
+  test('show variant displays created_at when sort is tracked', () => {
+    renderModal({ kind: 'show', show, sort: 'tracked' })
+    expect(screen.getByText('2024-06-01')).toBeInTheDocument()
+  })
+
+  test('show variant displays release_date when sort is release', () => {
+    renderModal({ kind: 'show', show, sort: 'release' })
+    expect(screen.getByText('2024-01-15')).toBeInTheDocument()
+  })
+
+  test('episode variant displays file_tracked_at when sort is tracked', () => {
+    renderModal({ kind: 'episode', episode, sort: 'tracked' })
+    expect(screen.getByText('2024-06-01')).toBeInTheDocument()
+  })
+
+  test('episode variant displays air_date when sort is release', () => {
+    renderModal({ kind: 'episode', episode, sort: 'release' })
+    expect(screen.getByText('2024-01-15')).toBeInTheDocument()
   })
 })
