@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from jidou.services.file_filters import (
-    EXCLUDED_EXTENSIONS,
     EXCLUDED_KEYWORDS,
+    MEDIA_EXTENSIONS,
     is_recently_modified,
     is_valid_directory,
     is_valid_media_file,
@@ -15,25 +15,36 @@ from jidou.services.file_filters import (
 
 
 class TestIsValidMediaFile:
+    @pytest.mark.parametrize("ext", MEDIA_EXTENSIONS)
+    def test_media_extensions_pass(self, ext: str) -> None:
+        assert is_valid_media_file(f"show.s01e01{ext}") is True
+
     @pytest.mark.parametrize(
         "name",
         [
-            "show.s01e01.mkv",
-            "episode.mp4",
-            "movie.avi",
-            "series.S02E05.mkv",
+            "archive.rar",
+            "archive.zip",
+            "subs.srt",
+            "subs.ass",
+            "cover.jpg",
+            "cover.jpeg",
+            "cover.png",
+            "cover.gif",
+            "cover.bmp",
+            "info.nfo",
+            "checksum.sfv",
+            "readme.txt",
+            "subs.idx",
+            "document.docx",
+            "spreadsheet.xlsx",
         ],
     )
-    def test_valid_video_files_pass(self, name: str) -> None:
-        assert is_valid_media_file(name) is True
-
-    @pytest.mark.parametrize("ext", EXCLUDED_EXTENSIONS)
-    def test_excluded_extensions_are_rejected(self, ext: str) -> None:
-        assert is_valid_media_file(f"file{ext}") is False
+    def test_non_media_extensions_are_rejected(self, name: str) -> None:
+        assert is_valid_media_file(name) is False
 
     def test_extension_check_is_case_insensitive(self) -> None:
+        assert is_valid_media_file("show.s01e01.MKV") is True
         assert is_valid_media_file("cover.JPG") is False
-        assert is_valid_media_file("cover.Nfo") is False
 
     @pytest.mark.parametrize("kw", EXCLUDED_KEYWORDS)
     def test_excluded_keywords_in_filename_are_rejected(self, kw: str) -> None:
@@ -47,9 +58,11 @@ class TestIsValidMediaFile:
         # "sample" appearing as part of a word should still be caught
         assert is_valid_media_file("sample.s01e01.mkv") is False
 
-    def test_empty_extension_is_allowed(self) -> None:
-        # Files without an extension that have no excluded keywords are allowed
-        assert is_valid_media_file("episode_no_extension") is True
+    def test_empty_or_unrecognized_extension_is_rejected(self) -> None:
+        # Allowlist semantics: anything not explicitly a media extension is
+        # rejected, including files with no extension at all.
+        assert is_valid_media_file("episode_no_extension") is False
+        assert is_valid_media_file("show.s01e01.mp3") is False
 
 
 class TestIsValidDirectory:

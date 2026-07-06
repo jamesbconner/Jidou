@@ -9,17 +9,26 @@ validation pass.
 import os
 from datetime import datetime
 
-EXCLUDED_EXTENSIONS: frozenset[str] = frozenset(
+# Allowlist, not a denylist: an SFTP source is commonly mixed-use (archives,
+# subtitles, images, docs alongside the media itself), so excluding known-junk
+# extensions let anything else — .rar, .zip, .srt, .docx, .xlsx, etc. — through
+# uncontested. .srt/.ass are deliberately not included: most releases already
+# embed subtitles in the container, so a loose .srt/.ass sidecar is rarely the
+# file that should be tracked/downloaded.
+MEDIA_EXTENSIONS: frozenset[str] = frozenset(
     {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".gif",
-        ".bmp",
-        ".nfo",
-        ".sfv",
-        ".txt",
-        ".idx",
+        ".mkv",
+        ".mp4",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".m4v",
+        ".flv",
+        ".ts",
+        ".m2ts",
+        ".iso",
+        ".av1",
+        ".ogm",
     }
 )
 
@@ -38,7 +47,7 @@ _UPLOAD_GRACE_SECONDS: int = 60
 def is_valid_media_file(name: str) -> bool:
     """Return True if *name* should be included in a scan result.
 
-    A file is excluded when its extension is in ``EXCLUDED_EXTENSIONS`` or any
+    A file is kept only when its extension is in ``MEDIA_EXTENSIONS`` and no
     keyword from ``EXCLUDED_KEYWORDS`` appears in the lower-cased filename.
 
     Args:
@@ -49,7 +58,7 @@ def is_valid_media_file(name: str) -> bool:
     """
     lower = name.lower()
     ext = os.path.splitext(lower)[1]
-    if ext in EXCLUDED_EXTENSIONS:
+    if ext not in MEDIA_EXTENSIONS:
         return False
     return not any(kw in lower for kw in EXCLUDED_KEYWORDS)
 
