@@ -71,8 +71,19 @@ _LLM_SHOW_MATCH_SYSTEM = (
 )
 
 _LLM_EPISODE_PARSE_SYSTEM = (
-    "You are a TV episode filename parser. "
-    "Extract only the season and episode numbers from the filename. "
+    "You are a TV episode filename parser. Extract only the season and "
+    "episode numbers from the filename.\n\n"
+    "Rules:\n"
+    "- A bare trailing number with no other marker is the episode number, "
+    'never the season (e.g. "Show 09" -> episode 9, season null).\n'
+    "- Only set season when it is explicitly marked (S02, Season 2, "
+    "2nd Season, etc.). Never infer season from a bare number.\n"
+    '- Version suffixes like "01v2" mean episode 1.\n'
+    "- Tokens like NCED, NCOP, OP, ED, PV, CM, SP, OVA, or OAD indicate "
+    "non-episode bonus content, not a numbered episode, unless an explicit "
+    "SxxEyy or E## marker is also present — set episode to null for these.\n"
+    "- If you cannot determine the episode with confidence, set episode to "
+    "null rather than guessing.\n\n"
     "Reply with ONLY a compact JSON object: "
     '{"season": <integer or null>, "episode": <integer or null>}. '
     "No other text, no markdown, no explanation."
