@@ -394,7 +394,11 @@ class PathImportOrchestrator:
             secondary_show, secondary_action = await self._resolve_show(display_name)
             results.append(
                 await self._process_show_entries(
-                    display_name, secondary_show, secondary_action, sub_entries
+                    display_name,
+                    secondary_show,
+                    secondary_action,
+                    sub_entries,
+                    set_local_path=False,
                 )
             )
 
@@ -449,6 +453,7 @@ class PathImportOrchestrator:
         show: Show | None,
         action: str,
         entries: list[ParsedPathEntry],
+        set_local_path: bool = True,
     ) -> ShowImportResult:
         """Match a resolved show's entries to episodes and mark them tracked.
 
@@ -458,6 +463,14 @@ class PathImportOrchestrator:
             show: The resolved show, or None if resolution failed entirely.
             action: ``"found"``, ``"created"``, or ``"not_found"`` from resolution.
             entries: Parsed file entries to match against this show.
+            set_local_path: Whether to auto-populate ``show.local_path`` from
+                ``entries[0].show_root`` when unset. False for a split-off
+                secondary group — ``show_root`` reflects the *directory's*
+                root (the primary show's location), not this show's, so
+                auto-setting it here would point the wrong show at the
+                primary show's library folder. The show is still fully
+                created/matched; only the auto-path step is skipped, same as
+                the existing "content_type unknown" skip elsewhere.
 
         Returns:
             :class:`ShowImportResult` for this show/entries group.
@@ -477,9 +490,23 @@ class PathImportOrchestrator:
         show_result.tmdb_title = show.title
 
         # Persist the show's root directory path if not already set.
-        if not self.dry_run and show.local_path is None and entries:
+        if set_local_path and not self.dry_run and show.local_path is None and entries:
             show.local_path = entries[0].show_root
             logger.debug("Set local_path=%r for show id=%d", show.local_path, show.id)
+        elif not set_local_path and not self.dry_run and show.local_path is None:
+            await self._emit(
+                "warn",
+                f"'{show.title}' was split off from a mismatched directory — "
+                "local_path was not auto-set; configure it manually via "
+                f"PATCH /shows/{show.id}",
+                {"show_id": show.id},
+            )
+            logger.warning(
+                "Cannot auto-set local_path for split-off show id=%d (%r): "
+                "source directory does not reflect this show's location",
+                show.id,
+                show.title,
+            )
 
         # In dry-run mode, a newly "created" show has no database id and no
         # synced episodes yet, so _find_episode would query show_id=NULL and

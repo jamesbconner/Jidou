@@ -1902,6 +1902,75 @@ async def test_import_show_splits_llm_confirmed_mismatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_import_show_split_does_not_auto_set_wrong_local_path() -> None:
+    """Bugbot-caught regression: a split-off secondary show must not get
+    local_path auto-set from entries[0].show_root — that reflects the
+    *primary* directory's root (Gurren Lagann), not the secondary show's
+    (Bleach) actual location, so writing it would point Bleach at Gurren
+    Lagann's library folder.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Bleach - Clean Ending.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    primary_show = _make_show(id=1, tmdb_id=100, title="Gurren Lagann")
+    primary_show.aliases = []
+    secondary_show = _make_show(id=2, tmdb_id=200, title="Bleach")
+    secondary_show.aliases = []
+    secondary_show.local_path = None
+
+    async def fake_parse_filename(filename: str, llm: object) -> FilenameParseResult:
+        return FilenameParseResult(
+            show_name="Bleach",
+            season=None,
+            episode=None,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm)
+
+    async def fake_resolve_show(name: str) -> tuple[MagicMock, str]:
+        if name == "Bleach":
+            return secondary_show, "found"
+        return primary_show, "found"
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[None, None, None]:
+        return None, None, None
+
+    with (
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+        patch.object(orch, "_resolve_show", fake_resolve_show),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        await orch._import_show("Gurren Lagann", entries)
+
+    assert secondary_show.local_path is None
+
+
+@pytest.mark.asyncio
 async def test_import_show_no_split_when_llm_confirms_agreement() -> None:
     """A truncated directory name that the LLM resolves to the same show
     (via alias agreement) must not be split off, even though the extracted
