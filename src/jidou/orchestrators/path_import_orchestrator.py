@@ -808,6 +808,49 @@ class PathImportOrchestrator:
         )
         return season, episode
 
+    async def _absolute_lookup(self, show_id: int, absolute_number: int) -> Episode | None:
+        """Look up an Episode by absolute (series-wide) episode number.
+
+        Tries the ``absolute_episode_number`` column first (populated via
+        TMDB episode groups), then falls back to a computed sequential
+        position — ordering all non-special episodes by
+        ``(season_number, episode_number)`` and matching on row position.
+        The fallback handles shows like HxH where fansub filenames use a
+        continuous count but TMDB stores episodes per-season and doesn't
+        populate ``absolute_episode_number``.
+
+        Args:
+            show_id: Database ID of the parent show.
+            absolute_number: The absolute episode number to look up.
+
+        Returns:
+            Matching :class:`Episode`, or None.
+        """
+        stmt = select(Episode).where(
+            Episode.show_id == show_id,
+            Episode.absolute_episode_number == absolute_number,
+        )
+        ep = (await self.session.execute(stmt)).scalar_one_or_none()
+        if ep is not None:
+            return ep
+
+        numbered = (
+            select(
+                Episode.id,
+                func.row_number()
+                .over(order_by=[Episode.season_number, Episode.episode_number])
+                .label("row_num"),
+            )
+            .where(Episode.show_id == show_id, Episode.season_number > 0)
+            .subquery()
+        )
+        stmt = (
+            select(Episode)
+            .join(numbered, Episode.id == numbered.c.id)
+            .where(numbered.c.row_num == absolute_number)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def _find_episode(
         self,
         show_id: int,
@@ -824,8 +867,11 @@ class PathImportOrchestrator:
         4. ROW_NUMBER() window — sequential position across all non-special episodes.
         5. LLM episode-list match — filename + full episode list sent to the LLM.
 
-        Steps 3-5 are only reached when no season is known, or when the season-based
-        lookup (step 2) finds nothing in a season-1 directory.
+        Steps 3-4 are also tried on a season>1 S##E## miss, using
+        ``entry.absolute_candidate`` when set (the raw joined number from an
+        ambiguous compact-code guess, e.g. "212" guessed as S02E12) or the
+        bare episode number otherwise — the show's real data may use
+        absolute numbering even though the filename encodes a season.
 
         Args:
             show_id: Database ID of the parent show.
@@ -853,6 +899,10 @@ class PathImportOrchestrator:
             if season is None:
                 season = llm_season
 
+        absolute_guess = (
+            entry.absolute_candidate if entry.absolute_candidate is not None else episode
+        )
+
         if season is not None:
             stmt = select(Episode).where(
                 Episode.show_id == show_id,
@@ -862,10 +912,14 @@ class PathImportOrchestrator:
             ep = (await self.session.execute(stmt)).scalar_one_or_none()
             if ep is not None:
                 return ep, season, episode
-            # S##E## miss with an explicit season > 1 means the episode is
-            # genuinely absent — absolute/ROW_NUMBER fallbacks would map to the
-            # wrong episode in the overall sequence, so go straight to LLM.
             if season > 1:
+                # Before giving up to the LLM, try absolute-number lookups —
+                # the show's real data may use absolute numbering (or this
+                # season/episode pair may itself be an ambiguous compact-code
+                # guess whose raw number is the correct absolute episode).
+                abs_ep = await self._absolute_lookup(show_id, absolute_guess)
+                if abs_ep is not None:
+                    return abs_ep, season, episode
                 llm_ep, llm_season, llm_episode_num = await self._llm_match(
                     show_id, show_title, entry
                 )
@@ -879,37 +933,9 @@ class PathImportOrchestrator:
             # Fall through to absolute-number lookups before the LLM.
 
         # No season info — this is an absolute episode number.
-        # Try the absolute_episode_number column first (populated via episode groups).
-        stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.absolute_episode_number == episode,
-        )
-        ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep is not None:
-            return ep, season, episode
-
-        # Compute a sequential absolute number by ordering all non-special episodes
-        # by (season_number, episode_number) and matching on row position.  This
-        # handles shows like HxH where fansub filenames use a continuous count but
-        # TMDB stores episodes per-season and does not populate absolute_number.
-        numbered = (
-            select(
-                Episode.id,
-                func.row_number()
-                .over(order_by=[Episode.season_number, Episode.episode_number])
-                .label("row_num"),
-            )
-            .where(Episode.show_id == show_id, Episode.season_number > 0)
-            .subquery()
-        )
-        stmt = (
-            select(Episode)
-            .join(numbered, Episode.id == numbered.c.id)
-            .where(numbered.c.row_num == episode)
-        )
-        ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep is not None:
-            return ep, season, episode
+        abs_ep = await self._absolute_lookup(show_id, absolute_guess)
+        if abs_ep is not None:
+            return abs_ep, season, episode
 
         llm_ep, llm_season, llm_episode_num = await self._llm_match(show_id, show_title, entry)
         return (

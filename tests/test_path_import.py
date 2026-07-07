@@ -219,6 +219,35 @@ class TestParseLine:
         assert entry.season == 10
         assert entry.episode is None
 
+    def test_compact_sets_absolute_candidate_to_raw_joined_number(self) -> None:
+        # No season directory — "212" is ambiguous between S02E12 and a pure
+        # absolute episode number; absolute_candidate preserves the raw 212
+        # so the orchestrator can try it if the S02E12 guess doesn't pan out.
+        line = r"Z:\anime tv\One Piece\One Piece 212.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 2
+        assert entry.episode == 12
+        assert entry.absolute_candidate == 212
+
+    def test_compact_absolute_candidate_none_for_explicit_markers(self) -> None:
+        # An explicit S/E marker is unambiguous — no alternate interpretation
+        # is needed.
+        line = r"Z:\tv\Show\Season 1\Show.S01E05.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.absolute_candidate is None
+
+    def test_compact_absolute_candidate_none_for_dash_episode(self) -> None:
+        # "- 212" at end-of-string is unambiguously a bare episode number via
+        # _DASH_EP, matched before the compact heuristic is ever tried.
+        line = r"Z:\anime tv\One Piece\One Piece - 212.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season is None
+        assert entry.episode == 212
+        assert entry.absolute_candidate is None
+
     # -- Bare "Title NN" (no dash, no keyword) ---------------------------------
 
     def test_bare_trailing_two_digit_number(self) -> None:
@@ -2103,8 +2132,8 @@ async def test_llm_parse_episode_non_integer_values_return_none_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_find_episode_season_gt_1_miss_goes_to_llm_match() -> None:
-    """A season>1 S/E miss skips absolute fallbacks and goes straight to the LLM."""
+async def test_find_episode_season_gt_1_miss_tries_absolute_lookup_then_llm() -> None:
+    """A season>1 S/E miss tries absolute-number lookups before the LLM."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
     from jidou.services.path_parser import ParsedPathEntry
 
@@ -2133,8 +2162,97 @@ async def test_find_episode_season_gt_1_miss_goes_to_llm_match() -> None:
     assert season == 3
     assert ep_num == 99
     mock_llm_match.assert_called_once()
-    # Only ONE execute call (the S/E lookup) — absolute/row-number lookups must be skipped.
-    assert session.execute.call_count == 1
+    # S/E lookup + absolute_episode_number lookup + row-number lookup = 3.
+    assert session.execute.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_find_episode_season_gt_1_miss_resolves_via_absolute_lookup() -> None:
+    """A season>1 S/E miss that resolves via absolute lookup never reaches the LLM."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    matched_episode = _make_episode(id=9, show_id=1, season=1, episode=99)
+
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    hit = MagicMock()
+    hit.scalar_one_or_none.return_value = matched_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[miss, hit])
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\Season 3\Show.S03E99.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=3,
+        episode=99,
+        is_absolute=False,
+    )
+
+    with patch.object(orch, "_llm_match", AsyncMock(return_value=(None, None, None))) as mock_llm:
+        ep, season, ep_num = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
+
+    assert ep is matched_episode
+    assert season == 3
+    assert ep_num == 99
+    mock_llm.assert_not_called()
+    assert session.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_find_episode_season_gt_1_miss_uses_absolute_candidate_over_bare_episode() -> None:
+    """An ambiguous compact-code guess (e.g. "212" -> S02E12) uses the raw
+    joined number for the absolute lookup, not the split episode component —
+    this is exactly the "One Piece 212" / "Bleach 260" scenario.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    matched_episode = _make_episode(id=9, show_id=1, season=1, episode=212)
+
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    hit = MagicMock()
+    hit.scalar_one_or_none.return_value = matched_episode
+
+    bound_absolute_numbers: list[int] = []
+
+    async def capture_execute(stmt: object) -> MagicMock:
+        params = stmt.compile().params  # type: ignore[attr-defined]
+        if "absolute_episode_number_1" in params:
+            bound_absolute_numbers.append(params["absolute_episode_number_1"])
+            return hit
+        return miss
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=capture_execute)
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    # Compact-code guessed S02E12 from "212", but absolute_candidate=212 is
+    # the raw number — that's what must be used for the absolute lookup.
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\anime tv\One Piece\One Piece 212.mkv",
+        show_dir="One Piece",
+        show_root=r"Z:\anime tv\One Piece",
+        season=2,
+        episode=12,
+        is_absolute=False,
+        absolute_candidate=212,
+    )
+
+    with patch.object(orch, "_llm_match", AsyncMock(return_value=(None, None, None))) as mock_llm:
+        ep, _season, _ep_num = await orch._find_episode(
+            show_id=1, show_title="One Piece", entry=entry
+        )
+
+    assert ep is matched_episode
+    mock_llm.assert_not_called()
+    assert bound_absolute_numbers == [212]
 
 
 @pytest.mark.asyncio
