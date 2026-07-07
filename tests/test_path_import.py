@@ -1,6 +1,7 @@
 """Tests for path-file batch import — parser and orchestrator."""
 
 from pathlib import PurePosixPath, PureWindowsPath
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -921,8 +922,12 @@ async def test_find_episode_uses_llm_when_episode_none() -> None:
         is_absolute=False,
     )
 
-    result = await orch._find_episode(show_id=1, show_title="Criminal Minds", entry=entry)
-    assert result is episode
+    ep, season, ep_num = await orch._find_episode(
+        show_id=1, show_title="Criminal Minds", entry=entry
+    )
+    assert ep is episode
+    assert season == 6
+    assert ep_num == 11
     llm.complete.assert_called_once()
 
 
@@ -948,8 +953,10 @@ async def test_find_episode_returns_none_when_llm_also_fails() -> None:
         is_absolute=False,
     )
 
-    result = await orch._find_episode(show_id=1, show_title="SomeShow", entry=entry)
-    assert result is None
+    ep, season, ep_num = await orch._find_episode(show_id=1, show_title="SomeShow", entry=entry)
+    assert ep is None
+    assert season == 1
+    assert ep_num is None
 
 
 @pytest.mark.asyncio
@@ -2019,9 +2026,11 @@ async def test_find_episode_season_gt_1_miss_goes_to_llm_match() -> None:
     )
 
     with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
-        result = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
+        ep, season, ep_num = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
 
-    assert result is None
+    assert ep is None
+    assert season == 3
+    assert ep_num == 99
     mock_llm_match.assert_called_once()
     # Only ONE execute call (the S/E lookup) — absolute/row-number lookups must be skipped.
     assert session.execute.call_count == 1
@@ -2052,8 +2061,10 @@ async def test_find_episode_absolute_number_column_hit() -> None:
         is_absolute=True,
     )
 
-    result = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
-    assert result is episode
+    ep, season, ep_num = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
+    assert ep is episode
+    assert season is None
+    assert ep_num == 146
     assert session.execute.call_count == 1
 
 
@@ -2080,9 +2091,11 @@ async def test_find_episode_falls_through_to_llm_match_when_all_lookups_fail() -
     )
 
     with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
-        result = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
+        ep, season, ep_num = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
 
-    assert result is None
+    assert ep is None
+    assert season is None
+    assert ep_num == 999
     mock_llm_match.assert_called_once()
     # absolute lookup + row-number lookup = 2 execute calls before giving up.
     assert session.execute.call_count == 2
@@ -2614,7 +2627,189 @@ async def test_find_episode_llm_fills_in_season_when_originally_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
-    assert result is episode
+    ep, season, ep_num = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
+    assert ep is episode
+    assert season == 4
+    assert ep_num == 12
     # Confirms the S/E lookup ran with the LLM-supplied season (4), not a miss.
     assert session.execute.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# LLM fallback diagnostics — outcomes must be visible via on_event, not just
+# the Python logger, and the final "No match" event must reflect any LLM
+# adjustment rather than always the pre-LLM regex output.
+# ---------------------------------------------------------------------------
+
+
+def _event_capture() -> tuple[list[tuple[str, str, object]], Any]:
+    events: list[tuple[str, str, object]] = []
+
+    async def capture(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg, ctx))
+
+    return events, capture
+
+
+class TestLlmFallbackDiagnostics:
+    async def test_run_emits_notice_when_llm_unavailable(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        events, capture = _event_capture()
+        session = AsyncMock()
+        orch = PathImportOrchestrator(session, AsyncMock(), on_event=capture)
+
+        await orch.run([])
+
+        notices = [(lvl, msg) for lvl, msg, _ in events if "LLM not configured" in msg]
+        assert len(notices) == 1
+        assert notices[0][0] == "warn"
+
+    async def test_run_does_not_emit_notice_when_llm_available(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        events, capture = _event_capture()
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        session = AsyncMock()
+        orch = PathImportOrchestrator(session, AsyncMock(), llm=llm, on_event=capture)
+
+        await orch.run([])
+
+        assert not [msg for _, msg, _ in events if "LLM not configured" in msg]
+
+    async def test_llm_parse_episode_exception_is_emitted(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        events, capture = _event_capture()
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(side_effect=RuntimeError("connection refused"))
+
+        orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), llm=llm, on_event=capture)
+        result = await orch._llm_parse_episode("Bamboo Blade 20.mkv")
+
+        assert result == (None, None)
+        failures = [(lvl, msg) for lvl, msg, _ in events if "episode-parse failed" in msg]
+        assert len(failures) == 1
+        assert failures[0][0] == "warn"
+        assert "connection refused" in failures[0][1]
+
+    async def test_llm_parse_episode_success_is_emitted(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        events, capture = _event_capture()
+        mock_response = MagicMock()
+        mock_response.content = '{"season": null, "episode": 20}'
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(return_value=mock_response)
+
+        orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), llm=llm, on_event=capture)
+        result = await orch._llm_parse_episode("Bamboo Blade 20.mkv")
+
+        assert result == (None, 20)
+        successes = [(lvl, msg, ctx) for lvl, msg, ctx in events if "LLM episode-parse:" in msg]
+        assert len(successes) == 1
+        assert successes[0][0] == "info"
+        assert successes[0][2] == {
+            "filename": "Bamboo Blade 20.mkv",
+            "season": None,
+            "episode": 20,
+        }
+
+    async def test_llm_match_exception_is_emitted(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        events, capture = _event_capture()
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(side_effect=RuntimeError("timed out"))
+
+        session = AsyncMock()
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = [
+            _make_episode(id=1, show_id=1, season=1, episode=1)
+        ]
+        session.execute = AsyncMock(return_value=eps_result)
+
+        orch = PathImportOrchestrator(session, AsyncMock(), llm=llm, on_event=capture)
+        entry = ParsedPathEntry(
+            raw_path=r"Z:\tv\Show\Show 01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\tv\Show",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        )
+
+        result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+
+        assert result is None
+        failures = [(lvl, msg) for lvl, msg, _ in events if "episode-list match failed" in msg]
+        assert len(failures) == 1
+        assert failures[0][0] == "warn"
+        assert "timed out" in failures[0][1]
+
+    async def test_llm_pick_candidate_exception_is_emitted(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        events, capture = _event_capture()
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(side_effect=RuntimeError("bad gateway"))
+
+        orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), llm=llm, on_event=capture)
+        result = await orch._llm_pick_candidate("Show", [{"name": "Show", "id": 1}])
+
+        assert result is None
+        failures = [(lvl, msg) for lvl, msg, _ in events if "show-match failed" in msg]
+        assert len(failures) == 1
+        assert failures[0][0] == "warn"
+        assert "bad gateway" in failures[0][1]
+
+    async def test_no_match_event_reflects_llm_resolved_season_episode(self) -> None:
+        """The final 'No match' event must show the LLM-adjusted season/episode,
+        not the pre-LLM regex output that entry.season/entry.episode still hold.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        events, capture = _event_capture()
+        mock_response = MagicMock()
+        mock_response.content = '{"season": null, "episode": 20}'
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(return_value=mock_response)
+
+        session = AsyncMock()
+        miss = MagicMock()
+        miss.scalar_one_or_none.return_value = None
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[miss, miss, eps_result])
+
+        show = MagicMock(
+            id=1, title="Bamboo Blade", tmdb_id=1, local_path="Z:\\anime tv\\Bamboo Blade"
+        )
+        orch = PathImportOrchestrator(session, AsyncMock(), llm=llm, on_event=capture)
+
+        entry = ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Bamboo Blade\Bamboo Blade 20.mkv",
+            show_dir="Bamboo Blade",
+            show_root=r"Z:\anime tv\Bamboo Blade",
+            season=None,
+            episode=None,  # regex could not parse "Bamboo Blade 20"
+            is_absolute=False,
+        )
+
+        with patch.object(orch, "_db_find_show", AsyncMock(return_value=show)):
+            await orch._import_show("Bamboo Blade", [entry])
+
+        no_match = [(lvl, msg, ctx) for lvl, msg, ctx in events if msg.startswith("No match:")]
+        assert len(no_match) == 1
+        # Regex alone would have logged (S?E?) — the LLM resolved episode=20.
+        assert no_match[0][1] == "No match: Bamboo Blade 20.mkv (S?E20)"
+        assert no_match[0][2]["season"] is None
+        assert no_match[0][2]["episode"] == 20
