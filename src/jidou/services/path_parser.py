@@ -57,6 +57,13 @@ _LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
 # never collide with the 3-4 digit compact SEEE/SSEEE heuristic below.
 _BARE_TRAILING_EP = re.compile(r"(?<!season\s)\b(\d{1,2})$", re.IGNORECASE)
 
+# Non-credit opening/ending and other bonus-content markers (e.g.
+# "Show NCOP 01", "Show OVA 2"). A trailing number after one of these is a
+# clip/disc index, not an episode number — _BARE_TRAILING_EP must not fire
+# for these so the file falls through to the LLM, whose prompt explicitly
+# treats these tokens as non-episode content.
+_NON_EPISODE_ASSET_WORD = re.compile(r"\b(NCED|NCOP|OP|ED|PV|CM|SP|OVA|OAD)\b", re.IGNORECASE)
+
 # Compact SEEE / SSEEE — episode and season run together without a delimiter
 # (e.g. criminal.minds.201 → S02E01, criminal.minds.1001 → S10E01).
 # Applied last because it is the most ambiguous pattern.
@@ -263,6 +270,10 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
     8. ``N - Title`` at start of stem (title may start with a digit).
     9. Bare ``Title NN`` — a trailing 1-2 digit number with only whitespace
        separating it from the title, no dash or keyword (e.g. "Show 06").
+       Skipped when the stem contains a non-episode asset marker (NCED,
+       NCOP, OP, ED, PV, CM, SP, OVA, OAD) — those fall through to the LLM,
+       whose prompt knows to treat them as non-episode content instead of a
+       numbered episode.
     10. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
         Tokens whose encoded season disagrees with ``dir_season`` are skipped
         to prevent cross-season mismatches (e.g. ``924`` under ``Season 10``
@@ -308,9 +319,10 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
     if m:
         return None, int(m.group(1))
 
-    m = _BARE_TRAILING_EP.search(stem)
-    if m:
-        return None, int(m.group(1))
+    if not _NON_EPISODE_ASSET_WORD.search(stem):
+        m = _BARE_TRAILING_EP.search(stem)
+        if m:
+            return None, int(m.group(1))
 
     for cm in _COMPACT_EP.finditer(stem):
         raw = cm.group(1)

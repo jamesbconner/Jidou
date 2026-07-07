@@ -260,6 +260,37 @@ class TestParseLine:
         assert entry.season == 2
         assert entry.episode == 1
 
+    # -- Bugbot-caught regression: bonus-content markers must not be
+    # -- swallowed by the bare-trailing-number pattern ------------------------
+
+    @pytest.mark.parametrize(
+        "filename",
+        [
+            "Show NCOP 01.mkv",
+            "Show NCED 01.mkv",
+            "Show OVA 2.mkv",
+            "Show OAD 1.mkv",
+            "Show OP 2.mkv",
+            "Show ED 1.mkv",
+            "Show SP 01.mkv",
+            "Show PV 1.mkv",
+            "Show CM 3.mkv",
+        ],
+    )
+    def test_bare_trailing_number_skipped_for_non_episode_asset_markers(
+        self, filename: str
+    ) -> None:
+        # Regression: _BARE_TRAILING_EP used to swallow the trailing number on
+        # these regardless of the NCOP/OVA/etc. marker, resolving episode=1/2
+        # directly from regex and skipping the LLM fallback entirely — even
+        # though the LLM's system prompt explicitly knows these markers mean
+        # "not a numbered episode." The regex must leave episode=None so
+        # _find_episode still calls the LLM.
+        line = rf"Z:\anime tv\Show\{filename}"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode is None
+
     # -- "Episode N" / "Season N Episode N" word patterns ---------------------
 
     def test_episode_word_label(self) -> None:
