@@ -35,6 +35,7 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.services.episode_tracking import mark_episode_tracked
+from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
@@ -157,6 +158,27 @@ def _normalize_title(s: str) -> str:
         Normalized string with punctuation removed and whitespace collapsed.
     """
     return re.sub(r"\s+", " ", _PUNCT.sub(" ", s).lower()).strip()
+
+
+def _agrees_with_show(name: str, show: Show) -> bool:
+    """Return True when *name* refers to the same show as *show*.
+
+    Reuses the same normalized-title/alias matching semantics as
+    ``_db_find_show``, so a filename-extracted show name is treated as
+    agreeing whenever it would have independently resolved to the same show.
+
+    Args:
+        name: Extracted show name to check (e.g. from ``parse_filename``).
+        show: The already-resolved show to check agreement against.
+
+    Returns:
+        True if *name* normalizes to the same title as *show*, or is one of
+        its known aliases.
+    """
+    if _normalize_title(name) == _normalize_title(show.title):
+        return True
+    normalised = name.strip().lower()
+    return bool(show.aliases and normalised in show.aliases)
 
 
 # ---------------------------------------------------------------------------
@@ -284,18 +306,21 @@ class PathImportOrchestrator:
             if on_progress:
                 await on_progress(idx, total, f"Importing {show_dir}")
 
-            show_result = await self._import_show(show_dir, show_entries)
-            result.show_results.append(show_result)
+            # Usually one result per directory; more if per-file show-name
+            # confirmation split off files belonging to a different show.
+            show_results = await self._import_show(show_dir, show_entries)
+            for show_result in show_results:
+                result.show_results.append(show_result)
 
-            if show_result.action == "created":
-                result.shows_created += 1
-            elif show_result.action == "found":
-                result.shows_found += 1
-            else:
-                result.shows_not_found += 1
+                if show_result.action == "created":
+                    result.shows_created += 1
+                elif show_result.action == "found":
+                    result.shows_found += 1
+                else:
+                    result.shows_not_found += 1
 
-            result.episodes_tracked += show_result.episodes_tracked
-            result.episodes_unmatched += show_result.episodes_unmatched
+                result.episodes_tracked += show_result.episodes_tracked
+                result.episodes_unmatched += show_result.episodes_unmatched
 
         return result
 
@@ -307,53 +332,143 @@ class PathImportOrchestrator:
         self,
         show_dir: str,
         entries: list[ParsedPathEntry],
-    ) -> ShowImportResult:
-        """Import one show and mark its episode files as tracked.
+    ) -> list[ShowImportResult]:
+        """Import one show directory, splitting off files that don't belong.
+
+        The directory name is a good indicator of show identity but isn't
+        actually part of the media itself. Every entry's own filename is
+        checked (via the shared filename-parsing service) against the
+        directory-resolved show; a file whose own name disagrees is pulled
+        out and independently resolved/matched against its own show instead
+        of being silently absorbed into the directory's show.
+
+        Only an LLM-confirmed disagreement triggers a split. The heuristic
+        regex fallback (used when no LLM is configured, or a call fails) is
+        far too unreliable for this — a generic filename with no show title
+        in it at all (e.g. "extras.mkv") heuristically "extracts" its own
+        cleaned name as show_name, which would otherwise disagree with every
+        real show and split off a rename-worthy fraction of every import.
 
         Args:
             show_dir: Show directory name (used as the primary search key).
-            entries: All parsed file entries belonging to this show.
+            entries: All parsed file entries under this directory.
 
         Returns:
-            :class:`ShowImportResult` for this show.
+            One :class:`ShowImportResult` per resolved show — normally just
+            one (the whole directory is one show), but more if the
+            directory turned out to contain files from multiple shows.
         """
-        show_result = ShowImportResult(show_dir=show_dir)
+        primary_show, action = await self._resolve_show(show_dir)
 
-        # Try the database first to avoid unnecessary TMDB calls.
-        show = await self._db_find_show(show_dir)
+        if primary_show is None:
+            return [await self._process_show_entries(show_dir, None, action, entries)]
 
-        if show is None:
-            await self._emit("info", f"Not in DB — searching TMDB for '{show_dir}'")
-            show, action = await self._tmdb_create_show(show_dir)
-            show_result.action = action
-        else:
-            show_result.action = "found"
+        matched: list[ParsedPathEntry] = []
+        mismatched: dict[str, list[ParsedPathEntry]] = {}
+        mismatched_display: dict[str, str] = {}
+
+        for entry in entries:
+            filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+            parsed = await parse_filename(filename, self.llm)
+            if (
+                not parsed.llm_ok
+                or parsed.show_name is None
+                or _agrees_with_show(parsed.show_name, primary_show)
+            ):
+                matched.append(entry)
+            else:
+                norm = _normalize_title(parsed.show_name)
+                mismatched.setdefault(norm, []).append(entry)
+                mismatched_display.setdefault(norm, parsed.show_name)
+
+        results = [await self._process_show_entries(show_dir, primary_show, action, matched)]
+
+        for norm, sub_entries in mismatched.items():
+            display_name = mismatched_display[norm]
             await self._emit(
-                "info",
-                f"Found in DB: '{show.title}'",
-                {"show_id": show.id, "tmdb_id": show.tmdb_id},
+                "warn",
+                f"{len(sub_entries)} file(s) under '{show_dir}' appear to belong to "
+                f"'{display_name}' instead — resolving separately",
+                {"directory": show_dir, "extracted_name": display_name, "count": len(sub_entries)},
             )
-            logger.info("Found existing show %r (id=%d) for dir %r", show.title, show.id, show_dir)
-            # If episodes haven't been synced yet, do it now so file matching can proceed.
-            if not self.dry_run:
-                ep_count = await self.session.scalar(
-                    select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+            secondary_show, secondary_action = await self._resolve_show(display_name)
+            results.append(
+                await self._process_show_entries(
+                    display_name, secondary_show, secondary_action, sub_entries
                 )
-                if ep_count == 0:
-                    await self._emit(
-                        "info", f"No episodes synced yet — fetching from TMDB for '{show.title}'"
-                    )
-                    try:
-                        await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
-                    except Exception as exc:
-                        await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
-                        logger.exception("Episode sync failed for show id=%d", show.id)
+            )
+
+        return results
+
+    async def _resolve_show(self, name: str) -> tuple[Show | None, str]:
+        """Find or create a show by name: DB lookup first, then TMDB search/create.
+
+        Shared by the primary directory-derived resolution and any secondary
+        per-file-derived resolution triggered by a show-name mismatch.
+
+        Args:
+            name: Show name to resolve — a directory name, or a per-file
+                extracted show name.
+
+        Returns:
+            ``(show, action)`` where action is ``"found"``, ``"created"``,
+            or ``"not_found"``.
+        """
+        show = await self._db_find_show(name)
+
+        if show is None:
+            await self._emit("info", f"Not in DB — searching TMDB for '{name}'")
+            return await self._tmdb_create_show(name)
+
+        await self._emit(
+            "info",
+            f"Found in DB: '{show.title}'",
+            {"show_id": show.id, "tmdb_id": show.tmdb_id},
+        )
+        logger.info("Found existing show %r (id=%d) for name %r", show.title, show.id, name)
+        # If episodes haven't been synced yet, do it now so file matching can proceed.
+        if not self.dry_run:
+            ep_count = await self.session.scalar(
+                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+            )
+            if ep_count == 0:
+                await self._emit(
+                    "info", f"No episodes synced yet — fetching from TMDB for '{show.title}'"
+                )
+                try:
+                    await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
+                except Exception as exc:
+                    await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
+                    logger.exception("Episode sync failed for show id=%d", show.id)
+
+        return show, "found"
+
+    async def _process_show_entries(
+        self,
+        label: str,
+        show: Show | None,
+        action: str,
+        entries: list[ParsedPathEntry],
+    ) -> ShowImportResult:
+        """Match a resolved show's entries to episodes and mark them tracked.
+
+        Args:
+            label: Display name for this result — the directory name, or the
+                per-file extracted name for a split-off secondary group.
+            show: The resolved show, or None if resolution failed entirely.
+            action: ``"found"``, ``"created"``, or ``"not_found"`` from resolution.
+            entries: Parsed file entries to match against this show.
+
+        Returns:
+            :class:`ShowImportResult` for this show/entries group.
+        """
+        show_result = ShowImportResult(show_dir=label, action=action)
 
         if show is None:
             await self._emit(
-                "warn", f"No TMDB match found for '{show_dir}' — {len(entries)} file(s) unmatched"
+                "warn", f"No TMDB match found for '{label}' — {len(entries)} file(s) unmatched"
             )
-            logger.warning("Could not resolve show for directory %r", show_dir)
+            logger.warning("Could not resolve show for %r", label)
             show_result.episodes_unmatched = len(entries)
             show_result.unmatched_paths = [e.raw_path for e in entries]
             return show_result
@@ -415,9 +530,9 @@ class PathImportOrchestrator:
                     },
                 )
                 logger.debug(
-                    "No episode match: show=%r dir=%r season=%s episode=%s abs=%s path=%r",
+                    "No episode match: show=%r label=%r season=%s episode=%s abs=%s path=%r",
                     show.title,
-                    show_dir,
+                    label,
                     resolved_season,
                     resolved_episode,
                     entry.is_absolute,
