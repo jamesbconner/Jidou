@@ -23,6 +23,20 @@ class TestCeleryApp:
         registered = celery_app.tasks
         assert any("fetch_trending" in name for name in registered)
 
+    def test_broker_visibility_timeout_exceeds_longest_task_time_limit(self) -> None:
+        """Redis redelivers unacked messages after visibility_timeout elapses.
+
+        With task_acks_late=True, a task isn't acked until it finishes, so
+        visibility_timeout must stay above every task's time_limit override —
+        otherwise a still-running task gets redelivered and re-executed from
+        scratch, racing against itself on the same DB rows.
+        """
+        from jidou.workers.import_tasks import path_import_task
+
+        visibility_timeout = celery_app.conf.broker_transport_options["visibility_timeout"]
+        assert visibility_timeout > path_import_task.time_limit
+        assert visibility_timeout > celery_app.conf.task_time_limit
+
 
 def test_fetch_trending_shows_task() -> None:
     """Test that the trending task calls TMDB and returns count."""
