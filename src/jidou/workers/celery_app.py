@@ -29,6 +29,17 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_time_limit=3600,  # Hard timeout: 1 hour
     task_soft_time_limit=3000,  # Soft timeout: 50 minutes
+    # task_acks_late means a task's ack is withheld until it finishes. The
+    # Redis transport's default visibility_timeout is 3600s — if a message
+    # isn't acked within that window, Redis assumes the worker died and
+    # redelivers it to another worker, even if the original is still running.
+    # path_import_task overrides its time_limit to 25200s (7h; see
+    # import_tasks.py), which is far longer than the 3600s default, so a
+    # single legitimate run would get redelivered and re-executed from
+    # scratch roughly every hour, racing against itself on the same DB rows.
+    # This must stay comfortably above the longest task-level time_limit
+    # override anywhere in the app.
+    broker_transport_options={"visibility_timeout": 43200},  # 12 hours
     task_default_queue="jidou",
     worker_max_tasks_per_child=100,
     include=[
