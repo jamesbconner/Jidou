@@ -219,6 +219,47 @@ class TestParseLine:
         assert entry.season == 10
         assert entry.episode is None
 
+    # -- Bare "Title NN" (no dash, no keyword) ---------------------------------
+
+    def test_bare_trailing_two_digit_number(self) -> None:
+        line = r"Z:\anime tv\Bamboo Blade\Bamboo Blade 20.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season is None
+        assert entry.episode == 20
+        assert entry.is_absolute
+
+    def test_bare_trailing_one_digit_number(self) -> None:
+        line = r"Z:\anime tv\Yawara\Yawara 6.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode == 6
+
+    def test_bare_trailing_number_not_matched_when_glued_to_letter(self) -> None:
+        # "v2" — no whitespace separator, must not be treated as episode 2.
+        line = r"Z:\anime tv\Show\Show v2.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode is None
+
+    def test_bare_trailing_number_not_matched_after_season_word(self) -> None:
+        # A lone "Season 2" with no episode marker must not have its season
+        # number mistaken for an episode number.
+        line = r"Z:\anime tv\Show\Show Season 2.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.episode is None
+
+    def test_bare_trailing_number_does_not_shadow_compact_code(self) -> None:
+        # 3+ digit numbers are the compact SEEE/SSEEE pattern's territory, not
+        # this one — a bare trailing 2-digit number must never intercept a
+        # legitimate 3-4 digit compact match.
+        line = r"Z:\tv\Criminal Minds\Season 2\criminal.minds.201.hdtv-lol.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == 2
+        assert entry.episode == 1
+
     # -- "Episode N" / "Season N Episode N" word patterns ---------------------
 
     def test_episode_word_label(self) -> None:
@@ -866,6 +907,33 @@ async def test_llm_parse_episode_sends_known_season_hint() -> None:
     call_kwargs = llm.complete.call_args
     prompt_text = call_kwargs.kwargs.get("prompt") or call_kwargs.args[0]
     assert "Known season from directory: 6" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_system_prompt_covers_bare_numbers_and_non_episode_assets() -> None:
+    """Regression: the episode-parse prompt was trimmed down to 4 lines with
+    no guidance at all, losing coverage for bare trailing numbers and
+    non-episode bonus content (NCED/NCOP/OVA/etc.) that an earlier, more
+    detailed prompt used to handle correctly.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    mock_response = MagicMock()
+    mock_response.content = '{"season": null, "episode": 9}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    session = AsyncMock()
+    orch = PathImportOrchestrator(session, AsyncMock(), llm=llm)
+
+    await orch._llm_parse_episode("Show 09.mkv")
+
+    system_text = llm.complete.call_args.kwargs["system"]
+    assert "bare trailing number" in system_text.lower()
+    assert "never the season" in system_text.lower()
+    assert "ncop" in system_text.lower()
+    assert "never infer season" in system_text.lower()
 
 
 @pytest.mark.asyncio

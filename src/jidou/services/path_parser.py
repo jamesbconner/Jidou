@@ -48,6 +48,15 @@ _PREDASH_EP = re.compile(r"(?<!\d)(\d{1,3})\s+[-–]\s+[A-Za-z]")  # noqa: RUF00
 # More permissive than _PREDASH_EP; anchored to ^ to limit false positives.
 _LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
 
+# "Title NN" — a bare trailing 1-2 digit number with nothing but whitespace
+# separating it from the title (e.g. "Bamboo Blade 20", "Yawara 6"). No dash,
+# no keyword, just a space. \b requires the digits be preceded by a
+# non-word character (so "v2" or "S02" — glued directly to a letter — never
+# match), and the "season" lookbehind excludes a lone trailing season number
+# with no episode (e.g. "Show Season 2"). Limited to 1-2 digits so it can
+# never collide with the 3-4 digit compact SEEE/SSEEE heuristic below.
+_BARE_TRAILING_EP = re.compile(r"(?<!season\s)\b(\d{1,2})$", re.IGNORECASE)
+
 # Compact SEEE / SSEEE — episode and season run together without a delimiter
 # (e.g. criminal.minds.201 → S02E01, criminal.minds.1001 → S10E01).
 # Applied last because it is the most ambiguous pattern.
@@ -252,10 +261,12 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
     6. ``- N`` at end-of-string or before a bracket.
     7. ``N - Title`` where title starts with a letter.
     8. ``N - Title`` at start of stem (title may start with a digit).
-    9. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
-       Tokens whose encoded season disagrees with ``dir_season`` are skipped
-       to prevent cross-season mismatches (e.g. ``924`` under ``Season 10``
-       would otherwise yield S10E24 instead of remaining unmatched).
+    9. Bare ``Title NN`` — a trailing 1-2 digit number with only whitespace
+       separating it from the title, no dash or keyword (e.g. "Show 06").
+    10. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
+        Tokens whose encoded season disagrees with ``dir_season`` are skipped
+        to prevent cross-season mismatches (e.g. ``924`` under ``Season 10``
+        would otherwise yield S10E24 instead of remaining unmatched).
 
     Args:
         stem: Filename without extension.
@@ -294,6 +305,10 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
         return None, int(m.group(1))
 
     m = _LEADING_EP.search(stem)
+    if m:
+        return None, int(m.group(1))
+
+    m = _BARE_TRAILING_EP.search(stem)
     if m:
         return None, int(m.group(1))
 
