@@ -1767,6 +1767,348 @@ async def test_import_show_emits_info_summary_when_all_tracked() -> None:
     assert tracked_events[0][0] == "info"
 
 
+# ---------------------------------------------------------------------------
+# _import_show — per-file show-name confirmation (issue #282)
+# ---------------------------------------------------------------------------
+
+
+class TestAgreesWithShow:
+    def test_exact_normalized_title_match(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+
+        show = _make_show(title="Daredevil: Born Again")
+        assert _agrees_with_show("Daredevil Born Again", show) is True
+
+    def test_alias_match(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+
+        show = _make_show(title="Attack on Titan")
+        show.aliases = ["shingeki no kyojin"]
+        assert _agrees_with_show("Shingeki no Kyojin", show) is True
+
+    def test_no_match(self) -> None:
+        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+
+        show = _make_show(title="One Piece")
+        show.aliases = []
+        assert _agrees_with_show("Bleach", show) is False
+
+
+@pytest.mark.asyncio
+async def test_import_show_splits_llm_confirmed_mismatch() -> None:
+    """A file whose LLM-extracted show name disagrees with the directory's
+    resolved show is split off and independently resolved, instead of being
+    silently matched against the wrong show.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Gurren Lagann - 01.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Bleach - Clean Ending.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    primary_show = _make_show(id=1, tmdb_id=100, title="Gurren Lagann")
+    primary_show.aliases = []
+    secondary_show = _make_show(id=2, tmdb_id=200, title="Bleach")
+    secondary_show.aliases = []
+
+    primary_episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    async def fake_parse_filename(filename: str, llm: object) -> FilenameParseResult:
+        if "Bleach" in filename:
+            return FilenameParseResult(
+                show_name="Bleach",
+                season=None,
+                episode=None,
+                crc32=None,
+                content_type="anime",
+                confidence=0.9,
+                llm_ok=True,
+            )
+        return FilenameParseResult(
+            show_name="Gurren Lagann",
+            season=None,
+            episode=1,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=dedup_miss)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm)
+
+    async def fake_resolve_show(name: str) -> tuple[MagicMock, str]:
+        if name == "Bleach":
+            return secondary_show, "found"
+        return primary_show, "found"
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[MagicMock | None, int | None, int | None]:
+        if show_id == primary_show.id:
+            return primary_episode, 1, 1
+        return None, None, None
+
+    with (
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+        patch.object(orch, "_resolve_show", fake_resolve_show),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        results = await orch._import_show("Gurren Lagann", entries)
+
+    assert len(results) == 2
+    assert results[0].show_dir == "Gurren Lagann"
+    assert results[0].episodes_tracked == 1
+    assert results[1].show_dir == "Bleach"
+    assert results[1].action == "found"
+    # The mismatched file was matched against Bleach's own (mocked) episode
+    # lookup, which returned None — it ends up unmatched under Bleach, not
+    # silently tracked against Gurren Lagann.
+    assert results[1].episodes_unmatched == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_split_does_not_auto_set_wrong_local_path() -> None:
+    """Bugbot-caught regression: a split-off secondary show must not get
+    local_path auto-set from entries[0].show_root — that reflects the
+    *primary* directory's root (Gurren Lagann), not the secondary show's
+    (Bleach) actual location, so writing it would point Bleach at Gurren
+    Lagann's library folder.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Bleach - Clean Ending.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    primary_show = _make_show(id=1, tmdb_id=100, title="Gurren Lagann")
+    primary_show.aliases = []
+    secondary_show = _make_show(id=2, tmdb_id=200, title="Bleach")
+    secondary_show.aliases = []
+    secondary_show.local_path = None
+
+    async def fake_parse_filename(filename: str, llm: object) -> FilenameParseResult:
+        return FilenameParseResult(
+            show_name="Bleach",
+            season=None,
+            episode=None,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm)
+
+    async def fake_resolve_show(name: str) -> tuple[MagicMock, str]:
+        if name == "Bleach":
+            return secondary_show, "found"
+        return primary_show, "found"
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[None, None, None]:
+        return None, None, None
+
+    with (
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+        patch.object(orch, "_resolve_show", fake_resolve_show),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        await orch._import_show("Gurren Lagann", entries)
+
+    assert secondary_show.local_path is None
+
+
+@pytest.mark.asyncio
+async def test_import_show_no_split_when_llm_confirms_agreement() -> None:
+    """A truncated directory name that the LLM resolves to the same show
+    (via alias agreement) must not be split off, even though the extracted
+    name differs textually from the directory name.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Backstabbed in a Backwater Dungeon\ep01.mkv",
+            show_dir="Backstabbed in a Backwater Dungeon",
+            show_root=r"Z:\anime tv\Backstabbed in a Backwater Dungeon",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        )
+    ]
+
+    show = _make_show(id=1, tmdb_id=100, title="Backstabbed in a Backwater Dungeon: The Full Title")
+    show.aliases = ["backstabbed in a backwater dungeon"]
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    async def fake_parse_filename(filename: str, llm: object) -> FilenameParseResult:
+        return FilenameParseResult(
+            show_name="Backstabbed in a Backwater Dungeon",
+            season=None,
+            episode=1,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=dedup_miss)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm)
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[MagicMock, int, int]:
+        return episode, 1, 1
+
+    with (
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        results = await orch._import_show("Backstabbed in a Backwater Dungeon", entries)
+
+    assert len(results) == 1
+    assert results[0].episodes_tracked == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_heuristic_only_never_splits() -> None:
+    """Without an LLM (heuristic-only extraction), a generic filename with no
+    real show title in it (e.g. "extras.mkv") must not trigger a split, even
+    though its heuristically-extracted "show name" disagrees with the real
+    show — heuristic extraction is too unreliable to justify a split.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\ep01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Season 01\extras.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=1,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    show = _make_show(title="Show")
+    show.aliases = []
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=dedup_miss)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+    # No llm= passed — parse_filename() will use the real heuristic fallback.
+    orch = PathImportOrchestrator(session, tmdb)
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[MagicMock | None, int | None, int | None]:
+        if entry.episode == 1:
+            return episode, 1, 1
+        return None, 1, None
+
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        results = await orch._import_show("Show", entries)
+
+    assert len(results) == 1
+    assert results[0].episodes_tracked == 1
+    assert results[0].episodes_unmatched == 1
+
+
 @pytest.mark.asyncio
 async def test_import_show_dry_run_does_not_commit() -> None:
     """dry_run=True must never call session.commit()."""
