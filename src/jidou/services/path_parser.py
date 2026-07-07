@@ -87,6 +87,12 @@ class ParsedPathEntry:
         episode: Episode number (may be absolute when ``is_absolute`` is True).
         is_absolute: True when no season information is available; the episode
             number should be treated as an absolute episode counter.
+        absolute_candidate: Set only when ``season``/``episode`` came from the
+            ambiguous compact SEEE/SSEEE heuristic (e.g. "212" guessed as
+            S02E12) — holds the raw joined number as an alternate "this might
+            just be a plain absolute episode number" interpretation, since
+            shows with pure absolute numbering (e.g. One Piece) produce
+            exactly this kind of filename with no season directory.
     """
 
     raw_path: str
@@ -95,6 +101,7 @@ class ParsedPathEntry:
     season: int | None
     episode: int | None
     is_absolute: bool
+    absolute_candidate: int | None = None
 
 
 def _as_pure_path(line: str) -> PurePath:
@@ -198,7 +205,7 @@ def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
             show_root = str(path.parent)
 
     stem = path.stem
-    fn_season, episode = _parse_episode(stem, dir_season=dir_season)
+    fn_season, episode, absolute_candidate = _parse_episode(stem, dir_season=dir_season)
 
     # Season from directory takes precedence over season from filename.
     season = dir_season if dir_season is not None else fn_season
@@ -211,6 +218,7 @@ def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
         season=season,
         episode=episode,
         is_absolute=is_absolute,
+        absolute_candidate=absolute_candidate,
     )
 
 
@@ -256,7 +264,9 @@ def group_by_show(
 # ---------------------------------------------------------------------------
 
 
-def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None, int | None]:
+def _parse_episode(
+    stem: str, dir_season: int | None = None
+) -> tuple[int | None, int | None, int | None]:
     """Extract (season, episode) from a filename stem (no extension).
 
     Priority order (first match wins):
@@ -277,7 +287,10 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
     10. Compact ``SEEE`` / ``SSEEE`` (e.g. ``201`` → S02E01) — last resort.
         Tokens whose encoded season disagrees with ``dir_season`` are skipped
         to prevent cross-season mismatches (e.g. ``924`` under ``Season 10``
-        would otherwise yield S10E24 instead of remaining unmatched).
+        would otherwise yield S10E24 instead of remaining unmatched). The
+        raw joined number is also returned as ``absolute_candidate`` since
+        this guess is ambiguous — shows with pure absolute numbering (e.g.
+        "One Piece 212") produce the same kind of bare 3-4 digit filename.
 
     Args:
         stem: Filename without extension.
@@ -285,44 +298,45 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
             Used only to guard the ambiguous compact-code path.
 
     Returns:
-        ``(season, episode)`` where either value may be ``None``.
+        ``(season, episode, absolute_candidate)``. ``absolute_candidate`` is
+        non-None only when the compact heuristic produced the guess.
     """
     m = _SE_PATTERN.search(stem)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        return int(m.group(1)), int(m.group(2)), None
 
     m = _SxE_PATTERN.search(stem)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        return int(m.group(1)), int(m.group(2)), None
 
     m = _SEASON_EPISODE_WORD.search(stem)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        return int(m.group(1)), int(m.group(2)), None
 
     m = _EPISODE_WORD.search(stem)
     if m:
-        return None, int(m.group(1))
+        return None, int(m.group(1)), None
 
     m = _EP_WORD.search(stem)
     if m:
-        return None, int(m.group(1))
+        return None, int(m.group(1)), None
 
     m = _DASH_EP.search(stem)
     if m:
-        return None, int(m.group(1))
+        return None, int(m.group(1)), None
 
     m = _PREDASH_EP.search(stem)
     if m:
-        return None, int(m.group(1))
+        return None, int(m.group(1)), None
 
     m = _LEADING_EP.search(stem)
     if m:
-        return None, int(m.group(1))
+        return None, int(m.group(1)), None
 
     if not _NON_EPISODE_ASSET_WORD.search(stem):
         m = _BARE_TRAILING_EP.search(stem)
         if m:
-            return None, int(m.group(1))
+            return None, int(m.group(1)), None
 
     for cm in _COMPACT_EP.finditer(stem):
         raw = cm.group(1)
@@ -336,6 +350,6 @@ def _parse_episode(stem: str, dir_season: int | None = None) -> tuple[int | None
         if s_num >= 1 and e_num >= 1:
             if dir_season is not None and s_num != dir_season:
                 continue
-            return s_num, e_num
+            return s_num, e_num, n
 
-    return None, None
+    return None, None, None
