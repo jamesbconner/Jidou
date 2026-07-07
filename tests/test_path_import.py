@@ -2025,7 +2025,9 @@ async def test_find_episode_season_gt_1_miss_goes_to_llm_match() -> None:
         is_absolute=False,
     )
 
-    with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
+    with patch.object(
+        orch, "_llm_match", AsyncMock(return_value=(None, None, None))
+    ) as mock_llm_match:
         ep, season, ep_num = await orch._find_episode(show_id=1, show_title="Show", entry=entry)
 
     assert ep is None
@@ -2090,7 +2092,9 @@ async def test_find_episode_falls_through_to_llm_match_when_all_lookups_fail() -
         is_absolute=True,
     )
 
-    with patch.object(orch, "_llm_match", AsyncMock(return_value=None)) as mock_llm_match:
+    with patch.object(
+        orch, "_llm_match", AsyncMock(return_value=(None, None, None))
+    ) as mock_llm_match:
         ep, season, ep_num = await orch._find_episode(show_id=1, show_title="HxH", entry=entry)
 
     assert ep is None
@@ -2224,8 +2228,10 @@ async def test_llm_match_unavailable_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
     session.execute.assert_not_called()
 
 
@@ -2255,8 +2261,10 @@ async def test_llm_match_no_episodes_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
     llm.complete.assert_not_called()
 
 
@@ -2286,8 +2294,10 @@ async def test_llm_match_complete_raises_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
 
 
 @pytest.mark.asyncio
@@ -2316,8 +2326,10 @@ async def test_llm_match_response_none_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
 
 
 @pytest.mark.asyncio
@@ -2348,8 +2360,10 @@ async def test_llm_match_invalid_json_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
 
 
 @pytest.mark.asyncio
@@ -2380,8 +2394,10 @@ async def test_llm_match_non_dict_json_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
 
 
 @pytest.mark.asyncio
@@ -2412,8 +2428,10 @@ async def test_llm_match_missing_season_or_episode_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
 
 
 @pytest.mark.asyncio
@@ -2446,8 +2464,10 @@ async def test_llm_match_non_integer_season_episode_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    assert season is None
+    assert episode_num is None
     assert session.execute.call_count == 1
 
 
@@ -2485,8 +2505,10 @@ async def test_llm_match_success_returns_episode() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is matched_episode
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is matched_episode
+    assert season == 1
+    assert episode_num == 5
 
 
 @pytest.mark.asyncio
@@ -2522,8 +2544,10 @@ async def test_llm_match_markdown_fence_stripped() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is matched_episode
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is matched_episode
+    assert season == 2
+    assert episode_num == 3
 
 
 @pytest.mark.asyncio
@@ -2557,8 +2581,12 @@ async def test_llm_match_db_lookup_miss_returns_none() -> None:
         is_absolute=True,
     )
 
-    result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
-    assert result is None
+    ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+    assert ep is None
+    # The proposed season/episode must still be surfaced even though no DB
+    # row matched it — this is what the "No match" event downstream relies on.
+    assert season == 9
+    assert episode_num == 99
 
 
 @pytest.mark.asyncio
@@ -2744,9 +2772,11 @@ class TestLlmFallbackDiagnostics:
             is_absolute=True,
         )
 
-        result = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
+        ep, season, episode_num = await orch._llm_match(show_id=1, show_title="Show", entry=entry)
 
-        assert result is None
+        assert ep is None
+        assert season is None
+        assert episode_num is None
         failures = [(lvl, msg) for lvl, msg, _ in events if "episode-list match failed" in msg]
         assert len(failures) == 1
         assert failures[0][0] == "warn"
@@ -2813,3 +2843,70 @@ class TestLlmFallbackDiagnostics:
         assert no_match[0][1] == "No match: Bamboo Blade 20.mkv (S?E20)"
         assert no_match[0][2]["season"] is None
         assert no_match[0][2]["episode"] == 20
+
+    async def test_find_episode_surfaces_llm_season_when_episode_still_none(self) -> None:
+        """Bugbot-caught regression: _llm_parse_episode can resolve a season
+        without an episode. That season must not be silently discarded just
+        because the overall attempt still failed.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        mock_response = MagicMock()
+        mock_response.content = '{"season": 2, "episode": null}'
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        llm.complete = AsyncMock(return_value=mock_response)
+
+        orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), llm=llm)
+        entry = ParsedPathEntry(
+            raw_path=r"Z:\tv\Show\Show Extras.mkv",
+            show_dir="Show",
+            show_root=r"Z:\tv\Show",
+            season=None,  # regex found no season either
+            episode=None,
+            is_absolute=True,
+        )
+
+        ep, season, episode_num = await orch._find_episode(
+            show_id=1, show_title="Show", entry=entry
+        )
+
+        assert ep is None
+        assert season == 2  # LLM's season must be surfaced, not discarded
+        assert episode_num is None
+
+    async def test_find_episode_uses_llm_match_season_episode_over_stale_locals(self) -> None:
+        """Bugbot-caught regression: when _llm_match proposes a season/episode
+        that has no matching DB row, _find_episode must report what
+        _llm_match actually proposed, not the season/episode from before
+        _llm_match ran, so the "No match" event agrees with the separate
+        "LLM episode-list match proposed ..." warn event.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        session = AsyncMock()
+        miss = MagicMock()
+        miss.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=miss)
+
+        orch = PathImportOrchestrator(session, AsyncMock())
+        entry = ParsedPathEntry(
+            raw_path=r"Z:\tv\Show\Season 3\Show.S03E99.mkv",
+            show_dir="Show",
+            show_root=r"Z:\tv\Show",
+            season=3,
+            episode=99,
+            is_absolute=False,
+        )
+
+        # _llm_match proposed S05E10, distinct from the pre-existing S03E99.
+        with patch.object(orch, "_llm_match", AsyncMock(return_value=(None, 5, 10))):
+            ep, season, episode_num = await orch._find_episode(
+                show_id=1, show_title="Show", entry=entry
+            )
+
+        assert ep is None
+        assert season == 5
+        assert episode_num == 10
