@@ -253,6 +253,76 @@ class TestParseLine:
 
 
 # ---------------------------------------------------------------------------
+# path_parser — parse_line with a configured library root
+# ---------------------------------------------------------------------------
+
+
+class TestParseLineWithRoot:
+    def test_bonus_subfolder_no_longer_treated_as_show_dir(self) -> None:
+        # Real production example: a bonus-content folder nested under the
+        # actual show directory used to be misidentified as show_dir itself.
+        line = r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Gurren Lagann - Clean Ending.avi"
+        entry = parse_line(line, root=r"Z:\anime tv")
+        assert entry is not None
+        assert entry.show_dir == "Gurren Lagann"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\Gurren Lagann"))
+
+    def test_season_dir_detected_below_an_extra_subfolder(self) -> None:
+        line = (
+            r"Z:\anime tv\Re Zero kara Hajimeru Isekai Seikatsu\Season 00"
+            r"\Hybrid Remux\ReZERO S00E01.mkv"
+        )
+        entry = parse_line(line, root=r"Z:\anime tv")
+        assert entry is not None
+        assert entry.show_dir == "Re Zero kara Hajimeru Isekai Seikatsu"
+        assert entry.season == 0
+
+    def test_no_extra_subfolder_still_resolves_normally(self) -> None:
+        line = r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E03.mkv"
+        entry = parse_line(line, root=r"Z:\anime tv")
+        assert entry is not None
+        assert entry.show_dir == "Dorohedoro"
+        assert entry.season == 1
+        assert entry.episode == 3
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\Dorohedoro"))
+
+    def test_path_not_under_root_falls_back_to_old_heuristic(self) -> None:
+        line = r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Gurren Lagann - Clean Ending.avi"
+        entry = parse_line(line, root=r"D:\some\other\root")
+        assert entry is not None
+        assert entry.show_dir == "Clean Intro & Endings"
+
+    def test_path_style_mismatch_falls_back_gracefully(self) -> None:
+        # root given as POSIX while the line is Windows-style — must not raise.
+        line = r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Gurren Lagann - Clean Ending.avi"
+        entry = parse_line(line, root="/data/media/anime")
+        assert entry is not None
+        assert entry.show_dir == "Clean Intro & Endings"
+
+    def test_no_root_given_uses_old_heuristic(self) -> None:
+        line = r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Gurren Lagann - Clean Ending.avi"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.show_dir == "Clean Intro & Endings"
+
+    def test_posix_root_and_line(self) -> None:
+        line = (
+            "/mnt/media/anime/Gurren Lagann/Clean Intro & Endings/Gurren Lagann - Clean Ending.avi"
+        )
+        entry = parse_line(line, root="/mnt/media/anime")
+        assert entry is not None
+        assert entry.show_dir == "Gurren Lagann"
+
+    def test_parse_file_passes_root_through(self) -> None:
+        content = (
+            r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Gurren Lagann - Clean Ending.avi"
+        )
+        entries = parse_file(content, root=r"Z:\anime tv")
+        assert len(entries) == 1
+        assert entries[0].show_dir == "Gurren Lagann"
+
+
+# ---------------------------------------------------------------------------
 # path_parser — parse_file and group_by_show
 # ---------------------------------------------------------------------------
 

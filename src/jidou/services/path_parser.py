@@ -96,7 +96,26 @@ def _as_pure_path(line: str) -> PurePath:
     return PurePosixPath(line)
 
 
-def parse_line(line: str) -> ParsedPathEntry | None:
+def _relative_parts(path: PurePath, root: str) -> tuple[str, ...] | None:
+    """Return ``path``'s parts relative to ``root``, or None if it isn't under it.
+
+    Args:
+        path: The full file path.
+        root: The configured library root (host-side path string).
+
+    Returns:
+        Tuple of path segments below ``root``, or None when ``path`` doesn't
+        fall under ``root`` (including a path-style mismatch, e.g. root given
+        as a POSIX path while the line is Windows-style).
+    """
+    try:
+        root_path = _as_pure_path(root)
+        return path.relative_to(root_path).parts
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
     """Parse one line from a path file into a structured entry.
 
     Skips blank lines and comment lines (starting with ``#``).  Accepts both
@@ -104,6 +123,15 @@ def parse_line(line: str) -> ParsedPathEntry | None:
 
     Args:
         line: A single line from the path file, possibly with surrounding whitespace.
+        root: Configured library root for this import's content type (e.g.
+            ``settings.local_anime_host_path``). When given and the line falls
+            under it, ``show_dir`` is anchored to the first path segment below
+            ``root`` — regardless of how many extra directories (bonus
+            content, OVA folders, anything not named ``Season N``) sit between
+            it and the file. When omitted, or the line doesn't fall under
+            ``root``, falls back to treating the file's immediate parent
+            directory as the show directory (or its grandparent, if the
+            immediate parent looks like ``Season N``).
 
     Returns:
         A :class:`ParsedPathEntry`, or None if the line should be ignored.
@@ -125,18 +153,33 @@ def parse_line(line: str) -> ParsedPathEntry | None:
     if path.suffix.lower() not in _MEDIA_EXTENSIONS:
         return None
 
-    # Detect an optional "Season N" directory one level above the filename.
-    second_to_last = parts[-2]
-    season_match = _SEASON_DIR.match(second_to_last)
+    rel_parts = _relative_parts(path, root) if root else None
 
-    if season_match:
-        dir_season: int | None = int(season_match.group(1))
-        show_dir = parts[-3]
-        show_root = str(path.parent.parent)
-    else:
+    if rel_parts is not None and len(rel_parts) >= 2:
+        # Anchored resolution: the first segment below the configured library
+        # root is the show directory, no matter what's nested beneath it.
+        # A "Season N" match can appear at any depth in between.
+        show_dir = rel_parts[0]
+        show_root = str(path.parents[len(rel_parts) - 2])
         dir_season = None
-        show_dir = parts[-2]
-        show_root = str(path.parent)
+        for seg in rel_parts[1:-1]:
+            season_match = _SEASON_DIR.match(seg)
+            if season_match:
+                dir_season = int(season_match.group(1))
+                break
+    else:
+        # Fallback: infer the show directory from the file's immediate
+        # parent (or grandparent, if the parent looks like "Season N").
+        second_to_last = parts[-2]
+        season_match = _SEASON_DIR.match(second_to_last)
+        if season_match:
+            dir_season = int(season_match.group(1))
+            show_dir = parts[-3]
+            show_root = str(path.parent.parent)
+        else:
+            dir_season = None
+            show_dir = parts[-2]
+            show_root = str(path.parent)
 
     stem = path.stem
     fn_season, episode = _parse_episode(stem, dir_season=dir_season)
@@ -155,18 +198,20 @@ def parse_line(line: str) -> ParsedPathEntry | None:
     )
 
 
-def parse_file(content: str) -> list[ParsedPathEntry]:
+def parse_file(content: str, root: str | None = None) -> list[ParsedPathEntry]:
     """Parse every line of a path file.
 
     Args:
         content: Full text content of the path file (``\\n``-separated lines).
+        root: Configured library root for this import's content type; see
+            :func:`parse_line` for how it anchors show directory resolution.
 
     Returns:
         List of successfully parsed entries; blank/comment/non-media lines skipped.
     """
     entries: list[ParsedPathEntry] = []
     for line in content.splitlines():
-        entry = parse_line(line)
+        entry = parse_line(line, root=root)
         if entry is not None:
             entries.append(entry)
     return entries

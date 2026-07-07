@@ -1274,6 +1274,74 @@ async def test_path_import_success_path() -> None:
     mock_engine.dispose.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ("content_type", "expected_attr"),
+    [
+        ("anime", "local_anime_host_path"),
+        ("tv", "local_tv_host_path"),
+        ("movie", "local_movie_host_path"),
+    ],
+)
+def test_host_root_for_content_type(content_type: str, expected_attr: str) -> None:
+    """_host_root_for_content_type maps each content type to its configured
+    host-side library root, mirroring shows._auto_local_path's container-side
+    mapping.
+    """
+    from jidou.config import settings
+    from jidou.workers.import_tasks import _host_root_for_content_type
+
+    assert _host_root_for_content_type(content_type) == getattr(settings, expected_attr)
+
+
+@pytest.mark.asyncio
+async def test_path_import_passes_content_type_root_to_parse_file() -> None:
+    """_path_import anchors show_dir resolution by passing the content type's
+    configured host root into parse_file, instead of leaving it to infer the
+    show directory purely from local path shape.
+    """
+    from jidou.config import settings
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.path_import_orchestrator import PathImportResult
+    from jidou.workers.import_tasks import _path_import
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    import_result = PathImportResult()
+    mock_parse_file = MagicMock(return_value=[])
+
+    with (
+        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers.import_tasks.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers.import_tasks.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.parse_file", mock_parse_file),
+        patch("jidou.workers.import_tasks.TMDBService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
+        patch(
+            "jidou.workers.import_tasks.PathImportOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=import_result,
+        ),
+    ):
+        await _path_import("tid-pi-root", "/show/S01E01.mkv\n", "anime", False)
+
+    mock_parse_file.assert_called_once_with(
+        "/show/S01E01.mkv\n", root=settings.local_anime_host_path
+    )
+
+
 @pytest.mark.asyncio
 async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> None:
     """A file with real content but zero parseable entries (e.g. wrong

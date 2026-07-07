@@ -26,6 +26,27 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 
+def _host_root_for_content_type(content_type: str) -> str:
+    """Return the configured host-side library root for a content type.
+
+    Mirrors the container-side mapping in
+    :func:`jidou.api.routes.shows._auto_local_path`, but for the host path —
+    the import file's raw paths are Windows/POSIX host paths, not
+    container-internal ones.
+
+    Args:
+        content_type: One of ``"anime"``, ``"movie"``, or ``"tv"``.
+
+    Returns:
+        The configured host path string for that content type.
+    """
+    if content_type == "movie":
+        return settings.local_movie_host_path
+    if content_type == "anime":
+        return settings.local_anime_host_path
+    return settings.local_tv_host_path
+
+
 # Overrides the app-wide 50min/60min limits (celery_app.py) for this task
 # specifically. A bulk path-list import can span hundreds of previously-unseen
 # shows, each requiring several sequential TMDB calls (search, details,
@@ -97,7 +118,7 @@ async def _path_import(
                 progress_message="Parsing file…",
             )
 
-            entries = parse_file(file_content)
+            entries = parse_file(file_content, root=_host_root_for_content_type(content_type))
             total_shows = len({e.show_dir for e in entries})
 
             # parse_file() never raises — an unparseable line is simply skipped
