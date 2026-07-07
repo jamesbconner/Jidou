@@ -16,9 +16,9 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
-from jidou.orchestrators.parse_orchestrator import _heuristic_se
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
+from jidou.services.filename_parser import heuristic_se
 from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
 
@@ -591,7 +591,7 @@ async def manual_match_file(
     # Run BEFORE stale-episode clearing so we know the new episode_id and can
     # skip the clear when the file stays on the same episode.
     if file.parsed_season is None and file.parsed_episode is None:
-        se = _heuristic_se(file.original_filename)
+        se = heuristic_se(file.original_filename)
         if se is not None:
             file.parsed_season, file.parsed_episode = se
 
