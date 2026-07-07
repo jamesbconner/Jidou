@@ -307,8 +307,7 @@ class TestParseLineWithRoot:
 
     def test_posix_root_and_line(self) -> None:
         line = (
-            "/mnt/media/anime/Gurren Lagann/Clean Intro & Endings"
-            "/Gurren Lagann - Clean Ending.avi"
+            "/mnt/media/anime/Gurren Lagann/Clean Intro & Endings/Gurren Lagann - Clean Ending.avi"
         )
         entry = parse_line(line, root="/mnt/media/anime")
         assert entry is not None
