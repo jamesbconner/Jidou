@@ -256,6 +256,14 @@ class PathImportOrchestrator:
         Returns:
             :class:`PathImportResult` with aggregate and per-show counts.
         """
+        if self.llm is None or not self.llm.is_available():
+            await self._emit(
+                "warn",
+                "LLM not configured or unavailable — filenames that regex can't "
+                "parse, and shows TMDB can't match exactly, will not get an LLM "
+                "fallback attempt for this run",
+            )
+
         result = PathImportResult()
         grouped = group_by_show(entries)
         result.shows_processed = len(grouped)
@@ -361,7 +369,9 @@ class PathImportOrchestrator:
 
         # Match each file entry to an Episode row.
         for entry in entries:
-            ep = await self._find_episode(show.id, show.title, entry)
+            ep, resolved_season, resolved_episode = await self._find_episode(
+                show.id, show.title, entry
+            )
             if ep is not None:
                 newly_tracked = not ep.file_tracked
                 if not self.dry_run:
@@ -376,8 +386,12 @@ class PathImportOrchestrator:
                     show_result.episodes_tracked += 1
             else:
                 filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
-                s_label = f"S{entry.season:02d}" if entry.season is not None else "S?"
-                e_label = f"E{entry.episode:02d}" if entry.episode is not None else "E?"
+                # resolved_season/resolved_episode reflect any LLM adjustment made
+                # inside _find_episode — entry.season/entry.episode would only ever
+                # show the pre-LLM regex output, hiding whether an LLM fallback was
+                # even attempted or what it returned.
+                s_label = f"S{resolved_season:02d}" if resolved_season is not None else "S?"
+                e_label = f"E{resolved_episode:02d}" if resolved_episode is not None else "E?"
                 show_result.episodes_unmatched += 1
                 show_result.unmatched_paths.append(entry.raw_path)
                 await self._emit(
@@ -385,16 +399,16 @@ class PathImportOrchestrator:
                     f"No match: {filename} ({s_label}{e_label})",
                     {
                         "path": entry.raw_path,
-                        "season": entry.season,
-                        "episode": entry.episode,
+                        "season": resolved_season,
+                        "episode": resolved_episode,
                     },
                 )
                 logger.debug(
                     "No episode match: show=%r dir=%r season=%s episode=%s abs=%s path=%r",
                     show.title,
                     show_dir,
-                    entry.season,
-                    entry.episode,
+                    resolved_season,
+                    resolved_episode,
                     entry.is_absolute,
                     entry.raw_path,
                 )
@@ -734,11 +748,13 @@ class PathImportOrchestrator:
                 system=_LLM_EPISODE_PARSE_SYSTEM,
                 response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM episode-parse failed for %r", filename)
+            await self._emit("warn", f"LLM episode-parse failed for '{filename}': {exc}")
             return None, None
 
         if response is None:
+            await self._emit("warn", f"LLM episode-parse returned no response for '{filename}'")
             return None, None
 
         text = response.content.strip()
@@ -749,10 +765,16 @@ class PathImportOrchestrator:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             logger.warning("LLM returned invalid JSON for episode parse of %r: %r", filename, text)
+            await self._emit(
+                "warn", f"LLM episode-parse returned invalid JSON for '{filename}': {text!r}"
+            )
             return None, None
 
         if not isinstance(parsed, dict):
             logger.warning("LLM returned non-dict JSON for episode parse of %r: %r", filename, text)
+            await self._emit(
+                "warn", f"LLM episode-parse returned non-object JSON for '{filename}': {text!r}"
+            )
             return None, None
 
         raw_season = parsed.get("season")
@@ -762,9 +784,17 @@ class PathImportOrchestrator:
             episode = int(raw_episode) if raw_episode is not None else None
         except (TypeError, ValueError):
             logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
+            await self._emit(
+                "warn", f"LLM episode-parse returned non-integer season/episode for '{filename}'"
+            )
             return None, None
 
         logger.debug("LLM episode-parse: %r → season=%s episode=%s", filename, season, episode)
+        await self._emit(
+            "info",
+            f"LLM episode-parse: '{filename}' -> season={season} episode={episode}",
+            {"filename": filename, "season": season, "episode": episode},
+        )
         return season, episode
 
     async def _find_episode(
@@ -772,7 +802,7 @@ class PathImportOrchestrator:
         show_id: int,
         show_title: str,
         entry: ParsedPathEntry,
-    ) -> Episode | None:
+    ) -> tuple[Episode | None, int | None, int | None]:
         """Match a parsed path entry to an Episode row.
 
         Lookup priority:
@@ -792,7 +822,11 @@ class PathImportOrchestrator:
             entry: Parsed entry describing the file's position.
 
         Returns:
-            Matching :class:`Episode`, or None.
+            ``(episode, season, episode_number)`` where ``episode`` is the
+            matching :class:`Episode` or None, and ``season``/``episode_number``
+            are the best-effort season/episode this attempt resolved to —
+            including any LLM adjustment — for callers to log accurately even
+            when no match was found.
         """
         season = entry.season
         episode = entry.episode
@@ -801,7 +835,9 @@ class PathImportOrchestrator:
             filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
             llm_season, llm_episode = await self._llm_parse_episode(filename, season)
             if llm_episode is None:
-                return None
+                # The LLM may still have proposed a season even without an
+                # episode — surface it rather than silently discarding it.
+                return None, season if season is not None else llm_season, episode
             episode = llm_episode
             if season is None:
                 season = llm_season
@@ -814,12 +850,19 @@ class PathImportOrchestrator:
             )
             ep = (await self.session.execute(stmt)).scalar_one_or_none()
             if ep is not None:
-                return ep
+                return ep, season, episode
             # S##E## miss with an explicit season > 1 means the episode is
             # genuinely absent — absolute/ROW_NUMBER fallbacks would map to the
             # wrong episode in the overall sequence, so go straight to LLM.
             if season > 1:
-                return await self._llm_match(show_id, show_title, entry)
+                llm_ep, llm_season, llm_episode_num = await self._llm_match(
+                    show_id, show_title, entry
+                )
+                return (
+                    llm_ep,
+                    llm_season if llm_season is not None else season,
+                    llm_episode_num if llm_episode_num is not None else episode,
+                )
             # Season 1 directory: the episode number may still be a continuous
             # absolute count (e.g. a show with all 148 episodes in Season 01).
             # Fall through to absolute-number lookups before the LLM.
@@ -832,7 +875,7 @@ class PathImportOrchestrator:
         )
         ep = (await self.session.execute(stmt)).scalar_one_or_none()
         if ep is not None:
-            return ep
+            return ep, season, episode
 
         # Compute a sequential absolute number by ordering all non-special episodes
         # by (season_number, episode_number) and matching on row position.  This
@@ -855,9 +898,14 @@ class PathImportOrchestrator:
         )
         ep = (await self.session.execute(stmt)).scalar_one_or_none()
         if ep is not None:
-            return ep
+            return ep, season, episode
 
-        return await self._llm_match(show_id, show_title, entry)
+        llm_ep, llm_season, llm_episode_num = await self._llm_match(show_id, show_title, entry)
+        return (
+            llm_ep,
+            llm_season if llm_season is not None else season,
+            llm_episode_num if llm_episode_num is not None else episode,
+        )
 
     async def _llm_pick_candidate(
         self,
@@ -894,11 +942,13 @@ class PathImportOrchestrator:
                 system=_LLM_SHOW_MATCH_SYSTEM,
                 response_format=_LLM_SHOW_MATCH_RESPONSE_FORMAT,
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM show-match failed for %r", show_dir)
+            await self._emit("warn", f"LLM show-match failed for '{show_dir}': {exc}")
             return None
 
         if response is None:
+            await self._emit("warn", f"LLM show-match returned no response for '{show_dir}'")
             return None
 
         text = response.content.strip()
@@ -909,22 +959,33 @@ class PathImportOrchestrator:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             logger.warning("LLM returned invalid JSON for show-match of %r: %r", show_dir, text)
+            await self._emit(
+                "warn", f"LLM show-match returned invalid JSON for '{show_dir}': {text!r}"
+            )
             return None
 
         raw_match = parsed.get("match") if isinstance(parsed, dict) else None
         if raw_match is None:
+            await self._emit("warn", f"LLM show-match could not pick a candidate for '{show_dir}'")
             return None
 
         try:
             idx = int(raw_match) - 1
         except (TypeError, ValueError):
             logger.warning("LLM returned non-integer match %r for show dir %r", raw_match, show_dir)
+            await self._emit("warn", f"LLM show-match returned a non-integer pick for '{show_dir}'")
             return None
 
         if 0 <= idx < len(shortlist):
+            await self._emit(
+                "info",
+                f"LLM show-match: '{show_dir}' -> '{shortlist[idx].get('name')}'",
+                {"show_dir": show_dir, "picked": shortlist[idx].get("name")},
+            )
             return shortlist[idx]
 
         logger.warning("LLM returned out-of-range index %d for show dir %r", idx + 1, show_dir)
+        await self._emit("warn", f"LLM show-match returned an out-of-range pick for '{show_dir}'")
         return None
 
     async def _llm_match(
@@ -932,7 +993,7 @@ class PathImportOrchestrator:
         show_id: int,
         show_title: str,
         entry: ParsedPathEntry,
-    ) -> Episode | None:
+    ) -> tuple[Episode | None, int | None, int | None]:
         """Ask the LLM to identify the episode from the filename.
 
         Only called after all DB-based lookup strategies have failed.
@@ -943,10 +1004,15 @@ class PathImportOrchestrator:
             entry: Parsed entry with the raw file path.
 
         Returns:
-            Matching :class:`Episode`, or None if LLM is unavailable or unconfident.
+            ``(episode, season, episode_number)`` where ``episode`` is the
+            matching :class:`Episode` or None (LLM unavailable, unconfident,
+            or its proposed season/episode has no matching DB row), and
+            ``season``/``episode_number`` are the values the LLM actually
+            proposed — None if it never got far enough to propose any — so
+            callers can log what was attempted even on a miss.
         """
         if self.llm is None or not self.llm.is_available():
-            return None
+            return None, None, None
 
         eps = list(
             (
@@ -960,7 +1026,7 @@ class PathImportOrchestrator:
             .all()
         )
         if not eps:
-            return None
+            return None, None, None
 
         ep_list = "\n".join(
             f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in eps[:500]
@@ -974,12 +1040,16 @@ class PathImportOrchestrator:
                 system=_LLM_SYSTEM,
                 response_format=_LLM_MATCH_RESPONSE_FORMAT,
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("LLM match failed for %r in show %r", filename, show_title)
-            return None
+            await self._emit("warn", f"LLM episode-list match failed for '{filename}': {exc}")
+            return None, None, None
 
         if response is None:
-            return None
+            await self._emit(
+                "warn", f"LLM episode-list match returned no response for '{filename}'"
+            )
+            return None, None, None
 
         text = response.content.strip()
         if text.startswith("```"):
@@ -989,22 +1059,36 @@ class PathImportOrchestrator:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             logger.warning("LLM returned invalid JSON for match of %r: %r", filename, text)
-            return None
+            await self._emit(
+                "warn", f"LLM episode-list match returned invalid JSON for '{filename}': {text!r}"
+            )
+            return None, None, None
 
         if not isinstance(parsed, dict):
             logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, text)
-            return None
+            await self._emit(
+                "warn",
+                f"LLM episode-list match returned non-object JSON for '{filename}': {text!r}",
+            )
+            return None, None, None
 
         raw_season = parsed.get("season")
         raw_episode = parsed.get("episode")
         if raw_season is None or raw_episode is None:
-            return None
+            await self._emit(
+                "warn", f"LLM episode-list match could not identify '{filename}' among episodes"
+            )
+            return None, None, None
 
         try:
             season, episode_num = int(raw_season), int(raw_episode)
         except (TypeError, ValueError):
             logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
-            return None
+            await self._emit(
+                "warn",
+                f"LLM episode-list match returned non-integer season/episode for '{filename}'",
+            )
+            return None, None, None
 
         stmt = select(Episode).where(
             Episode.show_id == show_id,
@@ -1020,4 +1104,16 @@ class PathImportOrchestrator:
                 episode_num,
                 show_title,
             )
-        return ep
+            await self._emit(
+                "info",
+                f"LLM episode-list match: '{filename}' -> S{season:02d}E{episode_num:02d}",
+                {"filename": filename, "season": season, "episode": episode_num},
+            )
+        else:
+            await self._emit(
+                "warn",
+                f"LLM episode-list match proposed S{season:02d}E{episode_num:02d} for "
+                f"'{filename}' but no such episode exists in the DB",
+                {"filename": filename, "season": season, "episode": episode_num},
+            )
+        return ep, season, episode_num
