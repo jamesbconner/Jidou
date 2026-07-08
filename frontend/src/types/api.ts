@@ -657,3 +657,17 @@ export interface PathImportResult {
   episodes_unmatched: number
   show_results: ShowImportResult[]
 }
+
+// ─── Calendar ─────────────────────────────────────────────────────────────
+
+export interface CalendarEpisode {
+  episode_id: number
+  show_id: number
+  show_title: string
+  poster_path: string | null
+  season_number: number
+  episode_number: number
+  name: string
+  air_date: string
+  status: 'tracked' | 'missing' | 'upcoming'
+}

@@ -10,6 +10,7 @@ const BASE_LINKS = [
   { to: '/shows', label: 'Shows' },
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/calendar', label: 'Calendar' },
   { to: '/tasks', label: 'Tasks' },
   { to: '/data', label: 'Data' },
   { to: '/settings', label: 'Settings' },
@@ -23,7 +24,7 @@ export function NavBar() {
   })
 
   const links = config?.rss_config_path_set
-    ? [...BASE_LINKS.slice(0, 4), { to: '/rss', label: 'RSS' }, ...BASE_LINKS.slice(4)]
+    ? [...BASE_LINKS.slice(0, 5), { to: '/rss', label: 'RSS' }, ...BASE_LINKS.slice(5)]
     : BASE_LINKS
 
   return (
