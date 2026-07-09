@@ -91,14 +91,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # eslint-plugin-react-hooks@4.x declares a peer range that predates
-      # ESLint 9 (installed here), so a strict npm ci fails with ERESOLVE.
-      # --legacy-peer-deps matches what's already required for any local
-      # `npm install` in this repo. The real fix is upgrading
-      # eslint-plugin-react-hooks to a v5 release with ESLint 9 support and
-      # adding a flat eslint.config.js — tracked separately, not done here.
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       # frontend/tsconfig.json is a solution-style config with an empty
       # `files` array and only project references — `tsc --noEmit` against
@@ -109,9 +103,8 @@ jobs:
       - name: TypeScript type check
         run: npx tsc -b
 
-      # ESLint is a devDependency and has a `lint` script, but the repo has no
-      # eslint.config.js (flat config) yet, so it cannot run here. Add an
-      # eslint step once that config exists.
+      - name: Lint
+        run: npm run lint
 
       - name: Run tests
         run: npm run test

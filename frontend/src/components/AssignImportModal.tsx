@@ -70,7 +70,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
 
           <div className="space-y-1.5">
             <div className="text-xs text-zinc-400">
-              Select file from this show's imported pool
+              Select file from this show&apos;s imported pool
             </div>
             <select
               value={selected}

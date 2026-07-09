@@ -86,7 +86,7 @@ export default function Settings() {
             Show adult content
             <span className="block text-xs text-gray-400 font-normal">
               Adult-flagged shows and episodes are always tracked; this only controls whether
-              they appear in the dashboard's recently-added carousels.
+              they appear in the dashboard&apos;s recently-added carousels.
             </span>
           </span>
           <input

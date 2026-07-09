@@ -219,16 +219,24 @@ def seed() -> None:
 
 @cli.command()
 def generate_types() -> None:
-    """Generate TypeScript types from the running API's OpenAPI spec.
+    """Regenerate the raw OpenAPI type reference from the running API's spec.
 
     Requires the API to be running at http://localhost:8192.
     Start it first with: uv run python make.py docker-up
+
+    Writes to frontend/src/types/api-generated.ts, which is safe to
+    overwrite freely. frontend/src/types/api.ts is hand-maintained on top
+    of it (thin aliases and Omit<>+override narrowings per type) and is
+    NOT touched by this command — see the comment at the top of that file
+    for why, and diff it against the regenerated file after running this.
     """
     run(
-        "npx openapi-typescript http://localhost:8192/openapi.json -o frontend/src/types/api.ts",
+        "npx openapi-typescript http://localhost:8192/openapi.json "
+        "-o frontend/src/types/api-generated.ts",
         check=True,
     )
-    click.echo("Types written to frontend/src/types/api.ts")
+    click.echo("Types written to frontend/src/types/api-generated.ts")
+    click.echo("frontend/src/types/api.ts is hand-maintained -- diff and update it by hand.")
 
 
 @cli.command()
