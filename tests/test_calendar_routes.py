@@ -55,10 +55,15 @@ def _session_override(rows: list[tuple[MagicMock, MagicMock]]) -> object:
     return _mock_session
 
 
-def _get_calendar(rows: list[tuple[MagicMock, MagicMock]], start: str, end: str):
+def _get_calendar(
+    rows: list[tuple[MagicMock, MagicMock]], start: str, end: str, today: str | None = None
+):
     app.dependency_overrides[get_session] = _session_override(rows)
+    url = f"/api/shows/calendar?start={start}&end={end}"
+    if today is not None:
+        url += f"&today={today}"
     try:
-        return TestClient(app).get(f"/api/shows/calendar?start={start}&end={end}")
+        return TestClient(app).get(url)
     finally:
         app.dependency_overrides.clear()
 
@@ -105,6 +110,30 @@ class TestCalendarStatus:
 
         assert response.status_code == 200
         assert response.json()[0]["status"] == "tracked"
+
+    def test_explicit_today_param_overrides_server_clock(self) -> None:
+        """An explicit `today` query param governs status, not the API host's clock.
+
+        Regression test for a Bugbot finding: status was computed from
+        date.today() on the server while the UI's "today" highlight used the
+        browser's local date, so the two could disagree across a timezone
+        or day-boundary difference. The caller now always supplies `today`.
+        """
+        show = _make_show()
+        # An episode airing "in the future" relative to the real server
+        # clock, but in the past relative to the caller-supplied `today`.
+        future_air_date = _TODAY + timedelta(days=5)
+        episode = _make_episode(air_date=future_air_date, file_tracked=False)
+
+        response = _get_calendar(
+            [(episode, show)],
+            "2026-01-01",
+            "2030-01-01",
+            today=(future_air_date + timedelta(days=1)).isoformat(),
+        )
+
+        assert response.status_code == 200
+        assert response.json()[0]["status"] == "missing"
 
 
 class TestCalendarResponseShape:

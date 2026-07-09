@@ -4,12 +4,18 @@ import type { CalendarEpisode } from '@/types/api'
 
 export const calendarKeys = {
   all: ['calendar'] as const,
-  week: (start: string, end: string) => [...calendarKeys.all, start, end] as const,
+  week: (start: string, end: string, today: string) =>
+    [...calendarKeys.all, start, end, today] as const,
 }
 
-export function useCalendarWeek(start: string, end: string) {
+// `today` is the browser's local date, not the API host's — the backend
+// uses it to decide "tracked"/"missing" vs "upcoming", and must agree with
+// whichever day the UI highlights as "today" or the two can disagree
+// across a timezone or day-boundary difference between client and server.
+export function useCalendarWeek(start: string, end: string, today: string) {
   return useQuery({
-    queryKey: calendarKeys.week(start, end),
-    queryFn: () => api.get<CalendarEpisode[]>(`/shows/calendar?start=${start}&end=${end}`),
+    queryKey: calendarKeys.week(start, end, today),
+    queryFn: () =>
+      api.get<CalendarEpisode[]>(`/shows/calendar?start=${start}&end=${end}&today=${today}`),
   })
 }

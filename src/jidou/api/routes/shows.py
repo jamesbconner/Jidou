@@ -248,6 +248,7 @@ async def list_shows(
 async def get_calendar(
     start: date,
     end: date,
+    today: date | None = None,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[CalendarEpisode]:
     """Return episodes airing within a date range, across all shows.
@@ -258,6 +259,12 @@ async def get_calendar(
     Args:
         start: First date to include (inclusive).
         end: Last date to include (inclusive).
+        today: The caller's notion of "today", used to decide "tracked"/
+            "missing" vs "upcoming". The frontend always passes the
+            browser's local date here — falling back to the API host's own
+            clock (which may be in a different timezone, or just briefly
+            disagree near a day boundary) would make the computed status
+            disagree with whichever day the UI highlights as "today".
         db_session: DB session (injected).
 
     Returns:
@@ -273,7 +280,7 @@ async def get_calendar(
     )
     rows = (await db_session.execute(stmt)).all()
 
-    today = date.today()
+    today = today or date.today()
     results: list[CalendarEpisode] = []
     for episode, show in rows:
         # Excluded by the WHERE clause above; narrows the type for the

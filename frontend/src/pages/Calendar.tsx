@@ -73,8 +73,9 @@ export default function Calendar() {
   )
   const start = toISODate(days[0])
   const end = toISODate(days[6])
+  const today = toISODate(new Date())
 
-  const { data: episodes = [], isLoading } = useCalendarWeek(start, end)
+  const { data: episodes = [], isLoading, isError, error } = useCalendarWeek(start, end, today)
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEpisode[]>()
@@ -114,14 +115,18 @@ export default function Calendar() {
         {start} – {end}
       </p>
 
-      {isLoading ? (
+      {isError ? (
+        <p className="text-sm text-red-600">
+          Failed to load the calendar{error instanceof Error ? `: ${error.message}` : ''}.
+        </p>
+      ) : isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
           {days.map((day, i) => {
             const iso = toISODate(day)
             const dayEpisodes = byDay.get(iso) ?? []
-            const isToday = iso === toISODate(new Date())
+            const isToday = iso === today
             return (
               <div key={iso} className="space-y-2">
                 <div
