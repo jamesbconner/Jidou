@@ -276,9 +276,10 @@ async def get_calendar(
     today = date.today()
     results: list[CalendarEpisode] = []
     for episode, show in rows:
-        # Guaranteed non-None by the WHERE clause above; narrows the type
-        # for the CalendarEpisode.air_date field (non-nullable).
-        assert episode.air_date is not None
+        # Excluded by the WHERE clause above; narrows the type for the
+        # CalendarEpisode.air_date field (non-nullable).
+        if episode.air_date is None:
+            continue
 
         status: Literal["tracked", "missing", "upcoming"]
         if episode.air_date > today:
