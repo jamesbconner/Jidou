@@ -100,6 +100,24 @@ export default function Settings() {
             className="h-4 w-4 shrink-0 accent-indigo-600"
           />
         </label>
+        <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+          <span className="text-gray-700">
+            Calendar
+            <span className="block text-xs text-gray-400 font-normal">
+              Show the airing calendar page and its nav link.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={appSettings?.calendar_enabled ?? true}
+            disabled={!appSettings || updateAppSettings.isPending}
+            onChange={(e) =>
+              updateAppSettings.mutate({ calendar_enabled: e.target.checked })
+            }
+            className="h-4 w-4 shrink-0 accent-indigo-600"
+          />
+        </label>
       </div>
 
       {/* Services — health status + on-demand connection tests in one place */}

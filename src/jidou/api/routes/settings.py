@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.schemas.settings_schema import AppSettingsPatch, AppSettingsRead
 from jidou.services.settings_service import (
+    CALENDAR_ENABLED,
     SHOW_ADULT_CONTENT,
     get_all_settings,
     set_setting,
@@ -20,7 +21,10 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 def _to_read_model(values: dict[str, object]) -> AppSettingsRead:
     """Map the service layer's dotted setting keys onto the flat API schema."""
-    return AppSettingsRead(show_adult_content=bool(values[SHOW_ADULT_CONTENT]))
+    return AppSettingsRead(
+        show_adult_content=bool(values[SHOW_ADULT_CONTENT]),
+        calendar_enabled=bool(values[CALENDAR_ENABLED]),
+    )
 
 
 @router.get("", response_model=AppSettingsRead)
@@ -59,6 +63,10 @@ async def update_settings(
     """
     if "show_adult_content" in payload.model_fields_set:
         await set_setting(db_session, SHOW_ADULT_CONTENT, payload.show_adult_content)
+        await db_session.flush()
+
+    if "calendar_enabled" in payload.model_fields_set:
+        await set_setting(db_session, CALENDAR_ENABLED, payload.calendar_enabled)
         await db_session.flush()
 
     values = await get_all_settings(db_session)

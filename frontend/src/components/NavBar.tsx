@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { ConnectionBadge } from './ConnectionBadge'
+import { useAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
 import type { AppConfig } from '@/types/api'
 
@@ -10,7 +11,6 @@ const BASE_LINKS = [
   { to: '/shows', label: 'Shows' },
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
-  { to: '/calendar', label: 'Calendar' },
   { to: '/tasks', label: 'Tasks' },
   { to: '/data', label: 'Data' },
   { to: '/settings', label: 'Settings' },
@@ -22,10 +22,16 @@ export function NavBar() {
     queryFn: () => api.get<AppConfig>('/config'),
     staleTime: 60_000,
   })
+  const { data: appSettings } = useAppSettings()
 
-  const links = config?.rss_config_path_set
-    ? [...BASE_LINKS.slice(0, 5), { to: '/rss', label: 'RSS' }, ...BASE_LINKS.slice(5)]
-    : BASE_LINKS
+  let links = BASE_LINKS.slice(0, 4)
+  if (appSettings?.calendar_enabled ?? true) {
+    links = [...links, { to: '/calendar', label: 'Calendar' }]
+  }
+  if (config?.rss_config_path_set) {
+    links = [...links, { to: '/rss', label: 'RSS' }]
+  }
+  links = [...links, ...BASE_LINKS.slice(4)]
 
   return (
     <nav className="bg-gray-900 text-white px-6 py-3 flex items-center gap-6">

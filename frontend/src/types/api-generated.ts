@@ -178,6 +178,12 @@ export interface paths {
          *     Args:
          *         start: First date to include (inclusive).
          *         end: Last date to include (inclusive).
+         *         today: The caller's notion of "today", used to decide "tracked"/
+         *             "missing" vs "upcoming". The frontend always passes the
+         *             browser's local date here — falling back to the API host's own
+         *             clock (which may be in a different timezone, or just briefly
+         *             disagree near a day boundary) would make the computed status
+         *             disagree with whichever day the UI highlights as "today".
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -2097,6 +2103,8 @@ export interface components {
         AppSettingsPatch: {
             /** Show Adult Content */
             show_adult_content?: boolean | null;
+            /** Calendar Enabled */
+            calendar_enabled?: boolean | null;
         };
         /**
          * AppSettingsRead
@@ -2108,6 +2116,11 @@ export interface components {
              * @description Whether adult-flagged shows/episodes appear on the dashboard
              */
             show_adult_content: boolean;
+            /**
+             * Calendar Enabled
+             * @description Whether the airing calendar page and nav link are shown
+             */
+            calendar_enabled: boolean;
         };
         /**
          * AssignImportRequest
@@ -3643,6 +3656,7 @@ export interface operations {
             query: {
                 start: string;
                 end: string;
+                today?: string | null;
             };
             header?: {
                 "x-api-key"?: string | null;
