@@ -56,6 +56,17 @@ export function useCreateRssSubscription() {
   })
 }
 
+export function useEnsureRssStub() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (showId: number) =>
+      api.post<RssSubscriptionRead>(`/shows/${showId}/rss-stub`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.all })
+    },
+  })
+}
+
 export function usePatchRssSubscription() {
   const qc = useQueryClient()
   return useMutation({
