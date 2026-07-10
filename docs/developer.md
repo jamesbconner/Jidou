@@ -50,7 +50,7 @@ uv run python make.py check
 uv run python make.py lint          # ruff check
 uv run python make.py format        # ruff format
 uv run python make.py types         # mypy src/
-uv run python make.py security      # bandit -r src/ -ll
+uv run python make.py security      # bandit -r src/ -l
 uv run python make.py test          # pytest with coverage
 
 # Docker
@@ -188,14 +188,16 @@ Always review auto-generated migrations before applying — `--autogenerate` may
 
 ## TypeScript type generation
 
-API types in `frontend/src/types/api.ts` are generated from the FastAPI OpenAPI spec. After changing any Pydantic schema or response model:
+`frontend/src/types/api-generated.ts` is the raw, auto-generated OpenAPI type reference — safe to regenerate at any time, never hand-edited:
 
 ```bash
 # The API must be running
 uv run python make.py generate-types
 ```
 
-Do not hand-edit `api.ts` for fields that come from the backend — regenerate instead.
+`frontend/src/types/api.ts` is hand-maintained on top of it (see the comment at the top of that file) — most types are thin aliases (`export type X = components['schemas']['X']`) or `Omit<>`+override narrowings for fields the backend types more loosely than the frontend needs (e.g. a bare `string` where the frontend wants a literal union, or a generic dict where it wants a specific shape). A handful of types have no backend schema to alias at all — TMDB proxy endpoints return raw `dict[str, Any]`, WebSocket payloads aren't part of the REST OpenAPI spec — and stay fully hand-written.
+
+After running `generate-types`, diff `api-generated.ts` against `api.ts`'s `Omit<>` overrides for anything you changed on the backend — a renamed or newly-loosened field shows up as a type error in `api.ts`, not a silent runtime drift.
 
 ---
 

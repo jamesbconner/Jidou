@@ -2,8 +2,9 @@
 
 import logging
 import re
+from datetime import date
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
@@ -16,6 +17,7 @@ from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.schemas.calendar_schema import CalendarEpisode
 from jidou.schemas.episode_schema import BackingFile, EpisodeList
 from jidou.schemas.file_schema import FileRead
 from jidou.schemas.show_schema import (
@@ -240,6 +242,74 @@ async def list_shows(
         data.matched_file_count = file_count
         shows.append(data)
     return shows
+
+
+@router.get("/calendar", response_model=list[CalendarEpisode])
+async def get_calendar(
+    start: date,
+    end: date,
+    today: date | None = None,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[CalendarEpisode]:
+    """Return episodes airing within a date range, across all shows.
+
+    Every show with a matching episode appears — library and watchlist
+    shows are the same ``Show`` table, so no separate scope filter is needed.
+
+    Args:
+        start: First date to include (inclusive).
+        end: Last date to include (inclusive).
+        today: The caller's notion of "today", used to decide "tracked"/
+            "missing" vs "upcoming". The frontend always passes the
+            browser's local date here — falling back to the API host's own
+            clock (which may be in a different timezone, or just briefly
+            disagree near a day boundary) would make the computed status
+            disagree with whichever day the UI highlights as "today".
+        db_session: DB session (injected).
+
+    Returns:
+        Episodes ordered by air date then show title, each with a computed
+        ``status`` ("tracked", "missing", or "upcoming") so the frontend
+        never has to reason about "today" itself.
+    """
+    stmt = (
+        select(Episode, Show)
+        .join(Show, Episode.show_id == Show.id)
+        .where(Episode.air_date.between(start, end))
+        .order_by(Episode.air_date, Show.title)
+    )
+    rows = (await db_session.execute(stmt)).all()
+
+    today = today or date.today()
+    results: list[CalendarEpisode] = []
+    for episode, show in rows:
+        # Excluded by the WHERE clause above; narrows the type for the
+        # CalendarEpisode.air_date field (non-nullable).
+        if episode.air_date is None:
+            continue
+
+        status: Literal["tracked", "missing", "upcoming"]
+        if episode.air_date > today:
+            status = "upcoming"
+        elif episode.file_tracked:
+            status = "tracked"
+        else:
+            status = "missing"
+
+        results.append(
+            CalendarEpisode(
+                episode_id=episode.id,
+                show_id=show.id,
+                show_title=show.title,
+                poster_path=show.poster_path,
+                season_number=episode.season_number,
+                episode_number=episode.episode_number,
+                name=episode.name,
+                air_date=episode.air_date,
+                status=status,
+            )
+        )
+    return results
 
 
 @router.post("", response_model=ShowRead, status_code=201)

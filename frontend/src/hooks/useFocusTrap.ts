@@ -28,8 +28,8 @@ export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
 
   // Restore focus to the trigger on unmount.
   useEffect(() => {
+    const trigger = triggerRef.current
     return () => {
-      const trigger = triggerRef.current
       if (trigger instanceof HTMLElement) trigger.focus()
     }
   }, [])

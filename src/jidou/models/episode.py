@@ -28,7 +28,7 @@ class Episode(TimestampMixin, Base):
     episode_number: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(500))
     overview: Mapped[str | None] = mapped_column(Text)
-    air_date: Mapped[date | None] = mapped_column(Date)
+    air_date: Mapped[date | None] = mapped_column(Date, index=True)
     runtime: Mapped[int | None] = mapped_column(Integer)
     absolute_episode_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     episode_type: Mapped[str | None] = mapped_column(String(50), nullable=True)

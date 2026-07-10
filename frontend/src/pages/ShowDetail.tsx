@@ -147,7 +147,7 @@ function ContentTypeModal({
   error,
 }: {
   current: string | null
-  onSave: (value: string | null) => void
+  onSave: (value: ContentType | null) => void
   onClose: () => void
   isPending: boolean
   error: Error | null
@@ -156,7 +156,7 @@ function ContentTypeModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave(draft || null)
+    onSave((draft || null) as ContentType | null)
   }
 
   return (

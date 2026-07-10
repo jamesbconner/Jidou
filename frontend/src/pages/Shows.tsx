@@ -384,7 +384,7 @@ export default function Shows() {
                     query.trim().length < 2 ? (
                       <p className="text-sm text-gray-400">Type at least 2 characters to search your library.</p>
                     ) : librarySearchResults.length === 0 ? (
-                      <p className="text-sm text-gray-500">No shows found for "{query}".</p>
+                      <p className="text-sm text-gray-500">No shows found for &quot;{query}&quot;.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {librarySearchResults.map((s) => (
@@ -416,7 +416,7 @@ export default function Shows() {
                     ) : tmdbSearching || debouncedQuery !== query ? (
                       <p className="text-sm text-gray-400">Searching…</p>
                     ) : !searchData || searchData.results.length === 0 ? (
-                      <p className="text-sm text-gray-500">No results for "{debouncedQuery}".</p>
+                      <p className="text-sm text-gray-500">No results for &quot;{debouncedQuery}&quot;.</p>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {searchData.results.slice(0, 12).map((r) => {

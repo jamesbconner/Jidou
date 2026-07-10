@@ -984,7 +984,7 @@ function RecommendationsTab() {
 
       {recs.length === 0 ? (
         <div className="border rounded-lg p-8 text-center text-gray-400 text-sm">
-          No recommendations — all subscriptions match their show's current status.
+          No recommendations — all subscriptions match their show&apos;s current status.
         </div>
       ) : visible.length === 0 ? (
         <div className="border rounded-lg p-8 text-center text-gray-400 text-sm">

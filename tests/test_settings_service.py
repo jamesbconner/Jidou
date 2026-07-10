@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.services.settings_service import (
+    CALENDAR_ENABLED,
     SHOW_ADULT_CONTENT,
     get_all_settings,
     get_setting,
@@ -94,7 +95,7 @@ class TestGetAllSettings:
 
         result = await get_all_settings(session)
 
-        assert result == {SHOW_ADULT_CONTENT: False}
+        assert result == {SHOW_ADULT_CONTENT: False, CALENDAR_ENABLED: True}
 
     @pytest.mark.asyncio
     async def test_includes_stored_values(self) -> None:
@@ -109,4 +110,4 @@ class TestGetAllSettings:
 
         result = await get_all_settings(session)
 
-        assert result == {SHOW_ADULT_CONTENT: True}
+        assert result == {SHOW_ADULT_CONTENT: True, CALENDAR_ENABLED: True}

@@ -9,7 +9,7 @@ Python 3.13 project using the `src/` layout with `hatchling` as the build backen
 | uv         | Dependency mgmt + venv       | `uv sync --extra dev`                   |
 | ruff       | Linting + formatting         | `uv run ruff check .` / `ruff format .` |
 | mypy       | Static type checking         | `uv run mypy src/`                      |
-| bandit     | Security scanning            | `uv run bandit -r src/ -ll`             |
+| bandit     | Security scanning            | `uv run bandit -r src/ -l`              |
 | pytest     | Testing                      | `uv run pytest`                         |
 | coverage   | Code coverage                | `uv run pytest --cov=src`               |
 | pre-commit | Git hook automation          | `pre-commit run --all-files`            |
