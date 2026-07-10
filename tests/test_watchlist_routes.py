@@ -448,13 +448,21 @@ def test_create_watchlist_entry_concurrent_stub_insert_ignored() -> None:
     no_sub_result.scalar_one_or_none.return_value = None  # both concurrent requests see no sub
     no_unlinked_result = MagicMock()
     no_unlinked_result.scalars.return_value.all.return_value = []
+    concurrent_stub_result = MagicMock()
+    concurrent_stub_result.scalar_one.return_value = MagicMock(spec=RssSubscription)
 
     expunged_objects: list[object] = []
 
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
         session.execute = AsyncMock(
-            side_effect=[show_result, existing_result, no_sub_result, no_unlinked_result]
+            side_effect=[
+                show_result,
+                existing_result,
+                no_sub_result,
+                no_unlinked_result,
+                concurrent_stub_result,
+            ]
         )
 
         def _add(obj: object) -> None:

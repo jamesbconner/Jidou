@@ -433,6 +433,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/rss-stub": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Rss Stub
+         * @description Ensure an RSS subscription is linked to this show, creating one if needed.
+         *
+         *     Reuses the same link-or-create logic as adding a show to the watchlist
+         *     (:func:`jidou.services.rss_stub.ensure_rss_stub`): an existing linked
+         *     subscription is returned as-is, an unlinked subscription with a matching
+         *     name is linked, and only otherwise is a fresh inactive stub created.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The linked or newly created RssSubscription.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        post: operations["create_rss_stub_api_shows__show_id__rss_stub_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/episodes": {
         parameters: {
             query?: never;
@@ -3951,6 +3986,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EpisodeList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_rss_stub_api_shows__show_id__rss_stub_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RssSubscriptionRead"];
                 };
             };
             /** @description Validation Error */

@@ -12,14 +12,23 @@ import {
   usePatchShow,
 } from '@/hooks/useShows'
 import { useBeginEpisodeRematch } from '@/hooks/useFiles'
+import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useRss'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
+import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
 import { api } from '@/api/client'
 import { toHostPath, toContainerPath, parseContainerPath } from '@/utils/paths'
-import type { EpisodeList, FileRead, TmdbResult, AppConfig, ContentType } from '@/types/api'
+import type {
+  EpisodeList,
+  FileRead,
+  TmdbResult,
+  AppConfig,
+  ContentType,
+  RssSubscriptionRead,
+} from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
@@ -426,6 +435,9 @@ export default function ShowDetail() {
   const deleteShow = useDeleteShow()
   const beginRematch = useBeginEpisodeRematch()
   const patchShow = usePatchShow()
+  const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
+  const { data: rssFeeds = [] } = useRssFeeds()
+  const ensureRssStub = useEnsureRssStub()
 
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
@@ -436,6 +448,7 @@ export default function ShowDetail() {
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
   const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
   const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
+  const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
 
   useEffect(() => {
     setRematchOpen(false)
@@ -446,10 +459,25 @@ export default function ShowDetail() {
     setFileForRematch(null)
     setFileForFixEps(null)
     setAssignImportEp(null)
+    setRssModalSub(null)
     syncEpisodes.reset()
     updatePaths.reset()
     patchShow.reset()
+    ensureRssStub.reset()
   }, [showId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const existingRssSub =
+    rssSubs.length > 0
+      ? [...rssSubs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+      : null
+
+  function handleRssButtonClick() {
+    if (existingRssSub) {
+      setRssModalSub(existingRssSub)
+    } else {
+      ensureRssStub.mutate(showId, { onSuccess: (sub) => setRssModalSub(sub) })
+    }
+  }
 
   if (isLoading) return <p className="text-gray-400">Loading…</p>
   if (!show) return <p className="text-red-500">Show not found.</p>
@@ -555,7 +583,7 @@ export default function ShowDetail() {
             </div>
 
             {/* Destructive action — upper right */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
               <button
                 onClick={() => setDeleteConfirmOpen(true)}
                 disabled={isDeleting}
@@ -563,6 +591,15 @@ export default function ShowDetail() {
               >
                 {isDeleting ? 'Removing…' : 'Remove Show'}
               </button>
+              <span
+                className={`px-3 py-1 text-xs rounded whitespace-nowrap cursor-default select-none ${
+                  existingRssSub
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-gray-50 text-gray-400 border border-gray-200'
+                }`}
+              >
+                {existingRssSub ? 'In RSS Feed' : 'Not in RSS Feed'}
+              </span>
             </div>
           </div>
         </div>
@@ -616,9 +653,19 @@ export default function ShowDetail() {
           >
             Manage Aliases
           </button>
+          <button
+            onClick={handleRssButtonClick}
+            disabled={ensureRssStub.isPending}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+          >
+            {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
+          </button>
           {syncEpisodes.isSuccess && <span className="text-xs text-green-600">Episodes synced</span>}
           {syncEpisodes.isError && (
             <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
+          )}
+          {ensureRssStub.isError && (
+            <span className="text-xs text-red-600">{(ensureRssStub.error as Error).message}</span>
           )}
         </div>
       </section>
@@ -727,6 +774,13 @@ export default function ShowDetail() {
           showId={showId}
           currentTmdbId={show.tmdb_id}
           onClose={() => setRematchOpen(false)}
+        />
+      )}
+      {rssModalSub && (
+        <SubscriptionEditModal
+          sub={rssModalSub}
+          feeds={rssFeeds}
+          onClose={() => setRssModalSub(null)}
         />
       )}
       {contentTypeOpen && (

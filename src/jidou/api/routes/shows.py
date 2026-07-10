@@ -16,10 +16,12 @@ from jidou.api.dependencies import get_llm_service
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
+from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
 from jidou.schemas.calendar_schema import CalendarEpisode
 from jidou.schemas.episode_schema import BackingFile, EpisodeList
 from jidou.schemas.file_schema import FileRead
+from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
     RematchRequest,
@@ -32,6 +34,7 @@ from jidou.schemas.show_schema import (
 )
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.llm_service import LLMService
+from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -702,6 +705,38 @@ async def sync_episodes(
     )
     result = await db_session.execute(ep_stmt)
     return list(result.scalars().all())
+
+
+@router.post("/{show_id}/rss-stub", response_model=RssSubscriptionRead)
+async def create_rss_stub(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RssSubscription:
+    """Ensure an RSS subscription is linked to this show, creating one if needed.
+
+    Reuses the same link-or-create logic as adding a show to the watchlist
+    (:func:`jidou.services.rss_stub.ensure_rss_stub`): an existing linked
+    subscription is returned as-is, an unlinked subscription with a matching
+    name is linked, and only otherwise is a fresh inactive stub created.
+
+    Args:
+        show_id: Database primary key of the show.
+        db_session: DB session (injected).
+
+    Returns:
+        The linked or newly created RssSubscription.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    sub = await ensure_rss_stub(db_session, show_id, show.title)
+    await db_session.flush()
+    await db_session.refresh(sub, ["feed", "show"])
+    return sub
 
 
 @router.get("/{show_id}/episodes", response_model=list[EpisodeList])
