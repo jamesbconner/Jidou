@@ -19,7 +19,13 @@ def sanitize_sys_name(title: str) -> str:
         title: The show title to sanitize.
 
     Returns:
-        A filesystem-safe directory name derived from the title.
+        A filesystem-safe directory name derived from the title. Never
+        empty -- a title consisting entirely of invalid characters (e.g.
+        ``":::"``) would otherwise sanitize down to an empty string,
+        which callers use to build ``local_path`` (``base_dir / sys_name``);
+        an empty ``sys_name`` collapses that to the bare base directory
+        with no show subdirectory at all.
     """
     replaced = _INVALID_FS_CHARS.sub(" ", title)
-    return _MULTIPLE_SPACES.sub(" ", replaced).strip()
+    sanitized = _MULTIPLE_SPACES.sub(" ", replaced).strip()
+    return sanitized or "Untitled"

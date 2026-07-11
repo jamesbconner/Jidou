@@ -31,3 +31,19 @@ def test_leading_and_trailing_whitespace_stripped() -> None:
 def test_all_invalid_characters_replaced() -> None:
     """Every character in the invalid set is handled, not just colon."""
     assert sanitize_sys_name(r'A\B/C:D*E?F"G<H>I|J') == "A B C D E F G H I J"
+
+
+def test_title_of_only_invalid_characters_does_not_return_empty() -> None:
+    """A title consisting entirely of invalid characters must not sanitize to "".
+
+    Regression test for a Bugbot finding: callers build local_path as
+    base_dir / sys_name, and an empty sys_name collapses that to the bare
+    base directory with no show subdirectory at all.
+    """
+    assert sanitize_sys_name(":::") != ""
+    assert sanitize_sys_name(":::") == "Untitled"
+
+
+def test_empty_title_does_not_return_empty() -> None:
+    """An already-empty title also falls back to the non-empty default."""
+    assert sanitize_sys_name("") == "Untitled"
