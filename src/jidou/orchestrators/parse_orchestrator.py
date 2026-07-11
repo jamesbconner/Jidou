@@ -1,7 +1,6 @@
 """Orchestrator for parsing filenames and matching downloaded files to shows."""
 
 import logging
-import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -16,11 +15,9 @@ from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
+from jidou.services.sys_name import sanitize_sys_name
 
 logger = logging.getLogger(__name__)
-
-# Strips characters that are invalid on common filesystems (Windows + Linux).
-_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 _CONFIDENCE_THRESHOLD = 0.7
 
@@ -100,7 +97,7 @@ class ParseOrchestrator:
         else:
             base = self.local_tv_path
         # sys_name is pre-sanitized; fall back to title with invalid chars stripped.
-        dir_name = show.sys_name or _INVALID_FS_CHARS.sub("_", show.title).strip()
+        dir_name = show.sys_name or sanitize_sys_name(show.title)
         # PurePosixPath ensures forward slashes — these are always Linux container paths.
         return str(PurePosixPath(base) / dir_name)
 

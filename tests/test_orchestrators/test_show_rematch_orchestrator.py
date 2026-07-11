@@ -203,7 +203,7 @@ def test_apply_tmdb_metadata_updates_show_fields() -> None:
 
     assert show.tmdb_id == 200
     assert show.title == "New Show: Extended"
-    assert show.sys_name == "New Show_ Extended"  # colon → underscore
+    assert show.sys_name == "New Show Extended"  # colon → space
     assert show.overview == "A great show."
     assert show.vote_average == 8.5
     assert show.original_language == "en"

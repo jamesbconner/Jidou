@@ -1,7 +1,6 @@
 """API routes for downloaded file management."""
 
 import logging
-import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -20,18 +19,12 @@ from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.filename_parser import heuristic_se
 from jidou.services.llm_service import LLMService
+from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
-
-_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
-
-
-def _sanitize_sys_name(title: str) -> str:
-    """Derive a Windows-safe directory name from a show title."""
-    return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
 @router.get("", response_model=list[FileRead])
@@ -470,7 +463,7 @@ async def manual_match_file(
                 show_type=data.get("type"),
                 runtime=runtime,
                 tagline=data.get("tagline"),
-                sys_name=_sanitize_sys_name(title),
+                sys_name=sanitize_sys_name(title),
                 content_type=payload.content_type,
                 local_path=payload.local_path,
                 adult=data.get("adult"),

@@ -38,11 +38,10 @@ from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
+from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
-
-_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 # Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
 # comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
@@ -139,10 +138,6 @@ _LLM_EPISODE_PARSE_RESPONSE_FORMAT: dict[str, object] = {
         },
     },
 }
-
-
-def _sanitize_sys_name(title: str) -> str:
-    return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
 def _normalize_title(s: str) -> str:
@@ -792,7 +787,7 @@ class PathImportOrchestrator:
             release_date=data.get("first_air_date"),
             original_language=data.get("original_language"),
             content_type=self.content_type,
-            sys_name=_sanitize_sys_name(title),
+            sys_name=sanitize_sys_name(title),
             aliases=aliases or None,
             aliases_sources=aliases_sources,
             genres=data.get("genres") or [],

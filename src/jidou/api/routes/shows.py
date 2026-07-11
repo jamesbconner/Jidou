@@ -1,7 +1,6 @@
 """API routes for show management and TMDB discovery."""
 
 import logging
-import re
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Any, Literal
@@ -35,6 +34,7 @@ from jidou.schemas.show_schema import (
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.llm_service import LLMService
 from jidou.services.rss_stub import ensure_rss_stub
+from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -43,13 +43,6 @@ router = APIRouter(prefix="/shows", tags=["shows"])
 
 
 _tmdb = TMDBService()
-
-_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
-
-
-def _sanitize_sys_name(title: str) -> str:
-    """Derive a Windows-safe directory name from a show title."""
-    return _INVALID_FS_CHARS.sub("_", title).strip()
 
 
 # TMDB genre ID 16 = Animation
@@ -348,7 +341,7 @@ async def create_show(
 
     data = payload.model_dump()
     if not data.get("sys_name"):
-        data["sys_name"] = _sanitize_sys_name(payload.title)
+        data["sys_name"] = sanitize_sys_name(payload.title)
     if not data.get("content_type"):
         data["content_type"] = _infer_content_type(payload)
     if not data.get("local_path"):
