@@ -19,8 +19,8 @@ from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.filename_parser import heuristic_se
 from jidou.services.llm_service import LLMService
-from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -408,65 +408,15 @@ async def manual_match_file(
                 "movie" if payload.content_type == "movie" else "tv"
             )
             try:
-                data = await tmdb.get_details(payload.tmdb_id, media_type=media_type)
+                data = await fetch_show_metadata(tmdb, payload.tmdb_id, media_type)
             except Exception as exc:
                 raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
 
-            # Supplemental calls are best-effort — transient failures fall back to empty.
-            ext_ids: dict[str, Any] = {}
-            ep_groups: dict[str, Any] = {}
-            try:
-                ext_ids = await tmdb.get_external_ids(payload.tmdb_id, media_type=media_type)
-            except Exception:
-                logger.warning("get_external_ids failed for tmdb_id=%d", payload.tmdb_id)
-            if media_type == "tv":
-                try:
-                    ep_groups = await tmdb.get_episode_groups(payload.tmdb_id)
-                except Exception:
-                    logger.warning("get_episode_groups failed for tmdb_id=%d", payload.tmdb_id)
-
-            title = data.get("name") or data.get("title") or ""
-            # TV: origin_country is a flat list ["JP"]. Movie: production_countries
-            # is [{"iso_3166_1": "US", ...}]. Normalise both to a flat code list.
-            raw_countries: list[object] = data.get("origin_country") or [
-                c["iso_3166_1"]
-                for c in (data.get("production_countries") or [])
-                if isinstance(c, dict) and "iso_3166_1" in c
-            ]
-            # TV: episode_run_time is a list; take first value. Movie: runtime is an int.
-            ep_runtimes: list[int] = data.get("episode_run_time") or []
-            runtime: int | None = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
+            fields = build_show_fields(data, payload.tmdb_id, media_type)
             show = Show(
-                tmdb_id=payload.tmdb_id,
-                title=title,
-                overview=data.get("overview"),
-                media_type=media_type,
-                poster_path=data.get("poster_path"),
-                backdrop_path=data.get("backdrop_path"),
-                vote_average=data.get("vote_average"),
-                vote_count=data.get("vote_count", 0),
-                release_date=data.get("first_air_date") or data.get("release_date"),
-                original_language=data.get("original_language"),
-                genres=data.get("genres") or [],
-                origin_country=raw_countries,
-                last_air_date=data.get("last_air_date"),
-                last_episode_to_air=data.get("last_episode_to_air"),
-                next_episode_to_air=data.get("next_episode_to_air"),
-                homepage=data.get("homepage"),
-                external_ids=ext_ids or {},
-                episode_groups=ep_groups.get("results") or [],
-                status=data.get("status"),
-                in_production=data.get("in_production"),
-                number_of_seasons=data.get("number_of_seasons"),
-                number_of_episodes=data.get("number_of_episodes"),
-                networks=data.get("networks") or [],
-                show_type=data.get("type"),
-                runtime=runtime,
-                tagline=data.get("tagline"),
-                sys_name=sanitize_sys_name(title),
+                **fields,
                 content_type=payload.content_type,
                 local_path=payload.local_path,
-                adult=data.get("adult"),
                 cached=False,
             )
             db_session.add(show)
@@ -506,10 +456,11 @@ async def manual_match_file(
                         show.tmdb_id,
                     )
                 except SQLAlchemyError:
-                    # DB failure during sync's internal commit — session is now
-                    # in a broken state; propagate so the caller gets a 500
-                    # rather than silently issuing more queries against a dead
-                    # transaction (mirrors the same guard in POST /shows).
+                    # DB failure during sync's internal flush leaves the
+                    # session's transaction in a broken state; propagate so
+                    # the caller gets a 500 rather than silently issuing more
+                    # queries against a dead transaction (mirrors the same
+                    # guard in POST /shows).
                     raise
                 except Exception:
                     logger.warning(

@@ -10,14 +10,18 @@ from jidou.models.show import Show
 
 
 def _make_tmdb_mock() -> AsyncMock:
-    """Return an AsyncMock TMDB service with get_alternative_titles pre-configured.
+    """Return an AsyncMock TMDB service with common supplemental calls pre-configured.
 
     Without this, AsyncMock's auto-created child mocks for
-    get_alternative_titles may leave unawaited coroutines that cascade as
-    ERROR-at-setup failures in subsequent tests.
+    get_alternative_titles/get_external_ids/get_episode_groups return bogus
+    AsyncMock objects instead of dicts -- either leaving unawaited coroutines
+    that cascade as ERROR-at-setup failures in subsequent tests, or failing
+    Pydantic response validation when a route serializes the mocked field.
     """
     mock = AsyncMock()
     mock.get_alternative_titles = AsyncMock(return_value={"results": []})
+    mock.get_external_ids = AsyncMock(return_value={})
+    mock.get_episode_groups = AsyncMock(return_value={"results": []})
     return mock
 
 

@@ -185,6 +185,35 @@ async def test_fetch_tmdb_details_raises_502_on_error() -> None:
     assert exc_info.value.status_code == 502
 
 
+@pytest.mark.asyncio
+async def test_fetch_tmdb_details_includes_external_ids_and_episode_groups() -> None:
+    """_fetch_tmdb_details populates external_ids/episode_groups via their own endpoints.
+
+    Regression test for Bug1: get_details() alone never returns these
+    fields; a same-entity refresh that only called get_details() would
+    silently wipe a show's external_ids/episode_groups on every rematch.
+    """
+    session = MagicMock()
+    tmdb = MagicMock()
+    tmdb.get_details = AsyncMock(return_value={"name": "My Show"})
+    tmdb.get_external_ids = AsyncMock(return_value={"imdb_id": "tt123"})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": [{"id": "g1"}]})
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    data = await orch._fetch_tmdb_details(_make_payload(tmdb_id=200, media_type="tv"))
+
+    tmdb.get_external_ids.assert_awaited_once_with(200, media_type="tv")
+    tmdb.get_episode_groups.assert_awaited_once_with(200)
+    assert data["external_ids"] == {"imdb_id": "tt123"}
+    assert data["episode_groups"] == [{"id": "g1"}]
+
+    show = _make_show(tmdb_id=200)
+    orch._apply_tmdb_metadata(show, _make_payload(tmdb_id=200, media_type="tv"), data)
+
+    assert show.external_ids == {"imdb_id": "tt123"}
+    assert show.episode_groups == [{"id": "g1"}]
+
+
 # ---------------------------------------------------------------------------
 # _apply_tmdb_metadata
 # ---------------------------------------------------------------------------

@@ -45,6 +45,10 @@ class TMDBOrchestrator:
         """Fetch all seasons and episodes for one show and upsert Episode rows.
 
         Skips season 0 (specials). Marks show.cached = True on completion.
+        Flushes but does not commit — the caller owns the transaction
+        boundary. A caller processing multiple shows in one session (e.g.
+        :meth:`sync_all_shows`) must commit after each show itself if it
+        wants a later show's failure to leave earlier successes durable.
 
         Args:
             show: Show ORM object to sync.
@@ -107,10 +111,9 @@ class TMDBOrchestrator:
                     self.session.add(new_ep)
                     episodes_upserted += 1
 
-        await self.session.flush()
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
-        await self.session.commit()
+        await self.session.flush()
 
         logger.info(
             "TMDB sync complete for %r: %d upserted, %d skipped",
@@ -154,6 +157,10 @@ class TMDBOrchestrator:
                 combined.shows_synced += result.shows_synced
                 combined.episodes_upserted += result.episodes_upserted
                 combined.episodes_skipped += result.episodes_skipped
+                # Commit per show so a later show's failure only rolls back
+                # its own partial work, not every show already synced in
+                # this batch (sync_show_episodes itself only flushes).
+                await self.session.commit()
             except Exception:
                 logger.exception("Failed to sync TMDB data for show id=%d", show.id)
                 await self.session.rollback()

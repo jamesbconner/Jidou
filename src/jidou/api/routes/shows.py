@@ -373,8 +373,10 @@ async def create_show(
             await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
             logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
         except SQLAlchemyError:
-            # DB failure during sync's internal commit — the show row was rolled
-            # back along with the episodes; propagate so the caller gets a 500.
+            # DB failure during sync's internal flush leaves the session's
+            # transaction in a broken state; propagate so the caller gets a
+            # 500 rather than silently issuing more queries against a dead
+            # transaction.
             raise
         except Exception:
             logger.warning(

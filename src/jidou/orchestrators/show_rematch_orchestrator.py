@@ -15,8 +15,8 @@ from jidou.models.show import Show
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
-from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +100,14 @@ class ShowRematchOrchestrator:
             payload: Rematch request with tmdb_id and media_type.
 
         Returns:
-            Raw TMDB detail dict.
+            TMDB detail dict, with external_ids/episode_groups populated
+            from their own endpoints (see fetch_show_metadata).
 
         Raises:
             HTTPException: 502 on any TMDB error.
         """
         try:
-            return await self.tmdb.get_details(payload.tmdb_id, media_type=payload.media_type)
+            return await fetch_show_metadata(self.tmdb, payload.tmdb_id, payload.media_type)
         except Exception as exc:
             raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
 
@@ -118,56 +119,11 @@ class ShowRematchOrchestrator:
         Args:
             show: Show ORM object to mutate in place.
             payload: Rematch request (provides tmdb_id and media_type).
-            data: Raw TMDB detail response.
+            data: TMDB detail response, ideally from _fetch_tmdb_details.
         """
-        # TV uses "name" + "first_air_date"; movies use "title" + "release_date".
-        title: str = data.get("name") or data.get("title") or show.title
-        release_date: str | None = data.get("first_air_date") or data.get("release_date")
-        ep_runtimes: list[int] = data.get("episode_run_time") or []
-        # Captured before tmdb_id is overwritten below, so the adult fallback
-        # can tell a same-entity refresh from a genuine identity swap.
-        is_same_entity = show.tmdb_id == payload.tmdb_id
-
-        show.tmdb_id = payload.tmdb_id
-        show.media_type = payload.media_type
-        show.title = title
-        show.overview = data.get("overview")
-        show.poster_path = data.get("poster_path")
-        show.backdrop_path = data.get("backdrop_path")
-        show.vote_average = data.get("vote_average")
-        show.vote_count = data.get("vote_count", 0)
-        show.release_date = release_date
-        show.original_language = data.get("original_language")
-        show.sys_name = sanitize_sys_name(title)
-        show.genres = data.get("genres") or []
-        # TV uses origin_country (ISO list); movies use production_countries (objects).
-        tv_countries: list[str] = data.get("origin_country") or []
-        movie_countries: list[str] = [
-            c["iso_3166_1"] for c in (data.get("production_countries") or []) if "iso_3166_1" in c
-        ]
-        show.origin_country = tv_countries or movie_countries
-        show.last_air_date = data.get("last_air_date")
-        show.last_episode_to_air = data.get("last_episode_to_air")
-        show.next_episode_to_air = data.get("next_episode_to_air")
-        show.homepage = data.get("homepage")
-        show.status = data.get("status")
-        show.in_production = data.get("in_production")
-        show.number_of_seasons = data.get("number_of_seasons")
-        show.number_of_episodes = data.get("number_of_episodes")
-        show.networks = data.get("networks") or []
-        show.show_type = data.get("type")
-        show.runtime = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
-        show.tagline = data.get("tagline")
-        show.external_ids = data.get("external_ids")
-        show.episode_groups = data.get("episode_groups") or []
-        # TMDB TV detail responses often omit "adult" entirely. When
-        # refreshing the same TMDB entity, fall back to the existing value so
-        # an omitted field doesn't silently clear a known adult flag. When
-        # rematching to a *different* tmdb_id, the old value belongs to a
-        # different title and must not carry over — fall back to None
-        # (unknown) instead.
-        adult_fallback = show.adult if is_same_entity else None
-        show.adult = data.get("adult", adult_fallback)
+        fields = build_show_fields(data, payload.tmdb_id, payload.media_type, existing=show)
+        for key, value in fields.items():
+            setattr(show, key, value)
 
     async def _snapshot_tracking(
         self,
