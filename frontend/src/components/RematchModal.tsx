@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
-import { useShows } from '@/hooks/useShows'
+import { useShows, useSearchShows, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { api } from '@/api/client'
@@ -11,7 +11,6 @@ import type {
   FileRead,
   ShowList,
   TmdbResult,
-  TmdbSearchResponse,
   ContentType,
   AppConfig,
 } from '@/types/api'
@@ -41,15 +40,10 @@ export function RematchModal({ file, onClose }: Props) {
   })
   const { data: allShows = [] } = useShows('title_asc', 10000)
 
-  const { data: tmdbResults, isFetching: tmdbLoading } = useQuery({
-    queryKey: ['tmdb-search', debouncedQuery],
-    queryFn: () =>
-      api.get<TmdbSearchResponse>(
-        `/shows/search?query=${encodeURIComponent(debouncedQuery)}&media_type=multi`,
-      ),
-    enabled: mode === 'tmdb' && searchQuery.length >= 2 && debouncedQuery.length >= 2,
-    staleTime: 60_000,
-  })
+  const { data: tmdbResults, isFetching: tmdbLoading } = useSearchShows(
+    mode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',
+    'multi',
+  )
 
   const rematch = useRematchFile()
   const triggerRoute = useTriggerTask()
@@ -69,12 +63,7 @@ export function RematchModal({ file, onClose }: Props) {
     [tmdbResults],
   )
 
-  // keyed by "tmdb_id:media_type" — TMDB uses separate ID namespaces for tv and movie,
-  // so a numeric tmdb_id alone is not unique across types.
-  const libraryByTmdbId = useMemo(
-    () => new Map(allShows.map((s) => [`${s.tmdb_id}:${s.media_type}`, s])),
-    [allShows],
-  )
+  const libraryByTmdbId = useLibraryIndex()
 
   // When a TMDB result is selected: derive content type from media_type and auto-fill folder.
   // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep.

@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
-import { useShows, useSearchShows, useCreateShow, SHOW_SORT_LABELS } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { useDebounce } from '@/hooks/useDebounce'
 import { DQ_CHECKS } from '@/utils/dqChecks'
+import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import type { ShowList, TmdbResult, OrphanedTrackingRecord } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -105,6 +106,7 @@ export default function Shows() {
   const displayShows = useMemo(() => sortShows(allShows, sort), [allShows, sort])
   const { data: searchData, isLoading: tmdbSearching } = useSearchShows(
     modalMode === 'tmdb' && query.length >= 2 ? debouncedQuery : '',
+    'multi',
   )
   const { data: orphans = [] } = useOrphans()
   const createShow = useCreateShow()
@@ -136,14 +138,7 @@ export default function Shows() {
     }
   }
 
-  // The DB enforces uniqueness on tmdb_id alone (no media_type column in the
-  // constraint), so presence check uses tmdb_id only — matching what POST /shows
-  // does on upsert. React keys use tmdb_id:media_type to stay unique within a
-  // single multi-search result list that can contain both TV and movie hits.
-  const libraryTmdbIds = useMemo(
-    () => new Set(allShows.map((s) => s.tmdb_id)),
-    [allShows],
-  )
+  const libraryIndex = useLibraryIndex()
 
   const librarySearchResults = useMemo(() => {
     if (query.trim().length < 2) return []
@@ -212,21 +207,7 @@ export default function Shows() {
   }
 
   function handleTrack(r: TmdbResult) {
-    createShow.mutate({
-      tmdb_id: r.id,
-      title: r.name ?? r.title ?? 'Unknown',
-      media_type: r.media_type ?? 'tv',
-      overview: r.overview,
-      poster_path: r.poster_path,
-      backdrop_path: r.backdrop_path,
-      vote_average: r.vote_average,
-      vote_count: r.vote_count,
-      release_date: r.first_air_date ?? r.release_date,
-      original_language: r.original_language,
-      genre_ids: r.genre_ids ?? null,
-      origin_country: r.origin_country ?? null,
-      adult: r.adult ?? null,
-    })
+    createShow.mutate(buildShowCreatePayload(r))
   }
 
   const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -421,10 +402,8 @@ export default function Shows() {
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {searchData.results.slice(0, 12).map((r) => {
                           const mediaType = r.media_type ?? 'tv'
-                          const inLibrary = libraryTmdbIds.has(r.id)
-                          const libraryShow = inLibrary
-                            ? allShows.find((s) => s.tmdb_id === r.id)
-                            : undefined
+                          const libraryShow = libraryIndex.get(`${r.id}:${mediaType}`)
+                          const inLibrary = libraryShow !== undefined
                           return (
                             <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
                               <div className="relative">

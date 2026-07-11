@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
+import { useSearchShows } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
-import type { FileRead, TmdbSuggestion, TmdbSearchResponse, ContentType, AppConfig } from '@/types/api'
+import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
 
@@ -36,17 +37,10 @@ export function ResolveFileModal({ file, onClose }: Props) {
     error: suggestionsError,
   } = useTmdbSuggestions(customSearch ? null : file.id)
 
-  const { data: searchResults, isFetching: searchLoading } = useQuery({
-    queryKey: ['tmdb-search', debouncedQuery],
-    queryFn: async () => {
-      if (!debouncedQuery.trim() || debouncedQuery.length < 2) return null
-      return api.get<TmdbSearchResponse>(
-        `/shows/search?query=${encodeURIComponent(debouncedQuery)}&media_type=multi`,
-      )
-    },
-    enabled: customSearch && searchQuery.length >= 2 && debouncedQuery.length >= 2,
-    staleTime: 60_000,
-  })
+  const { data: searchResults, isFetching: searchLoading } = useSearchShows(
+    customSearch && searchQuery.length >= 2 ? debouncedQuery : '',
+    'multi',
+  )
 
   const rematch = useRematchFile()
 

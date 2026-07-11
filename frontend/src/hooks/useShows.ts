@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import type { ShowList, ShowRead, ShowCreate, ShowPatch, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
@@ -32,7 +33,7 @@ export const showKeys = {
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
-  search: (q: string) => ['tmdb', 'search', q] as const,
+  search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
 }
 
 export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
@@ -63,12 +64,37 @@ export function useTrendingShows(mediaType = 'tv') {
   })
 }
 
-export function useSearchShows(query: string) {
+export function useSearchShows(query: string, mediaType?: string) {
   return useQuery({
-    queryKey: showKeys.search(query),
-    queryFn: () => api.get<TmdbSearchResponse>(`/shows/search?query=${encodeURIComponent(query)}`),
+    queryKey: showKeys.search(query, mediaType),
+    queryFn: () =>
+      api.get<TmdbSearchResponse>(
+        `/shows/search?query=${encodeURIComponent(query)}${mediaType ? `&media_type=${mediaType}` : ''}`,
+      ),
     enabled: query.length >= 2,
   })
+}
+
+/**
+ * Map of `${tmdb_id}:${media_type}` -> Show for every show already in the
+ * library.
+ *
+ * The DB enforces uniqueness on tmdb_id alone (no media_type column in the
+ * constraint), so Jidou's own show list can never contain two rows sharing a
+ * tmdb_id. But a TMDB *search result* spans TMDB's full catalog, where a tv
+ * item and a movie item legitimately share the same raw numeric id -- TMDB
+ * uses separate id namespaces per media type. Comparing a search result
+ * against the library by tmdb_id alone can therefore match the wrong
+ * already-tracked show (e.g. a tv show and an unrelated movie that happen to
+ * share a numeric id). Keying by `tmdb_id:media_type` avoids that collision
+ * when cross-referencing search results against the library.
+ */
+export function useLibraryIndex() {
+  const { data: allShows = [] } = useShows('title_asc', 10000)
+  return useMemo(
+    () => new Map(allShows.map((s) => [`${s.tmdb_id}:${s.media_type}`, s])),
+    [allShows],
+  )
 }
 
 export function useCreateShow() {

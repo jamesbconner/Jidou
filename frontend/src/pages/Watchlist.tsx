@@ -17,8 +17,9 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
-import { useShows, useSearchShows, useCreateShow } from '@/hooks/useShows'
+import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
+import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
 const STATUS_OPTIONS: WatchlistStatus[] = ['planned', 'watching', 'completed', 'on_hold', 'dropped']
@@ -240,6 +241,7 @@ export default function Watchlist() {
   const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: tmdbData, isLoading: tmdbLoading } = useSearchShows(
     searchMode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',
+    'multi',
   )
 
   const createWatchlistEntry = useCreateWatchlistEntry()
@@ -297,11 +299,7 @@ export default function Watchlist() {
     [allEntries],
   )
 
-  // Map tmdb_id → library ShowList for TMDB result cross-reference
-  const libraryByTmdbId = useMemo(
-    () => new Map(allShows.map((s) => [s.tmdb_id, s])),
-    [allShows],
-  )
+  const libraryByTmdbId = useLibraryIndex()
 
   const libraryResults: ShowList[] = useMemo(() => {
     if (!searchQuery.trim() || searchMode !== 'library') return []
@@ -332,7 +330,7 @@ export default function Watchlist() {
 
   function handleAddFromTmdb(result: TmdbResult) {
     if (pendingTmdbIds.has(result.id)) return
-    const existing = libraryByTmdbId.get(result.id)
+    const existing = libraryByTmdbId.get(`${result.id}:${result.media_type ?? 'tv'}`)
     if (existing) {
       if (pendingLibraryIds.has(existing.id)) return
       setPendingLibraryIds((s) => addShowId(s, existing.id))
@@ -343,30 +341,13 @@ export default function Watchlist() {
       return
     }
     setPendingTmdbIds((s) => addShowId(s, result.id))
-    createShow.mutate(
-      {
-        tmdb_id: result.id,
-        title: result.name ?? result.title ?? 'Unknown',
-        media_type: result.media_type ?? 'tv',
-        overview: result.overview,
-        poster_path: result.poster_path,
-        backdrop_path: result.backdrop_path,
-        vote_average: result.vote_average,
-        vote_count: result.vote_count,
-        original_language: result.original_language,
-        genre_ids: result.genre_ids ?? null,
-        origin_country: result.origin_country ?? null,
-        release_date: result.first_air_date ?? result.release_date,
-        adult: result.adult ?? null,
-      },
-      {
-        onSuccess: (show) => createWatchlistEntry.mutate(
-          { show_id: show.id },
-          { onSettled: () => setPendingTmdbIds((s) => removeShowId(s, result.id)) },
-        ),
-        onError: () => setPendingTmdbIds((s) => removeShowId(s, result.id)),
-      },
-    )
+    createShow.mutate(buildShowCreatePayload(result), {
+      onSuccess: (show) => createWatchlistEntry.mutate(
+        { show_id: show.id },
+        { onSettled: () => setPendingTmdbIds((s) => removeShowId(s, result.id)) },
+      ),
+      onError: () => setPendingTmdbIds((s) => removeShowId(s, result.id)),
+    })
   }
 
   const hasResults = searchMode === 'library' ? libraryResults.length > 0 : tmdbResults.length > 0
@@ -495,7 +476,7 @@ export default function Watchlist() {
                     })
                   ) : (
                     tmdbResults.map((r) => {
-                      const libraryShow = libraryByTmdbId.get(r.id)
+                      const libraryShow = libraryByTmdbId.get(`${r.id}:${r.media_type ?? 'tv'}`)
                       const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
                       const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
                       return (
