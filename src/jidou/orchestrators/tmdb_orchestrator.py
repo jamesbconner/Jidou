@@ -210,7 +210,7 @@ class TMDBOrchestrator:
 
         # dict is invariant in its value type, so the precisely-typed
         # StoredGroupMap needs a cast to satisfy the looser JSONB column type.
-        show.episode_group_map = cast(dict[str, object] | None, to_storage_map(breakdowns))
+        show.episode_group_map = cast(dict[str, object], to_storage_map(breakdowns))
         flattened = flatten_for_absolute_numbering(breakdowns)
         for ep in episodes:
             ep.absolute_episode_number = flattened.get((ep.season_number, ep.episode_number))

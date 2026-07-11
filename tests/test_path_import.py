@@ -1305,6 +1305,52 @@ async def test_import_show_skips_backfill_when_episode_group_map_already_set() -
 
 
 @pytest.mark.asyncio
+async def test_import_show_skips_backfill_when_episode_group_map_is_confirmed_empty() -> None:
+    """An empty dict ({}) means 'checked, TMDB has no qualifying groups' —
+    must not trigger a redundant backfill call on every import touch,
+    distinguishing it from None ('never checked').
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = {}  # confirmed empty — not the same as None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_not_called()
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_import_show_episode_group_map_backfill_failure_logged_not_raised() -> None:
     """A sync_episode_group_map failure for an already-synced show is logged, not raised."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator

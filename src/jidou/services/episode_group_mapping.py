@@ -118,7 +118,7 @@ async def fetch_group_breakdowns(
     return result
 
 
-def to_storage_map(breakdowns: GroupBreakdowns) -> StoredGroupMap | None:
+def to_storage_map(breakdowns: GroupBreakdowns) -> StoredGroupMap:
     """Convert fetched breakdowns into the JSON-serializable shape for ``Show.episode_group_map``.
 
     Args:
@@ -126,10 +126,13 @@ def to_storage_map(breakdowns: GroupBreakdowns) -> StoredGroupMap | None:
 
     Returns:
         The nested, string-keyed map ready to assign to
-        ``Show.episode_group_map``, or None if *breakdowns* is empty.
+        ``Show.episode_group_map``.  Returns ``{}`` (not ``None``) when
+        *breakdowns* is empty — this distinguishes "checked, TMDB has no
+        qualifying groups" from ``None`` which means "never checked," so
+        callers can avoid re-fetching on every touch.
     """
     if not breakdowns:
-        return None
+        return {}
     return {
         str(group_type): {
             str(order): {

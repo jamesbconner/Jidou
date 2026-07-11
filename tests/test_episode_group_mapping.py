@@ -179,8 +179,8 @@ class TestFetchGroupBreakdowns:
 
 
 class TestToStorageMap:
-    def test_empty_breakdowns_returns_none(self):
-        assert to_storage_map({}) is None
+    def test_empty_breakdowns_returns_empty_dict(self):
+        assert to_storage_map({}) == {}
 
     def test_builds_nested_string_keyed_map_with_1_based_positions(self):
         breakdowns: GroupBreakdowns = {6: {1: [(1, 1), (1, 2), (1, 3)], 2: [(1, 4), (1, 5)]}}

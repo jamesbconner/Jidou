@@ -238,7 +238,7 @@ async def test_sync_show_episodes_never_checked_episode_groups_fetches_summary_o
 
     tmdb.get_episode_groups.assert_called_once_with(show.tmdb_id)
     assert show.episode_groups == []
-    assert show.episode_group_map is None
+    assert show.episode_group_map == {}
     tmdb.get_episode_group.assert_not_called()
 
 
@@ -255,7 +255,7 @@ async def test_sync_show_episodes_already_confirmed_no_groups_does_not_refetch_s
     await orch.sync_show_episodes(show)
 
     tmdb.get_episode_groups.assert_not_called()
-    assert show.episode_group_map is None
+    assert show.episode_group_map == {}
 
 
 async def test_sync_show_episodes_summary_fetch_failure_leaves_state_untouched():
@@ -295,7 +295,7 @@ async def test_sync_show_episodes_group_fetch_failure_does_not_abort_sync():
     result = await orch.sync_show_episodes(show)
 
     assert result.episodes_upserted == 2
-    assert show.episode_group_map is None
+    assert show.episode_group_map == {}
 
 
 async def test_sync_show_episodes_clears_stale_absolute_number_when_groups_now_empty():
@@ -317,7 +317,7 @@ async def test_sync_show_episodes_clears_stale_absolute_number_when_groups_now_e
     await orch.sync_show_episodes(show)
 
     assert existing.absolute_episode_number is None
-    assert show.episode_group_map is None
+    assert show.episode_group_map == {}
 
 
 async def test_sync_show_episodes_group_fetch_outer_failure_leaves_existing_state_untouched():
