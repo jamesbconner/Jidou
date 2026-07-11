@@ -887,50 +887,47 @@ async def test_publish_includes_extra_config_on_feeds() -> None:
 
 @pytest.mark.asyncio
 async def test_celery_publish_task_marks_failed_and_raises() -> None:
-    """_rss_publish marks the task FAILED and raises when orchestrator returns errors."""
-    from jidou.models.task import TaskStatus
+    """_rss_publish's `work` closure surfaces RssPublishOrchestrator errors as a soft failure.
+
+    The actual FAILED-status transition and RuntimeError-after-session-closes
+    behavior now live in run_task_workflow and are covered generically in
+    tests/test_worker_harness.py (test_soft_failure_marks_failed_...); this
+    only needs to prove _rss_publish's `work` closure produces the right
+    WorkflowResult(errors=...) when the orchestrator reports errors.
+    """
     from jidou.orchestrators.rss_publish_orchestrator import RssPublishResult
     from jidou.workers.rss_tasks import _rss_publish
 
     error_result = RssPublishResult(errors=["Backup upload failed"])
 
-    captured_statuses: list[TaskStatus] = []
+    captured: dict[str, object] = {}
 
-    async def fake_update_status(
-        session: object, task_id: str, status: TaskStatus, **kw: object
-    ) -> None:
-        captured_statuses.append(status)
+    async def fake_run_task_workflow(
+        celery_task_id: str,
+        task_type: str,
+        work: object,
+        *,
+        progress_total: int = 0,
+        dry_run: bool = False,
+        running_message: str = "",
+    ) -> str:
+        captured["work"] = work
+        return celery_task_id
 
-    mock_engine = MagicMock()
-    mock_engine.dispose = AsyncMock()
-
-    task_mock = MagicMock()
-    task_mock.status = TaskStatus.PENDING.value
+    with patch("jidou.workers.rss_tasks.run_task_workflow", side_effect=fake_run_task_workflow):
+        await _rss_publish("test-publish-task-id", dry_run=False)
 
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker") as mock_factory,
-        patch("jidou.workers.rss_tasks.create_task_record", new=AsyncMock(return_value=task_mock)),
-        patch("jidou.workers.rss_tasks.update_task_status", side_effect=fake_update_status),
-        patch("jidou.workers.rss_tasks.RssPublishOrchestrator") as mock_orc_cls,
         patch("jidou.workers.rss_tasks._build_sftp", return_value=MagicMock()),
-        patch("jidou.workers.rss_tasks.emit_progress", new=AsyncMock()),
+        patch(
+            "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=error_result,
+        ),
     ):
-        session_cm = AsyncMock()
-        session_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
-        session_cm.__aexit__ = AsyncMock(return_value=False)
-        mock_factory.return_value.return_value = session_cm
+        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
-        mock_orc = MagicMock()
-        mock_orc.run = AsyncMock(return_value=error_result)
-        mock_orc_cls.return_value = mock_orc
-
-        with pytest.raises(RuntimeError, match="Publish failed"):
-            await _rss_publish("test-publish-task-id", dry_run=False)
-
-    assert TaskStatus.RUNNING in captured_statuses
-    assert TaskStatus.FAILED in captured_statuses
-    assert TaskStatus.COMPLETED not in captured_statuses
+    assert wf_result.errors == ["Backup upload failed"]  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

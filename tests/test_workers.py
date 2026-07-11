@@ -78,42 +78,6 @@ def test_download_task_soft_timeout_calls_mark_timed_out() -> None:
     assert len(mark_calls) == 1, "mark_task_timed_out must be called exactly once"
 
 
-@pytest.mark.asyncio
-async def test_download_files_skips_redelivery_for_terminal_task() -> None:
-    """_download_files must exit early without re-running when the task row is terminal."""
-    from jidou.models.task import BackgroundTask, TaskStatus
-    from jidou.workers.download_tasks import _download_files
-
-    terminal_task = MagicMock(spec=BackgroundTask)
-    terminal_task.status = TaskStatus.COMPLETED.value
-    terminal_task.celery_task_id = "redelivered-123"
-
-    mock_engine = AsyncMock()
-    mock_session = AsyncMock()
-    mock_session.__aenter__.return_value = mock_session
-    mock_session.__aexit__.return_value = False
-    mock_factory = MagicMock()
-    mock_factory.return_value = mock_session
-
-    with (
-        patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=mock_engine),
-        patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.download_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal_task,
-        ),
-        patch(
-            "jidou.workers.download_tasks.update_task_status",
-            new_callable=AsyncMock,
-        ) as mock_update,
-    ):
-        result = await _download_files("redelivered-123", dry_run=False)
-
-    mock_update.assert_not_called()
-    assert result == "redelivered-123"
-
-
 def test_scan_task_soft_timeout_calls_mark_timed_out() -> None:
     """SoftTimeLimitExceeded in scan_remote_task must call mark_task_timed_out."""
     from jidou.workers.scan_tasks import scan_remote_task
@@ -152,6 +116,149 @@ def _worker_session_mocks() -> tuple:
     return mock_engine, mock_session, mock_factory
 
 
+def _capture_run_task_workflow(module_path: str) -> tuple:
+    """Patch <module_path>.run_task_workflow, capturing its call kwargs and `work` callback.
+
+    Lifecycle machinery (redelivery skip, RUNNING/COMPLETED/CANCELLED/FAILED
+    transitions, on_progress, on_event separate-session wiring) is now covered
+    once, generically, in tests/test_worker_harness.py. Worker-level tests use
+    this to verify the worker calls run_task_workflow with the right
+    task_type/progress_total/dry_run/running_message, then invoke the
+    captured `work` closure directly (with fake session/on_progress/on_event)
+    to verify it wires the right orchestrator and returns the right
+    WorkflowResult -- the part that's actually worker-specific.
+
+    Returns (patcher, captured) -- use `with patcher:` then read `captured`.
+    """
+    captured: dict[str, object] = {}
+
+    async def fake_run_task_workflow(
+        celery_task_id: str,
+        task_type: str,
+        work: object,
+        *,
+        progress_total: int = 0,
+        dry_run: bool = False,
+        running_message: str = "",
+    ) -> str:
+        captured["celery_task_id"] = celery_task_id
+        captured["task_type"] = task_type
+        captured["work"] = work
+        captured["progress_total"] = progress_total
+        captured["dry_run"] = dry_run
+        captured["running_message"] = running_message
+        return celery_task_id
+
+    return patch(f"{module_path}.run_task_workflow", side_effect=fake_run_task_workflow), captured
+
+
+# ---------------------------------------------------------------------------
+# route_tasks / sync_tasks — on_event wiring regression
+#
+# Locks down that _route_files and _sync_all actually construct and pass a
+# working on_event closure through to RouteOrchestrator/SyncOrchestrator,
+# added *before* migrating either to the harness (see PR-13 / issue #304) so
+# the just-fixed per-file event-log bug (commits ee1cfd5/5ef3c77 on
+# route_orchestrator.py) can't silently regress during that migration.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_route_files_wires_on_event_to_orchestrator() -> None:
+    """_route_files passes a working on_event to RouteOrchestrator.run()."""
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.route_orchestrator import RouteResult
+    from jidou.workers.route_tasks import _route_files
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    route_result = RouteResult(files_routed=1, files_failed=0, dry_run=False)
+
+    async def fake_run(*args: object, **kwargs: object) -> RouteResult:
+        on_event = kwargs.get("on_event")
+        assert callable(on_event)
+        await on_event("info", "Routed Show S01E01", {"show": "Show"})  # type: ignore[operator]
+        return route_result
+
+    with (
+        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers._harness.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers._harness.append_task_event", new_callable=AsyncMock) as mock_append,
+        patch("jidou.workers.route_tasks.RouteOrchestrator.run", side_effect=fake_run),
+    ):
+        result = await _route_files("tid-revent", dry_run=False)
+
+    assert result == "tid-revent"
+    mock_append.assert_awaited_once_with(
+        _mock_session, "tid-revent", "info", "Routed Show S01E01", {"show": "Show"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_all_wires_on_event_to_orchestrator() -> None:
+    """_sync_all passes a working on_event to SyncOrchestrator.run()."""
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.sync_orchestrator import SyncResult
+    from jidou.workers.sync_tasks import _sync_all
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    sync_result = MagicMock()
+    sync_result.tmdb.episodes_upserted = 0
+    sync_result.scan.files_created = 0
+    sync_result.download.files_downloaded = 0
+    sync_result.parse.files_matched = 0
+    sync_result.route.files_routed = 0
+
+    async def fake_run(*args: object, **kwargs: object) -> SyncResult:
+        on_event = kwargs.get("on_event")
+        assert callable(on_event)
+        await on_event("info", "Routed Show S01E01", {"show": "Show"})  # type: ignore[operator]
+        return sync_result
+
+    with (
+        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers._harness.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers._harness.append_task_event", new_callable=AsyncMock) as mock_append,
+        patch("jidou.workers.sync_tasks.SFTPService"),
+        patch("jidou.workers.sync_tasks.TMDBService"),
+        patch("jidou.workers.sync_tasks.create_llm_service"),
+        patch("jidou.workers.sync_tasks.SyncOrchestrator.run", side_effect=fake_run),
+    ):
+        result = await _sync_all("tid-sevent", dry_run=False)
+
+    assert result == "tid-sevent"
+    mock_append.assert_awaited_once_with(
+        _mock_session, "tid-sevent", "info", "Routed Show S01E01", {"show": "Show"}
+    )
+
+
 # ---------------------------------------------------------------------------
 # route_tasks
 # ---------------------------------------------------------------------------
@@ -181,138 +288,45 @@ def test_route_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 @pytest.mark.asyncio
-async def test_route_files_skips_redelivery() -> None:
-    """_route_files exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.route_tasks import _route_files
+async def test_route_files_wires_orchestrator_and_returns_summary() -> None:
+    """_route_files wires run_task_workflow, and its `work` closure calls RouteOrchestrator.
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.FAILED.value)
-
-    with (
-        patch("jidou.workers.route_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.route_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.route_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch(
-            "jidou.workers.route_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-    ):
-        result = await _route_files("tid-r1", dry_run=False)
-
-    assert result == "tid-r1"
-    mock_update.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_route_files_success_path() -> None:
-    """_route_files runs the orchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
+    Lifecycle machinery (redelivery skip, RUNNING/COMPLETED/CANCELLED/FAILED,
+    on_progress/on_event plumbing) is covered generically in
+    tests/test_worker_harness.py; this test covers what's route-specific.
+    """
     from jidou.orchestrators.route_orchestrator import RouteResult
     from jidou.workers.route_tasks import _route_files
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    route_result = RouteResult(files_routed=3, files_failed=0, dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.route_tasks")
+    with patcher:
+        result = await _route_files("tid-r1", dry_run=True)
 
-    with (
-        patch("jidou.workers.route_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.route_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.route_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.route_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.route_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.route_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.route_tasks.RouteOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=route_result,
-        ),
-    ):
-        result = await _route_files("tid-r2", dry_run=False)
+    assert result == "tid-r1"
+    assert captured["task_type"] == "route"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
 
-    assert result == "tid-r2"
-    mock_engine.dispose.assert_called_once()
+    route_result = RouteResult(files_routed=3, files_failed=1, dry_run=True)
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
+    with patch(
+        "jidou.workers.route_tasks.RouteOrchestrator.run",
+        new_callable=AsyncMock,
+        return_value=route_result,
+    ) as mock_run:
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-
-@pytest.mark.asyncio
-async def test_route_files_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _route_files updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.route_tasks import _route_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.route_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.route_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.route_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.route_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.route_tasks.emit_progress", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.route_tasks.RouteOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
-    ):
-        result = await _route_files("tid-rc1", dry_run=False)
-
-    assert result == "tid-rc1"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_route_files_exception_marks_failed() -> None:
-    """Unexpected exception in _route_files marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.route_tasks import _route_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.route_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.route_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.route_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.route_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.route_tasks.emit_progress", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.route_tasks.RouteOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("disk full"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _route_files("tid-r3", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
+    assert wf_result.progress_current == 4
+    assert wf_result.progress_total == 4
+    assert wf_result.result_summary == {
+        "files_routed": 3,
+        "files_failed": 1,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary == {"files_routed": 3, "dry_run": True}
 
 
 # ---------------------------------------------------------------------------
@@ -344,100 +358,48 @@ def test_match_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 @pytest.mark.asyncio
-async def test_match_files_skips_redelivery() -> None:
-    """_match_files exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
+async def test_match_files_wires_orchestrator_and_returns_summary() -> None:
+    """_match_files wires run_task_workflow, and its `work` closure calls ParseOrchestrator."""
+    from jidou.orchestrators.parse_orchestrator import ParseResult
     from jidou.workers.match_tasks import _match_files
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.CANCELLED.value)
-
-    with (
-        patch("jidou.workers.match_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.match_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.match_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch(
-            "jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-    ):
-        result = await _match_files("tid-m1", dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.match_tasks")
+    with patcher:
+        result = await _match_files("tid-m1", dry_run=True)
 
     assert result == "tid-m1"
-    mock_update.assert_not_called()
+    assert captured["task_type"] == "match"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
 
-
-@pytest.mark.asyncio
-async def test_match_files_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _match_files updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.match_tasks import _match_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
+    parse_result = ParseResult(
+        files_processed=4, files_matched=3, files_unmatched=1, files_failed=0, dry_run=True
+    )
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.match_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.match_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.match_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.create_llm_service"),
+        patch("jidou.workers.match_tasks.create_llm_service") as mock_create_llm,
         patch(
             "jidou.workers.match_tasks.ParseOrchestrator.run",
             new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
+            return_value=parse_result,
+        ) as mock_run,
     ):
-        result = await _match_files("tid-mc1", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-mc1"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_match_files_exception_marks_failed() -> None:
-    """Unexpected exception in _match_files marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.match_tasks import _match_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.match_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.match_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.match_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.match_tasks.ParseOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("llm failure"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _match_files("tid-m2", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    mock_create_llm.assert_called_once()
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)
+    assert wf_result.progress_current == 4
+    assert wf_result.progress_total == 4
+    assert wf_result.result_summary == {
+        "files_processed": 4,
+        "files_matched": 3,
+        "files_unmatched": 1,
+        "files_failed": 0,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary == {"files_matched": 3, "dry_run": True}
 
 
 # ---------------------------------------------------------------------------
@@ -469,96 +431,56 @@ def test_sync_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sync_all_skips_redelivery() -> None:
-    """_sync_all exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
+async def test_sync_all_wires_orchestrator_and_returns_summary() -> None:
+    """_sync_all wires run_task_workflow and its `work` closure calls SyncOrchestrator correctly."""
     from jidou.workers.sync_tasks import _sync_all
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
-
-    with (
-        patch("jidou.workers.sync_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.sync_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.sync_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch("jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-    ):
-        result = await _sync_all("tid-s1", dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.sync_tasks")
+    with patcher:
+        result = await _sync_all("tid-s1", dry_run=True)
 
     assert result == "tid-s1"
-    mock_update.assert_not_called()
+    assert captured["task_type"] == "sync"
+    assert captured["progress_total"] == 5
+    assert captured["dry_run"] is True
 
-
-@pytest.mark.asyncio
-async def test_sync_all_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _sync_all updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.sync_tasks import _sync_all
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
+    sync_result = MagicMock()
+    sync_result.tmdb.episodes_upserted = 2
+    sync_result.scan.files_created = 3
+    sync_result.download.files_downloaded = 4
+    sync_result.parse.files_matched = 5
+    sync_result.route.files_routed = 6
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.sync_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.sync_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.sync_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers.sync_tasks.SFTPService"),
         patch("jidou.workers.sync_tasks.TMDBService"),
         patch("jidou.workers.sync_tasks.create_llm_service"),
         patch(
             "jidou.workers.sync_tasks.SyncOrchestrator.run",
             new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
+            return_value=sync_result,
+        ) as mock_run,
     ):
-        result = await _sync_all("tid-sc1", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-sc1"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_sync_all_exception_marks_failed() -> None:
-    """Unexpected exception in _sync_all marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.sync_tasks import _sync_all
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.sync_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.sync_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.sync_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
-        patch(
-            "jidou.workers.sync_tasks.SyncOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("network error"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _sync_all("tid-s2", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    mock_run.assert_awaited_once_with(dry_run=True, on_phase=on_progress, on_event=on_event)
+    assert wf_result.progress_current == 5
+    assert wf_result.progress_total == 5
+    assert wf_result.result_summary == {
+        "episodes_upserted": 2,
+        "files_created": 3,
+        "files_downloaded": 4,
+        "files_matched": 5,
+        "files_routed": 6,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary == {
+        "files_matched": 5,
+        "files_routed": 6,
+        "dry_run": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -604,244 +526,52 @@ def test_path_import_task_soft_timeout_calls_mark_timed_out() -> None:
     assert len(mark_calls) == 1
 
 
-@pytest.mark.asyncio
-async def test_path_import_skips_redelivery() -> None:
-    """_path_import exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.FAILED.value)
-
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-    ):
-        result = await _path_import("tid-i1", "/data/show/ep.mkv\n", "anime", False)
-
-    assert result == "tid-i1"
-    mock_update.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# route_tasks — _route_files on_progress invocation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_route_files_on_progress_is_invoked() -> None:
-    """The on_progress closure body executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.route_orchestrator import RouteResult
-    from jidou.workers.route_tasks import _route_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    route_result = RouteResult(files_routed=1, files_failed=0, dry_run=False)
-
-    async def fake_run(*args: object, **kwargs: object) -> RouteResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "routing file")  # type: ignore[operator]
-        return route_result
-
-    with (
-        patch("jidou.workers.route_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.route_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.route_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.route_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.route_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.route_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.route_tasks.RouteOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _route_files("tid-rop1", dry_run=False)
-
-    assert result == "tid-rop1"
-
-
 # ---------------------------------------------------------------------------
 # scan_tasks — _scan_remote
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_scan_remote_on_progress_is_invoked() -> None:
-    """The on_progress closure body in _scan_remote executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
+async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
+    """_scan_remote wires run_task_workflow, and its `work` closure calls ScanOrchestrator."""
     from jidou.orchestrators.scan_orchestrator import ScanResult
     from jidou.workers.scan_tasks import _scan_remote
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    scan_result = ScanResult(paths_scanned=1, files_found=1, files_created=1, files_skipped=0)
-
-    async def fake_run(*args: object, **kwargs: object) -> ScanResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "scanning")  # type: ignore[operator]
-        return scan_result
-
-    with (
-        patch("jidou.workers.scan_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.scan_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.scan_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.SFTPService"),
-        patch("jidou.workers.scan_tasks.ScanOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _scan_remote("tid-sop1", dry_run=False)
-
-    assert result == "tid-sop1"
-
-
-@pytest.mark.asyncio
-async def test_scan_remote_skips_redelivery() -> None:
-    """_scan_remote exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.scan_tasks import _scan_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
-
-    with (
-        patch("jidou.workers.scan_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.scan_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.scan_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-    ):
-        result = await _scan_remote("tid-sc1", dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.scan_tasks")
+    with patcher:
+        result = await _scan_remote("tid-sc1", dry_run=True)
 
     assert result == "tid-sc1"
-    mock_update.assert_not_called()
+    assert captured["task_type"] == "scan"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
 
-
-@pytest.mark.asyncio
-async def test_scan_remote_success_path() -> None:
-    """_scan_remote runs ScanOrchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.scan_orchestrator import ScanResult
-    from jidou.workers.scan_tasks import _scan_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
     scan_result = ScanResult(paths_scanned=5, files_found=10, files_created=3, files_skipped=7)
-
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.scan_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.scan_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.scan_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.scan_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.SFTPService"),
+        patch("jidou.workers.scan_tasks.SFTPService") as mock_sftp,
         patch(
             "jidou.workers.scan_tasks.ScanOrchestrator.run",
             new_callable=AsyncMock,
             return_value=scan_result,
-        ),
+        ) as mock_run,
     ):
-        result = await _scan_remote("tid-sc2", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-sc2"
-    mock_engine.dispose.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_scan_remote_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _scan_remote updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.scan_tasks import _scan_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.scan_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.scan_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.scan_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.SFTPService"),
-        patch(
-            "jidou.workers.scan_tasks.ScanOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
-    ):
-        result = await _scan_remote("tid-sc3", dry_run=False)
-
-    assert result == "tid-sc3"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_scan_remote_exception_marks_failed() -> None:
-    """Exception in _scan_remote marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.scan_tasks import _scan_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.scan_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.scan_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.scan_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.scan_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.scan_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.scan_tasks.SFTPService"),
-        patch(
-            "jidou.workers.scan_tasks.ScanOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("sftp error"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _scan_remote("tid-sc4", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    mock_sftp.assert_called_once()
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)
+    assert wf_result.progress_current == 5
+    assert wf_result.progress_total == 5
+    assert wf_result.result_summary == {
+        "paths_scanned": 5,
+        "files_found": 10,
+        "files_created": 3,
+        "files_skipped": 7,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary == {"files_created": 3, "dry_run": True}
 
 
 # ---------------------------------------------------------------------------
@@ -850,328 +580,48 @@ async def test_scan_remote_exception_marks_failed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_download_files_on_progress_is_invoked() -> None:
-    """The on_progress closure body in _download_files executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
+async def test_download_files_wires_orchestrator_and_returns_summary() -> None:
+    """_download_files wires run_task_workflow, and `work` calls DownloadOrchestrator."""
     from jidou.orchestrators.download_orchestrator import DownloadResult
     from jidou.workers.download_tasks import _download_files
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.download_tasks")
+    with patcher:
+        result = await _download_files("tid-dl1", dry_run=True)
+
+    assert result == "tid-dl1"
+    assert captured["task_type"] == "download"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
+
     dl_result = DownloadResult(
-        files_downloaded=1, bytes_downloaded=512, files_failed=0, dry_run=False
+        files_downloaded=4, bytes_downloaded=1024, files_failed=1, dry_run=True
     )
-
-    async def fake_run(*args: object, **kwargs: object) -> DownloadResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "downloading")  # type: ignore[operator]
-        return dl_result
-
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.download_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.download_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.download_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.download_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.SFTPService"),
-        patch("jidou.workers.download_tasks.DownloadOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _download_files("tid-dop1", dry_run=False)
-
-    assert result == "tid-dop1"
-
-
-@pytest.mark.asyncio
-async def test_download_files_success_path() -> None:
-    """_download_files runs DownloadOrchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.download_orchestrator import DownloadResult
-    from jidou.workers.download_tasks import _download_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    dl_result = DownloadResult(
-        files_downloaded=4, bytes_downloaded=1024, files_failed=0, dry_run=False
-    )
-
-    with (
-        patch("jidou.workers.download_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.download_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.download_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.download_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.download_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.SFTPService"),
+        patch("jidou.workers.download_tasks.SFTPService") as mock_sftp,
         patch(
             "jidou.workers.download_tasks.DownloadOrchestrator.run",
             new_callable=AsyncMock,
             return_value=dl_result,
-        ),
+        ) as mock_run,
     ):
-        result = await _download_files("tid-dl1", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-dl1"
-    mock_engine.dispose.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_download_files_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _download_files updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.download_tasks import _download_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.download_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.download_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.download_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.download_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.download_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.SFTPService"),
-        patch(
-            "jidou.workers.download_tasks.DownloadOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
-    ):
-        result = await _download_files("tid-dl2", dry_run=False)
-
-    assert result == "tid-dl2"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_download_files_exception_marks_failed() -> None:
-    """Exception in _download_files marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.download_tasks import _download_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.download_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.download_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.download_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.download_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.download_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.download_tasks.SFTPService"),
-        patch(
-            "jidou.workers.download_tasks.DownloadOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("sftp disconnected"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _download_files("tid-dl3", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
-
-
-# ---------------------------------------------------------------------------
-# match_tasks — _match_files (success path)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_match_files_on_progress_is_invoked() -> None:
-    """The on_progress closure body in _match_files executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.parse_orchestrator import ParseResult
-    from jidou.workers.match_tasks import _match_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    parse_result = ParseResult(
-        files_processed=1, files_matched=1, files_unmatched=0, files_failed=0, dry_run=False
-    )
-
-    async def fake_run(*args: object, **kwargs: object) -> ParseResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "matching")  # type: ignore[operator]
-        return parse_result
-
-    with (
-        patch("jidou.workers.match_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.match_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.match_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.match_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.create_llm_service"),
-        patch("jidou.workers.match_tasks.ParseOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _match_files("tid-mop1", dry_run=False)
-
-    assert result == "tid-mop1"
-
-
-@pytest.mark.asyncio
-async def test_match_files_success_path() -> None:
-    """_match_files runs ParseOrchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.parse_orchestrator import ParseResult
-    from jidou.workers.match_tasks import _match_files
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    parse_result = ParseResult(
-        files_processed=5, files_matched=4, files_unmatched=1, files_failed=0, dry_run=False
-    )
-
-    with (
-        patch("jidou.workers.match_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.match_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.match_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.match_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.match_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.match_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.match_tasks.ParseOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=parse_result,
-        ),
-    ):
-        result = await _match_files("tid-mf1", dry_run=False)
-
-    assert result == "tid-mf1"
-    mock_engine.dispose.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# sync_tasks — _sync_all (success path)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_all_on_progress_is_invoked() -> None:
-    """The on_progress closure body in _sync_all executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.sync_tasks import _sync_all
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    sync_result = MagicMock()
-    sync_result.scan.files_created = 1
-    sync_result.download.files_downloaded = 1
-    sync_result.match = MagicMock(files_matched=1, files_unmatched=0)
-
-    async def fake_run(*args: object, **kwargs: object) -> object:
-        on_phase = kwargs.get("on_phase")  # sync_tasks uses on_phase, not on_progress
-        if callable(on_phase):
-            await on_phase(1, 5, "syncing")  # type: ignore[operator]
-        return sync_result
-
-    with (
-        patch("jidou.workers.sync_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.sync_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.sync_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.sync_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.sync_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.sync_tasks.SFTPService"),
-        patch("jidou.workers.sync_tasks.TMDBService"),
-        patch("jidou.workers.sync_tasks.create_llm_service"),
-        patch("jidou.workers.sync_tasks.SyncOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _sync_all("tid-sap1", dry_run=False)
-
-    assert result == "tid-sap1"
-
-
-@pytest.mark.asyncio
-async def test_sync_all_success_path() -> None:
-    """_sync_all runs SyncOrchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.sync_tasks import _sync_all
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    sync_result = MagicMock()
-    sync_result.scan.files_created = 2
-    sync_result.download.files_downloaded = 1
-    sync_result.match = MagicMock(files_matched=1, files_unmatched=0)
-
-    with (
-        patch("jidou.workers.sync_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.sync_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.sync_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.sync_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.sync_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.sync_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.sync_tasks.SFTPService"),
-        patch("jidou.workers.sync_tasks.TMDBService"),
-        patch("jidou.workers.sync_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.sync_tasks.SyncOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=sync_result,
-        ),
-    ):
-        result = await _sync_all("tid-sa1", dry_run=False)
-
-    assert result == "tid-sa1"
-    mock_engine.dispose.assert_called_once()
+    mock_sftp.assert_called_once()
+    mock_run.assert_awaited_once()
+    assert mock_run.call_args.kwargs["on_progress"] is on_progress
+    assert wf_result.progress_current == 5
+    assert wf_result.progress_total == 5
+    assert wf_result.result_summary == {
+        "files_downloaded": 4,
+        "bytes_downloaded": 1024,
+        "files_failed": 1,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary == {"files_downloaded": 4, "dry_run": True}
 
 
 # ---------------------------------------------------------------------------
@@ -1180,59 +630,27 @@ async def test_sync_all_success_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_path_import_on_progress_and_on_event_invoked() -> None:
-    """_path_import on_progress and on_event closure bodies execute when called."""
-    from jidou.models.task import TaskStatus
+async def test_path_import_wires_orchestrator_and_returns_summary() -> None:
+    """_path_import wires run_task_workflow, and its `work` closure calls PathImportOrchestrator.
+
+    Also covers what used to be test_path_import_on_event_closure_invoked:
+    PathImportOrchestrator receives on_event at *construction* time (unlike
+    route/sync, which pass it to .run()) -- worth locking down since it's a
+    different wiring shape than every other worker.
+    """
     from jidou.orchestrators.path_import_orchestrator import PathImportResult
     from jidou.workers.import_tasks import _path_import
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    import_result = PathImportResult(show_results=[])
+    patcher, captured = _capture_run_task_workflow("jidou.workers.import_tasks")
+    with patcher:
+        result = await _path_import("tid-pi1", "/show/S01E01.mkv\n", "anime", True)
 
-    async def fake_run(*args: object, **kwargs: object) -> PathImportResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "processing")  # type: ignore[operator]
-        return import_result
+    assert result == "tid-pi1"
+    assert captured["task_type"] == "import"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
+    assert captured["running_message"] == "Parsing file…"
 
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.create_llm_service"),
-        patch("jidou.workers.import_tasks.PathImportOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _path_import("tid-iop1", "/show/ep.mkv\n", "anime", False)
-
-    assert result == "tid-iop1"
-
-
-@pytest.mark.asyncio
-async def test_path_import_success_path() -> None:
-    """_path_import runs PathImportOrchestrator and marks task COMPLETED."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.path_import_orchestrator import PathImportResult
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
     import_result = PathImportResult(
         shows_processed=2,
         shows_created=1,
@@ -1242,36 +660,34 @@ async def test_path_import_success_path() -> None:
         episodes_unmatched=0,
         show_results=[],
     )
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
+    captured_on_event: list[object] = []
+
+    class FakePathOrchestrator:
+        def __init__(self, *args: object, on_event: object = None, **kwargs: object) -> None:
+            captured_on_event.append(on_event)
+
+        async def run(self, *args: object, **kwargs: object) -> PathImportResult:
+            assert kwargs.get("on_progress") is on_progress
+            return import_result
 
     with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
+        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.TMDBService"),
         patch("jidou.workers.import_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.import_tasks.PathImportOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=import_result,
-        ),
+        patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
     ):
-        result = await _path_import("tid-pi1", "/show/S01E01.mkv\n", "anime", False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-pi1"
-    mock_engine.dispose.assert_called_once()
+    assert captured_on_event == [on_event]
+    assert wf_result.progress_current == 2
+    assert wf_result.progress_total == 2
+    assert wf_result.result_summary["shows_created"] == 1
+    assert wf_result.result_summary["episodes_tracked"] == 5
+    assert wf_result.result_summary["show_results"] == []
 
 
 @pytest.mark.parametrize(
@@ -1311,20 +727,21 @@ async def test_path_import_passes_content_type_root_to_parse_file() -> None:
     mock_parse_file = MagicMock(return_value=[])
 
     with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
         patch(
-            "jidou.workers.import_tasks.create_task_record",
+            "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
             return_value=pending,
         ),
         patch(
-            "jidou.workers.import_tasks.update_task_status",
+            "jidou.workers._harness.update_task_status",
             new_callable=AsyncMock,
             return_value=completed,
         ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", mock_parse_file),
         patch("jidou.workers.import_tasks.TMDBService"),
@@ -1359,20 +776,21 @@ async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> 
     mock_append_event = AsyncMock()
 
     with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
         patch(
-            "jidou.workers.import_tasks.create_task_record",
+            "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
             return_value=pending,
         ),
         patch(
-            "jidou.workers.import_tasks.update_task_status",
+            "jidou.workers._harness.update_task_status",
             new_callable=AsyncMock,
             return_value=completed,
         ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", mock_append_event),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
@@ -1394,176 +812,6 @@ async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> 
     warn_calls = [c for c in mock_append_event.call_args_list if c.args[2] == "warn"]
     assert warn_calls, "expected a warn event for zero entries from a non-trivial file"
     assert "0 usable entries" in warn_calls[0].args[3]
-
-
-@pytest.mark.asyncio
-async def test_path_import_exception_marks_failed() -> None:
-    """Exception in _path_import marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.import_tasks.PathImportOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("tmdb timeout"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _path_import("tid-pi2", "/show/S01E01.mkv\n", "anime", False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
-
-
-# ---------------------------------------------------------------------------
-# import_tasks — on_event closure, cancellation, None task branch
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_path_import_on_event_closure_invoked() -> None:
-    """on_event closure body executes when PathImportOrchestrator calls it."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.path_import_orchestrator import PathImportResult
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
-    import_result = PathImportResult(show_results=[])
-
-    class FakePathOrchestrator:
-        def __init__(self, *args: object, on_event: object = None, **kwargs: object) -> None:
-            self._on_event = on_event
-
-        async def run(self, *args: object, **kwargs: object) -> PathImportResult:
-            if callable(self._on_event):
-                await self._on_event("info", "Importing show", None)  # type: ignore[operator]
-            return import_result
-
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock) as mock_event,
-        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.create_llm_service"),
-        patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
-    ):
-        result = await _path_import("tid-ioev1", "/show/ep.mkv\n", "anime", False)
-
-    assert result == "tid-ioev1"
-    mock_event.assert_called()
-
-
-@pytest.mark.asyncio
-async def test_path_import_cancellation_swallowed() -> None:
-    """TaskCancelledError from _path_import is caught and swallowed."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.import_tasks.PathImportOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
-    ):
-        result = await _path_import("tid-ican1", "/show/ep.mkv\n", "anime", False)
-
-    assert result == "tid-ican1"
-
-
-@pytest.mark.asyncio
-async def test_path_import_skips_emit_when_task_is_none() -> None:
-    """No 'complete' emit when update_task_status returns None for path import."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.path_import_orchestrator import PathImportResult
-    from jidou.workers.import_tasks import _path_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    import_result = PathImportResult(show_results=[])
-
-    with (
-        patch("jidou.workers.import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch("jidou.workers.import_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers.import_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.TMDBService"),
-        patch("jidou.workers.import_tasks.create_llm_service"),
-        patch(
-            "jidou.workers.import_tasks.PathImportOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=import_result,
-        ),
-    ):
-        result = await _path_import("tid-inone1", "/show/ep.mkv\n", "anime", False)
-
-    assert result == "tid-inone1"
-    complete_calls = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "complete"]
-    assert len(complete_calls) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1673,40 +921,20 @@ def test_seed_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 @pytest.mark.asyncio
-async def test_seed_remote_skips_redelivery() -> None:
-    """_seed_remote exits early when task is already terminal."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.seed_tasks import _seed_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
-
-    with (
-        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.seed_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-    ):
-        result = await _seed_remote("tid-s1", dry_run=False)
-
-    assert result == "tid-s1"
-    mock_update.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_seed_remote_success_path() -> None:
-    """_seed_remote runs the orchestrator and marks the task COMPLETED."""
-    from jidou.models.task import TaskStatus
+async def test_seed_remote_wires_orchestrator_and_returns_summary() -> None:
+    """_seed_remote wires run_task_workflow, and its `work` closure calls SeedOrchestrator."""
     from jidou.orchestrators.seed_orchestrator import SeedResult
     from jidou.workers.seed_tasks import _seed_remote
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.seed_tasks")
+    with patcher:
+        result = await _seed_remote("tid-s2", dry_run=True)
+
+    assert result == "tid-s2"
+    assert captured["task_type"] == "seed"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
+
     seed_result = SeedResult(
         paths_scanned=1,
         paths_failed=0,
@@ -1714,139 +942,30 @@ async def test_seed_remote_success_path() -> None:
         files_seeded=3,
         files_skipped=0,
     )
-
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.seed_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch(
-            "jidou.workers.seed_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.SFTPService"),
+        patch("jidou.workers.seed_tasks.SFTPService") as mock_sftp,
         patch(
             "jidou.workers.seed_tasks.SeedOrchestrator.run",
             new_callable=AsyncMock,
             return_value=seed_result,
-        ),
+        ) as mock_run,
     ):
-        result = await _seed_remote("tid-s2", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-s2"
-    mock_engine.dispose.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_seed_remote_on_progress_is_invoked() -> None:
-    """The on_progress closure body in _seed_remote executes when the orchestrator calls it."""
-    from jidou.models.task import TaskStatus
-    from jidou.orchestrators.seed_orchestrator import SeedResult
-    from jidou.workers.seed_tasks import _seed_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-    seed_result = SeedResult(
-        paths_scanned=1,
-        paths_failed=0,
-        files_found=1,
-        files_seeded=1,
-        files_skipped=0,
-    )
-
-    async def fake_run(*args: object, **kwargs: object) -> SeedResult:
-        on_progress = kwargs.get("on_progress")
-        if callable(on_progress):
-            await on_progress(1, 1, "seeding")  # type: ignore[operator]
-        return seed_result
-
-    with (
-        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.seed_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.SFTPService"),
-        patch("jidou.workers.seed_tasks.SeedOrchestrator.run", side_effect=fake_run),
-    ):
-        result = await _seed_remote("tid-sop1", dry_run=False)
-
-    assert result == "tid-sop1"
-
-
-@pytest.mark.asyncio
-async def test_seed_remote_cancellation_marks_cancelled() -> None:
-    """TaskCancelledError in _seed_remote updates status to CANCELLED."""
-    from jidou.models.task import TaskStatus
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.seed_tasks import _seed_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.seed_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.SFTPService"),
-        patch(
-            "jidou.workers.seed_tasks.SeedOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
-        ),
-    ):
-        result = await _seed_remote("tid-sc1", dry_run=False)
-
-    assert result == "tid-sc1"
-    cancelled_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.CANCELLED]
-    assert len(cancelled_calls) >= 1
-
-
-@pytest.mark.asyncio
-async def test_seed_remote_exception_marks_failed() -> None:
-    """Unexpected exception in _seed_remote marks task FAILED and re-raises."""
-    from jidou.models.task import TaskStatus
-    from jidou.workers.seed_tasks import _seed_remote
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    pending = MagicMock(status=TaskStatus.PENDING.value)
-
-    with (
-        patch("jidou.workers.seed_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.seed_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.seed_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=pending,
-        ),
-        patch("jidou.workers.seed_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.seed_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.seed_tasks.SFTPService"),
-        patch(
-            "jidou.workers.seed_tasks.SeedOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("sftp connection lost"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _seed_remote("tid-s3", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    mock_sftp.assert_called_once()
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)
+    assert wf_result.progress_current == 3
+    assert wf_result.progress_total == 3
+    assert wf_result.result_summary == {
+        "paths_scanned": 1,
+        "paths_failed": 0,
+        "files_found": 3,
+        "files_seeded": 3,
+        "files_skipped": 0,
+        "skipped_by_status": seed_result.skipped_by_status,
+        "dry_run": True,
+    }
+    assert wf_result.complete_summary is None

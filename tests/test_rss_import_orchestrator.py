@@ -736,53 +736,49 @@ async def test_parse_error_returns_result_with_error_message() -> None:
 
 @pytest.mark.asyncio
 async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> None:
-    """_rss_import marks the task FAILED when RssImportOrchestrator.run() returns errors."""
+    """_rss_import's `work` closure surfaces RssImportOrchestrator errors as a soft failure.
+
+    The actual FAILED-status transition and RuntimeError-after-session-closes
+    behavior now live in run_task_workflow and are covered generically in
+    tests/test_worker_harness.py (test_soft_failure_marks_failed_...); this
+    only needs to prove _rss_import's `work` closure produces the right
+    WorkflowResult(errors=...) when the orchestrator reports errors.
+    """
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from jidou.models.task import TaskStatus
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
     from jidou.workers.rss_tasks import _rss_import
 
     error_result = RssImportResult(errors=["Failed to parse RSS config: malformed JSON"])
 
-    task_mock = MagicMock()
-    task_mock.status = TaskStatus.PENDING.value
+    captured: dict[str, object] = {}
 
-    captured_statuses: list[TaskStatus] = []
+    async def fake_run_task_workflow(
+        celery_task_id: str,
+        task_type: str,
+        work: object,
+        *,
+        progress_total: int = 0,
+        dry_run: bool = False,
+        running_message: str = "",
+    ) -> str:
+        captured["work"] = work
+        return celery_task_id
 
-    async def fake_update_status(
-        session: object, task_id: str, status: TaskStatus, **kw: object
-    ) -> None:
-        captured_statuses.append(status)
-
-    mock_engine = MagicMock()
-    mock_engine.dispose = AsyncMock()
+    with patch("jidou.workers.rss_tasks.run_task_workflow", side_effect=fake_run_task_workflow):
+        await _rss_import("test-task-id", dry_run=False)
 
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker") as mock_factory,
-        patch("jidou.workers.rss_tasks.create_task_record", new=AsyncMock(return_value=task_mock)),
-        patch("jidou.workers.rss_tasks.update_task_status", side_effect=fake_update_status),
-        patch("jidou.workers.rss_tasks.RssImportOrchestrator") as mock_orc_class,
         patch("jidou.workers.rss_tasks._build_sftp", return_value=MagicMock()),
-        patch("jidou.workers.rss_tasks.emit_progress", new=AsyncMock()),
+        patch(
+            "jidou.workers.rss_tasks.RssImportOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=error_result,
+        ),
     ):
-        # Wire up the async session context manager
-        session_cm = AsyncMock()
-        session_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
-        session_cm.__aexit__ = AsyncMock(return_value=False)
-        mock_factory.return_value.return_value = session_cm
+        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
-        mock_orc = MagicMock()
-        mock_orc.run = AsyncMock(return_value=error_result)
-        mock_orc_class.return_value = mock_orc
-
-        with pytest.raises(RuntimeError, match="Import failed"):
-            await _rss_import("test-task-id", dry_run=False)
-
-    assert TaskStatus.RUNNING in captured_statuses
-    assert TaskStatus.FAILED in captured_statuses
-    assert TaskStatus.COMPLETED not in captured_statuses
+    assert wf_result.errors == ["Failed to parse RSS config: malformed JSON"]  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
