@@ -2,7 +2,6 @@
 
 import logging
 from datetime import date
-from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +32,7 @@ from jidou.schemas.show_schema import (
 )
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.llm_service import LLMService
+from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
@@ -92,13 +92,14 @@ def _auto_local_path(content_type: str, sys_name: str) -> str:
     """
     from jidou.config import settings
 
-    if content_type == "movie":
-        base = settings.local_movie_path
-    elif content_type == "anime":
-        base = settings.local_anime_path
-    else:
-        base = settings.local_tv_path
-    return str(PurePosixPath(base) / sys_name)
+    return resolve_show_local_path(
+        content_type=content_type,
+        media_type=None,
+        sys_name=sys_name,
+        local_tv_path=settings.local_tv_path,
+        local_anime_path=settings.local_anime_path,
+        local_movie_path=settings.local_movie_path,
+    )
 
 
 # ---------------------------------------------------------------------------

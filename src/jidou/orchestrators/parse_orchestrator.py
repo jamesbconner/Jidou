@@ -3,7 +3,6 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +13,7 @@ from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
+from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.show_lookup import find_show_by_name
 from jidou.services.sys_name import sanitize_sys_name
 
@@ -111,17 +111,16 @@ class ParseOrchestrator:
         Returns:
             Absolute path string for the show's root directory.
         """
-        ct = show.content_type or show.media_type or "tv"
-        if ct == "movie":
-            base = self.local_movie_path
-        elif ct == "anime":
-            base = self.local_anime_path
-        else:
-            base = self.local_tv_path
         # sys_name is pre-sanitized; fall back to title with invalid chars stripped.
         dir_name = show.sys_name or sanitize_sys_name(show.title)
-        # PurePosixPath ensures forward slashes — these are always Linux container paths.
-        return str(PurePosixPath(base) / dir_name)
+        return resolve_show_local_path(
+            content_type=show.content_type,
+            media_type=show.media_type,
+            sys_name=dir_name,
+            local_tv_path=self.local_tv_path,
+            local_anime_path=self.local_anime_path,
+            local_movie_path=self.local_movie_path,
+        )
 
     async def _find_show(self, parsed_name: str) -> Show | None:
         """Look up a show by alias list containment or title match.
