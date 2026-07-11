@@ -373,11 +373,11 @@ class PathImportOrchestrator:
         )
         logger.info("Found existing show %r (id=%d) for name %r", show.title, show.id, name)
         # If episodes haven't been synced yet, do it now so file matching can proceed.
-        if not self.dry_run:
-            ep_count = await self.session.scalar(
-                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
-            )
-            if ep_count == 0:
+        ep_count = await self.session.scalar(
+            select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+        )
+        if ep_count == 0:
+            if not self.dry_run:
                 await self._emit(
                     "info", f"No episodes synced yet — fetching from TMDB for '{show.title}'"
                 )
@@ -386,18 +386,23 @@ class PathImportOrchestrator:
                 except Exception as exc:
                     await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
                     logger.exception("Episode sync failed for show id=%d", show.id)
-            else:
-                # ensure_episode_group_map handles its own exceptions
-                # internally, but wrap defensively so a coding error in the
-                # method itself never aborts a show resolution.
-                try:
-                    await TMDBOrchestrator(self.session, self.tmdb).ensure_episode_group_map(show)
-                except Exception:
-                    logger.warning(
-                        "ensure_episode_group_map raised unexpectedly for show id=%d",
-                        show.id,
-                        exc_info=True,
-                    )
+        else:
+            # ensure_episode_group_map handles its own exceptions internally,
+            # but wrap defensively so a coding error in the method itself
+            # never aborts a show resolution. Runs even in dry_run:
+            # episode_group_map/absolute_episode_number are derived TMDB
+            # cache data (see Show.episode_group_map), not a user-visible
+            # import side effect, and skipping this here would make a
+            # dry-run preview's matching diverge from what a real run
+            # would actually resolve.
+            try:
+                await TMDBOrchestrator(self.session, self.tmdb).ensure_episode_group_map(show)
+            except Exception:
+                logger.warning(
+                    "ensure_episode_group_map raised unexpectedly for show id=%d",
+                    show.id,
+                    exc_info=True,
+                )
 
         return show, "found"
 

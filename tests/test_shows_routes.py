@@ -297,6 +297,52 @@ def test_create_show_handles_concurrent_insert_race() -> None:
         app.dependency_overrides.clear()
 
 
+def test_create_show_race_return_still_backfills_episode_group_map() -> None:
+    """Bugbot-caught regression: the concurrent-insert race branch must call
+    ensure_episode_group_map on the row it falls back to returning, same as
+    the normal already-exists branch -- otherwise a show that only ever hits
+    this race path can keep a null episode_group_map indefinitely.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(tmdb_id=201)
+
+    async def _race_session() -> AsyncMock:
+        session = AsyncMock()
+        miss_result = MagicMock()
+        miss_result.scalar_one_or_none.return_value = None
+        hit_result = MagicMock()
+        hit_result.scalar_one_or_none.return_value = show
+        session.execute = AsyncMock(side_effect=[miss_result, hit_result])
+        session.add = MagicMock()
+        session.flush = AsyncMock(side_effect=IntegrityError("", {}, Exception()))
+        session.rollback = AsyncMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    app.dependency_overrides[get_session] = _race_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.ensure_episode_group_map = AsyncMock()
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app).post(
+                "/api/shows",
+                json={"tmdb_id": 201, "title": "Race Show", "media_type": "tv"},
+            )
+        assert response.status_code == 201
+        mock_orch.ensure_episode_group_map.assert_awaited_once_with(show)
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # GET /api/shows/{show_id}
 # ---------------------------------------------------------------------------

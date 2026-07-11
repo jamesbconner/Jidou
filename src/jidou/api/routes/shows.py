@@ -365,6 +365,7 @@ async def create_show(
                 payload.tmdb_id,
                 existing.id,
             )
+            await TMDBOrchestrator(db_session, tmdb).ensure_episode_group_map(existing)
             return existing
         raise
 
