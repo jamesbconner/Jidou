@@ -301,6 +301,46 @@ def test_apply_tmdb_metadata_movie_uses_title_field() -> None:
     assert show.release_date == "2023-06-01"
 
 
+def test_apply_tmdb_metadata_clears_episode_group_map_on_movie_rematch() -> None:
+    """Rematching to a movie must clear a stale episode_group_map from a
+    previous TV identity -- movies never sync episodes again, so nothing
+    else would ever clear it.
+    """
+    session = MagicMock()
+    tmdb = MagicMock()
+    show = _make_show(media_type="movie")
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}  # stale from a prior TV identity
+    payload = _make_payload(media_type="movie")
+    data = {"title": "Great Movie", "release_date": "2023-06-01"}
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    orch._apply_tmdb_metadata(show, payload, data)
+
+    assert show.episode_group_map is None
+
+
+def test_apply_tmdb_metadata_clears_episode_group_map_on_tv_rematch() -> None:
+    """Bugbot-caught regression: rematching TV-to-TV must also clear the old
+    episode_group_map before the new episode sync runs. The old map
+    describes the PREVIOUS identity's season/cour grouping; if the new
+    sync's group-breakdown fetch then fails, _apply_episode_group_map's
+    "leave existing state untouched on failure" contract would otherwise
+    resurrect the previous identity's stale map against a completely
+    different, freshly-purged-and-rebuilt episode set.
+    """
+    session = MagicMock()
+    tmdb = MagicMock()
+    show = _make_show(tmdb_id=100, media_type="tv")
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}  # stale from the old tmdb_id
+    payload = _make_payload(tmdb_id=200, media_type="tv")
+    data = _make_tmdb_data(title="Different Show")
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    orch._apply_tmdb_metadata(show, payload, data)
+
+    assert show.episode_group_map is None
+
+
 def test_apply_tmdb_metadata_falls_back_to_existing_title() -> None:
     """When TMDB returns no name/title, the existing show title is preserved."""
     session = MagicMock()

@@ -124,10 +124,16 @@ class ShowRematchOrchestrator:
         fields = build_show_fields(data, payload.tmdb_id, payload.media_type, existing=show)
         for key, value in fields.items():
             setattr(show, key, value)
-        # Movies have no episode groups; clear stale data left from a
-        # previous TV identity so it doesn't sit on the row indefinitely.
-        if payload.media_type == "movie":
-            show.episode_group_map = {}
+        # The episode set is about to be purged and rebuilt against a
+        # different TMDB identity (or not rebuilt at all, for movies) --
+        # any existing episode_group_map describes the OLD identity's
+        # season/cour grouping and must never survive onto episodes it no
+        # longer corresponds to. None (not {}) so a later sync is free to
+        # populate it fresh; if that sync's group-breakdown fetch fails,
+        # _apply_episode_group_map's "leave existing state untouched on
+        # failure" contract then correctly leaves this as "unknown" rather
+        # than resurrecting the previous identity's stale map.
+        show.episode_group_map = None
 
     async def _snapshot_tracking(
         self,
