@@ -579,17 +579,15 @@ def test_build_sub_dict_fills_yarss2_defaults_for_fresh_subscription() -> None:
     Detail "Add RSS" button, etc.) published with those keys missing
     entirely, rather than present with YaRSS2's own "inherit global" values.
     """
-    from jidou.orchestrators.rss_publish_orchestrator import (
-        _YARSS2_SUBSCRIPTION_DEFAULTS,
-        RssPublishOrchestrator,
-    )
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+    from jidou.services.rss_config import YARSS2_SUBSCRIPTION_DEFAULTS
 
     sub = _make_sub(feed=None, extra_config=None)
 
     result = RssPublishOrchestrator._build_sub_dict(sub, "12")
 
     assert result["key"] == "12"
-    for field, default in _YARSS2_SUBSCRIPTION_DEFAULTS.items():
+    for field, default in YARSS2_SUBSCRIPTION_DEFAULTS.items():
         if field == "label":
             continue  # sub fixture may set its own label; checked separately below
         assert result[field] == default

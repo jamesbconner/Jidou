@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssSubscription
+from jidou.services.rss_config import fill_missing_yarss2_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ async def ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) 
         name=show_title,
         enabled_in_config=False,
         active=False,
+        extra_config=fill_missing_yarss2_defaults(None),
     )
     session.add(stub)
     try:
