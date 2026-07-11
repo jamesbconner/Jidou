@@ -373,8 +373,10 @@ async def create_show(
             await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
             logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
         except SQLAlchemyError:
-            # DB failure during sync's internal commit — the show row was rolled
-            # back along with the episodes; propagate so the caller gets a 500.
+            # DB failure during sync's internal flush leaves the session's
+            # transaction in a broken state; propagate so the caller gets a
+            # 500 rather than silently issuing more queries against a dead
+            # transaction.
             raise
         except Exception:
             logger.warning(
@@ -384,6 +386,13 @@ async def create_show(
                 show.tmdb_id,
                 exc_info=True,
             )
+
+    # Commit the show (and any synced episodes) now, independent of alias
+    # generation below. sync_show_episodes only flushes, so without this
+    # commit a later DB-level failure in alias generation would roll back
+    # an already-successful sync too -- both steps are meant to be
+    # independently best-effort, not able to undo each other.
+    await db_session.commit()
 
     try:
         from jidou.orchestrators.alias_orchestrator import generate_aliases

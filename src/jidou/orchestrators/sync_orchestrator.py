@@ -206,6 +206,10 @@ class SyncOrchestrator:
                     if not show.cached or not has_episodes:
                         try:
                             tmdb_result = await _tmdb_orch.sync_show_episodes(show)
+                            # sync_show_episodes only flushes; commit here so
+                            # this phase's data is durable regardless of what
+                            # happens in the phases that follow.
+                            await self.session.commit()
                         except Exception:
                             logger.exception("Failed to sync TMDB for show id=%d", show.id)
                             await self.session.rollback()

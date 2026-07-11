@@ -75,7 +75,10 @@ async def test_sync_show_episodes_upserts_new_episodes():
     assert result.shows_synced == 1
     assert session.add.call_count == 2
     assert show.cached is True
-    session.commit.assert_called_once()
+    # sync_show_episodes flushes but never commits -- the caller owns the
+    # transaction boundary (see sync_all_shows for the per-show commit).
+    session.flush.assert_awaited()
+    session.commit.assert_not_called()
 
 
 async def test_sync_show_episodes_updates_existing():
@@ -154,6 +157,43 @@ async def test_sync_all_shows_continues_on_error():
 
     assert result.shows_synced == 1  # only second show succeeded
     assert tmdb.get_show_seasons.call_count == 2
+
+
+async def test_sync_all_shows_commits_after_each_successful_show():
+    """A later show's failure must not roll back an earlier show's success.
+
+    Regression test: sync_show_episodes only flushes now (the caller owns
+    the commit boundary), so sync_all_shows must commit after each show it
+    successfully syncs -- otherwise a mid-batch failure's rollback() would
+    discard every prior show's uncommitted work in the same transaction,
+    even though the result summary reports them as synced.
+    """
+    show1 = _make_show(tmdb_id=111, show_id=1)
+    show2 = _make_show(tmdb_id=222, show_id=2)
+    show3 = _make_show(tmdb_id=333, show_id=3)
+
+    session = _make_session_with_shows(shows=[show1, show2, show3], existing_episode=None)
+
+    tmdb = AsyncMock()
+    # Show 1 succeeds, show 2 raises, show 3 succeeds.
+    tmdb.get_show_seasons = AsyncMock(
+        side_effect=[
+            {"seasons": [{"season_number": 1}]},
+            Exception("TMDB error"),
+            {"seasons": [{"season_number": 1}]},
+        ]
+    )
+    tmdb.get_season_details = AsyncMock(
+        return_value={"episodes": [{"id": 201, "episode_number": 1, "name": "Ep1"}]}
+    )
+
+    orch = TMDBOrchestrator(session, tmdb)
+    result = await orch.sync_all_shows()
+
+    assert result.shows_synced == 2  # shows 1 and 3
+    # One commit per successful show (1 and 3); one rollback for show 2.
+    assert session.commit.await_count == 2
+    session.rollback.assert_awaited_once()
 
 
 async def test_on_progress_called_per_season():

@@ -1106,6 +1106,104 @@ def test_match_file_tmdb_id_creates_show_with_adult_flag() -> None:
         app.dependency_overrides.clear()
 
 
+def test_match_file_commits_after_sync_before_alias_generation() -> None:
+    """The show and any synced episodes commit before alias generation runs.
+
+    Regression test for a Cursor Bugbot finding on PR-04: sync_show_episodes
+    now only flushes (the caller owns the commit boundary). Without an
+    explicit commit right after a successful sync, a subsequent DB-level
+    failure during alias generation would roll back the sync's flushed
+    episodes too, even though sync itself succeeded -- both steps are meant
+    to be independently best-effort. Asserts the actual call order rather
+    than just the response, since a mocked session can't demonstrate data
+    loss directly.
+    """
+    from unittest.mock import patch
+
+    from jidou.database import get_session
+    from jidou.models.show import Show
+
+    f = _make_file(id=3, status=FileStatus.UNMATCHED)
+    f.parsed_season = None
+    f.parsed_episode = None
+
+    tmdb_data = {
+        "id": 1398,
+        "name": "Commit Order Show",
+        "overview": "",
+        "poster_path": None,
+        "backdrop_path": None,
+        "vote_average": 0,
+        "vote_count": 0,
+        "first_air_date": "2020-01-01",
+        "original_language": "en",
+    }
+
+    call_order: list[str] = []
+
+    async def _tmdb_match_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        no_show_result = MagicMock()
+        no_show_result.scalar_one_or_none.return_value = None
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
+        session.flush = AsyncMock()
+
+        async def _commit() -> None:
+            call_order.append("commit")
+
+        session.commit = AsyncMock(side_effect=_commit)
+
+        def _add(obj: object) -> None:
+            if isinstance(obj, Show):
+                obj.id = 44  # type: ignore[attr-defined]
+                obj.local_path = "/media/tv/Commit Order Show"  # type: ignore[attr-defined]
+
+        session.add = MagicMock(side_effect=_add)
+        yield session
+
+    async def _get_show_seasons(*_args: object, **_kwargs: object) -> dict[str, list[object]]:
+        call_order.append("sync")
+        return {"seasons": []}
+
+    async def _generate_aliases(*_args: object, **_kwargs: object) -> None:
+        call_order.append("alias")
+
+    app.dependency_overrides[get_session] = _tmdb_match_session
+    try:
+        with (
+            patch("jidou.api.routes.files.TMDBService", autospec=True) as mock_tmdb,
+            patch(
+                "jidou.orchestrators.alias_orchestrator.generate_aliases",
+                new_callable=AsyncMock,
+                side_effect=_generate_aliases,
+            ),
+        ):
+            mock_tmdb.return_value.get_details.return_value = tmdb_data
+            mock_tmdb.return_value.get_external_ids.return_value = {}
+            mock_tmdb.return_value.get_episode_groups.return_value = {}
+            mock_tmdb.return_value.get_show_seasons = AsyncMock(side_effect=_get_show_seasons)
+            response = TestClient(app).post(
+                "/api/files/3/match",
+                json={
+                    "tmdb_id": 1398,
+                    "local_path": "/media/tv/Commit Order Show",
+                    "content_type": "tv",
+                },
+            )
+
+        assert response.status_code == 200
+        # A commit must land between sync and alias generation -- the route
+        # also commits again later for the file-status update, so check the
+        # relative order rather than the exact full call list.
+        assert call_order[:3] == ["sync", "commit", "alias"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_match_file_tmdb_id_without_local_path_returns_422() -> None:
     """POST /api/files/{id}/match with tmdb_id but no local_path returns 422."""
     from unittest.mock import patch

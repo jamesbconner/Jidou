@@ -38,8 +38,8 @@ from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
-from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -739,9 +739,9 @@ class PathImportOrchestrator:
                     },
                 )
 
-        # Fetch full show details.
+        # Fetch full show details (external_ids/episode_groups included).
         try:
-            data = await self.tmdb.get_details(tmdb_id, media_type="tv")
+            data = await fetch_show_metadata(self.tmdb, tmdb_id, "tv")
         except Exception as exc:
             await self._emit("error", f"TMDB get_details failed for id={tmdb_id}: {exc}")
             logger.warning("TMDB get_details failed for tmdb_id=%d", tmdb_id)
@@ -760,53 +760,12 @@ class PathImportOrchestrator:
             aliases.append(dir_alias)
             aliases_sources = {"user": [dir_alias]}
 
-        # Supplemental TMDB calls are best-effort.
-        ext_ids: dict[str, Any] = {}
-        ep_groups: dict[str, Any] = {}
-        try:
-            ext_ids = await self.tmdb.get_external_ids(tmdb_id, media_type="tv")
-        except Exception:
-            logger.debug("get_external_ids failed for tmdb_id=%d", tmdb_id)
-        try:
-            ep_groups = await self.tmdb.get_episode_groups(tmdb_id)
-        except Exception:
-            logger.debug("get_episode_groups failed for tmdb_id=%d", tmdb_id)
-
-        ep_runtimes: list[int] = data.get("episode_run_time") or []
-        runtime: int | None = data.get("runtime") or (ep_runtimes[0] if ep_runtimes else None)
-
+        fields = build_show_fields(data, tmdb_id, "tv", title_fallback=show_dir)
         show = Show(
-            tmdb_id=tmdb_id,
-            title=title,
-            overview=data.get("overview"),
-            media_type="tv",
-            poster_path=data.get("poster_path"),
-            backdrop_path=data.get("backdrop_path"),
-            vote_average=data.get("vote_average"),
-            vote_count=data.get("vote_count", 0),
-            release_date=data.get("first_air_date"),
-            original_language=data.get("original_language"),
+            **fields,
             content_type=self.content_type,
-            sys_name=sanitize_sys_name(title),
             aliases=aliases or None,
             aliases_sources=aliases_sources,
-            genres=data.get("genres") or [],
-            origin_country=data.get("origin_country") or [],
-            last_air_date=data.get("last_air_date"),
-            last_episode_to_air=data.get("last_episode_to_air"),
-            next_episode_to_air=data.get("next_episode_to_air"),
-            homepage=data.get("homepage"),
-            external_ids=ext_ids or {},
-            episode_groups=list(ep_groups.get("results") or []),
-            status=data.get("status"),
-            in_production=data.get("in_production"),
-            number_of_seasons=data.get("number_of_seasons"),
-            number_of_episodes=data.get("number_of_episodes"),
-            networks=data.get("networks") or [],
-            show_type=data.get("type"),
-            runtime=runtime,
-            tagline=data.get("tagline"),
-            adult=data.get("adult"),
         )
 
         if self.dry_run:
