@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import cast
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
@@ -157,6 +157,41 @@ class TMDBOrchestrator:
         episodes = (await self.session.execute(stmt)).scalars().all()
         await self._apply_episode_group_map(show, episodes)
         await self.session.flush()
+
+    async def ensure_episode_group_map(self, show: Show) -> None:
+        """Ensure a show's episode_group_map is populated if episodes exist.
+
+        No-op when:
+        - ``show.episode_group_map`` is already set (even ``{}`` meaning
+          "checked, nothing found" — see :func:`to_storage_map`).
+        - The show has no episodes yet (a full :meth:`sync_show_episodes`
+          is needed first; this method won't trigger one).
+
+        Otherwise calls :meth:`sync_episode_group_map` to backfill. Failures
+        are logged and swallowed — this is best-effort enrichment, not a
+        hard requirement for the caller to proceed.
+
+        Args:
+            show: Show ORM object to check and potentially backfill.
+        """
+        if show.episode_group_map is not None:
+            return
+
+        ep_count = await self.session.scalar(
+            select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+        )
+        if not ep_count:
+            return
+
+        try:
+            await self.sync_episode_group_map(show)
+        except Exception:
+            logger.warning(
+                "episode_group_map backfill failed for show id=%d; "
+                "episode matching will proceed without cour/season remap",
+                show.id,
+                exc_info=True,
+            )
 
     async def _apply_episode_group_map(self, show: Show, episodes: Iterable[Episode]) -> None:
         """Fetch episode_groups and store the map, backfilling absolute_episode_number.

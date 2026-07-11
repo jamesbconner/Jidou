@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import (
@@ -149,6 +150,7 @@ class ManualMatchOrchestrator:
             if payload.content_type and not show.content_type:
                 show.content_type = payload.content_type
             await self.session.flush()
+            await TMDBOrchestrator(self.session, TMDBService()).ensure_episode_group_map(show)
             return show
 
         if not payload.local_path:
@@ -204,8 +206,6 @@ class ManualMatchOrchestrator:
         # non-fatal — episodes will arrive on the next pipeline run.
         if show.media_type != "movie":
             try:
-                from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
-
                 await TMDBOrchestrator(self.session, tmdb).sync_show_episodes(show)
                 logger.info(
                     "Synced episodes for show id=%d tmdb_id=%d via manual match",

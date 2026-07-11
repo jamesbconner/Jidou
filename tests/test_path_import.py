@@ -1210,10 +1210,9 @@ async def test_import_show_episode_sync_failure_logged_not_raised() -> None:
 
 @pytest.mark.asyncio
 async def test_import_show_backfills_episode_group_map_for_already_synced_show() -> None:
-    """Bugbot-caught regression: an existing show with episodes already synced
-    but no episode_group_map (e.g. synced before this feature existed) must
-    still get the map backfilled -- via the lighter sync_episode_group_map,
-    not a full re-sync -- so the cour/season remap works on re-import too.
+    """An existing show with episodes already synced but no episode_group_map
+    (e.g. synced before this feature existed) must still get the map
+    backfilled via ensure_episode_group_map so the cour/season remap works.
     """
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
     from jidou.services.path_parser import ParsedPathEntry
@@ -1249,10 +1248,11 @@ async def test_import_show_backfills_episode_group_map_for_already_synced_show()
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
     ):
-        mock_tmdb_orch_cls.return_value.sync_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         result = await orch.run(entries)
 
-    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
     mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
     assert result.shows_found == 1
     assert result.episodes_tracked == 1
@@ -1298,9 +1298,11 @@ async def test_import_show_skips_backfill_when_episode_group_map_already_set() -
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
     ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         await orch.run(entries)
 
-    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_not_called()
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
     mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
 
 
@@ -1344,15 +1346,17 @@ async def test_import_show_skips_backfill_when_episode_group_map_is_confirmed_em
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
     ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         await orch.run(entries)
 
-    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_not_called()
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
     mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_import_show_episode_group_map_backfill_failure_logged_not_raised() -> None:
-    """A sync_episode_group_map failure for an already-synced show is logged, not raised."""
+    """An ensure_episode_group_map failure for an already-synced show is logged, not raised."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
     from jidou.services.path_parser import ParsedPathEntry
 
@@ -1392,13 +1396,12 @@ async def test_import_show_episode_group_map_backfill_failure_logged_not_raised(
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
     ):
-        mock_tmdb_orch_cls.return_value.sync_episode_group_map = AsyncMock(
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock(
             side_effect=RuntimeError("TMDB down")
         )
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         result = await orch.run(entries)  # must not raise
 
-    warn_events = [(lvl, msg) for lvl, msg in events if lvl == "warn"]
-    assert any("episode_group_map backfill failed" in msg for _lvl, msg in warn_events)
     assert result.shows_found == 1
     assert result.episodes_tracked == 1
 

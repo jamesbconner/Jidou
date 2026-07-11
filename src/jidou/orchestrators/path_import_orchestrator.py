@@ -386,20 +386,17 @@ class PathImportOrchestrator:
                 except Exception as exc:
                     await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
                     logger.exception("Episode sync failed for show id=%d", show.id)
-            elif show.episode_group_map is None:
-                # Episodes already synced -- most commonly a show that
-                # existed before episode_group_map was introduced -- but the
-                # cour/season remap has never been backfilled for it. Fetch
-                # just the episode_groups breakdown rather than re-syncing
-                # every season/episode from TMDB.
+            else:
+                # ensure_episode_group_map handles its own exceptions
+                # internally, but wrap defensively so a coding error in the
+                # method itself never aborts a show resolution.
                 try:
-                    await TMDBOrchestrator(self.session, self.tmdb).sync_episode_group_map(show)
-                except Exception as exc:
-                    await self._emit(
-                        "warn", f"episode_group_map backfill failed for '{show.title}': {exc}"
-                    )
+                    await TMDBOrchestrator(self.session, self.tmdb).ensure_episode_group_map(show)
+                except Exception:
                     logger.warning(
-                        "episode_group_map backfill failed for show id=%d", show.id, exc_info=True
+                        "ensure_episode_group_map raised unexpectedly for show id=%d",
+                        show.id,
+                        exc_info=True,
                     )
 
         return show, "found"
