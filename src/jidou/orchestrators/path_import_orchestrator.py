@@ -24,7 +24,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +41,7 @@ from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
+from jidou.services.show_lookup import find_show_by_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
@@ -564,23 +564,7 @@ class PathImportOrchestrator:
         Returns:
             Matching :class:`Show`, or None.
         """
-        normalised = name.strip().lower()
-
-        # GIN-indexed alias lookup — fastest path for re-imports.
-        stmt = (
-            select(Show)
-            .where(Show.aliases.cast(JSONB).contains([normalised]))
-            .order_by(Show.id)
-            .limit(1)
-        )
-        show = (await self.session.execute(stmt)).scalars().first()
-        if show:
-            return show
-
-        # Exact case-insensitive title match.  Substring matching (ILIKE '%x%')
-        # would cause "Daredevil" to match "Daredevil: Born Again".
-        stmt = select(Show).where(func.lower(Show.title) == normalised).order_by(Show.id).limit(1)
-        return (await self.session.execute(stmt)).scalars().first()
+        return await find_show_by_name(self.session, name)
 
     async def _tmdb_create_show(self, show_dir: str) -> tuple[Show | None, str]:
         """Search TMDB for show_dir, create the Show row, and sync its episodes.
