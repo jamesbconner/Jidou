@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
@@ -15,6 +14,7 @@ from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
+from jidou.services.show_lookup import find_show_by_name
 from jidou.services.sys_name import sanitize_sys_name
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,28 @@ class ParseResult:
 def _sanitize_alias(name: str) -> str:
     """Normalise an alias name for case-insensitive storage and lookup."""
     return name.strip().lower()
+
+
+def _is_exact_alias_match(show: Show, name: str) -> bool:
+    """Return True if *name* already exactly names *show* (title or alias).
+
+    Guards ``_add_alias`` calls after a fuzzy ``_find_show`` lookup: a
+    substring hit (e.g. "Daredevil" matching "Daredevil: Born Again") must
+    never get taught as a permanent alias, since that would misfile every
+    future parse of the shorter name onto the longer show.
+
+    Args:
+        show: The show ``_find_show`` returned.
+        name: The parsed name that was searched for.
+
+    Returns:
+        True if *name* matches ``show.title`` or is already in
+        ``show.aliases`` (case-insensitive), False otherwise.
+    """
+    normalised = _sanitize_alias(name)
+    if normalised == _sanitize_alias(show.title):
+        return True
+    return show.aliases is not None and normalised in show.aliases
 
 
 class ParseOrchestrator:
@@ -104,37 +126,18 @@ class ParseOrchestrator:
     async def _find_show(self, parsed_name: str) -> Show | None:
         """Look up a show by alias list containment or title match.
 
+        Enables the substring title fallback (``fuzzy=True``) since the LLM's
+        parsed name is not guaranteed to equal the show's exact stored title.
+        A fuzzy hit must not be trusted as a valid alias on its own — see the
+        exactness check in ``run()`` before ``_add_alias`` is called.
+
         Args:
             parsed_name: The extracted show name (not yet normalised).
 
         Returns:
             Matching :class:`Show` or None if not found.
         """
-        normalised = _sanitize_alias(parsed_name)
-
-        # 1. Check if any show's aliases array contains this name (GIN-indexed).
-        #    limit(1) + order_by(id) avoids MultipleResultsFound and gives a
-        #    deterministic result when the alias appears on more than one show.
-        alias_stmt = (
-            select(Show)
-            .where(Show.aliases.cast(JSONB).contains([normalised]))
-            .order_by(Show.id)
-            .limit(1)
-        )
-        show = (await self.session.execute(alias_stmt)).scalars().first()
-        if show is not None:
-            return show
-
-        # 2. Case-insensitive title fallback — escape % and _ so parsed names that
-        #    contain SQL wildcard characters do not match arbitrary shows.
-        escaped = parsed_name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        title_stmt = (
-            select(Show)
-            .where(Show.title.ilike(f"%{escaped}%", escape="\\"))
-            .order_by(Show.id)
-            .limit(1)
-        )
-        return (await self.session.execute(title_stmt)).scalars().first()
+        return await find_show_by_name(self.session, parsed_name, fuzzy=True)
 
     @staticmethod
     def _add_alias(show: Show, alias: str) -> None:
@@ -280,8 +283,11 @@ class ParseOrchestrator:
                         else MatchedBy.HEURISTIC
                     )
                     file.status = FileStatus.MATCHED
-                    # Teach the alias index so future matches skip LLM
-                    if show_name:
+                    # Teach the alias index so future matches skip LLM — but only
+                    # when show_name is already known to name this show exactly.
+                    # A fuzzy substring hit from _find_show must never be
+                    # permanently written as an alias.
+                    if show_name and _is_exact_alias_match(show, show_name):
                         self._add_alias(show, show_name)
                     # Backfill show.content_type from the parsed value if unset
                     if content_type and not show.content_type:

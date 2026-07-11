@@ -158,6 +158,106 @@ async def test_run_with_llm_and_matched_show():
     assert file1.parsed_content_type == "anime"
 
 
+async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
+    """A fuzzy/substring show match must not get permanently written as an alias.
+
+    Regression: if the DB lookup resolves "Daredevil" to a show titled
+    "Daredevil: Born Again" via the substring fallback, "daredevil" must not
+    be added to that show's alias list -- future parses of "Daredevil" would
+    otherwise misfile onto the wrong show forever.
+    """
+    file1 = _make_file(filename="Daredevil.S01E01.mkv")
+    show = _make_show(title="Daredevil: Born Again", aliases=[])
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    alias_miss = MagicMock()
+    alias_miss.scalars.return_value.first.return_value = None
+
+    fuzzy_hit = MagicMock()
+    fuzzy_hit.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            file_result,
+            alias_miss,  # alias containment miss
+            fuzzy_hit,  # substring title fallback hit
+            ep_result,  # episode lookup
+        ]
+    )
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Daredevil", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "tv", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.show_id == show.id
+    # The fuzzy hit must not have been taught as an alias.
+    assert show.aliases == []
+
+
+async def test_run_exact_show_match_still_gets_aliased():
+    """An exact title match (not a fuzzy substring guess) is still taught as an alias."""
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.mkv")
+    show = _make_show(title="Attack on Titan", aliases=[])
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    alias_miss = MagicMock()
+    alias_miss.scalars.return_value.first.return_value = None
+
+    exact_hit = MagicMock()
+    exact_hit.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            file_result,
+            alias_miss,  # alias containment miss
+            exact_hit,  # substring title fallback -- but the title matches exactly
+            ep_result,  # episode lookup
+        ]
+    )
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert show.aliases == ["attack on titan"]
+
+
 async def test_run_llm_receives_regex_hint():
     """LLM prompt includes the regex anchor when S/E pattern is found."""
     file1 = _make_file(filename="Show.Name.S02E05.mkv")
