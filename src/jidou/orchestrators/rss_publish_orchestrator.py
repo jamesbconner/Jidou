@@ -44,6 +44,30 @@ _OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
 # Sections from old_body that Jidou does not manage; everything else is rebuilt from DB.
 _MANAGED_SECTIONS = frozenset({"rssfeeds", "subscriptions"})
 
+# YaRSS2 expects every subscription dict to carry these torrent-option keys,
+# even when unused -- its own UI always writes them. A subscription imported
+# from an existing config round-trips its real values via extra_config, but
+# one created fresh by Jidou (watchlist add, the Show Detail "Add RSS"
+# button, etc.) has no extra_config at all, so without an explicit default
+# layer these keys were silently omitted from the published config entirely.
+# Values below match a real subscription entry from the user's own YaRSS2
+# config -- "Default"/-2/empty are YaRSS2's own "inherit the global setting"
+# sentinels, not values Jidou invented.
+_YARSS2_SUBSCRIPTION_DEFAULTS: dict[str, object] = {
+    "auto_managed": "Default",
+    "max_connections": -2,
+    "ignore_timestamp": False,
+    "max_upload_slots": -2,
+    "max_upload_speed": -2,
+    "custom_text_lines": "",
+    "max_download_speed": -2,
+    "email_notifications": {},
+    "sequential_download": "Default",
+    "add_torrents_in_paused_state": "Default",
+    "prioritize_first_last_pieces": "Default",
+    "label": "",
+}
+
 
 @dataclass
 class RssPublishResult:
@@ -281,7 +305,7 @@ class RssPublishOrchestrator:
                     sub.remote_key = key
                 result.new_keys_assigned += 1
 
-            new_subs[key] = self._build_sub_dict(sub)
+            new_subs[key] = self._build_sub_dict(sub, key)
             result.subscriptions_published += 1
 
         if result.new_keys_assigned > 0 and not self._dry_run:
@@ -290,24 +314,32 @@ class RssPublishOrchestrator:
         return new_subs
 
     @staticmethod
-    def _build_sub_dict(sub: RssSubscription) -> dict[str, object]:
+    def _build_sub_dict(sub: RssSubscription, key: str) -> dict[str, object]:
         """Serialise one RssSubscription row to a YaRSS2 subscription dict.
 
-        Starts with extra_config to round-trip remote fields, then overlays DB
+        Starts with the standard YaRSS2 torrent-option defaults (so a
+        freshly Jidou-created subscription still carries every key YaRSS2's
+        own UI would write), then extra_config to round-trip a real
+        subscription's remote values over those defaults, then overlays DB
         column values so Jidou's values always win.  download_location and
-        move_completed fall back to feed-level defaults when not set on the sub.
+        move_completed fall back to feed-level defaults when not set on the
+        sub.
 
         Args:
             sub: The subscription row (feed relationship must be pre-loaded).
+            key: This subscription's key in the published config's
+                subscriptions dict -- also embedded in the subscription
+                dict itself, mirroring what YaRSS2's own UI writes.
 
         Returns:
             Dict representing the subscription in YaRSS2 format.
         """
-        sub_dict: dict[str, object] = {}
+        sub_dict: dict[str, object] = dict(_YARSS2_SUBSCRIPTION_DEFAULTS)
         if sub.extra_config:
             sub_dict.update(sub.extra_config)
 
         # DB column values always win
+        sub_dict["key"] = key
         sub_dict["name"] = sub.name
         sub_dict["regex_include_ignorecase"] = sub.regex_include_ignorecase
         sub_dict["regex_exclude_ignorecase"] = sub.regex_exclude_ignorecase
