@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
+
+from jidou.models.watchlist import WatchlistStatus
 
 
 class ShowBrief(BaseModel):
@@ -19,10 +21,7 @@ class WatchlistCreate(BaseModel):
     """Request body for adding a show to the watchlist."""
 
     show_id: int
-    status: str = Field(
-        default="planned",
-        pattern="^(planned|watching|completed|on_hold|dropped)$",
-    )
+    status: WatchlistStatus = WatchlistStatus.PLANNED
     notes: str | None = None
     position: int = 0
 
@@ -30,10 +29,7 @@ class WatchlistCreate(BaseModel):
 class WatchlistUpdate(BaseModel):
     """Request body for updating a watchlist entry — all fields optional."""
 
-    status: str | None = Field(
-        default=None,
-        pattern="^(planned|watching|completed|on_hold|dropped)$",
-    )
+    status: WatchlistStatus | None = None
     notes: str | None = None
     position: int | None = None
 
@@ -53,7 +49,7 @@ class WatchlistRead(BaseModel):
     id: int
     show_id: int
     show: ShowBrief
-    status: str
+    status: WatchlistStatus
     notes: str | None = None
     position: int
     created_at: datetime
@@ -68,6 +64,6 @@ class WatchlistList(BaseModel):
     id: int
     show_id: int
     show: ShowBrief
-    status: str
+    status: WatchlistStatus
     position: int
     created_at: datetime

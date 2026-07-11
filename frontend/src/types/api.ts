@@ -84,17 +84,7 @@ export type ShowBrief = components['schemas']['jidou__schemas__file_schema__Show
 
 export type EpisodeBrief = components['schemas']['EpisodeBrief']
 
-export type FileStatus =
-  | 'pending'
-  | 'discovered'
-  | 'downloading'
-  | 'downloaded'
-  | 'unmatched'
-  | 'matched'
-  | 'routing'
-  | 'routed'
-  | 'error'
-  | 'seeded'
+export type FileStatus = components['schemas']['FileStatus']
 
 export interface FileList {
   id: number
@@ -114,9 +104,8 @@ export interface FileList {
 // them `?` — see the file header comment.
 export type FileRead = Omit<
   components['schemas']['FileRead'],
-  'status' | 'show_id' | 'episode_id' | 'show' | 'episode'
+  'show_id' | 'episode_id' | 'show' | 'episode'
 > & {
-  status: FileStatus
   show_id: number | null
   episode_id: number | null
   show: ShowBrief | null
@@ -152,14 +141,14 @@ export interface TmdbSuggestionsResponse {
 
 export type TaskStatus = components['schemas']['TaskStatus']
 
-export type TaskType = 'download' | 'scan' | 'match' | 'route' | 'sync' | 'import' | 'db_import' | 'rss_import' | 'rss_publish' | 'seed'
+// No standalone backend schema exists for this — task_type is a Literal[...]
+// (not an Enum class), so FastAPI inlines it per-field instead of hoisting
+// it to its own components.schemas entry. Derive it from a field that has it.
+export type TaskType = components['schemas']['TaskList']['task_type']
 
-export type TaskList = Omit<components['schemas']['TaskList'], 'task_type'> & {
-  task_type: TaskType
-}
+export type TaskList = components['schemas']['TaskList']
 
-export type TaskRead = Omit<components['schemas']['TaskRead'], 'task_type' | 'event_log'> & {
-  task_type: TaskType
+export type TaskRead = Omit<components['schemas']['TaskRead'], 'event_log'> & {
   event_log: TaskEvent[]
 }
 
@@ -370,7 +359,7 @@ export interface CacheStats {
 
 // ─── Watchlist ────────────────────────────────────────────────────────────
 
-export type WatchlistStatus = 'planned' | 'watching' | 'completed' | 'on_hold' | 'dropped'
+export type WatchlistStatus = components['schemas']['WatchlistStatus']
 
 export type WatchlistShowBrief = components['schemas']['jidou__schemas__watchlist_schema__ShowBrief']
 
@@ -386,8 +375,7 @@ export interface WatchlistList {
   created_at: string
 }
 
-export type WatchlistRead = Omit<components['schemas']['WatchlistRead'], 'status' | 'notes'> & {
-  status: WatchlistStatus
+export type WatchlistRead = Omit<components['schemas']['WatchlistRead'], 'notes'> & {
   notes: string | null
 }
 
@@ -399,9 +387,7 @@ export type WatchlistCreate = Omit<
   position?: number
 }
 
-export type WatchlistUpdate = Omit<components['schemas']['WatchlistUpdate'], 'status'> & {
-  status?: WatchlistStatus | null
-}
+export type WatchlistUpdate = components['schemas']['WatchlistUpdate']
 
 export type WatchlistPositionItem = components['schemas']['WatchlistPositionItem']
 
@@ -416,9 +402,7 @@ export type OrphanedTrackingRecord = Omit<
 
 // ─── File PATCH ───────────────────────────────────────────────────────────
 
-export type FilePatch = Omit<components['schemas']['FilePatch'], 'status'> & {
-  status?: FileStatus | null
-}
+export type FilePatch = components['schemas']['FilePatch']
 
 // ─── TMDB raw responses (proxied through backend) ─────────────────────────
 // TMDB search/trending/details endpoints return raw dict[str, Any] — no
