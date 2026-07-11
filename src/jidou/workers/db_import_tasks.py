@@ -4,12 +4,12 @@ import asyncio
 import contextlib
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
@@ -27,6 +27,92 @@ from jidou.services.progress import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Columns intentionally left out of restore: primary keys and server-managed
+# timestamps that should reflect the moment of import, not the backup's.
+_SHOW_EXCLUDED_COLUMNS = frozenset({"id", "created_at", "updated_at"})
+_EPISODE_EXCLUDED_COLUMNS = frozenset({"id", "created_at", "updated_at"})
+
+# Columns _build_show/_update_show populate from a backup row.
+_SHOW_HANDLED_COLUMNS = frozenset(
+    {
+        "tmdb_id",
+        "title",
+        "overview",
+        "media_type",
+        "poster_path",
+        "backdrop_path",
+        "vote_average",
+        "vote_count",
+        "release_date",
+        "original_language",
+        "cached",
+        "content_type",
+        "sys_name",
+        "aliases",
+        "aliases_sources",
+        "genres",
+        "origin_country",
+        "last_air_date",
+        "last_episode_to_air",
+        "next_episode_to_air",
+        "homepage",
+        "external_ids",
+        "episode_groups",
+        "status",
+        "in_production",
+        "number_of_seasons",
+        "number_of_episodes",
+        "networks",
+        "show_type",
+        "runtime",
+        "tagline",
+        "local_path",
+        "adult",
+    }
+)
+
+# Columns _build_episode/_update_episode populate from a backup row.
+_EPISODE_HANDLED_COLUMNS = frozenset(
+    {
+        "show_id",
+        "tmdb_id",
+        "season_number",
+        "episode_number",
+        "name",
+        "overview",
+        "air_date",
+        "runtime",
+        "absolute_episode_number",
+        "episode_type",
+        "still_path",
+        "file_tracked",
+        "file_tracked_at",
+        "tracked_filename",
+        "tracked_source",
+    }
+)
+
+
+def check_restore_field_coverage() -> dict[str, set[str]]:
+    """Return any Show/Episode model columns not handled or explicitly excluded by restore.
+
+    Compares each model's live mapper column list against the field sets
+    ``_build_show``/``_update_show`` and ``_build_episode``/``_update_episode``
+    actually populate, so a column added to a model without a matching
+    restore-side change is caught by a test instead of silently being dropped
+    on every future backup restore.
+
+    Returns:
+        Mapping of model name to the set of unaccounted-for column names;
+        both sets are empty when restore covers every column.
+    """
+    show_columns = {attr.key for attr in inspect(Show).column_attrs}
+    episode_columns = {attr.key for attr in inspect(Episode).column_attrs}
+    return {
+        "Show": show_columns - _SHOW_HANDLED_COLUMNS - _SHOW_EXCLUDED_COLUMNS,
+        "Episode": episode_columns - _EPISODE_HANDLED_COLUMNS - _EPISODE_EXCLUDED_COLUMNS,
+    }
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
@@ -338,6 +424,7 @@ def _build_show(row: dict[str, Any]) -> Show:
         content_type=row.get("content_type"),
         sys_name=row.get("sys_name"),
         aliases=row.get("aliases"),
+        aliases_sources=row.get("aliases_sources"),
         genres=row.get("genres"),
         origin_country=row.get("origin_country"),
         last_air_date=row.get("last_air_date"),
@@ -373,6 +460,7 @@ def _update_show(show: Show, row: dict[str, Any]) -> None:
     show.content_type = row.get("content_type", show.content_type)
     show.sys_name = row.get("sys_name", show.sys_name)
     show.aliases = row.get("aliases", show.aliases)
+    show.aliases_sources = row.get("aliases_sources", show.aliases_sources)
     show.genres = row.get("genres", show.genres)
     show.origin_country = row.get("origin_country", show.origin_country)
     show.last_air_date = row.get("last_air_date", show.last_air_date)
@@ -396,6 +484,15 @@ def _update_show(show: Show, row: dict[str, Any]) -> None:
         show.local_path = backup_local_path
 
 
+def _parse_iso_datetime(raw: Any) -> datetime | None:
+    """Parse an ISO-format datetime string from a backup row, or None if absent/invalid."""
+    if not raw:
+        return None
+    with contextlib.suppress(ValueError):
+        return datetime.fromisoformat(str(raw))
+    return None
+
+
 def _build_episode(row: dict[str, Any]) -> Episode:
     """Construct a new Episode from a backup row dict."""
     air_date_raw = row.get("air_date")
@@ -417,6 +514,9 @@ def _build_episode(row: dict[str, Any]) -> Episode:
         episode_type=row.get("episode_type"),
         still_path=row.get("still_path"),
         file_tracked=row.get("file_tracked", False),
+        file_tracked_at=_parse_iso_datetime(row.get("file_tracked_at")),
+        tracked_filename=row.get("tracked_filename"),
+        tracked_source=row.get("tracked_source"),
     )
 
 
@@ -431,6 +531,20 @@ def _update_episode(ep: Episode, row: dict[str, Any]) -> None:
     ep.episode_type = row.get("episode_type", ep.episode_type)
     ep.still_path = row.get("still_path", ep.still_path)
     ep.file_tracked = row.get("file_tracked", ep.file_tracked)
+    ep.tracked_filename = row.get("tracked_filename", ep.tracked_filename)
+    ep.tracked_source = row.get("tracked_source", ep.tracked_source)
+
+    if "file_tracked_at" in row:
+        raw = row.get("file_tracked_at")
+        if raw is None:
+            # Explicit null is a legitimate signal that tracking was cleared.
+            ep.file_tracked_at = None
+        else:
+            parsed = _parse_iso_datetime(raw)
+            # A malformed (non-null) value should not silently wipe a valid
+            # existing timestamp -- leave it untouched, same as air_date.
+            if parsed is not None:
+                ep.file_tracked_at = parsed
 
     air_date_raw = row.get("air_date")
     if air_date_raw:

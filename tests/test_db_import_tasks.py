@@ -1,12 +1,15 @@
 """Tests for db_import_tasks — database backup restore Celery task."""
 
 import json
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy import inspect
 
+from jidou.models.episode import Episode
+from jidou.models.show import Show
 from jidou.models.task import TaskStatus
 from jidou.workers.db_import_tasks import (
     _build_episode,
@@ -14,6 +17,7 @@ from jidou.workers.db_import_tasks import (
     _emit_progress,
     _update_episode,
     _update_show,
+    check_restore_field_coverage,
 )
 
 # ---------------------------------------------------------------------------
@@ -76,6 +80,16 @@ class TestBuildShow:
         show = _build_show({"tmdb_id": 1, "title": "S"})
         assert show.adult is None
 
+    def test_aliases_sources_mapped_from_row(self) -> None:
+        """aliases_sources is mapped from the backup row when present."""
+        show = _build_show({"tmdb_id": 1, "title": "S", "aliases_sources": {"tmdb": ["Alt Title"]}})
+        assert show.aliases_sources == {"tmdb": ["Alt Title"]}
+
+    def test_aliases_sources_defaults_to_none(self) -> None:
+        """aliases_sources defaults to None when absent from the backup row."""
+        show = _build_show({"tmdb_id": 1, "title": "S"})
+        assert show.aliases_sources is None
+
 
 # ---------------------------------------------------------------------------
 # _update_show
@@ -129,6 +143,22 @@ class TestUpdateShow:
         show.adult = True
         _update_show(show, {"title": "Show"})
         assert show.adult is True
+
+    def test_updates_aliases_sources_from_backup(self) -> None:
+        """aliases_sources is updated when the backup row provides it."""
+        show = MagicMock()
+        show.local_path = None
+        show.aliases_sources = None
+        _update_show(show, {"aliases_sources": {"user": ["Nickname"]}})
+        assert show.aliases_sources == {"user": ["Nickname"]}
+
+    def test_preserves_aliases_sources_when_backup_absent(self) -> None:
+        """aliases_sources is preserved when the backup row has no aliases_sources key."""
+        show = MagicMock()
+        show.local_path = None
+        show.aliases_sources = {"tmdb": ["Original"]}
+        _update_show(show, {"title": "Show"})
+        assert show.aliases_sources == {"tmdb": ["Original"]}
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +227,45 @@ class TestBuildEpisode:
         assert ep.file_tracked is True
         assert ep.absolute_episode_number == 16
 
+    def test_tracking_fields_populated(self) -> None:
+        """tracked_filename, tracked_source, and file_tracked_at are set from the row."""
+        ep = _build_episode(
+            {
+                "tmdb_id": 500,
+                "show_id": 10,
+                "season_number": 1,
+                "episode_number": 1,
+                "tracked_filename": "Show.S01E01.mkv",
+                "tracked_source": "sftp",
+                "file_tracked_at": "2024-06-01T12:30:00+00:00",
+            }
+        )
+        assert ep.tracked_filename == "Show.S01E01.mkv"
+        assert ep.tracked_source == "sftp"
+        assert ep.file_tracked_at == datetime.fromisoformat("2024-06-01T12:30:00+00:00")
+
+    def test_tracking_fields_default_to_none(self) -> None:
+        """tracked_filename, tracked_source, and file_tracked_at default to None when absent."""
+        ep = _build_episode(
+            {"tmdb_id": 500, "show_id": 10, "season_number": 1, "episode_number": 1}
+        )
+        assert ep.tracked_filename is None
+        assert ep.tracked_source is None
+        assert ep.file_tracked_at is None
+
+    def test_invalid_file_tracked_at_silently_skipped(self) -> None:
+        """Malformed file_tracked_at is suppressed; the field stays None."""
+        ep = _build_episode(
+            {
+                "tmdb_id": 500,
+                "show_id": 10,
+                "season_number": 1,
+                "episode_number": 1,
+                "file_tracked_at": "not-a-datetime",
+            }
+        )
+        assert ep.file_tracked_at is None
+
 
 # ---------------------------------------------------------------------------
 # _update_episode
@@ -233,6 +302,158 @@ class TestUpdateEpisode:
         ep.air_date = None
         _update_episode(ep, {"file_tracked": True})
         assert ep.file_tracked is True
+
+    def test_updates_tracking_metadata_fields(self) -> None:
+        """tracked_filename, tracked_source, and file_tracked_at are updated from the row."""
+        ep = MagicMock()
+        ep.air_date = None
+        _update_episode(
+            ep,
+            {
+                "tracked_filename": "Show.S02E03.mkv",
+                "tracked_source": "path_import",
+                "file_tracked_at": "2024-07-04T08:00:00+00:00",
+            },
+        )
+        assert ep.tracked_filename == "Show.S02E03.mkv"
+        assert ep.tracked_source == "path_import"
+        assert ep.file_tracked_at == datetime.fromisoformat("2024-07-04T08:00:00+00:00")
+
+    def test_preserves_tracking_metadata_when_backup_absent(self) -> None:
+        """tracked_filename/tracked_source/file_tracked_at survive an absent-from-row update."""
+        ep = MagicMock()
+        ep.air_date = None
+        ep.tracked_filename = "Existing.mkv"
+        ep.tracked_source = "sftp"
+        ep.file_tracked_at = datetime(2023, 1, 1)
+        _update_episode(ep, {"name": "New"})
+        assert ep.tracked_filename == "Existing.mkv"
+        assert ep.tracked_source == "sftp"
+        assert ep.file_tracked_at == datetime(2023, 1, 1)
+
+    def test_invalid_file_tracked_at_does_not_clear_existing_timestamp(self) -> None:
+        """A malformed (non-null) file_tracked_at must not wipe a valid existing value.
+
+        Regression test for a Cursor Bugbot finding on PR-02: the key being
+        present with an unparseable value previously overwrote a good
+        timestamp with None instead of leaving it untouched.
+        """
+        ep = MagicMock()
+        ep.air_date = None
+        ep.file_tracked_at = datetime(2023, 1, 1)
+        _update_episode(ep, {"file_tracked_at": "not-a-datetime"})
+        assert ep.file_tracked_at == datetime(2023, 1, 1)
+
+    def test_explicit_null_file_tracked_at_clears_existing_timestamp(self) -> None:
+        """An explicit null file_tracked_at legitimately clears tracking state."""
+        ep = MagicMock()
+        ep.air_date = None
+        ep.file_tracked_at = datetime(2023, 1, 1)
+        _update_episode(ep, {"file_tracked_at": None})
+        assert ep.file_tracked_at is None
+
+
+# ---------------------------------------------------------------------------
+# Field coverage — restore must handle every Show/Episode column
+# ---------------------------------------------------------------------------
+
+
+def test_restore_field_coverage_has_no_gaps() -> None:
+    """Every Show/Episode column is either restored or explicitly excluded.
+
+    Regression test: aliases_sources (Show) and tracked_filename /
+    tracked_source / file_tracked_at (Episode) were added to the models but
+    never wired into _build_show/_update_show/_build_episode/_update_episode,
+    so a backup restore silently dropped them. A future column added to
+    either model without a matching restore-side change now fails here
+    instead of shipping silently.
+    """
+    assert check_restore_field_coverage() == {"Show": set(), "Episode": set()}
+
+
+# ---------------------------------------------------------------------------
+# Export/restore round trip
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreRoundTrip:
+    def test_show_round_trip_preserves_all_fields(self) -> None:
+        """A fully-populated Show survives an export/restore round trip."""
+        from jidou.api.routes.export_routes import _row_to_dict
+
+        show = Show(
+            tmdb_id=42,
+            title="Round Trip Show",
+            overview="An overview",
+            media_type="tv",
+            poster_path="/poster.jpg",
+            backdrop_path="/backdrop.jpg",
+            vote_average=7.5,
+            vote_count=100,
+            release_date="2020-01-01",
+            original_language="en",
+            cached=True,
+            content_type="tv",
+            sys_name="Round Trip Show",
+            aliases=["Alt Name"],
+            aliases_sources={"tmdb": ["Alt Name"]},
+            genres=[{"id": 1, "name": "Drama"}],
+            adult=False,
+            origin_country=["US"],
+            last_air_date="2023-01-01",
+            last_episode_to_air={"id": 1},
+            next_episode_to_air=None,
+            homepage="https://example.com",
+            external_ids={"imdb_id": "tt123"},
+            episode_groups=[{"id": "g1"}],
+            status="Ended",
+            in_production=False,
+            number_of_seasons=2,
+            number_of_episodes=20,
+            networks=[{"id": 5, "name": "HBO"}],
+            show_type="Scripted",
+            runtime=45,
+            tagline="A tagline",
+            local_path="/media/tv/Round Trip Show",
+        )
+        row = _row_to_dict(show)
+        restored = _build_show(row)
+
+        for attr in inspect(Show).column_attrs:
+            key = attr.key
+            if key in {"id", "created_at", "updated_at"}:
+                continue
+            assert getattr(restored, key) == getattr(show, key), f"{key} was not preserved"
+
+    def test_episode_round_trip_preserves_all_fields(self) -> None:
+        """A fully-populated Episode survives an export/restore round trip."""
+        from jidou.api.routes.export_routes import _row_to_dict
+
+        ep = Episode(
+            show_id=10,
+            tmdb_id=500,
+            season_number=1,
+            episode_number=1,
+            name="Pilot",
+            overview="The first episode",
+            air_date=date(2020, 1, 1),
+            runtime=24,
+            absolute_episode_number=1,
+            episode_type="standard",
+            still_path="/still.jpg",
+            file_tracked=True,
+            file_tracked_at=datetime(2024, 6, 1, 12, 30, 0),
+            tracked_filename="Show.S01E01.mkv",
+            tracked_source="sftp",
+        )
+        row = _row_to_dict(ep)
+        restored = _build_episode(row)
+
+        for attr in inspect(Episode).column_attrs:
+            key = attr.key
+            if key in {"id", "created_at", "updated_at"}:
+                continue
+            assert getattr(restored, key) == getattr(ep, key), f"{key} was not preserved"
 
 
 # ---------------------------------------------------------------------------
