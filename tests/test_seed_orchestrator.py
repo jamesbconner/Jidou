@@ -242,17 +242,22 @@ class TestSeedOrchestrator:
             "check that SEEDED files are not being picked up for download"
         )
 
-    def test_seeded_not_referenced_in_match_orchestrator(self) -> None:
-        """Regression: match_orchestrator source must not reference SEEDED in its
+    def test_seeded_not_referenced_in_parse_orchestrator(self) -> None:
+        """Regression: parse_orchestrator source must not reference SEEDED in its
         query conditions — seeded files must never be sent through the match pipeline.
+
+        parse_orchestrator (via ParseOrchestrator) is the live match stage;
+        the original match_orchestrator this test targeted was deleted as
+        dead code (superseded by ParseOrchestrator, unreachable from any
+        route or worker).
         """
         import inspect
 
-        from jidou.orchestrators import match_orchestrator
+        from jidou.orchestrators import parse_orchestrator
 
-        source = inspect.getsource(match_orchestrator)
+        source = inspect.getsource(parse_orchestrator)
         assert "FileStatus.SEEDED" not in source, (
-            "match_orchestrator references FileStatus.SEEDED — "
+            "parse_orchestrator references FileStatus.SEEDED — "
             "check that SEEDED files are not being picked up for matching"
         )
 
