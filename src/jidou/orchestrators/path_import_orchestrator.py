@@ -18,7 +18,6 @@ directory name is stored in ``show.aliases`` when it differs from the English
 title so future lookups (parse orchestrator, manual search) hit the GIN index.
 """
 
-import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -36,6 +35,7 @@ from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
+from jidou.services.llm_json import parse_llm_json
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
@@ -364,7 +364,17 @@ class PathImportOrchestrator:
 
         for entry in entries:
             filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
-            parsed = await parse_filename(filename, self.llm)
+            try:
+                parsed = await parse_filename(filename, self.llm)
+            except Exception:
+                # One entry's parse failure must not abort the whole show's
+                # import batch -- fall back to trusting the directory, same
+                # as the not-llm_ok / no-show-name cases below.
+                logger.exception(
+                    "Per-file parse failed for %r; trusting directory-resolved show", filename
+                )
+                matched.append(entry)
+                continue
             if (
                 not parsed.llm_ok
                 or parsed.show_name is None
@@ -864,23 +874,24 @@ class PathImportOrchestrator:
             await self._emit("warn", f"LLM episode-parse returned no response for '{filename}'")
             return None, None
 
-        text = response.content.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
-
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON for episode parse of %r: %r", filename, text)
+        parsed = parse_llm_json(response.content)
+        if parsed is None:
+            logger.warning(
+                "LLM returned invalid JSON for episode parse of %r: %r", filename, response.content
+            )
             await self._emit(
-                "warn", f"LLM episode-parse returned invalid JSON for '{filename}': {text!r}"
+                "warn",
+                f"LLM episode-parse returned invalid JSON for '{filename}': {response.content!r}",
             )
             return None, None
 
         if not isinstance(parsed, dict):
-            logger.warning("LLM returned non-dict JSON for episode parse of %r: %r", filename, text)
+            logger.warning(
+                "LLM returned non-dict JSON for episode parse of %r: %r", filename, response.content
+            )
+            content = response.content
             await self._emit(
-                "warn", f"LLM episode-parse returned non-object JSON for '{filename}': {text!r}"
+                "warn", f"LLM episode-parse returned non-object JSON for '{filename}': {content!r}"
             )
             return None, None
 
@@ -1084,16 +1095,14 @@ class PathImportOrchestrator:
             await self._emit("warn", f"LLM show-match returned no response for '{show_dir}'")
             return None
 
-        text = response.content.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
-
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON for show-match of %r: %r", show_dir, text)
+        parsed = parse_llm_json(response.content)
+        if parsed is None:
+            logger.warning(
+                "LLM returned invalid JSON for show-match of %r: %r", show_dir, response.content
+            )
             await self._emit(
-                "warn", f"LLM show-match returned invalid JSON for '{show_dir}': {text!r}"
+                "warn",
+                f"LLM show-match returned invalid JSON for '{show_dir}': {response.content!r}",
             )
             return None
 
@@ -1184,24 +1193,24 @@ class PathImportOrchestrator:
             )
             return None, None, None
 
-        text = response.content.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
-
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, text)
+        parsed = parse_llm_json(response.content)
+        if parsed is None:
+            content = response.content
+            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, content)
             await self._emit(
-                "warn", f"LLM episode-list match returned invalid JSON for '{filename}': {text!r}"
+                "warn",
+                f"LLM episode-list match returned invalid JSON for '{filename}': {content!r}",
             )
             return None, None, None
 
         if not isinstance(parsed, dict):
-            logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, text)
+            logger.warning(
+                "LLM returned non-dict JSON for match of %r: %r", filename, response.content
+            )
             await self._emit(
                 "warn",
-                f"LLM episode-list match returned non-object JSON for '{filename}': {text!r}",
+                f"LLM episode-list match returned non-object JSON for '{filename}': "
+                f"{response.content!r}",
             )
             return None, None, None
 

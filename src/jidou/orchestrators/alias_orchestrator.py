@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from jidou.services.llm_json import parse_llm_json
 
 if TYPE_CHECKING:
     from jidou.models.show import Show
@@ -111,14 +111,13 @@ async def _llm_aliases(
         logger.warning("LLM returned no response for alias generation of %r", show_title)
         return []
 
-    text = response.content.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        logger.warning("LLM returned invalid JSON for alias generation of %r: %r", show_title, text)
+    parsed = parse_llm_json(response.content)
+    if parsed is None:
+        logger.warning(
+            "LLM returned invalid JSON for alias generation of %r: %r",
+            show_title,
+            response.content,
+        )
         return []
 
     # Schema wraps the array in {"aliases": [...]}.  Fall back to bare list for

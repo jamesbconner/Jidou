@@ -1902,6 +1902,97 @@ async def test_import_show_splits_llm_confirmed_mismatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_import_show_per_entry_parse_failure_does_not_abort_batch() -> None:
+    """One entry's parse_filename failure must not lose the rest of the show's batch.
+
+    Regression test: parse_filename was called per-entry inside a loop with
+    no try/except, so an unexpected exception on any single file would
+    abort the whole directory's import instead of just that one file.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Show - 01.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Show\Show - 02.mkv",
+            show_dir="Show",
+            show_root=r"Z:\anime tv\Show",
+            season=None,
+            episode=2,
+            is_absolute=True,
+        ),
+    ]
+
+    show = _make_show(id=1, tmdb_id=100, title="Show")
+    show.aliases = []
+    ep1 = _make_episode(id=10, show_id=1, season=1, episode=1)
+    ep2 = _make_episode(id=11, show_id=1, season=1, episode=2)
+
+    async def fake_parse_filename(filename: str, llm: object) -> FilenameParseResult:
+        if "01" in filename:
+            raise RuntimeError("unexpected LLM client failure")
+        return FilenameParseResult(
+            show_name="Show",
+            season=None,
+            episode=2,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=dedup_miss)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm)
+
+    async def fake_resolve_show(name: str) -> tuple[MagicMock, str]:
+        return show, "found"
+
+    async def fake_find_episode(
+        show_id: int, show_title: str, entry: ParsedPathEntry
+    ) -> tuple[MagicMock | None, int | None, int | None]:
+        return (ep1, 1, 1) if entry.episode == 1 else (ep2, 1, 2)
+
+    with (
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+        patch.object(orch, "_resolve_show", fake_resolve_show),
+        patch.object(orch, "_find_episode", fake_find_episode),
+    ):
+        results = await orch._import_show("Show", entries)
+
+    # Both entries end up in the same (non-split) result -- the failed
+    # parse fell back to trusting the directory, same as a not-llm_ok result.
+    assert len(results) == 1
+    assert results[0].show_dir == "Show"
+    assert results[0].episodes_tracked == 2
+
+
+@pytest.mark.asyncio
 async def test_import_show_split_does_not_auto_set_wrong_local_path() -> None:
     """Bugbot-caught regression: a split-off secondary show must not get
     local_path auto-set from entries[0].show_root — that reflects the
