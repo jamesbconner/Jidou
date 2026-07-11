@@ -8,8 +8,10 @@ import pytest
 from jidou.models.task import BackgroundTask, TaskStatus
 from jidou.services.progress import (
     TaskCancelledError,
+    TaskDispatchError,
     check_task_cancelled,
     create_task_record,
+    enqueue_task,
     mark_task_timed_out,
     update_task_status,
 )
@@ -309,3 +311,50 @@ async def test_mark_task_timed_out_calls_update_and_emit() -> None:
     emitted = mock_emit.call_args.args[0]
     assert emitted["type"] == "error"
     assert emitted["celery_task_id"] == "task-123"
+
+
+# ---------------------------------------------------------------------------
+# enqueue_task
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_enqueue_task_happy_path_creates_and_dispatches() -> None:
+    """On success, the row is created, dispatch() is called, and the row is returned."""
+    task = MagicMock(spec=BackgroundTask)
+    task.status = TaskStatus.PENDING.value
+    task.progress_total = 0
+
+    session = _make_mock_session(task)
+    dispatch = MagicMock()
+
+    result = await enqueue_task(session, "task-id", "scan", dispatch, dry_run=True)
+
+    dispatch.assert_called_once()
+    assert result is task
+    assert task.status == TaskStatus.PENDING.value
+
+
+@pytest.mark.asyncio
+async def test_enqueue_task_broker_failure_marks_failed_and_reraises() -> None:
+    """A dispatch() failure marks the row FAILED with a consistent message and re-raises.
+
+    Raises TaskDispatchError specifically (not the original ConnectionError)
+    so callers can distinguish a genuine broker failure from a
+    create_task_record failure, which is a different (database) problem and
+    must not be caught by the same except clause.
+    """
+    task = MagicMock(spec=BackgroundTask)
+    task.status = TaskStatus.PENDING.value
+    task.progress_total = 0
+
+    session = _make_mock_session(task)
+    dispatch = MagicMock(side_effect=ConnectionError("broker unreachable"))
+
+    with pytest.raises(TaskDispatchError, match="broker unreachable"):
+        await enqueue_task(session, "task-id", "scan", dispatch)
+
+    dispatch.assert_called_once()
+    assert task.status == TaskStatus.FAILED
+    assert task.progress_message == "Failed to enqueue task: broker unreachable"
+    assert task.completed_at is not None

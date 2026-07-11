@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
+from jidou.services.progress import TaskDispatchError
 from jidou.services.sftp_service import SFTPService
 
 # ---------------------------------------------------------------------------
@@ -58,6 +59,25 @@ def _exec_result(scalar: object = None, scalars_all: list | None = None) -> Magi
     r.scalars.return_value.all.return_value = scalars_all if scalars_all is not None else []
     r.all.return_value = scalars_all if scalars_all is not None else []
     return r
+
+
+def _fake_enqueue(task: MagicMock) -> AsyncMock:
+    """Return a fake enqueue_task: calls dispatch(), commits+re-raises on failure.
+
+    Mirrors enqueue_task's real "create row, dispatch, mark FAILED + commit on
+    broker failure" shape closely enough for both call_args and
+    session.commit() assertions to hold without exercising the real DB calls.
+    """
+
+    async def _run(session, task_id, task_type, dispatch, *, dry_run=False):  # type: ignore[no-untyped-def]
+        try:
+            dispatch()
+        except Exception as exc:
+            await session.commit()
+            raise TaskDispatchError(str(exc)) from exc
+        return task
+
+    return AsyncMock(side_effect=_run)
 
 
 # ---------------------------------------------------------------------------
@@ -826,7 +846,7 @@ def test_import_endpoint_202_when_path_configured() -> None:
     try:
         with (
             patch("jidou.api.routes.rss.settings") as mock_settings,
-            patch("jidou.api.routes.rss.create_task_record", new=AsyncMock(return_value=task)),
+            patch("jidou.api.routes.rss.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):
             mock_settings.rss_config_remote_path = "/remote/yarss2.conf"
@@ -861,7 +881,7 @@ def test_import_endpoint_503_when_broker_unavailable() -> None:
     try:
         with (
             patch("jidou.api.routes.rss.settings") as mock_settings,
-            patch("jidou.api.routes.rss.create_task_record", new=AsyncMock(return_value=task)),
+            patch("jidou.api.routes.rss.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):
             mock_settings.rss_config_remote_path = "/remote/yarss2.conf"

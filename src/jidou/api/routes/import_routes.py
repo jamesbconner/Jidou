@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.models.task import BackgroundTask
 from jidou.schemas.task_schema import TaskRead
-from jidou.services.progress import create_task_record
+from jidou.services.progress import TaskDispatchError, enqueue_task
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -95,30 +95,17 @@ async def import_text(
     from jidou.workers.import_tasks import path_import_task
 
     task_id = str(uuid.uuid4())
-    new_task = await create_task_record(
-        db_session,
-        task_id,
-        "import",
-        dry_run=dry_run,
-    )
 
-    try:
+    def _dispatch() -> None:
         path_import_task.apply_async(
             args=[file_content, content_type, dry_run],
             task_id=task_id,
         )
-    except Exception as exc:
-        from datetime import UTC, datetime
 
-        from jidou.models.task import TaskStatus
-
-        new_task.status = TaskStatus.FAILED.value
-        new_task.progress_message = f"Failed to enqueue task: {exc}"
-        new_task.completed_at = datetime.now(UTC)
-        await db_session.commit()
+    try:
+        return await enqueue_task(db_session, task_id, "import", _dispatch, dry_run=dry_run)
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
-
-    return new_task
 
 
 @router.post("/database", response_model=TaskRead)
@@ -160,24 +147,11 @@ async def import_database(
     from jidou.workers.db_import_tasks import db_import_task
 
     task_id = str(uuid.uuid4())
-    new_task = await create_task_record(
-        db_session,
-        task_id,
-        "db_import",
-        dry_run=False,
-    )
+
+    def _dispatch() -> None:
+        db_import_task.apply_async(args=[file_content], task_id=task_id)
 
     try:
-        db_import_task.apply_async(args=[file_content], task_id=task_id)
-    except Exception as exc:
-        from datetime import UTC, datetime
-
-        from jidou.models.task import TaskStatus
-
-        new_task.status = TaskStatus.FAILED.value
-        new_task.progress_message = f"Failed to enqueue task: {exc}"
-        new_task.completed_at = datetime.now(UTC)
-        await db_session.commit()
+        return await enqueue_task(db_session, task_id, "db_import", _dispatch, dry_run=False)
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
-
-    return new_task
