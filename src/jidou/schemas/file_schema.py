@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-_VALID_STATUSES = "discovered|downloading|downloaded|unmatched|matched|routing|routed|error|pending"
+from jidou.models.downloaded_file import FileStatus
 
 
 class ShowBrief(BaseModel):
@@ -40,7 +40,7 @@ class FileRead(BaseModel):
     local_path: str | None = None
     file_size: int
     hash_sha256: str | None = None
-    status: str
+    status: FileStatus
     matched_by: str | None = None
     error_message: str | None = None
     parsed_show_name: str | None = None
@@ -63,7 +63,7 @@ class FileList(BaseModel):
     original_filename: str
     remote_path: str
     file_size: int
-    status: str
+    status: FileStatus
     show_id: int | None = None
     episode_id: int | None = None
     parsed_show_name: str | None = None
@@ -109,8 +109,5 @@ class FilePatch(BaseModel):
 
     show_id: int | None = None
     episode_id: int | None = None
-    status: str | None = Field(
-        default=None,
-        pattern=f"^({_VALID_STATUSES})$",
-    )
+    status: FileStatus | None = None
     error_message: str | None = None

@@ -1857,9 +1857,12 @@ export interface paths {
          * @description Compose and download the current DB state as a YaRSS2 config file.
          *
          *     Uses the latest stored snapshot for the header and non-managed sections,
-         *     then overlays the current DB feeds and enabled subscriptions.  Does not
-         *     upload to the remote server — equivalent to a dry-run publish returned
-         *     as a file attachment.
+         *     then overlays the current DB feeds and enabled subscriptions via
+         *     :meth:`RssPublishOrchestrator.compose_config` — the same composition
+         *     logic ``run()`` uses to build what it actually uploads, so this
+         *     preview can't drift from real publish behavior. Does not upload to the
+         *     remote server; ``upload=False`` computes subscription keys without
+         *     persisting them.
          *
          *     Args:
          *         db_session: DB session (injected).
@@ -1872,6 +1875,41 @@ export interface paths {
          *         HTTPException: 500 if the latest snapshot cannot be parsed.
          */
         get: operations["download_config_api_rss_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rss/subscriptions/{sub_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Subscription
+         * @description Preview the YaRSS2 subscription dict Jidou would publish for one subscription.
+         *
+         *     Uses the same :meth:`RssPublishOrchestrator.build_sub_dict` publish
+         *     itself calls, so the preview always reflects real publish output —
+         *     including YaRSS2 torrent-option defaults for a subscription that has
+         *     never round-tripped through a real config.
+         *
+         *     Args:
+         *         sub_id: Database primary key of the subscription to preview.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The composed YaRSS2 subscription dict.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the subscription is not found.
+         */
+        get: operations["preview_subscription_api_rss_subscriptions__sub_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2351,8 +2389,7 @@ export interface components {
             show_id?: number | null;
             /** Episode Id */
             episode_id?: number | null;
-            /** Status */
-            status?: string | null;
+            status?: components["schemas"]["FileStatus"] | null;
             /** Error Message */
             error_message?: string | null;
         };
@@ -2377,8 +2414,7 @@ export interface components {
             file_size: number;
             /** Hash Sha256 */
             hash_sha256?: string | null;
-            /** Status */
-            status: string;
+            status: components["schemas"]["FileStatus"];
             /** Matched By */
             matched_by?: string | null;
             /** Error Message */
@@ -2406,6 +2442,38 @@ export interface components {
             show?: components["schemas"]["jidou__schemas__file_schema__ShowBrief"] | null;
             episode?: components["schemas"]["EpisodeBrief"] | null;
         };
+        /**
+         * FileStatus
+         * @description Lifecycle states for a downloaded media file.
+         *
+         *     State machine::
+         *
+         *         discovered ──► downloading ──► downloaded ──► matched ──► routing ──► routed
+         *                                             │                         │
+         *                                             └──► unmatched            └──► error
+         *                                                      │
+         *                                                      └──► matched  (manual/re-match)
+         *
+         *         routed ──► matched  (Fix Eps reassignment; triggers re-routing)
+         *         * ──► error         (any unexpected failure at any stage)
+         *
+         *     Transitions:
+         *         discovered  → downloading   Download task picks up the file.
+         *         downloading → downloaded    Transfer complete; file is in staging.
+         *         downloaded  → matched       Parse/match phase succeeds.
+         *         downloaded  → unmatched     Parse/match phase finds no episode; needs manual review.
+         *         unmatched   → matched       User resolves via UI, or match task re-runs successfully.
+         *         matched     → routing       Route task starts moving the file.
+         *         routing     → routed        File moved to its final library path.
+         *         routing     → error         File move fails (permissions, path missing, etc.).
+         *         routed      → matched       Fix Eps reassignment clears routing and re-queues.
+         *         *           → error         Unexpected exception at any stage.
+         *
+         *     Note:
+         *         ``pending`` is a legacy value; new records use ``discovered`` instead.
+         * @enum {string}
+         */
+        FileStatus: "discovered" | "downloading" | "downloaded" | "unmatched" | "matched" | "routing" | "routed" | "error" | "pending" | "seeded";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3274,8 +3342,11 @@ export interface components {
         TaskList: {
             /** Id */
             id: number;
-            /** Task Type */
-            task_type: string;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;
@@ -3304,8 +3375,11 @@ export interface components {
         TaskRead: {
             /** Id */
             id: number;
-            /** Task Type */
-            task_type: string;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;
@@ -3364,6 +3438,14 @@ export interface components {
         /**
          * TaskTrigger
          * @description Request body for triggering a background task.
+         *
+         *     task_type stays a plain str (not the narrower Literal subset of TaskType
+         *     that POST /tasks/trigger actually accepts) so the route's own explicit
+         *     400 "Unknown task type" check keeps running -- typing this as a Literal
+         *     would make Pydantic reject bad values at validation time with a generic
+         *     422 before the route body ever runs, changing the endpoint's existing
+         *     error-response contract for no gain (there's no OpenAPI consumer this
+         *     would help; see PR-17 of the sequenced refactoring plan).
          */
         TaskTrigger: {
             /** Task Type */
@@ -3394,11 +3476,8 @@ export interface components {
         WatchlistCreate: {
             /** Show Id */
             show_id: number;
-            /**
-             * Status
-             * @default planned
-             */
-            status: string;
+            /** @default planned */
+            status: components["schemas"]["WatchlistStatus"];
             /** Notes */
             notes?: string | null;
             /**
@@ -3427,8 +3506,7 @@ export interface components {
             /** Show Id */
             show_id: number;
             show: components["schemas"]["jidou__schemas__watchlist_schema__ShowBrief"];
-            /** Status */
-            status: string;
+            status: components["schemas"]["WatchlistStatus"];
             /** Notes */
             notes?: string | null;
             /** Position */
@@ -3445,12 +3523,17 @@ export interface components {
             updated_at: string;
         };
         /**
+         * WatchlistStatus
+         * @description Status of a watchlist entry.
+         * @enum {string}
+         */
+        WatchlistStatus: "planned" | "watching" | "completed" | "on_hold" | "dropped";
+        /**
          * WatchlistUpdate
          * @description Request body for updating a watchlist entry — all fields optional.
          */
         WatchlistUpdate: {
-            /** Status */
-            status?: string | null;
+            status?: components["schemas"]["WatchlistStatus"] | null;
             /** Notes */
             notes?: string | null;
             /** Position */
@@ -5815,6 +5898,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_subscription_api_rss_subscriptions__sub_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                sub_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
