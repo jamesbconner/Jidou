@@ -133,6 +133,7 @@ class ShowRead(BaseModel):
     homepage: str | None = None
     external_ids: dict[str, object] | None = None
     episode_groups: list[dict[str, object]] | None = None
+    episode_group_map: dict[str, object] | None = None
     status: str | None = None
     in_production: bool | None = None
     number_of_seasons: int | None = None
@@ -191,6 +192,7 @@ class ShowList(BaseModel):
     homepage: str | None = None
     external_ids: dict[str, object] | None = None
     episode_groups: list[dict[str, object]] | None = None
+    episode_group_map: dict[str, object] | None = None
     status: str | None = None
     in_production: bool | None = None
     number_of_seasons: int | None = None

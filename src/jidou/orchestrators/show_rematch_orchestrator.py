@@ -124,6 +124,10 @@ class ShowRematchOrchestrator:
         fields = build_show_fields(data, payload.tmdb_id, payload.media_type, existing=show)
         for key, value in fields.items():
             setattr(show, key, value)
+        # Movies have no episode groups; clear stale data left from a
+        # previous TV identity so it doesn't sit on the row indefinitely.
+        if payload.media_type == "movie":
+            show.episode_group_map = {}
 
     async def _snapshot_tracking(
         self,

@@ -26,14 +26,24 @@ from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
+# TMDB episode_groups type IDs relevant to season/episode remapping.
+TMDB_GROUP_TYPE_ABSOLUTE = 2
+"""Type 2 — "Absolute": pure sequential episode numbering."""
+
+TMDB_GROUP_TYPE_PRODUCTION = 6
+"""Type 6 — "Production": commonly used for cour/broadcast groupings."""
+
+# All group types we fetch details for.
+_FETCHED_GROUP_TYPES = frozenset({TMDB_GROUP_TYPE_PRODUCTION, TMDB_GROUP_TYPE_ABSOLUTE})
+
 # Preference order when a filename/folder declares a season number that
-# doesn't match TMDB's own season structure.
-_DECLARED_SEASON_GROUP_TYPES = (6, 2)
+# doesn't match TMDB's own season structure.  Production groups tend to
+# match how release groups organise cours.
+_DECLARED_SEASON_PRIORITY = (TMDB_GROUP_TYPE_PRODUCTION, TMDB_GROUP_TYPE_ABSOLUTE)
 
 # Preference order when no season is declared at all (pure absolute numbering).
-_ABSOLUTE_GROUP_TYPES = (2, 6)
-
-_FETCHED_GROUP_TYPES = frozenset({6, 2})
+# The Absolute type is the documented fit for this use case.
+_ABSOLUTE_PRIORITY = (TMDB_GROUP_TYPE_ABSOLUTE, TMDB_GROUP_TYPE_PRODUCTION)
 
 # breakdowns: {group_type: {sub_group_order: [(season_number, episode_number), ...]}}
 GroupBreakdowns = dict[int, dict[int, list[tuple[int, int]]]]
@@ -160,7 +170,7 @@ def flatten_for_absolute_numbering(breakdowns: GroupBreakdowns) -> dict[tuple[in
         Mapping from (season_number, episode_number) to its absolute
         position, or an empty dict if neither group type was fetched.
     """
-    for group_type in _ABSOLUTE_GROUP_TYPES:
+    for group_type in _ABSOLUTE_PRIORITY:
         sub_groups = breakdowns.get(group_type)
         if not sub_groups:
             continue
@@ -203,7 +213,7 @@ def resolve_declared_season(
     # what the Show.episode_group_map JSONB column exposes; it's only ever
     # written by to_storage_map, so the nested shape is trusted here.
     stored = cast(StoredGroupMap, episode_group_map)
-    for group_type in _DECLARED_SEASON_GROUP_TYPES:
+    for group_type in _DECLARED_SEASON_PRIORITY:
         by_season = stored.get(str(group_type))
         if not by_season:
             continue

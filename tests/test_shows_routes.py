@@ -61,6 +61,7 @@ def _make_show(
     s.homepage = None
     s.external_ids = None
     s.episode_groups = None
+    s.episode_group_map = None
     s.status = None
     s.in_production = None
     s.number_of_seasons = None

@@ -18,6 +18,7 @@ from jidou.services.episode_group_mapping import (
     to_storage_map,
 )
 from jidou.services.tmdb import TMDBService
+from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
 logger = logging.getLogger(__name__)
 
@@ -221,8 +222,7 @@ class TMDBOrchestrator:
         """
         if show.episode_groups is None:
             try:
-                groups_response = await self.tmdb.get_episode_groups(show.tmdb_id)
-                show.episode_groups = list(groups_response.get("results") or [])
+                show.episode_groups = await fetch_episode_groups_list(self.tmdb, show.tmdb_id)
             except Exception:
                 logger.warning(
                     "Failed to fetch episode_groups summary for show id=%s; leaving existing "
