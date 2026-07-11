@@ -39,12 +39,14 @@ def _make_feed(
     remote_key: str | None = "0",
     name: str = "ShowRSS",
     url: str = "https://showrss.info/feed",
+    active: bool = True,
 ) -> MagicMock:
     f = MagicMock(spec=RssFeed)
     f.id = id
     f.remote_key = remote_key
     f.name = name
     f.url = url
+    f.active = active
     f.default_download_location = None
     f.default_move_completed = None
     f.extra_config = None
@@ -1294,15 +1296,25 @@ def test_download_config_composes_and_returns_file() -> None:
 
     snapshot_result = MagicMock()
     snapshot_result.scalar_one_or_none.return_value = snapshot
+    ref_feed_ids_result = MagicMock()
+    ref_feed_ids_result.scalars.return_value.all.return_value = [1]
     feeds_result = MagicMock()
     feeds_result.scalars.return_value.all.return_value = [feed]
-    subs_result = MagicMock()
-    subs_result.scalars.return_value.all.return_value = [sub_with_key, sub_without_key]
     keys_result = MagicMock()
     keys_result.scalars.return_value.all.return_value = ["0", "2"]
+    subs_result = MagicMock()
+    subs_result.scalars.return_value.all.return_value = [sub_with_key, sub_without_key]
 
+    # Query order: snapshot -> referenced-feed-ids -> feeds -> all-keys -> subs
+    # (compose_config: _build_feeds_dict, then all-keys, then _build_subscriptions_dict).
     app.dependency_overrides[get_session] = _session_override(
-        execute_side_effect=[snapshot_result, feeds_result, subs_result, keys_result]
+        execute_side_effect=[
+            snapshot_result,
+            ref_feed_ids_result,
+            feeds_result,
+            keys_result,
+            subs_result,
+        ]
     )
     try:
         r = TestClient(app).get("/api/rss/download")
@@ -1316,12 +1328,127 @@ def test_download_config_composes_and_returns_file() -> None:
         # The DB feed's own name/url always overlay the old snapshot's values.
         assert rssfeeds["0"]["url"] == feed.url
         assert rssfeeds["0"]["name"] == feed.name
+        # Bug5 regression: the active field must be present (it was previously
+        # missing from download_config's own inline reimplementation).
+        assert rssfeeds["0"]["active"] is True
         subscriptions = new_body["subscriptions"]
         assert isinstance(subscriptions, dict)
         # sub_with_key keeps its existing key; sub_without_key gets the next
         # free key above the max of the snapshot's "0" and the DB's "2" -> "3".
         assert subscriptions["2"]["name"] == "Has Key"
         assert subscriptions["3"]["name"] == "No Key"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_download_config_includes_inactive_feed_referenced_by_sub() -> None:
+    """GET /download includes an inactive feed still referenced by an enabled subscription.
+
+    Bug5 regression: download_config's own inline reimplementation had no
+    equivalent of _build_feeds_dict's inactive-but-referenced inclusion
+    logic, so this feed would have been silently dropped, leaving a
+    dangling rssfeed_key in the subscription output.
+    """
+    import json
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+    from jidou.services.rss_config import parse_rss_config
+
+    header = {"file": 1, "format": 1}
+    body: dict[str, object] = {"cookies": {}, "general": {}, "rssfeeds": {}, "subscriptions": {}}
+    raw = json.dumps(header, separators=(",", ":")) + json.dumps(body, separators=(",", ":"))
+
+    snapshot = MagicMock(spec=RssConfigSnapshot)
+    snapshot.raw_content = raw
+
+    inactive_feed = _make_feed(id=5, remote_key="fi5", name="RefdInactiveFeed", active=False)
+    sub = _make_sub(id=1, remote_key="0", feed_id=5, enabled_in_config=True)
+    sub.feed = inactive_feed
+
+    snapshot_result = MagicMock()
+    snapshot_result.scalar_one_or_none.return_value = snapshot
+    ref_feed_ids_result = MagicMock()
+    ref_feed_ids_result.scalars.return_value.all.return_value = [5]
+    feeds_result = MagicMock()
+    feeds_result.scalars.return_value.all.return_value = [inactive_feed]
+    keys_result = MagicMock()
+    keys_result.scalars.return_value.all.return_value = ["0"]
+    subs_result = MagicMock()
+    subs_result.scalars.return_value.all.return_value = [sub]
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[
+            snapshot_result,
+            ref_feed_ids_result,
+            feeds_result,
+            keys_result,
+            subs_result,
+        ]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/download")
+        assert r.status_code == 200
+        _, new_body = parse_rss_config(r.content.decode("utf-8"))
+        rssfeeds = new_body["rssfeeds"]
+        assert isinstance(rssfeeds, dict)
+        assert "fi5" in rssfeeds
+        assert rssfeeds["fi5"]["active"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/subscriptions/{sub_id}/preview
+# ---------------------------------------------------------------------------
+
+
+def test_preview_subscription_returns_composed_dict() -> None:
+    """GET /subscriptions/{id}/preview returns the same shape publish would produce."""
+    from jidou.database import get_session
+
+    feed = _make_feed(id=1, remote_key="f1")
+    sub = _make_sub(id=1, remote_key="7", feed_id=1, name="My Sub")
+    sub.feed = feed
+    sub.extra_config = {"max_connections": 50}
+
+    app.dependency_overrides[get_session] = _session_override(single=sub)
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/1/preview")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["key"] == "7"
+        assert data["name"] == "My Sub"
+        assert data["max_connections"] == 50
+        assert data["rssfeed_key"] == "f1"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_preview_subscription_unassigned_key_for_stub() -> None:
+    """A subscription with no remote_key yet previews with key='unassigned'."""
+    from jidou.database import get_session
+
+    sub = _make_sub(id=2, remote_key=None, feed_id=None, name="New Stub")
+    sub.feed = None
+
+    app.dependency_overrides[get_session] = _session_override(single=sub)
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/2/preview")
+        assert r.status_code == 200
+        assert r.json()["key"] == "unassigned"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_preview_subscription_404_when_not_found() -> None:
+    """GET /subscriptions/{id}/preview returns 404 for a nonexistent subscription."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        r = TestClient(app).get("/api/rss/subscriptions/999/preview")
+        assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
 

@@ -74,7 +74,7 @@ class RssPublishOrchestrator:
     def __init__(
         self,
         session: AsyncSession,
-        sftp: SFTPService,
+        sftp: SFTPService | None,
         remote_path: str,
         dry_run: bool = False,
         on_event: _OnEvent | None = None,
@@ -90,7 +90,15 @@ class RssPublishOrchestrator:
 
         Returns:
             :class:`RssPublishResult` summarising what was published.
+
+        Raises:
+            ValueError: If this instance was constructed without an sftp
+                service — valid for a compose_config()-only instance (e.g.
+                the download-preview route), but run() needs real SFTP
+                access for import reconciliation, backup, and upload.
         """
+        if self._sftp is None:
+            raise ValueError("run() requires an sftp service; this instance was built without one")
         result = RssPublishResult(dry_run=self._dry_run)
 
         # 1. Reconcile out-of-band changes and store a pre_publish snapshot.
@@ -134,39 +142,15 @@ class RssPublishOrchestrator:
                 "info", f"[DRY RUN] Would back up current config to {backup_path}", None
             )
 
-        # 4. Build new rssfeeds dict from DB
-        new_feeds = await self._build_feeds_dict(result)
-
-        # 5. Build new subscriptions dict from DB.
-        # Seed max_key from both the remote body and all existing DB remote_keys so
-        # that remote-deleted subscriptions (still in DB with a remote_key but absent
-        # from old_body) cannot collide with keys assigned to new stubs.
-        remote_max_key = extract_max_subscription_key(old_body)
-        all_keys_stmt = select(RssSubscription.remote_key).where(
-            RssSubscription.remote_key.is_not(None)
+        # 4-6. Build feeds + subscriptions dicts from DB and assemble the new body.
+        composed, compose_result = await self.compose_config(
+            header, old_body, upload=not self._dry_run
         )
-        all_key_rows = (await self._session.execute(all_keys_stmt)).scalars().all()
-        db_max_key = max(
-            (int(k) for k in all_key_rows if k and k.isdigit()),
-            default=-1,
-        )
-        max_key = max(remote_max_key, db_max_key)
-        new_subs = await self._build_subscriptions_dict(max_key, result)
+        result.feeds_published = compose_result.feeds_published
+        result.subscriptions_published = compose_result.subscriptions_published
+        result.new_keys_assigned = compose_result.new_keys_assigned
 
-        # Commit new remote_key assignments before uploading so they are durable even
-        # if the remote upload succeeds but a subsequent session operation rolls back.
-        if result.new_keys_assigned > 0 and not self._dry_run:
-            await self._session.commit()
-
-        # 6. Assemble new body: preserve all non-managed sections, then set managed ones
-        new_body: dict[str, object] = {
-            k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS
-        }
-        new_body["rssfeeds"] = new_feeds
-        new_body["subscriptions"] = new_subs
-
-        # 7. Compose and upload
-        composed = compose_rss_config(header, new_body)
+        # 7. Upload
         if not self._dry_run:
             await self._sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
             await self._on_event(
@@ -192,6 +176,67 @@ class RssPublishOrchestrator:
             )
 
         return result
+
+    async def compose_config(
+        self,
+        header: dict[str, object],
+        old_body: dict[str, object],
+        *,
+        upload: bool,
+    ) -> tuple[str, RssPublishResult]:
+        """Build feeds + subscriptions from DB and assemble the full config text.
+
+        Shared by :meth:`run` (composing what will actually be uploaded) and
+        the ``GET /rss/download`` route (composing a preview/download that
+        never uploads) — the single implementation of "what would Jidou
+        publish right now", so the two can no longer drift out of sync.
+
+        Args:
+            header: Config header block, preserved verbatim.
+            old_body: Previously-parsed config body; used to seed the max
+                subscription key and to preserve all non-managed sections.
+            upload: When True, persist newly-assigned subscription
+                remote_key values to the DB (this composition is about to
+                be uploaded). When False (a preview/download), compute
+                keys without persisting them.
+
+        Returns:
+            ``(composed_text, result)`` where *result*'s feeds_published /
+            subscriptions_published / new_keys_assigned counts reflect
+            this call only.
+        """
+        result = RssPublishResult(dry_run=not upload)
+
+        new_feeds = await self._build_feeds_dict(result)
+
+        # Seed max_key from both the remote body and all existing DB remote_keys so
+        # that remote-deleted subscriptions (still in DB with a remote_key but absent
+        # from old_body) cannot collide with keys assigned to new stubs.
+        remote_max_key = extract_max_subscription_key(old_body)
+        all_keys_stmt = select(RssSubscription.remote_key).where(
+            RssSubscription.remote_key.is_not(None)
+        )
+        all_key_rows = (await self._session.execute(all_keys_stmt)).scalars().all()
+        db_max_key = max(
+            (int(k) for k in all_key_rows if k and k.isdigit()),
+            default=-1,
+        )
+        max_key = max(remote_max_key, db_max_key)
+        new_subs = await self._build_subscriptions_dict(max_key, result, upload=upload)
+
+        # Commit new remote_key assignments before uploading so they are durable even
+        # if the remote upload succeeds but a subsequent session operation rolls back.
+        if result.new_keys_assigned > 0 and upload:
+            await self._session.commit()
+
+        new_body: dict[str, object] = {
+            k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS
+        }
+        new_body["rssfeeds"] = new_feeds
+        new_body["subscriptions"] = new_subs
+
+        composed = compose_rss_config(header, new_body)
+        return composed, result
 
     async def _build_feeds_dict(self, result: RssPublishResult) -> dict[str, object]:
         """Build the rssfeeds dict from DB RssFeed rows that have a remote_key.
@@ -248,15 +293,21 @@ class RssPublishOrchestrator:
         self,
         max_key: int,
         result: RssPublishResult,
+        *,
+        upload: bool,
     ) -> dict[str, object]:
         """Build the subscriptions dict from rows with enabled_in_config=True.
 
         Stubs without a remote_key are assigned sequential integer keys starting
-        from max_key + 1.  Keys are persisted back to the DB row unless dry_run.
+        from max_key + 1.  Keys are persisted back to the DB row when *upload*
+        is True.
 
         Args:
             max_key: Highest existing integer key from the old config body.
             result: Mutated in-place with subscriptions_published and new_keys_assigned.
+            upload: When True, persist newly-assigned remote_key values to
+                the DB. When False (a preview/download), compute keys
+                without persisting them.
 
         Returns:
             Dict of remote_key → subscription dict for the new config.
@@ -278,20 +329,20 @@ class RssPublishOrchestrator:
             else:
                 key = str(next_key)
                 next_key += 1
-                if not self._dry_run:
+                if upload:
                     sub.remote_key = key
                 result.new_keys_assigned += 1
 
-            new_subs[key] = self._build_sub_dict(sub, key)
+            new_subs[key] = self.build_sub_dict(sub, key)
             result.subscriptions_published += 1
 
-        if result.new_keys_assigned > 0 and not self._dry_run:
+        if result.new_keys_assigned > 0 and upload:
             await self._session.flush()
 
         return new_subs
 
     @staticmethod
-    def _build_sub_dict(sub: RssSubscription, key: str) -> dict[str, object]:
+    def build_sub_dict(sub: RssSubscription, key: str) -> dict[str, object]:
         """Serialise one RssSubscription row to a YaRSS2 subscription dict.
 
         Starts with the standard YaRSS2 torrent-option defaults (so a
