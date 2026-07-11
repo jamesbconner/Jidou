@@ -701,7 +701,7 @@ async def download_config(
         key = sub.remote_key or str(next_key)
         if not sub.remote_key:
             next_key += 1
-        new_subs[key] = RssPublishOrchestrator._build_sub_dict(sub)
+        new_subs[key] = RssPublishOrchestrator._build_sub_dict(sub, key)
 
     new_body: dict[str, object] = {k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS}
     new_body["rssfeeds"] = new_feeds

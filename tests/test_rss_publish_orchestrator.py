@@ -560,8 +560,9 @@ def test_build_sub_dict_includes_all_optional_fields() -> None:
         extra_config={"extra_key": "extra_value"},
     )
 
-    result = RssPublishOrchestrator._build_sub_dict(sub)
+    result = RssPublishOrchestrator._build_sub_dict(sub, "5")
 
+    assert result["key"] == "5"
     assert result["regex_include"] == ".*show.*"
     assert result["regex_exclude"] == ".*trailer.*"
     assert result["label"] == "MyLabel"
@@ -569,6 +570,42 @@ def test_build_sub_dict_includes_all_optional_fields() -> None:
     assert result["move_completed"] == "/completed"
     assert result["extra_key"] == "extra_value"
     assert result["rssfeed_key"] == "f1"
+
+
+def test_build_sub_dict_fills_yarss2_defaults_for_fresh_subscription() -> None:
+    """A subscription with no extra_config (never imported) still gets every
+    torrent-option key YaRSS2's own UI writes -- regression test for a bug
+    where freshly Jidou-created subscriptions (watchlist add, the Show
+    Detail "Add RSS" button, etc.) published with those keys missing
+    entirely, rather than present with YaRSS2's own "inherit global" values.
+    """
+    from jidou.orchestrators.rss_publish_orchestrator import (
+        _YARSS2_SUBSCRIPTION_DEFAULTS,
+        RssPublishOrchestrator,
+    )
+
+    sub = _make_sub(feed=None, extra_config=None)
+
+    result = RssPublishOrchestrator._build_sub_dict(sub, "12")
+
+    assert result["key"] == "12"
+    for field, default in _YARSS2_SUBSCRIPTION_DEFAULTS.items():
+        if field == "label":
+            continue  # sub fixture may set its own label; checked separately below
+        assert result[field] == default
+    assert result["label"] == ""  # no label set on the fixture — falls back to default
+
+
+def test_build_sub_dict_extra_config_overrides_defaults() -> None:
+    """A real value round-tripped via extra_config wins over the YaRSS2 default."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    sub = _make_sub(feed=None, extra_config={"max_connections": 50, "auto_managed": "Yes"})
+
+    result = RssPublishOrchestrator._build_sub_dict(sub, "1")
+
+    assert result["max_connections"] == 50
+    assert result["auto_managed"] == "Yes"
 
 
 # ---------------------------------------------------------------------------
