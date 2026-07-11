@@ -531,6 +531,52 @@ async def test_run_episode_tracking_resolved_via_parsed_numbers(tmp_path: Path) 
     assert file.episode_id == ep.id
 
 
+@pytest.mark.asyncio
+async def test_run_episode_tracking_anime_falls_back_to_season_1(tmp_path: Path) -> None:
+    """Anime file with no season and no absolute-number match falls back to Season 1.
+
+    Regression test for Bug4: _update_episode_tracking previously tried
+    only Episode.absolute_episode_number when parsed_season was None, with
+    no further fallback -- unlike every other episode-resolution call site
+    in the codebase, which all fall back to (season=1, episode_number=N)
+    when the absolute lookup misses. A show whose real data doesn't
+    populate absolute_episode_number (common) would silently fail to track
+    here even though the episode row exists at Season 1.
+    """
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"v")
+
+    file = _make_file(
+        filename="ep.mkv",
+        local_path=str(staging),
+        episode_id=None,
+        parsed_season=None,
+        parsed_episode=13,
+    )
+    show = _make_show(local_path=str(tmp_path / "show"))
+    ep = _make_episode(ep_id=13, season=1, ep_num=13)
+
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    absolute_miss = MagicMock()
+    absolute_miss.scalar_one_or_none.return_value = None
+    season_1_hit = MagicMock()
+    season_1_hit.scalar_one_or_none.return_value = ep
+    orphan_result = MagicMock()
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[files_result, absolute_miss, season_1_hit, orphan_result]
+    )
+
+    orch = RouteOrchestrator(session)
+    await orch.run()
+
+    assert ep.file_tracked is True
+    assert file.episode_id == ep.id
+
+
 # ---------------------------------------------------------------------------
 # run() — anime absolute episode routing (parsed_season=None, episode_id set)
 # ---------------------------------------------------------------------------

@@ -10,9 +10,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
-from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.sys_name import sanitize_sys_name
@@ -135,45 +135,6 @@ class ParseOrchestrator:
             .limit(1)
         )
         return (await self.session.execute(title_stmt)).scalars().first()
-
-    async def _find_episode(
-        self,
-        show_id: int,
-        season: int | None,
-        episode: int | None,
-    ) -> Episode | None:
-        """Look up a specific episode, or return None.
-
-        When season is provided, matches on (season_number, episode_number).
-        When season is None but episode is known, falls back to
-        absolute_episode_number — common for anime distributed without season
-        indicators (e.g. ``"Bleach - 213.mkv"``).
-        """
-        if episode is None:
-            return None
-        if season is not None:
-            stmt = select(Episode).where(
-                (Episode.show_id == show_id)
-                & (Episode.season_number == season)
-                & (Episode.episode_number == episode)
-            )
-            return (await self.session.execute(stmt)).scalar_one_or_none()
-        # season is None — try absolute episode number (anime absolute numbering)
-        stmt = select(Episode).where(
-            (Episode.show_id == show_id) & (Episode.absolute_episode_number == episode)
-        )
-        ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep is not None:
-            return ep
-        # Absolute lookup missed — TMDB often leaves absolute_episode_number null for
-        # shows that live in a single season.  Fall back to Season 1, Episode N, which
-        # is correct for the vast majority of anime distributed without season markers.
-        stmt = select(Episode).where(
-            (Episode.show_id == show_id)
-            & (Episode.season_number == 1)
-            & (Episode.episode_number == episode)
-        )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
     def _add_alias(show: Show, alias: str) -> None:
@@ -304,7 +265,7 @@ class ParseOrchestrator:
 
                 if show is not None:
                     file.show_id = show.id
-                    ep = await self._find_episode(show.id, season, episode)
+                    ep = await resolve_episode(self.session, show.id, season, episode)
                     file.episode_id = ep.id if ep is not None else None
                     # When the LLM returned season=None (anime absolute numbering),
                     # backfill parsed_season from the resolved episode so RouteOrchestrator
