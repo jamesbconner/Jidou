@@ -338,6 +338,7 @@ async def create_show(
     existing = (await db_session.execute(stmt)).scalar_one_or_none()
     if existing is not None:
         logger.debug("Show tmdb_id=%d already exists (id=%d)", payload.tmdb_id, existing.id)
+        await TMDBOrchestrator(db_session, tmdb).ensure_episode_group_map(existing)
         return existing
 
     data = payload.model_dump()
@@ -364,6 +365,7 @@ async def create_show(
                 payload.tmdb_id,
                 existing.id,
             )
+            await TMDBOrchestrator(db_session, tmdb).ensure_episode_group_map(existing)
             return existing
         raise
 

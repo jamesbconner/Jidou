@@ -1208,6 +1208,302 @@ async def test_import_show_episode_sync_failure_logged_not_raised() -> None:
     assert result.episodes_unmatched == 1
 
 
+@pytest.mark.asyncio
+async def test_import_show_backfills_episode_group_map_for_already_synced_show() -> None:
+    """An existing show with episodes already synced but no episode_group_map
+    (e.g. synced before this feature existed) must still get the map
+    backfilled via ensure_episode_group_map so the cour/season remap works.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Frieren\Season 01\ep.mkv",
+            show_dir="Frieren",
+            show_root=r"Z:\anime tv\Frieren",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show(title="Frieren")
+    show.episode_group_map = None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)  # ep_count > 0 -> no full re-sync
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        result = await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_skips_backfill_when_episode_group_map_already_set() -> None:
+    """An already-synced show whose episode_group_map is already populated
+    (even if it's an empty dict, meaning 'checked, no groups exist') must
+    not trigger a redundant backfill call on every import touch.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_skips_backfill_when_episode_group_map_is_confirmed_empty() -> None:
+    """An empty dict ({}) means 'checked, TMDB has no qualifying groups' —
+    must not trigger a redundant backfill call on every import touch,
+    distinguishing it from None ('never checked').
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = {}  # confirmed empty — not the same as None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_episode_group_map_backfill_failure_logged_not_raised() -> None:
+    """An ensure_episode_group_map failure for an already-synced show is logged, not raised."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock(
+            side_effect=RuntimeError("TMDB down")
+        )
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        result = await orch.run(entries)  # must not raise
+
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_backfills_episode_group_map_in_dry_run_too() -> None:
+    """Bugbot-caught regression: dry_run must not skip ensure_episode_group_map
+    for an already-synced show. episode_group_map/absolute_episode_number are
+    derived TMDB cache data, not a user-visible import side effect -- skipping
+    the backfill in dry_run would make a preview's matching diverge from what
+    a real run actually resolves (e.g. showing a file as unmatched in preview
+    that a real run would match after the remap backfill).
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Frieren\Season 01\ep.mkv",
+            show_dir="Frieren",
+            show_root=r"Z:\anime tv\Frieren",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show(title="Frieren")
+    show.episode_group_map = None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)  # ep_count > 0
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        result = await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+    session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_dry_run_skips_full_sync_for_never_synced_show() -> None:
+    """dry_run must still skip the full sync_show_episodes call (a real DB
+    write) when a found show has zero episodes -- only the read-only
+    episode_group_map backfill is exempted from dry_run, not episode creation.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Frieren\Season 01\ep.mkv",
+            show_dir="Frieren",
+            show_root=r"Z:\anime tv\Frieren",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show(title="Frieren")
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)  # ep_count == 0
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=miss)
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, dry_run=True)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _import_show — dry-run estimation for a brand-new (unpersisted) show
 # ---------------------------------------------------------------------------
@@ -1713,7 +2009,7 @@ async def test_import_show_splits_llm_confirmed_mismatch() -> None:
         return primary_show, "found"
 
     async def fake_find_episode(
-        show_id: int, show_title: str, entry: ParsedPathEntry
+        show_id: int, show_title: str, entry: ParsedPathEntry, episode_group_map: dict | None = None
     ) -> tuple[MagicMock | None, int | None, int | None]:
         if show_id == primary_show.id:
             return primary_episode, 1, 1
@@ -1810,7 +2106,7 @@ async def test_import_show_per_entry_parse_failure_does_not_abort_batch() -> Non
         return show, "found"
 
     async def fake_find_episode(
-        show_id: int, show_title: str, entry: ParsedPathEntry
+        show_id: int, show_title: str, entry: ParsedPathEntry, episode_group_map: dict | None = None
     ) -> tuple[MagicMock | None, int | None, int | None]:
         return (ep1, 1, 1) if entry.episode == 1 else (ep2, 1, 2)
 
@@ -1883,7 +2179,7 @@ async def test_import_show_split_does_not_auto_set_wrong_local_path() -> None:
         return primary_show, "found"
 
     async def fake_find_episode(
-        show_id: int, show_title: str, entry: ParsedPathEntry
+        show_id: int, show_title: str, entry: ParsedPathEntry, episode_group_map: dict | None = None
     ) -> tuple[None, None, None]:
         return None, None, None
 
@@ -1954,7 +2250,7 @@ async def test_import_show_no_split_when_llm_confirms_agreement() -> None:
     orch = PathImportOrchestrator(session, tmdb, llm=llm)
 
     async def fake_find_episode(
-        show_id: int, show_title: str, entry: ParsedPathEntry
+        show_id: int, show_title: str, entry: ParsedPathEntry, episode_group_map: dict | None = None
     ) -> tuple[MagicMock, int, int]:
         return episode, 1, 1
 
@@ -2022,7 +2318,7 @@ async def test_import_show_heuristic_only_never_splits() -> None:
     orch = PathImportOrchestrator(session, tmdb)
 
     async def fake_find_episode(
-        show_id: int, show_title: str, entry: ParsedPathEntry
+        show_id: int, show_title: str, entry: ParsedPathEntry, episode_group_map: dict | None = None
     ) -> tuple[MagicMock | None, int | None, int | None]:
         if entry.episode == 1:
             return episode, 1, 1
@@ -2377,7 +2673,9 @@ async def test_find_episode_season_gt_1_miss_tries_absolute_lookup_then_llm() ->
     assert season == 3
     assert ep_num == 99
     mock_llm_match.assert_called_once()
-    # S/E lookup + absolute_episode_number lookup + row-number lookup = 3.
+    # S/E lookup + absolute_episode_number lookup + season-1 fallback lookup = 3.
+    # (No episode_group_map was passed, so the declared-season remap step is a
+    # free no-op that issues no query of its own.)
     assert session.execute.call_count == 3
 
 
@@ -2510,7 +2808,7 @@ async def test_find_episode_absolute_number_column_hit() -> None:
 
 @pytest.mark.asyncio
 async def test_find_episode_falls_through_to_llm_match_when_all_lookups_fail() -> None:
-    """When absolute and row-number lookups both miss, falls back to the LLM."""
+    """When the absolute-number and Season-1 fallback lookups both miss, falls back to the LLM."""
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
     from jidou.services.path_parser import ParsedPathEntry
 
@@ -2540,8 +2838,101 @@ async def test_find_episode_falls_through_to_llm_match_when_all_lookups_fail() -
     assert season is None
     assert ep_num == 999
     mock_llm_match.assert_called_once()
-    # absolute lookup + row-number lookup = 2 execute calls before giving up.
+    # absolute_episode_number lookup + Season-1 fallback lookup = 2 execute
+    # calls before giving up.
     assert session.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_find_episode_season_gt_1_miss_resolves_via_episode_group_remap() -> None:
+    """A season>1 S/E miss resolves through episode_group_map before absolute/LLM.
+
+    This is the Frieren regression case: a fansub's "Season 02" folder (S2E01)
+    doesn't exist in TMDB's real single-season structure, but the show's
+    type-6 episode_group_map says declared season 2 position 1 is really
+    (season=1, episode=4) -- the remap must resolve it without ever falling
+    through to the absolute-number column or the LLM.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.episode_group_mapping import to_storage_map
+    from jidou.services.path_parser import ParsedPathEntry
+
+    remapped_episode = _make_episode(id=9, show_id=1, season=1, episode=4)
+
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    hit = MagicMock()
+    hit.scalar_one_or_none.return_value = remapped_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[miss, hit])
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    episode_group_map = to_storage_map({6: {1: [(1, 1), (1, 2), (1, 3)], 2: [(1, 4), (1, 5)]}})
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\anime tv\Frieren\Season 02\Frieren.S02E01.mkv",
+        show_dir="Frieren",
+        show_root=r"Z:\anime tv\Frieren",
+        season=2,
+        episode=1,
+        is_absolute=False,
+    )
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.llm_match_episode",
+        AsyncMock(return_value=(None, None, None)),
+    ) as mock_llm:
+        ep, season, ep_num = await orch._find_episode(
+            show_id=1, show_title="Frieren", entry=entry, episode_group_map=episode_group_map
+        )
+
+    assert ep is remapped_episode
+    assert season == 1
+    assert ep_num == 4
+    mock_llm.assert_not_called()
+    assert session.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_find_episode_season_gt_1_miss_remap_miss_falls_through_to_absolute() -> None:
+    """When the remapped (season, episode) pair also misses the DB, falls through
+    to the absolute-number lookup rather than giving up immediately."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.episode_group_mapping import to_storage_map
+    from jidou.services.path_parser import ParsedPathEntry
+
+    session = AsyncMock()
+    miss = MagicMock()
+    miss.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=miss)
+
+    orch = PathImportOrchestrator(session, AsyncMock())
+
+    episode_group_map = to_storage_map({6: {1: [(1, 1), (1, 2), (1, 3)], 2: [(1, 4), (1, 5)]}})
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\anime tv\Frieren\Season 02\Frieren.S02E01.mkv",
+        show_dir="Frieren",
+        show_root=r"Z:\anime tv\Frieren",
+        season=2,
+        episode=1,
+        is_absolute=False,
+    )
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.llm_match_episode",
+        AsyncMock(return_value=(None, None, None)),
+    ) as mock_llm:
+        ep, _season, _ep_num = await orch._find_episode(
+            show_id=1, show_title="Frieren", entry=entry, episode_group_map=episode_group_map
+        )
+
+    assert ep is None
+    mock_llm.assert_called_once()
+    # S/E miss + remapped S/E miss + absolute lookup + Season-1 fallback = 4.
+    assert session.execute.call_count == 4
 
 
 @pytest.mark.asyncio
@@ -2739,3 +3130,193 @@ class TestLlmFallbackDiagnostics:
         assert ep is None
         assert season == 5
         assert episode_num == 10
+
+
+# ---------------------------------------------------------------------------
+# _process_show_entries — same-batch resolution collisions
+# (episodes_already_tracked)
+# ---------------------------------------------------------------------------
+
+
+class TestProcessShowEntriesDuplicateDetection:
+    async def test_second_entry_resolving_to_same_episode_is_counted_separately(self) -> None:
+        """Two files that both resolve to the same Episode row must not be
+        silently absorbed into episodes_tracked or episodes_unmatched -- they're
+        counted (and reported) as episodes_already_tracked instead. This is
+        the observability half of the Frieren regression: even for a show the
+        episode_groups remap doesn't perfectly handle, a resolution collision
+        is never invisible.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        show = _make_show(id=1, tmdb_id=100, title="Frieren")
+        show.local_path = r"Z:\anime tv\Frieren"
+        show.episode_group_map = None
+        shared_episode = _make_episode(id=42, show_id=1, season=1, episode=4)
+
+        dedup_miss = MagicMock()
+        dedup_miss.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=dedup_miss)
+        session.commit = AsyncMock()
+        session.add = MagicMock()
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+
+        entries = [
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 01\Frieren.S01E04.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=1,
+                episode=4,
+                is_absolute=False,
+            ),
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 02\Frieren.S02E01.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=2,
+                episode=1,
+                is_absolute=False,
+            ),
+        ]
+
+        async def fake_find_episode(
+            show_id: int,
+            show_title: str,
+            entry: ParsedPathEntry,
+            episode_group_map: dict | None = None,
+        ) -> tuple[MagicMock, int | None, int | None]:
+            return shared_episode, entry.season, entry.episode
+
+        events, capture = _event_capture()
+        orch = PathImportOrchestrator(session, AsyncMock(), on_event=capture)
+
+        with patch.object(orch, "_find_episode", fake_find_episode):
+            result = await orch._process_show_entries("Frieren", show, "found", entries)
+
+        assert result.episodes_tracked == 1
+        assert result.episodes_already_tracked == 1
+        assert result.episodes_unmatched == 0
+        assert result.already_tracked_paths == [entries[1].raw_path]
+
+        dup_events = [msg for _, msg, _ in events if "resolved to the same episode" in msg]
+        assert len(dup_events) == 1
+        assert "S01E04" in dup_events[0]
+
+    async def test_cross_group_collision_detected_via_shared_episode_ids(self) -> None:
+        """When primary and secondary groups (from _import_show's split logic)
+        resolve to the same show and the same episode, the collision must be
+        visible in episodes_already_tracked — not silently lost because each
+        _process_show_entries call used to get its own fresh collision set.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        show = _make_show(id=1, tmdb_id=100, title="Frieren")
+        show.local_path = r"Z:\anime tv\Frieren"
+        show.episode_group_map = {}
+        show.aliases = ["sousou no frieren"]
+        shared_episode = _make_episode(id=42, show_id=1, season=1, episode=4)
+
+        dedup_miss = MagicMock()
+        dedup_miss.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=dedup_miss)
+        session.commit = AsyncMock()
+        session.scalar = AsyncMock(return_value=5)  # ep_count > 0
+        session.add = MagicMock()
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+
+        # Two entries that will end up in different groups (primary vs secondary)
+        # but resolve to the same episode.
+        entries = [
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 01\Frieren.S01E04.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=1,
+                episode=4,
+                is_absolute=False,
+            ),
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 02\Other Show S02E01.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=2,
+                episode=1,
+                is_absolute=False,
+            ),
+        ]
+
+        async def fake_find_episode(
+            show_id: int,
+            show_title: str,
+            entry: ParsedPathEntry,
+            episode_group_map: dict | None = None,
+        ) -> tuple[MagicMock, int | None, int | None]:
+            # Both entries resolve to the same episode
+            return shared_episode, entry.season, entry.episode
+
+        from jidou.services.filename_parser import FilenameParseResult
+
+        # Simulate: first file agrees with the show, second file disagrees
+        # (LLM says it belongs to "Other Show") — triggering a split.
+        call_count = {"n": 0}
+
+        async def fake_parse_filename(filename: str, llm: object = None) -> FilenameParseResult:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # First file: agrees with the primary show
+                return FilenameParseResult(
+                    show_name="Frieren",
+                    season=1,
+                    episode=4,
+                    crc32=None,
+                    content_type="anime",
+                    confidence=0.95,
+                    llm_ok=True,
+                )
+            else:
+                # Second file: disagrees — LLM says "Other Show"
+                return FilenameParseResult(
+                    show_name="Other Show",
+                    season=2,
+                    episode=1,
+                    crc32=None,
+                    content_type="anime",
+                    confidence=0.95,
+                    llm_ok=True,
+                )
+
+        _events, capture = _event_capture()
+        orch = PathImportOrchestrator(session, AsyncMock(), on_event=capture)
+
+        with (
+            patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+            patch.object(orch, "_find_episode", fake_find_episode),
+            patch(
+                "jidou.orchestrators.path_import_orchestrator.parse_filename",
+                fake_parse_filename,
+            ),
+            # Secondary resolution finds the same show via alias
+            patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        ):
+            results = await orch._import_show("Frieren", entries)
+
+        # Primary group: 1 file tracked (S01E04)
+        # Secondary group: 1 file resolves to same episode → already_tracked
+        total_tracked = sum(r.episodes_tracked for r in results)
+        total_already = sum(r.episodes_already_tracked for r in results)
+        total_unmatched = sum(r.episodes_unmatched for r in results)
+
+        assert total_tracked == 1
+        assert total_already == 1
+        assert total_unmatched == 0

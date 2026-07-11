@@ -15,6 +15,28 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 
+async def fetch_episode_groups_list(tmdb: TMDBService, tmdb_id: int) -> list[dict[str, Any]]:
+    """Fetch and unwrap the episode_groups summary for a TV show.
+
+    Encapsulates the ``get_episode_groups`` → ``results`` unwrap so the
+    pattern isn't duplicated across ``fetch_show_metadata`` and
+    ``TMDBOrchestrator._apply_episode_group_map``.
+
+    Args:
+        tmdb: Configured TMDBService instance.
+        tmdb_id: The TMDB identifier of the TV show.
+
+    Returns:
+        List of episode group summary dicts, or empty list on failure.
+
+    Raises:
+        Exception: Propagates any TMDB fetch error to the caller (the caller
+            decides whether to swallow or re-raise).
+    """
+    groups_response = await tmdb.get_episode_groups(tmdb_id)
+    return list(groups_response.get("results") or [])
+
+
 async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) -> dict[str, Any]:
     """Fetch TMDB show details plus supplemental external_ids and episode_groups.
 
@@ -46,8 +68,7 @@ async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) 
     episode_groups: list[dict[str, Any]] = []
     if media_type == "tv":
         try:
-            groups_response = await tmdb.get_episode_groups(tmdb_id)
-            episode_groups = list(groups_response.get("results") or [])
+            episode_groups = await fetch_episode_groups_list(tmdb, tmdb_id)
         except Exception:
             logger.debug("get_episode_groups failed for tmdb_id=%d", tmdb_id)
 
