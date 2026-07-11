@@ -1,7 +1,6 @@
 """Orchestrator for re-matching a show to a different TMDB entry."""
 
 import logging
-import re
 from datetime import datetime
 from typing import Any, TypedDict
 
@@ -16,11 +15,10 @@ from jidou.models.show import Show
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
+from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
-
-_INVALID_FS_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
 class TrackingSnapshot(TypedDict):
@@ -140,7 +138,7 @@ class ShowRematchOrchestrator:
         show.vote_count = data.get("vote_count", 0)
         show.release_date = release_date
         show.original_language = data.get("original_language")
-        show.sys_name = _INVALID_FS_CHARS.sub("_", title).strip()
+        show.sys_name = sanitize_sys_name(title)
         show.genres = data.get("genres") or []
         # TV uses origin_country (ISO list); movies use production_countries (objects).
         tv_countries: list[str] = data.get("origin_country") or []
