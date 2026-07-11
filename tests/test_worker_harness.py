@@ -1,5 +1,6 @@
 """Tests for jidou.workers._harness.run_task_workflow."""
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -326,8 +327,10 @@ async def test_soft_failure_marks_failed_no_complete_event_and_raises_after_sess
         ),
         patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
-        pytest.raises(RuntimeError, match="bad config"),
+        pytest.raises(RuntimeError, match=f"^{re.escape('Import failed: bad config')}$"),
     ):
+        # The raised exception must carry the caller's own composed message
+        # (with its "Import failed: " prefix), not a bare re-join of `errors`.
         await run_task_workflow("tid-9", "rss_import", work)
 
     failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]

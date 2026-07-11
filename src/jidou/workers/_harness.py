@@ -133,7 +133,6 @@ async def run_task_workflow(
             result = await work(session, on_progress, on_event)
 
             if result.errors:
-                error_summary = "; ".join(result.errors)
                 await update_task_status(
                     session,
                     celery_task_id,
@@ -141,7 +140,10 @@ async def run_task_workflow(
                     progress_message=result.message,
                     result_summary=result.result_summary,
                 )
-                soft_failure = error_summary
+                # Use the caller's own message (e.g. "Import failed: ...") for
+                # the raised exception, not a re-derived "; ".join(errors) --
+                # that would drop the prefix callers already composed.
+                soft_failure = result.message
             else:
                 completed = await update_task_status(
                     session,
