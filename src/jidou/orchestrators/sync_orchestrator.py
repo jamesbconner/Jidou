@@ -16,6 +16,7 @@ from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, ParseResul
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator, RouteResult
 from jidou.orchestrators.scan_orchestrator import ScanOrchestrator, ScanResult
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator, TMDBSyncResult
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.sftp_service import SFTPService
 from jidou.services.tmdb import TMDBService
@@ -110,6 +111,8 @@ class SyncOrchestrator:
         )
 
         for sid in show_ids:
+            if sid is None:
+                continue  # excluded by the WHERE clause above; narrows the type for mypy
             show_stmt = select(Show).where(Show.id == sid)
             show = (await self.session.execute(show_stmt)).scalar_one_or_none()
             if show is None:
@@ -130,27 +133,9 @@ class SyncOrchestrator:
             )
             files = list((await self.session.execute(retry_stmt)).scalars().all())
             for file in files:
-                if file.parsed_season is not None:
-                    ep_stmt = select(Episode).where(
-                        Episode.show_id == sid,
-                        Episode.season_number == file.parsed_season,
-                        Episode.episode_number == file.parsed_episode,
-                    )
-                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
-                else:
-                    # Anime absolute-number fallback: try absolute first, then Season 1.
-                    ep_stmt = select(Episode).where(
-                        Episode.show_id == sid,
-                        Episode.absolute_episode_number == file.parsed_episode,
-                    )
-                    ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
-                    if ep is None:
-                        ep_stmt = select(Episode).where(
-                            Episode.show_id == sid,
-                            Episode.season_number == 1,
-                            Episode.episode_number == file.parsed_episode,
-                        )
-                        ep = (await self.session.execute(ep_stmt)).scalar_one_or_none()
+                ep = await resolve_episode(
+                    self.session, sid, file.parsed_season, file.parsed_episode
+                )
 
                 if ep is not None:
                     file.episode_id = ep.id

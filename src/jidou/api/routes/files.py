@@ -16,6 +16,7 @@ from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.filename_parser import heuristic_se
 from jidou.services.llm_service import LLMService
@@ -554,29 +555,10 @@ async def manual_match_file(
     #   3. No episode info at all: skip; route task will resolve later.
     ep: Episode | None = None
     if file.parsed_episode is not None:
-        if file.parsed_season is not None:
-            ep_stmt = select(Episode).where(
-                Episode.show_id == show.id,
-                Episode.season_number == file.parsed_season,
-                Episode.episode_number == file.parsed_episode,
-            )
-            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-        else:
-            # Anime: try absolute episode number first, then Season 1.
-            ep_stmt = select(Episode).where(
-                Episode.show_id == show.id,
-                Episode.absolute_episode_number == file.parsed_episode,
-            )
-            ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-            if ep is None:
-                ep_stmt = select(Episode).where(
-                    Episode.show_id == show.id,
-                    Episode.season_number == 1,
-                    Episode.episode_number == file.parsed_episode,
-                )
-                ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-            if ep is not None and ep.season_number is not None:
-                file.parsed_season = ep.season_number  # enables Season NN routing
+        had_no_season = file.parsed_season is None
+        ep = await resolve_episode(db_session, show.id, file.parsed_season, file.parsed_episode)
+        if had_no_season and ep is not None and ep.season_number is not None:
+            file.parsed_season = ep.season_number  # enables Season NN routing
 
         if ep is not None:
             file.episode_id = ep.id

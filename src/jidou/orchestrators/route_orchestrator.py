@@ -15,6 +15,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import mark_episode_tracked
 
 logger = logging.getLogger(__name__)
@@ -145,33 +146,12 @@ class RouteOrchestrator:
                 select(Episode).where(Episode.id == file.episode_id)
             )
             ep = ep_result.scalar_one_or_none()
-        elif file.parsed_season is not None and file.parsed_episode is not None:
-            ep_result = await self.session.execute(
-                select(Episode).where(
-                    Episode.show_id == show_id,
-                    Episode.season_number == file.parsed_season,
-                    Episode.episode_number == file.parsed_episode,
-                )
-            )
-            ep = ep_result.scalar_one_or_none()
-            if ep is not None:
-                file.episode_id = ep.id
-                await self.session.execute(
-                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-                        OrphanedTrackingRecord.downloaded_file_id == file.id
-                    )
-                )
         elif file.parsed_episode is not None:
-            # Absolute episode number fallback: season was not parsed (common for
-            # anime distributed without season indicators).  Match on the
-            # TMDB-provided absolute_episode_number field when season is None.
-            ep_result = await self.session.execute(
-                select(Episode).where(
-                    Episode.show_id == show_id,
-                    Episode.absolute_episode_number == file.parsed_episode,
-                )
+            # Covers both regular TV (season + episode known) and anime
+            # (season=None -> absolute_episode_number, then Season-1 fallback).
+            ep = await resolve_episode(
+                self.session, show_id, file.parsed_season, file.parsed_episode
             )
-            ep = ep_result.scalar_one_or_none()
             if ep is not None:
                 file.episode_id = ep.id
                 await self.session.execute(

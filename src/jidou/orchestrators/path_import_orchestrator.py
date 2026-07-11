@@ -33,6 +33,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_json import parse_llm_json
@@ -933,30 +934,9 @@ class PathImportOrchestrator:
         Returns:
             Matching :class:`Episode`, or None.
         """
-        stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.absolute_episode_number == absolute_number,
+        return await resolve_episode(
+            self.session, show_id, None, absolute_number, positional_fallback=True
         )
-        ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep is not None:
-            return ep
-
-        numbered = (
-            select(
-                Episode.id,
-                func.row_number()
-                .over(order_by=[Episode.season_number, Episode.episode_number])
-                .label("row_num"),
-            )
-            .where(Episode.show_id == show_id, Episode.season_number > 0)
-            .subquery()
-        )
-        stmt = (
-            select(Episode)
-            .join(numbered, Episode.id == numbered.c.id)
-            .where(numbered.c.row_num == absolute_number)
-        )
-        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def _find_episode(
         self,
@@ -1011,12 +991,7 @@ class PathImportOrchestrator:
         )
 
         if season is not None:
-            stmt = select(Episode).where(
-                Episode.show_id == show_id,
-                Episode.season_number == season,
-                Episode.episode_number == episode,
-            )
-            ep = (await self.session.execute(stmt)).scalar_one_or_none()
+            ep = await resolve_episode(self.session, show_id, season, episode)
             if ep is not None:
                 return ep, season, episode
             if season > 1:
