@@ -6,10 +6,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from jidou.services.rss_config import (
+    YARSS2_SUBSCRIPTION_DEFAULTS,
     ReconcileDelta,
     compose_rss_config,
     compute_subscription_deltas,
     extract_max_subscription_key,
+    fill_missing_yarss2_defaults,
     parse_rss_config,
 )
 
@@ -273,3 +275,29 @@ class TestComputeSubscriptionDeltas:
         delta = compute_subscription_deltas([sub], remote)
         _, merged = delta.to_update[0]
         assert "enabled_in_config" not in merged
+
+
+class TestFillMissingYarss2Defaults:
+    def test_none_extra_config_gets_every_default(self) -> None:
+        """A subscription with no extra_config at all gets the full defaults dict."""
+        result = fill_missing_yarss2_defaults(None)
+        assert result == YARSS2_SUBSCRIPTION_DEFAULTS
+        # Must be a copy, not the same object -- caller mutates the result.
+        assert result is not YARSS2_SUBSCRIPTION_DEFAULTS
+
+    def test_empty_dict_extra_config_gets_every_default(self) -> None:
+        """An empty (falsy) extra_config dict is treated the same as None."""
+        result = fill_missing_yarss2_defaults({})
+        assert result == YARSS2_SUBSCRIPTION_DEFAULTS
+
+    def test_existing_values_are_preserved_not_reset(self) -> None:
+        """A real, non-default value already present is never overwritten."""
+        result = fill_missing_yarss2_defaults({"max_connections": 50})
+        assert result["max_connections"] == 50
+        assert result["auto_managed"] == YARSS2_SUBSCRIPTION_DEFAULTS["auto_managed"]
+
+    def test_unrelated_extra_keys_are_preserved(self) -> None:
+        """Keys outside the known defaults set (e.g. round-tripped remote fields) survive."""
+        result = fill_missing_yarss2_defaults({"some_future_yarss2_field": "x"})
+        assert result["some_future_yarss2_field"] == "x"
+        assert result["auto_managed"] == YARSS2_SUBSCRIPTION_DEFAULTS["auto_managed"]

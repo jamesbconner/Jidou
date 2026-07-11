@@ -722,6 +722,70 @@ def test_create_subscription_null_regex_fields_are_accepted() -> None:
     assert schema.regex_exclude is None
 
 
+def test_create_subscription_backfills_yarss2_defaults() -> None:
+    """POST /subscriptions with no extra_config gets the YaRSS2 defaults filled in.
+
+    Regression test: a subscription created via the RSS page's "New
+    Subscription" form (no extra_config in the request) previously ended up
+    with extra_config=None in the DB, missing every YaRSS2 torrent-option
+    key until the next publish papered over it transiently. The created row
+    itself should be complete.
+    """
+    from jidou.database import get_session
+    from jidou.services.rss_config import YARSS2_SUBSCRIPTION_DEFAULTS
+
+    added: list[object] = []
+    created = _make_sub(id=7, feed_id=None, show_id=None, name="New Sub")
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        session.add = MagicMock(side_effect=added.append)
+        session.flush = AsyncMock()
+        result = MagicMock()
+        result.scalar_one.return_value = created
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions", json={"name": "New Sub"})
+        assert r.status_code == 201
+        assert len(added) == 1
+        for field, default in YARSS2_SUBSCRIPTION_DEFAULTS.items():
+            assert added[0].extra_config[field] == default
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_subscription_backfills_yarss2_defaults() -> None:
+    """PATCH /subscriptions/{id} fills in any YaRSS2 default key missing from
+    extra_config, without touching existing values.
+    """
+    from jidou.database import get_session
+    from jidou.services.rss_config import YARSS2_SUBSCRIPTION_DEFAULTS
+
+    sub = _make_sub()
+    sub.extra_config = {"max_connections": 50}  # a real, non-default value already set
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    sub_result.scalar_one.return_value = sub
+    app.dependency_overrides[get_session] = _session_override(single=sub)
+    try:
+        r = TestClient(app).patch(
+            "/api/rss/subscriptions/1",
+            json={"regex_include": ".*1080p.*"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["extra_config"]["max_connections"] == 50  # preserved, not reset
+        for field, default in YARSS2_SUBSCRIPTION_DEFAULTS.items():
+            if field == "max_connections":
+                continue
+            assert body["extra_config"][field] == default
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # POST /api/rss/subscriptions/{id}/suggest-regex
 # ---------------------------------------------------------------------------

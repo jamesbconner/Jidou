@@ -34,6 +34,7 @@ from jidou.services.progress import create_task_record
 from jidou.services.rss_config import (
     compose_rss_config,
     extract_max_subscription_key,
+    fill_missing_yarss2_defaults,
     parse_rss_config,
 )
 
@@ -232,6 +233,7 @@ async def create_subscription(
             raise HTTPException(status_code=404, detail="Show not found")
 
     new_sub = RssSubscription(**payload.model_dump())
+    new_sub.extra_config = fill_missing_yarss2_defaults(new_sub.extra_config)
     db_session.add(new_sub)
     await db_session.flush()
     fetch_stmt = _sub_stmt().where(RssSubscription.id == new_sub.id)
@@ -411,6 +413,7 @@ async def update_subscription(
 
     for field in payload.model_fields_set:
         setattr(sub, field, getattr(payload, field))
+    sub.extra_config = fill_missing_yarss2_defaults(sub.extra_config)
 
     await db_session.flush()
     fetch_stmt2 = _sub_stmt().where(RssSubscription.id == sub_id)

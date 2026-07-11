@@ -22,6 +22,51 @@ logger = logging.getLogger(__name__)
 # Remote fields that the downloader manages; remote wins on reconcile.
 _REMOTE_OWNED_FIELDS: frozenset[str] = frozenset({"last_match", "last_update", "active"})
 
+# YaRSS2 expects every subscription dict to carry these torrent-option keys,
+# even when unused -- its own UI always writes them. A subscription imported
+# from an existing config round-trips its real values via extra_config, but
+# one created fresh by Jidou (watchlist add, the Show Detail "Add RSS"
+# button, the RSS page's "New Subscription" form, etc.) starts with no
+# extra_config at all. Values below match a real subscription entry from a
+# working YaRSS2 config -- "Default"/-2/empty are YaRSS2's own "inherit the
+# global setting" sentinels, not values Jidou invented.
+YARSS2_SUBSCRIPTION_DEFAULTS: dict[str, object] = {
+    "auto_managed": "Default",
+    "max_connections": -2,
+    "ignore_timestamp": False,
+    "max_upload_slots": -2,
+    "max_upload_speed": -2,
+    "custom_text_lines": "",
+    "max_download_speed": -2,
+    "email_notifications": {},
+    "sequential_download": "Default",
+    "add_torrents_in_paused_state": "Default",
+    "prioritize_first_last_pieces": "Default",
+    "label": "",
+}
+
+
+def fill_missing_yarss2_defaults(
+    extra_config: dict[str, object] | None,
+) -> dict[str, object]:
+    """Return extra_config with any missing YaRSS2 default key filled in.
+
+    Only fills in keys entirely absent from extra_config -- never overwrites
+    an existing value, including one that legitimately differs from the
+    default (e.g. a custom max_connections imported from a real config).
+
+    Args:
+        extra_config: The subscription's current extra_config, or None.
+
+    Returns:
+        A new dict with every :data:`YARSS2_SUBSCRIPTION_DEFAULTS` key
+        present, existing values preserved.
+    """
+    merged = dict(YARSS2_SUBSCRIPTION_DEFAULTS)
+    if extra_config:
+        merged.update(extra_config)
+    return merged
+
 
 @dataclass
 class ReconcileDelta:
