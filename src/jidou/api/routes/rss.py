@@ -455,22 +455,6 @@ async def delete_subscription(
     logger.info("Deleted RSS subscription id=%d name=%r", sub_id, sub.name)
 
 
-_MAX_LABEL_LEN = 200
-# Strip control characters (includes \n, \r, \t, null) and backticks.
-_UNSAFE_LABEL_RE = re.compile(r"[\x00-\x1f\x7f`]")
-
-
-def _sanitize_label(text: str) -> str:
-    """Return *text* safe for LLM prompt inclusion.
-
-    Removes control characters and backticks, collapses internal whitespace,
-    and truncates to :data:`_MAX_LABEL_LEN` characters.
-    """
-    cleaned = _UNSAFE_LABEL_RE.sub("", text)
-    collapsed = " ".join(cleaned.split())
-    return collapsed[:_MAX_LABEL_LEN]
-
-
 # Upper token bound for the regex suggester.  Local models routinely add a
 # preamble before the JSON; 1024 gives them room without risking truncation.
 _REGEX_MAX_TOKENS: int = 1024
@@ -534,7 +518,7 @@ async def suggest_regex(
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
-    from jidou.services.llm_json import parse_llm_json
+    from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 
     stmt = _sub_stmt().where(RssSubscription.id == sub_id)
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -548,7 +532,7 @@ async def suggest_regex(
         )
 
     show_title = sub.show.title if sub.show else None
-    label = _sanitize_label(show_title or sub.name)
+    label = sanitize_for_prompt(show_title or sub.name)
     user_prompt = (
         f'Suggest RSS filter regexes for the show "{label}".'
         if show_title

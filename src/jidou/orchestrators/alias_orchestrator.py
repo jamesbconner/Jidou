@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jidou.services.llm_json import parse_llm_json
+from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 
 if TYPE_CHECKING:
     from jidou.models.show import Show
@@ -97,7 +97,7 @@ async def _llm_aliases(
     """
     tmdb_list_str = "\n".join(f"- {a}" for a in tmdb_aliases) if tmdb_aliases else "(none)"
     prompt = (
-        f"Show title: {show_title}\n\n"
+        f"Show title: {sanitize_for_prompt(show_title)}\n\n"
         f"TMDB alternative titles:\n{tmdb_list_str}\n\n"
         "Generate additional aliases."
     )

@@ -1,4 +1,4 @@
-"""Parse a possibly markdown-fenced JSON response from an LLM."""
+"""Parse a possibly markdown-fenced JSON response from an LLM, and sanitize text going into one."""
 
 import json
 import logging
@@ -15,6 +15,36 @@ logger = logging.getLogger(__name__)
 # the fence is anchored to the whole string.
 _LEADING_FENCE = re.compile(r"^```[a-zA-Z0-9]*\s*", re.MULTILINE)
 _TRAILING_FENCE = re.compile(r"```\s*$", re.MULTILINE)
+
+_DEFAULT_SANITIZE_MAX_LEN = 200
+
+# Strips control characters (including NUL) and backticks, which could
+# otherwise be used to break out of a prompt's intended structure (e.g.
+# closing a markdown code fence early, or injecting characters a provider's
+# tokenizer treats specially).
+_UNSAFE_PROMPT_CHARS = re.compile(r"[\x00-\x1f\x7f`]")
+
+
+def sanitize_for_prompt(text: str, *, max_len: int = _DEFAULT_SANITIZE_MAX_LEN) -> str:
+    """Return *text* safe for interpolation into an LLM prompt.
+
+    Removes control characters and backticks, collapses internal whitespace,
+    and truncates to *max_len* characters. This is prompt-injection hygiene,
+    not a security boundary on its own — callers still validate/constrain
+    whatever the LLM returns (response_format schemas, index bounds, etc.)
+    rather than trusting the model's output directly.
+
+    Args:
+        text: Untrusted text (filename, show title, directory name, etc.)
+            to interpolate into a prompt.
+        max_len: Maximum length of the returned string.
+
+    Returns:
+        The sanitized, truncated text.
+    """
+    cleaned = _UNSAFE_PROMPT_CHARS.sub("", text)
+    collapsed = " ".join(cleaned.split())
+    return collapsed[:max_len]
 
 
 def parse_llm_json(content: str) -> dict[str, Any] | list[Any] | None:

@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
-from jidou.services.llm_json import parse_llm_json
+from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 from jidou.services.llm_service import LLMService
 
 if TYPE_CHECKING:
@@ -162,7 +162,7 @@ async def llm_parse_episode(
     hint = f"\nKnown season from directory: {known_season}" if known_season is not None else ""
     try:
         response = await llm.complete(
-            prompt=f"Filename: {filename}{hint}",
+            prompt=f"Filename: {sanitize_for_prompt(filename)}{hint}",
             system=_LLM_EPISODE_PARSE_SYSTEM,
             response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
         )
@@ -255,7 +255,7 @@ async def llm_pick_candidate(
         f"{i + 1}. {c.get('name')} ({str(c.get('first_air_date') or '')[:4] or '?'})"
         for i, c in enumerate(shortlist)
     ]
-    prompt = f'Directory: "{show_dir}"\n\nCandidates:\n' + "\n".join(lines)
+    prompt = f'Directory: "{sanitize_for_prompt(show_dir)}"\n\nCandidates:\n' + "\n".join(lines)
 
     try:
         response = await llm.complete(
@@ -363,7 +363,11 @@ async def llm_match_episode(
         f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in eps[:500]
     )
     filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
-    prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
+    prompt = (
+        f"Show: {sanitize_for_prompt(show_title)}\n"
+        f"Filename: {sanitize_for_prompt(filename)}\n\n"
+        f"Episodes:\n{ep_list}"
+    )
 
     try:
         response = await llm.complete(
