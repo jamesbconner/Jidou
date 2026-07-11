@@ -58,6 +58,9 @@ def _make_tmdb(seasons=None, episodes=None):
             ]
         }
     )
+    # Default: show has no episode_groups at all. Tests exercising the
+    # on-demand summary fetch (show.episode_groups is None) override this.
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
     return tmdb
 
 
@@ -217,18 +220,63 @@ async def test_sync_show_episodes_backfills_absolute_episode_number():
     assert added_episodes[105].absolute_episode_number == 5
 
 
-async def test_sync_show_episodes_no_episode_groups_leaves_map_none():
-    """A show with no episode_groups at all never calls get_episode_group and stores no map."""
+async def test_sync_show_episodes_never_checked_episode_groups_fetches_summary_on_demand():
+    """Bugbot-caught regression: show.episode_groups is only populated by
+    fetch_show_metadata, which not every show-creation path calls (e.g. the
+    "Add Show from search" endpoint). None means "never checked" and must be
+    fetched on demand here rather than silently treating the show as having
+    no groups forever.
+    """
     session = _make_session(existing_episode=None)
     show = _make_show()
     show.episode_groups = None
+    tmdb = _make_tmdb()
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    tmdb.get_episode_groups.assert_called_once_with(show.tmdb_id)
+    assert show.episode_groups == []
+    assert show.episode_group_map is None
+    tmdb.get_episode_group.assert_not_called()
+
+
+async def test_sync_show_episodes_already_confirmed_no_groups_does_not_refetch_summary():
+    """Once episode_groups is confirmed empty ([], not None), the summary
+    must not be re-fetched on every subsequent sync.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.episode_groups = []
     tmdb = _make_tmdb()
 
     orch = TMDBOrchestrator(session, tmdb)
     await orch.sync_show_episodes(show)
 
+    tmdb.get_episode_groups.assert_not_called()
     assert show.episode_group_map is None
-    tmdb.get_episode_group.assert_not_called()
+
+
+async def test_sync_show_episodes_summary_fetch_failure_leaves_state_untouched():
+    """A failed episode_groups summary fetch must not clear a previously
+    successful map, same contract as the per-group-detail failure path.
+    """
+    existing = MagicMock()
+    existing.name = "Ep1"
+    existing.absolute_episode_number = 5
+    session = _make_session(existing_episode=existing)
+    show = _make_show()
+    show.episode_groups = None
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}
+    tmdb = _make_tmdb(episodes=[{"id": 101, "episode_number": 1, "name": "Ep1"}])
+    tmdb.get_episode_groups = AsyncMock(side_effect=RuntimeError("TMDB down"))
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert existing.absolute_episode_number == 5
+    assert show.episode_group_map == {"6": {"1": {"1": [1, 1]}}}
 
 
 async def test_sync_show_episodes_group_fetch_failure_does_not_abort_sync():
@@ -262,7 +310,7 @@ async def test_sync_show_episodes_clears_stale_absolute_number_when_groups_now_e
 
     session = _make_session(existing_episode=existing)
     show = _make_show()
-    show.episode_groups = None  # TMDB no longer reports any qualifying group
+    show.episode_groups = []  # TMDB no longer reports any qualifying group
     tmdb = _make_tmdb(episodes=[{"id": 101, "episode_number": 1, "name": "Ep1"}])
 
     orch = TMDBOrchestrator(session, tmdb)
@@ -335,6 +383,12 @@ class TestSyncEpisodeGroupMap:
     async def test_does_not_fetch_full_season_episode_data(self):
         """The lighter path must never touch get_show_seasons/get_season_details --
         that's the whole point of it existing separately from sync_show_episodes.
+
+        Also covers the Bugbot-caught scenario this method exists for: a show
+        added via a path that skips fetch_show_metadata (e.g. "Add Show from
+        search") has episode_groups=None, so this must fetch the summary
+        on-demand via the lightweight get_episode_groups call rather than
+        silently treating the show as having no groups.
         """
         eps_result = MagicMock()
         eps_result.scalars.return_value.all.return_value = []
@@ -344,10 +398,13 @@ class TestSyncEpisodeGroupMap:
         show = _make_show()
         show.episode_groups = None
         tmdb = AsyncMock()
+        tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
 
         orch = TMDBOrchestrator(session, tmdb)
         await orch.sync_episode_group_map(show)
 
+        tmdb.get_episode_groups.assert_called_once_with(show.tmdb_id)
+        assert show.episode_groups == []
         tmdb.get_show_seasons.assert_not_called()
         tmdb.get_season_details.assert_not_called()
 

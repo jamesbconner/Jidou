@@ -169,6 +169,13 @@ class TMDBOrchestrator:
         with nothing, so a failure leaves *show* and *episodes* untouched
         rather than clearing their existing data.
 
+        ``show.episode_groups`` is normally populated by
+        :func:`~jidou.services.tmdb_mapping.fetch_show_metadata` when a show
+        is created, but not every creation path uses it (e.g. adding a show
+        directly from a TMDB search card). ``None`` means "never checked" and
+        is fetched here on demand; ``[]`` means "checked, TMDB reports none"
+        and is left alone to avoid re-fetching it on every sync.
+
         Args:
             show: Show ORM object to update ``episode_group_map`` on.
             episodes: Episode rows belonging to *show* to backfill
@@ -177,6 +184,19 @@ class TMDBOrchestrator:
                 stale absolute numbers correctly -- a partial set would
                 leave omitted episodes with whatever they had before.
         """
+        if show.episode_groups is None:
+            try:
+                groups_response = await self.tmdb.get_episode_groups(show.tmdb_id)
+                show.episode_groups = list(groups_response.get("results") or [])
+            except Exception:
+                logger.warning(
+                    "Failed to fetch episode_groups summary for show id=%s; leaving existing "
+                    "episode_group_map and absolute_episode_number data untouched",
+                    show.id,
+                    exc_info=True,
+                )
+                return
+
         try:
             breakdowns = await fetch_group_breakdowns(self.tmdb, show.episode_groups)
         except Exception:
