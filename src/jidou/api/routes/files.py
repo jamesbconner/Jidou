@@ -469,6 +469,14 @@ async def manual_match_file(
                         show.id,
                         exc_info=True,
                     )
+
+            # Commit the show (and any synced episodes) now, independent of
+            # alias generation below. sync_show_episodes only flushes, so
+            # without this commit a later DB-level failure in alias
+            # generation would roll back an already-successful sync too --
+            # both steps are meant to be independently best-effort.
+            await db_session.commit()
+
             # Generate TMDB alternative-title aliases and LLM aliases so the
             # show is immediately searchable under all its known names.
             # Mirrors the inline alias generation in POST /shows.

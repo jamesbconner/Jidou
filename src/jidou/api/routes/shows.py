@@ -387,6 +387,13 @@ async def create_show(
                 exc_info=True,
             )
 
+    # Commit the show (and any synced episodes) now, independent of alias
+    # generation below. sync_show_episodes only flushes, so without this
+    # commit a later DB-level failure in alias generation would roll back
+    # an already-successful sync too -- both steps are meant to be
+    # independently best-effort, not able to undo each other.
+    await db_session.commit()
+
     try:
         from jidou.orchestrators.alias_orchestrator import generate_aliases
 

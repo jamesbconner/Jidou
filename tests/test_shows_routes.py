@@ -1634,6 +1634,81 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
         app.dependency_overrides.clear()
 
 
+def test_create_show_commits_after_sync_before_alias_generation() -> None:
+    """The show and any synced episodes commit before alias generation runs.
+
+    Regression test for a Cursor Bugbot finding on PR-04: sync_show_episodes
+    now only flushes (the caller owns the commit boundary). Without an
+    explicit commit right after a successful sync, a subsequent DB-level
+    failure during alias generation would roll back the sync's flushed
+    episodes too, even though sync itself succeeded -- both steps are meant
+    to be independently best-effort. Asserts the actual call order rather
+    than just the response, since a mocked session can't demonstrate data
+    loss directly.
+    """
+    from datetime import UTC, datetime
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    call_order: list[str] = []
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 80
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        async def _commit() -> None:
+            call_order.append("commit")
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.commit = AsyncMock(side_effect=_commit)
+        session.add = MagicMock()
+        yield session
+
+    async def _fake_tmdb() -> MagicMock:
+        return MagicMock()
+
+    async def _sync_show_episodes(*_args: object, **_kwargs: object) -> None:
+        call_order.append("sync")
+
+    async def _generate_aliases(*_args: object, **_kwargs: object) -> None:
+        call_order.append("alias")
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = _fake_tmdb
+    try:
+        with (
+            patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls,
+            patch(
+                "jidou.orchestrators.alias_orchestrator.generate_aliases",
+                new_callable=AsyncMock,
+                side_effect=_generate_aliases,
+            ),
+        ):
+            mock_orch = MagicMock()
+            mock_orch.sync_show_episodes = AsyncMock(side_effect=_sync_show_episodes)
+            mock_orch_cls.return_value = mock_orch
+
+            response = TestClient(app).post(
+                "/api/shows",
+                json={"tmdb_id": 2005, "title": "Commit Order Show", "media_type": "tv"},
+            )
+
+        assert response.status_code == 201
+        # commit must land between sync and alias generation, not after both.
+        assert call_order == ["sync", "commit", "alias"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_create_show_skips_episode_sync_for_movies() -> None:
     """POST /api/shows with media_type=movie must not call sync_show_episodes."""
     from datetime import UTC, datetime
