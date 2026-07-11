@@ -183,6 +183,13 @@ def test_get_file_returns_404_when_not_found() -> None:
 
 # ---------------------------------------------------------------------------
 # POST /api/files/{file_id}/match
+#
+# Business-logic scenarios (show resolution, TMDB creation, episode tracking,
+# etc.) now live in tests/test_orchestrators/test_manual_match_orchestrator.py
+# alongside ManualMatchOrchestrator itself. This file keeps only the checks
+# that stay in the route layer (404 file lookup, 422 mutual exclusion, 409
+# status guard) plus one thin end-to-end test proving the route wires
+# through to the orchestrator correctly.
 # ---------------------------------------------------------------------------
 
 
@@ -198,65 +205,50 @@ def test_match_file_returns_404_when_file_missing() -> None:
         app.dependency_overrides.clear()
 
 
-def test_match_file_returns_404_when_show_missing() -> None:
-    """POST /api/files/{id}/match returns 404 when the referenced show doesn't exist."""
+def test_match_file_both_show_id_and_tmdb_id_returns_422() -> None:
+    """POST /api/files/{id}/match with both show_id and tmdb_id returns 422."""
     from jidou.database import get_session
 
     f = _make_file(id=1, status=FileStatus.UNMATCHED)
-
-    async def _two_query_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, show_result])
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _two_query_session
+    app.dependency_overrides[get_session] = _session_override(single=f)
     try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 9999})
-        assert response.status_code == 404
-        assert "Show not found" in response.json()["detail"]
+        response = TestClient(app).post("/api/files/1/match", json={"show_id": 1, "tmdb_id": 99})
+        assert response.status_code == 422
+        assert "both" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 
 
-def test_match_file_returns_422_when_show_has_no_local_path() -> None:
-    """POST /api/files/{id}/match returns 422 when show.local_path is None."""
+def test_match_file_downloading_returns_409() -> None:
+    """POST /api/files/{id}/match on a DOWNLOADING file must return 409."""
     from jidou.database import get_session
-    from jidou.models.show import Show
 
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-    show = MagicMock(spec=Show)
-    show.id = 5
-    show.title = "Test Show"
-    show.local_path = None
+    f = _make_file(id=1, status=FileStatus.DOWNLOADING)
 
-    async def _two_query_session() -> AsyncMock:
+    async def _single_query_session() -> AsyncMock:
         session = AsyncMock()
         file_result = MagicMock()
         file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = show
-        session.execute = AsyncMock(side_effect=[file_result, show_result])
+        session.execute = AsyncMock(return_value=file_result)
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session
 
-    app.dependency_overrides[get_session] = _two_query_session
+    app.dependency_overrides[get_session] = _single_query_session
     try:
         response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
-        assert response.status_code == 422
-        assert "local_path" in response.json()["detail"]
+        assert response.status_code == 409
     finally:
         app.dependency_overrides.clear()
 
 
-def test_match_file_sets_matched_status() -> None:
-    """POST /api/files/{id}/match transitions file status to MATCHED."""
+def test_match_file_happy_path_calls_through_to_orchestrator() -> None:
+    """A valid show_id request reaches ManualMatchOrchestrator and returns its result.
+
+    Thin end-to-end proof that the route's validation-then-delegate wiring
+    works; the actual matching behavior is covered exhaustively in
+    test_manual_match_orchestrator.py.
+    """
     from jidou.database import get_session
     from jidou.models.downloaded_file import MatchedBy
     from jidou.models.show import Show
@@ -289,8 +281,6 @@ def test_match_file_sets_matched_status() -> None:
         assert f.status == FileStatus.MATCHED
         assert f.show_id == show.id
         assert f.matched_by == MatchedBy.MANUAL
-        assert f.parsed_season == 1  # extracted from "show.s01e01.mkv"
-        assert f.parsed_episode == 1
     finally:
         app.dependency_overrides.clear()
 
@@ -824,418 +814,6 @@ def test_patch_file_episode_id_allows_same_episode_relink() -> None:
         app.dependency_overrides.clear()
 
 
-def test_match_file_flushes_then_commits() -> None:
-    """Match endpoint must flush before commit so the DB state is visible."""
-    from jidou.database import get_session
-    from jidou.models.show import Show
-
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-    f.parsed_season = None  # triggers heuristic extraction + episode lookup
-    f.parsed_episode = None
-    show = MagicMock(spec=Show)
-    show.id = 7
-    show.title = "Test Show"
-    show.local_path = "/media/test"
-
-    call_order: list[str] = []
-
-    async def _ordered_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = show
-        ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None  # no ep → orphan not deleted
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
-        session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
-        session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
-        yield session
-
-    app.dependency_overrides[get_session] = _ordered_session
-    try:
-        TestClient(app).post("/api/files/1/match", json={"show_id": 7})
-        assert call_order == ["flush", "commit"], "flush must precede commit"
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_no_show_id_resets_to_downloaded() -> None:
-    """POST /api/files/{id}/match without show_id resets file to DOWNLOADED."""
-    from jidou.database import get_session
-
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-
-    async def _single_query_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=file_result)
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _single_query_session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={})
-        assert response.status_code == 200
-        assert f.status == FileStatus.DOWNLOADED
-        assert f.show_id is None
-        assert f.matched_by is None
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_routed_resets_to_downloaded() -> None:
-    """POST /api/files/{id}/match on a ROUTED file with empty body resets it to DOWNLOADED."""
-    from jidou.database import get_session
-
-    f = _make_file(id=1, status=FileStatus.ROUTED)
-    f.show_id = 10
-
-    async def _single_query_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=file_result)
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _single_query_session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={})
-        assert response.status_code == 200
-        assert f.status == FileStatus.DOWNLOADED
-        assert f.show_id is None
-        assert f.matched_by is None
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_downloading_returns_409() -> None:
-    """POST /api/files/{id}/match on a DOWNLOADING file must return 409."""
-    from jidou.database import get_session
-
-    f = _make_file(id=1, status=FileStatus.DOWNLOADING)
-
-    async def _single_query_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        session.execute = AsyncMock(return_value=file_result)
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _single_query_session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
-        assert response.status_code == 409
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_both_show_id_and_tmdb_id_returns_422() -> None:
-    """POST /api/files/{id}/match with both show_id and tmdb_id returns 422."""
-    from jidou.database import get_session
-
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-    app.dependency_overrides[get_session] = _session_override(single=f)
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 1, "tmdb_id": 99})
-        assert response.status_code == 422
-        assert "both" in response.json()["detail"]
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_tmdb_id_creates_show_and_matches() -> None:
-    """POST /api/files/{id}/match with tmdb_id creates a show and marks file MATCHED."""
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-    from jidou.models.downloaded_file import MatchedBy
-    from jidou.models.show import Show
-
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-    f.parsed_season = None
-    f.parsed_episode = None
-
-    tmdb_data = {
-        "id": 1396,
-        "name": "Breaking Bad",
-        "overview": "A chemistry teacher turns to crime.",
-        "poster_path": "/poster.jpg",
-        "backdrop_path": None,
-        "vote_average": 9.5,
-        "vote_count": 12000,
-        "first_air_date": "2008-01-20",
-        "original_language": "en",
-    }
-
-    created_show = MagicMock(spec=Show)
-    created_show.id = 42
-    created_show.title = "Breaking Bad"
-    created_show.local_path = "/media/tv/Breaking Bad"
-
-    async def _tmdb_match_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        # show lookup by tmdb_id → not found (triggers creation)
-        no_show_result = MagicMock()
-        no_show_result.scalar_one_or_none.return_value = None
-        # episode lookup → not found → orphan is NOT deleted
-        ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-
-        # Capture the Show added to the session and make it usable
-        def _add(obj: object) -> None:
-            if isinstance(obj, Show):
-                obj.id = created_show.id  # type: ignore[attr-defined]
-                obj.local_path = "/media/tv/Breaking Bad"  # type: ignore[attr-defined]
-
-        session.add = MagicMock(side_effect=_add)
-        yield session
-
-    app.dependency_overrides[get_session] = _tmdb_match_session
-    try:
-        with patch(
-            "jidou.api.routes.files.TMDBService",
-            autospec=True,
-        ) as mock_tmdb:
-            mock_tmdb.return_value.get_details.return_value = tmdb_data
-            mock_tmdb.return_value.get_external_ids.return_value = {}
-            mock_tmdb.return_value.get_episode_groups.return_value = {}
-            # sync_show_episodes calls get_show_seasons; return empty seasons so
-            # no episode upserts occur (avoids real TMDB calls in the test).
-            mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
-            # generate_aliases calls get_alternative_titles; return empty result
-            # so no aliases are generated (avoids real TMDB calls in the test).
-            mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
-            response = TestClient(app).post(
-                "/api/files/1/match",
-                json={
-                    "tmdb_id": 1396,
-                    "local_path": "/media/tv/Breaking Bad",
-                    "content_type": "tv",
-                },
-            )
-        assert response.status_code == 200
-        assert f.status == FileStatus.MATCHED
-        assert f.matched_by == MatchedBy.MANUAL
-        assert f.parsed_season == 1
-        assert f.parsed_episode == 1
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_tmdb_id_creates_show_with_adult_flag() -> None:
-    """The Show created via manual match carries TMDB's adult flag."""
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-    from jidou.models.show import Show
-
-    f = _make_file(id=2, status=FileStatus.UNMATCHED)
-    f.parsed_season = None
-    f.parsed_episode = None
-
-    tmdb_data = {
-        "id": 1397,
-        "name": "Adult Show",
-        "overview": "Not for kids.",
-        "poster_path": "/poster.jpg",
-        "backdrop_path": None,
-        "vote_average": 5.0,
-        "vote_count": 10,
-        "first_air_date": "2020-01-20",
-        "original_language": "en",
-        "adult": True,
-    }
-
-    captured: dict[str, object] = {}
-
-    async def _tmdb_match_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        no_show_result = MagicMock()
-        no_show_result.scalar_one_or_none.return_value = None
-        ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-
-        def _add(obj: object) -> None:
-            if isinstance(obj, Show):
-                obj.id = 43  # type: ignore[attr-defined]
-                obj.local_path = "/media/tv/Adult Show"  # type: ignore[attr-defined]
-                captured["adult"] = obj.adult  # type: ignore[attr-defined]
-
-        session.add = MagicMock(side_effect=_add)
-        yield session
-
-    app.dependency_overrides[get_session] = _tmdb_match_session
-    try:
-        with patch(
-            "jidou.api.routes.files.TMDBService",
-            autospec=True,
-        ) as mock_tmdb:
-            mock_tmdb.return_value.get_details.return_value = tmdb_data
-            mock_tmdb.return_value.get_external_ids.return_value = {}
-            mock_tmdb.return_value.get_episode_groups.return_value = {}
-            mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
-            mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
-            response = TestClient(app).post(
-                "/api/files/2/match",
-                json={
-                    "tmdb_id": 1397,
-                    "local_path": "/media/tv/Adult Show",
-                    "content_type": "tv",
-                },
-            )
-        assert response.status_code == 200
-        assert captured["adult"] is True
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_commits_after_sync_before_alias_generation() -> None:
-    """The show and any synced episodes commit before alias generation runs.
-
-    Regression test for a Cursor Bugbot finding on PR-04: sync_show_episodes
-    now only flushes (the caller owns the commit boundary). Without an
-    explicit commit right after a successful sync, a subsequent DB-level
-    failure during alias generation would roll back the sync's flushed
-    episodes too, even though sync itself succeeded -- both steps are meant
-    to be independently best-effort. Asserts the actual call order rather
-    than just the response, since a mocked session can't demonstrate data
-    loss directly.
-    """
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-    from jidou.models.show import Show
-
-    f = _make_file(id=3, status=FileStatus.UNMATCHED)
-    f.parsed_season = None
-    f.parsed_episode = None
-
-    tmdb_data = {
-        "id": 1398,
-        "name": "Commit Order Show",
-        "overview": "",
-        "poster_path": None,
-        "backdrop_path": None,
-        "vote_average": 0,
-        "vote_count": 0,
-        "first_air_date": "2020-01-01",
-        "original_language": "en",
-    }
-
-    call_order: list[str] = []
-
-    async def _tmdb_match_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        no_show_result = MagicMock()
-        no_show_result.scalar_one_or_none.return_value = None
-        ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, no_show_result, ep_result])
-        session.flush = AsyncMock()
-
-        async def _commit() -> None:
-            call_order.append("commit")
-
-        session.commit = AsyncMock(side_effect=_commit)
-
-        def _add(obj: object) -> None:
-            if isinstance(obj, Show):
-                obj.id = 44  # type: ignore[attr-defined]
-                obj.local_path = "/media/tv/Commit Order Show"  # type: ignore[attr-defined]
-
-        session.add = MagicMock(side_effect=_add)
-        yield session
-
-    async def _get_show_seasons(*_args: object, **_kwargs: object) -> dict[str, list[object]]:
-        call_order.append("sync")
-        return {"seasons": []}
-
-    async def _generate_aliases(*_args: object, **_kwargs: object) -> None:
-        call_order.append("alias")
-
-    app.dependency_overrides[get_session] = _tmdb_match_session
-    try:
-        with (
-            patch("jidou.api.routes.files.TMDBService", autospec=True) as mock_tmdb,
-            patch(
-                "jidou.orchestrators.alias_orchestrator.generate_aliases",
-                new_callable=AsyncMock,
-                side_effect=_generate_aliases,
-            ),
-        ):
-            mock_tmdb.return_value.get_details.return_value = tmdb_data
-            mock_tmdb.return_value.get_external_ids.return_value = {}
-            mock_tmdb.return_value.get_episode_groups.return_value = {}
-            mock_tmdb.return_value.get_show_seasons = AsyncMock(side_effect=_get_show_seasons)
-            response = TestClient(app).post(
-                "/api/files/3/match",
-                json={
-                    "tmdb_id": 1398,
-                    "local_path": "/media/tv/Commit Order Show",
-                    "content_type": "tv",
-                },
-            )
-
-        assert response.status_code == 200
-        # A commit must land between sync and alias generation -- the route
-        # also commits again later for the file-status update, so check the
-        # relative order rather than the exact full call list.
-        assert call_order[:3] == ["sync", "commit", "alias"]
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_tmdb_id_without_local_path_returns_422() -> None:
-    """POST /api/files/{id}/match with tmdb_id but no local_path returns 422."""
-    from unittest.mock import patch
-
-    from jidou.database import get_session
-
-    f = _make_file(id=1, status=FileStatus.UNMATCHED)
-
-    async def _tmdb_missing_path_session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        no_show_result = MagicMock()
-        no_show_result.scalar_one_or_none.return_value = None
-        session.execute = AsyncMock(side_effect=[file_result, no_show_result])
-        session.flush = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _tmdb_missing_path_session
-    try:
-        with patch("jidou.api.routes.files.TMDBService"):
-            response = TestClient(app).post(
-                "/api/files/1/match",
-                json={"tmdb_id": 1396},
-            )
-        assert response.status_code == 422
-        assert "local_path" in response.json()["detail"]
-    finally:
-        app.dependency_overrides.clear()
-
-
 # ---------------------------------------------------------------------------
 # GET /api/files/{file_id}/tmdb-suggestions
 # ---------------------------------------------------------------------------
@@ -1315,185 +893,5 @@ def test_tmdb_suggestions_file_not_found_returns_404() -> None:
     try:
         response = TestClient(app).get("/api/files/9999/tmdb-suggestions")
         assert response.status_code == 404
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_clears_old_episode_tracking_on_show_change() -> None:
-    """Moving a file to a different show clears stale tracking on the old episode.
-
-    The heuristic episode lookup runs first; stale-episode clearing only fires
-    when old_episode_id differs from the newly resolved file.episode_id.
-    """
-    from jidou.database import get_session
-    from jidou.models.episode import Episode
-    from jidou.models.show import Show
-
-    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
-    f.episode_id = 10  # previously matched to episode 10 on show 5
-    f.parsed_season = None
-    f.parsed_episode = None
-
-    show = MagicMock(spec=Show)
-    show.id = 7
-    show.title = "New Show"
-    show.local_path = "/media/new-show"
-
-    old_ep = MagicMock(spec=Episode)
-    old_ep.id = 10
-    old_ep.file_tracked = True
-    old_ep.tracked_filename = "old.s01e01.mkv"
-    old_ep.tracked_source = "match"
-
-    async def _session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = show
-        # heuristic runs FIRST (no matching episode on the new show) → orphan not deleted
-        ep_heuristic_result = MagicMock()
-        ep_heuristic_result.scalar_one_or_none.return_value = None
-        # count of remaining files for old episode → 0 means clear
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-        old_ep_result = MagicMock()
-        old_ep_result.scalar_one_or_none.return_value = old_ep
-        session.execute = AsyncMock(
-            side_effect=[
-                file_result,
-                show_result,
-                ep_heuristic_result,
-                count_result,
-                old_ep_result,
-            ]
-        )
-        session.flush = AsyncMock()
-        session.refresh = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 7})
-        assert response.status_code == 200
-        assert old_ep.file_tracked is False
-        assert old_ep.tracked_filename is None
-        assert old_ep.tracked_source is None
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_clears_old_episode_tracking_same_show() -> None:
-    """Moving a file between episodes on the SAME show also clears the old tracking."""
-    from jidou.database import get_session
-    from jidou.models.episode import Episode
-    from jidou.models.show import Show
-
-    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
-    f.episode_id = 10  # old episode on the same show
-    f.parsed_season = None
-    f.parsed_episode = None
-
-    show = MagicMock(spec=Show)
-    show.id = 5  # SAME show
-    show.title = "Same Show"
-    show.local_path = "/media/same-show"
-
-    old_ep = MagicMock(spec=Episode)
-    old_ep.id = 10
-    old_ep.file_tracked = True
-    old_ep.tracked_filename = "old.s01e01.mkv"
-    old_ep.tracked_source = "match"
-
-    async def _session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = show
-        # heuristic runs FIRST (resolves to None so episode stays cleared) → orphan not deleted
-        ep_heuristic_result = MagicMock()
-        ep_heuristic_result.scalar_one_or_none.return_value = None
-        count_result = MagicMock()
-        count_result.scalar.return_value = 0
-        old_ep_result = MagicMock()
-        old_ep_result.scalar_one_or_none.return_value = old_ep
-        session.execute = AsyncMock(
-            side_effect=[
-                file_result,
-                show_result,
-                ep_heuristic_result,
-                count_result,
-                old_ep_result,
-            ]
-        )
-        session.flush = AsyncMock()
-        session.refresh = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
-        assert response.status_code == 200
-        assert old_ep.file_tracked is False
-        assert old_ep.tracked_filename is None
-        assert old_ep.tracked_source is None
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_match_file_does_not_clear_tracking_when_episode_unchanged() -> None:
-    """Stale-episode clear is skipped when the heuristic re-links the same episode."""
-    from jidou.database import get_session
-    from jidou.models.episode import Episode
-    from jidou.models.show import Show
-
-    f = _make_file(id=1, status=FileStatus.ROUTED, show_id=5)
-    f.episode_id = 10  # already linked to episode 10 on show 5
-    f.parsed_season = None
-    f.parsed_episode = None
-    f.local_path = None
-    f.original_filename = "show.s01e01.mkv"
-
-    show = MagicMock(spec=Show)
-    show.id = 5
-    show.title = "Same Show"
-    show.local_path = "/media/same-show"
-
-    # Episode 10 is S1E1 on show 5 — same episode the heuristic resolves to
-    same_ep = MagicMock(spec=Episode)
-    same_ep.id = 10
-    same_ep.file_tracked = True
-    same_ep.tracked_filename = "show.s01e01.mkv"
-    same_ep.tracked_source = "match"
-
-    async def _session() -> AsyncMock:
-        session = AsyncMock()
-        file_result = MagicMock()
-        file_result.scalar_one_or_none.return_value = f
-        show_result = MagicMock()
-        show_result.scalar_one_or_none.return_value = show
-        # heuristic resolves back to the SAME episode (id=10) → ep found → orphan deleted after
-        ep_heuristic_result = MagicMock()
-        ep_heuristic_result.scalar_one_or_none.return_value = same_ep
-        orphan_delete_result = MagicMock()
-        # count/old_ep queries must NOT run (old_episode_id == file.episode_id)
-        session.execute = AsyncMock(
-            side_effect=[file_result, show_result, ep_heuristic_result, orphan_delete_result]
-        )
-        session.flush = AsyncMock()
-        session.refresh = AsyncMock()
-        session.commit = AsyncMock()
-        yield session
-
-    app.dependency_overrides[get_session] = _session
-    try:
-        response = TestClient(app).post("/api/files/1/match", json={"show_id": 5})
-        assert response.status_code == 200
-        # Tracking must NOT be cleared — the episode didn't change
-        assert same_ep.file_tracked is True
-        assert same_ep.tracked_filename == "show.s01e01.mkv"
     finally:
         app.dependency_overrides.clear()
