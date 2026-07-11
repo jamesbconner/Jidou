@@ -52,7 +52,7 @@ Services are intentionally narrow. `TMDBService` only knows how to call TMDB; it
 ### 3. Orchestrators (`src/jidou/orchestrators/`)
 Multi-step workflows that coordinate multiple services and models. An orchestrator is the only layer that holds workflow logic: sequencing, error handling, dry-run enforcement, and logging.
 
-For example, `MatchOrchestrator` fetches files from the database, calls `ParseOrchestrator` to extract S/E numbers, optionally calls `LLMService` if the heuristic fails, then writes the match result back to the database. It doesn't care how TMDB works and doesn't call SFTP.
+For example, `ParseOrchestrator` fetches DOWNLOADED files from the database, extracts show name/season/episode via a regex heuristic and optionally `LLMService`, looks up the matching show and episode, then writes the match result back to the database. It doesn't care how TMDB works and doesn't call SFTP.
 
 ### 4. Routes (`src/jidou/api/routes/`)
 Thin FastAPI handlers. Each handler:
