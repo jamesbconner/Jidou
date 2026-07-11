@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
@@ -250,6 +251,51 @@ async def create_task_record(
     await session.commit()
     await session.refresh(task)
     return task
+
+
+async def enqueue_task(
+    session: AsyncSession,
+    celery_task_id: str,
+    task_type: str,
+    dispatch: Callable[[], object],
+    *,
+    dry_run: bool = False,
+) -> BackgroundTask:
+    """Create a BackgroundTask row and dispatch it to Celery.
+
+    Pre-generating the task ID and creating the row before dispatch means the
+    DB row exists even if the worker starts before this call returns. If the
+    broker is unreachable, the row is marked FAILED with a consistent message
+    so it does not stay PENDING with no Celery job to ever advance it, and the
+    original exception is re-raised for the caller to translate into its own
+    HTTP response.
+
+    Args:
+        session: Active database session.
+        celery_task_id: Pre-generated Celery task ID.
+        task_type: Type label (e.g. ``"download"``, ``"rss_import"``).
+        dispatch: Zero-arg callable that performs the ``apply_async`` call.
+        dry_run: Whether this is a dry-run.
+
+    Returns:
+        The created BackgroundTask row.
+
+    Raises:
+        Exception: Whatever *dispatch* raised, after marking the row FAILED.
+    """
+    new_task = await create_task_record(session, celery_task_id, task_type, dry_run=dry_run)
+    try:
+        dispatch()
+    except Exception as exc:
+        logger.exception("Broker dispatch failed for task %s", celery_task_id)
+        await update_task_status(
+            session,
+            celery_task_id,
+            TaskStatus.FAILED,
+            progress_message=f"Failed to enqueue task: {exc}",
+        )
+        raise
+    return new_task
 
 
 async def mark_task_timed_out(celery_task_id: str) -> None:

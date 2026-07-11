@@ -89,8 +89,15 @@ def scheduled_rss_import_task() -> str:
 async def _dispatch_scheduled(task_type: str, celery_task: Any, task_id: str) -> str:
     """Claim a pending slot then dispatch the Celery task.
 
-    Deletes the pre-created pending row if ``apply_async`` fails so that future
-    beat fires are not permanently blocked by an orphaned PENDING record.
+    Deletes the pre-created pending row if ``apply_async`` fails, rather than
+    marking it FAILED like ``services.progress.enqueue_task`` does for the
+    HTTP-triggered routes. This is a deliberate exception: a beat-triggered
+    dispatch has no request/response cycle and no caller waiting to inspect
+    the task ID, so a FAILED row here would only be dead cron-failure clutter
+    in the task history that no user asked for and nothing will ever surface
+    to them. Deleting it also isn't load-bearing for the overlap guard in
+    ``_try_claim_task`` either way, since FAILED (like a deleted row) is not
+    in ``_ACTIVE_STATUSES`` — this is purely about not polluting the UI.
 
     Args:
         task_type: Type label used in the overlap guard and log messages.

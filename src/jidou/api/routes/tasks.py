@@ -1,6 +1,5 @@
 """API routes for background task management."""
 
-import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,8 +10,6 @@ from jidou.database import get_session
 from jidou.models.task import BackgroundTask, TaskStatus
 from jidou.schemas.task_schema import TaskList, TaskRead, TaskTrigger
 from jidou.workers.celery_app import celery_app
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tasks"])
 
@@ -124,7 +121,7 @@ async def trigger_task(
         )
 
     # Delayed import to avoid circular reference with Celery
-    from jidou.services.progress import create_task_record, update_task_status
+    from jidou.services.progress import enqueue_task
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.route_tasks import route_files_task
@@ -136,17 +133,8 @@ async def trigger_task(
     # Workers call create_task_record too (idempotent upsert), so they will
     # find the row already present and skip the INSERT.
     task_id = str(uuid.uuid4())
-    new_task = await create_task_record(
-        db_session,
-        task_id,
-        payload.task_type,
-        dry_run=payload.dry_run,
-    )
 
-    # Dispatch with the pre-generated ID — eliminates the race condition.
-    # If the broker is unreachable, mark the row FAILED immediately so it does
-    # not stay PENDING with no Celery job to ever advance it.
-    try:
+    def _dispatch() -> None:
         if payload.task_type == "download":
             download_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "scan":
@@ -159,14 +147,13 @@ async def trigger_task(
             sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "seed":
             seed_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
-    except Exception as exc:
-        logger.exception("Broker dispatch failed for task %s", task_id)
-        await update_task_status(
-            db_session,
-            task_id,
-            TaskStatus.FAILED,
-            progress_message=f"Broker dispatch failed: {exc}",
-        )
-        raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
 
-    return new_task
+    # Dispatch with the pre-generated ID — eliminates the race condition.
+    # If the broker is unreachable, enqueue_task marks the row FAILED so it
+    # does not stay PENDING with no Celery job to ever advance it.
+    try:
+        return await enqueue_task(
+            db_session, task_id, payload.task_type, _dispatch, dry_run=payload.dry_run
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc

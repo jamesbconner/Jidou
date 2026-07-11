@@ -11,6 +11,21 @@ from jidou.main import app
 from jidou.models.task import BackgroundTask, TaskStatus
 
 
+def _fake_enqueue(task: MagicMock) -> AsyncMock:
+    """Return a fake enqueue_task that calls dispatch() then returns *task*.
+
+    Mirrors enqueue_task's real "create row, call dispatch, return the row"
+    shape closely enough that call_args assertions against the mocked Celery
+    task (and its side_effect-raised broker failures) still work naturally.
+    """
+
+    async def _run(session, task_id, task_type, dispatch, *, dry_run=False):  # type: ignore[no-untyped-def]
+        dispatch()
+        return task
+
+    return AsyncMock(side_effect=_run)
+
+
 class TestDecodeUpload:
     """Tests for the shared _decode_upload helper."""
 
@@ -110,8 +125,8 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
             ):
@@ -163,8 +178,8 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
             ):
@@ -219,8 +234,8 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
             ):
@@ -265,8 +280,8 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
             ):
@@ -353,8 +368,8 @@ class TestImportDatabase:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.db_import_tasks.db_import_task") as mock_task,
             ):
@@ -394,8 +409,8 @@ class TestImportDatabase:
         try:
             with (
                 patch(
-                    "jidou.api.routes.import_routes.create_task_record",
-                    AsyncMock(return_value=task),
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
                 ),
                 patch("jidou.workers.db_import_tasks.db_import_task") as mock_task,
             ):

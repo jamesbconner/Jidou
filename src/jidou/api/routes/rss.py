@@ -30,7 +30,7 @@ from jidou.schemas.rss_schema import (
 )
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.llm_service import LLMService
-from jidou.services.progress import create_task_record
+from jidou.services.progress import enqueue_task
 from jidou.services.rss_config import fill_missing_yarss2_defaults, parse_rss_config
 
 logger = logging.getLogger(__name__)
@@ -814,27 +814,16 @@ async def trigger_rss_import(
         )
 
     task_id = str(uuid.uuid4())
-    new_task = await create_task_record(
-        db_session,
-        task_id,
-        "rss_import",
-        dry_run=dry_run,
-    )
+
+    # Delayed import avoids circular references with the Celery app
+    from jidou.workers.rss_tasks import rss_import_task
+
+    def _dispatch() -> None:
+        rss_import_task.apply_async(args=[dry_run], task_id=task_id)
 
     try:
-        # Delayed import avoids circular references with the Celery app
-        from jidou.workers.rss_tasks import rss_import_task
-
-        rss_import_task.apply_async(args=[dry_run], task_id=task_id)
+        new_task = await enqueue_task(db_session, task_id, "rss_import", _dispatch, dry_run=dry_run)
     except Exception as exc:
-        from datetime import UTC, datetime
-
-        from jidou.models.task import TaskStatus
-
-        new_task.status = TaskStatus.FAILED.value
-        new_task.progress_message = f"Failed to enqueue task: {exc}"
-        new_task.completed_at = datetime.now(UTC)
-        await db_session.commit()
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
     logger.info("Enqueued RSS import task %s (dry_run=%s)", task_id, dry_run)
@@ -870,26 +859,17 @@ async def trigger_rss_publish(
         )
 
     task_id = str(uuid.uuid4())
-    new_task = await create_task_record(
-        db_session,
-        task_id,
-        "rss_publish",
-        dry_run=dry_run,
-    )
+
+    from jidou.workers.rss_tasks import rss_publish_task
+
+    def _dispatch() -> None:
+        rss_publish_task.apply_async(args=[dry_run], task_id=task_id)
 
     try:
-        from jidou.workers.rss_tasks import rss_publish_task
-
-        rss_publish_task.apply_async(args=[dry_run], task_id=task_id)
+        new_task = await enqueue_task(
+            db_session, task_id, "rss_publish", _dispatch, dry_run=dry_run
+        )
     except Exception as exc:
-        from datetime import UTC, datetime
-
-        from jidou.models.task import TaskStatus
-
-        new_task.status = TaskStatus.FAILED.value
-        new_task.progress_message = f"Failed to enqueue task: {exc}"
-        new_task.completed_at = datetime.now(UTC)
-        await db_session.commit()
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
     logger.info("Enqueued RSS publish task %s (dry_run=%s)", task_id, dry_run)
