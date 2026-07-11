@@ -124,6 +124,25 @@ async def test_llm_parse_episode_sends_known_season_hint() -> None:
     assert "Known season from directory: 6" in prompt_text
 
 
+async def test_llm_parse_episode_sanitizes_filename_in_prompt() -> None:
+    """A filename with control characters/backticks is sanitized before prompting."""
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 1, "episode": 2}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    crafted = "Show.S01E02`\ninjected\r\x00.mkv"
+    await llm_parse_episode(llm, crafted)
+
+    call_kwargs = llm.complete.call_args
+    prompt_text = call_kwargs.kwargs.get("prompt") or call_kwargs.args[0]
+    assert "`" not in prompt_text
+    assert "\n" not in prompt_text
+    assert "\r" not in prompt_text
+    assert "\x00" not in prompt_text
+
+
 @pytest.mark.asyncio
 async def test_llm_parse_episode_system_prompt_covers_bare_numbers_and_non_episode_assets() -> None:
     """Regression: the episode-parse prompt was trimmed down to 4 lines with

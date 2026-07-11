@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from jidou.services.llm_json import parse_llm_json
+from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -259,7 +259,7 @@ async def parse_filename(
         hint_line = f"\nRegex anchor detected: season={regex_hint[0]} episode={regex_hint[1]}"
 
     response = await llm.complete(
-        prompt=f"Given this filename: {filename}{hint_line}",
+        prompt=f"Given this filename: {sanitize_for_prompt(filename)}{hint_line}",
         system=_PARSE_SYSTEM,
         response_format=_PARSE_RESPONSE_FORMAT,
     )

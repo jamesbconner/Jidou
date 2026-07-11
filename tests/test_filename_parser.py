@@ -201,6 +201,32 @@ async def test_parse_filename_llm_success():
     assert result.llm_ok is True
 
 
+async def test_parse_filename_llm_sanitizes_filename_in_prompt():
+    """A filename with control characters/backticks is sanitized before prompting."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    response = MagicMock()
+    response.content = (
+        '{"show_name": "Show", "season": 1, "episode": 2, '
+        '"crc32": null, "content_type": "tv", "confidence": 0.9, '
+        '"reasoning": "ok"}'
+    )
+    llm.complete = AsyncMock(return_value=response)
+
+    crafted = "Weird`\ninjected\r\x00Name.mkv"
+    await parse_filename(crafted, llm=llm)
+
+    prompt = llm.complete.call_args.kwargs["prompt"]
+    assert "`" not in prompt
+    assert "\n" not in prompt
+    assert "\r" not in prompt
+    assert "\x00" not in prompt
+
+
 async def test_parse_filename_llm_none_response_falls_back():
     """llm.complete() returning None falls back to the heuristic parser."""
     from unittest.mock import AsyncMock, MagicMock
