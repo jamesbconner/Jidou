@@ -171,3 +171,11 @@ export function useSuggestRegex(subId: number | null) {
     },
   })
 }
+
+export function useSubscriptionPreview(subId: number | null) {
+  return useQuery({
+    queryKey: [...rssKeys.all, 'preview', subId] as const,
+    queryFn: () => api.get<Record<string, unknown>>(`/rss/subscriptions/${subId}/preview`),
+    enabled: subId != null,
+  })
+}

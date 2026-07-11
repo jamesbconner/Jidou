@@ -31,12 +31,7 @@ from jidou.schemas.rss_schema import (
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.llm_service import LLMService
 from jidou.services.progress import create_task_record
-from jidou.services.rss_config import (
-    compose_rss_config,
-    extract_max_subscription_key,
-    fill_missing_yarss2_defaults,
-    parse_rss_config,
-)
+from jidou.services.rss_config import fill_missing_yarss2_defaults, parse_rss_config
 
 logger = logging.getLogger(__name__)
 
@@ -630,8 +625,6 @@ async def suggest_regex(
 # Download (compose current DB state as a YaRSS2 config file)
 # ---------------------------------------------------------------------------
 
-_MANAGED_SECTIONS = frozenset({"rssfeeds", "subscriptions"})
-
 
 @router.get("/download")
 async def download_config(
@@ -640,9 +633,12 @@ async def download_config(
     """Compose and download the current DB state as a YaRSS2 config file.
 
     Uses the latest stored snapshot for the header and non-managed sections,
-    then overlays the current DB feeds and enabled subscriptions.  Does not
-    upload to the remote server — equivalent to a dry-run publish returned
-    as a file attachment.
+    then overlays the current DB feeds and enabled subscriptions via
+    :meth:`RssPublishOrchestrator.compose_config` — the same composition
+    logic ``run()`` uses to build what it actually uploads, so this
+    preview can't drift from real publish behavior. Does not upload to the
+    remote server; ``upload=False`` computes subscription keys without
+    persisting them.
 
     Args:
         db_session: DB session (injected).
@@ -668,55 +664,48 @@ async def download_config(
             status_code=500, detail=f"Failed to parse latest snapshot: {exc}"
         ) from exc
 
-    # Build feeds dict from DB
-    feeds_stmt = select(RssFeed).where(RssFeed.remote_key.is_not(None))
-    feeds = list((await db_session.execute(feeds_stmt)).scalars().all())
-    new_feeds: dict[str, object] = {}
-    for feed in feeds:
-        if feed.remote_key is None:
-            continue
-        feed_dict: dict[str, object] = dict(feed.extra_config or {})
-        feed_dict["name"] = feed.name
-        feed_dict["url"] = feed.url
-        new_feeds[feed.remote_key] = feed_dict
+    orchestrator = RssPublishOrchestrator(db_session, None, "", dry_run=True)
+    composed, _result = await orchestrator.compose_config(header, old_body, upload=False)
 
-    # Build subscriptions dict from enabled DB rows
-    subs_stmt = (
-        select(RssSubscription)
-        .where(RssSubscription.enabled_in_config.is_(True))
-        .options(selectinload(RssSubscription.feed))
-        .order_by(RssSubscription.id.asc())
-    )
-    subs = list((await db_session.execute(subs_stmt)).scalars().all())
-
-    # Mirror the publish orchestrator's key-ceiling logic: take the max of both the
-    # snapshot's existing keys and all remote_keys stored in the DB, so stubs assigned
-    # during download cannot collide with keys held by other enabled subscriptions.
-    remote_max_key = extract_max_subscription_key(old_body)
-    all_keys_stmt = select(RssSubscription.remote_key).where(
-        RssSubscription.remote_key.is_not(None)
-    )
-    all_key_rows = (await db_session.execute(all_keys_stmt)).scalars().all()
-    db_max_key = max((int(k) for k in all_key_rows if k and k.isdigit()), default=-1)
-    max_key = max(remote_max_key, db_max_key)
-    next_key = max_key + 1
-    new_subs: dict[str, object] = {}
-    for sub in subs:
-        key = sub.remote_key or str(next_key)
-        if not sub.remote_key:
-            next_key += 1
-        new_subs[key] = RssPublishOrchestrator._build_sub_dict(sub, key)
-
-    new_body: dict[str, object] = {k: v for k, v in old_body.items() if k not in _MANAGED_SECTIONS}
-    new_body["rssfeeds"] = new_feeds
-    new_body["subscriptions"] = new_subs
-
-    composed = compose_rss_config(header, new_body)
     return Response(
         content=composed.encode("utf-8"),
         media_type="application/octet-stream",
         headers={"Content-Disposition": 'attachment; filename="yarss2.conf"'},
     )
+
+
+@router.get("/subscriptions/{sub_id}/preview")
+async def preview_subscription(
+    sub_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict[str, object]:
+    """Preview the YaRSS2 subscription dict Jidou would publish for one subscription.
+
+    Uses the same :meth:`RssPublishOrchestrator.build_sub_dict` publish
+    itself calls, so the preview always reflects real publish output —
+    including YaRSS2 torrent-option defaults for a subscription that has
+    never round-tripped through a real config.
+
+    Args:
+        sub_id: Database primary key of the subscription to preview.
+        db_session: DB session (injected).
+
+    Returns:
+        The composed YaRSS2 subscription dict.
+
+    Raises:
+        HTTPException: 404 if the subscription is not found.
+    """
+    stmt = (
+        select(RssSubscription)
+        .where(RssSubscription.id == sub_id)
+        .options(selectinload(RssSubscription.feed))
+    )
+    sub = (await db_session.execute(stmt)).scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="RSS subscription not found")
+
+    return RssPublishOrchestrator.build_sub_dict(sub, sub.remote_key or "unassigned")
 
 
 # ---------------------------------------------------------------------------

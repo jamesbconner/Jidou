@@ -541,12 +541,12 @@ async def test_publish_snapshot_type_passed_to_import_orc() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _build_sub_dict — optional fields coverage
+# build_sub_dict — optional fields coverage
 # ---------------------------------------------------------------------------
 
 
 def test_build_sub_dict_includes_all_optional_fields() -> None:
-    """_build_sub_dict serialises regex, label, last_match, and extra_config."""
+    """build_sub_dict serialises regex, label, last_match, and extra_config."""
     from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 
     feed = _make_feed(remote_key="f1", default_move_completed="/completed")
@@ -560,7 +560,7 @@ def test_build_sub_dict_includes_all_optional_fields() -> None:
         extra_config={"extra_key": "extra_value"},
     )
 
-    result = RssPublishOrchestrator._build_sub_dict(sub, "5")
+    result = RssPublishOrchestrator.build_sub_dict(sub, "5")
 
     assert result["key"] == "5"
     assert result["regex_include"] == ".*show.*"
@@ -584,7 +584,7 @@ def test_build_sub_dict_fills_yarss2_defaults_for_fresh_subscription() -> None:
 
     sub = _make_sub(feed=None, extra_config=None)
 
-    result = RssPublishOrchestrator._build_sub_dict(sub, "12")
+    result = RssPublishOrchestrator.build_sub_dict(sub, "12")
 
     assert result["key"] == "12"
     for field, default in YARSS2_SUBSCRIPTION_DEFAULTS.items():
@@ -600,7 +600,7 @@ def test_build_sub_dict_extra_config_overrides_defaults() -> None:
 
     sub = _make_sub(feed=None, extra_config={"max_connections": 50, "auto_managed": "Yes"})
 
-    result = RssPublishOrchestrator._build_sub_dict(sub, "1")
+    result = RssPublishOrchestrator.build_sub_dict(sub, "1")
 
     assert result["max_connections"] == 50
     assert result["auto_managed"] == "Yes"
@@ -734,6 +734,65 @@ async def test_publish_includes_inactive_feed_referenced_by_sub() -> None:
     body, _ = decoder.raw_decode(config_raw.decode(), off)
     assert "fi5" in body["rssfeeds"]  # included despite being inactive
     assert result.feeds_published == 1
+
+
+@pytest.mark.asyncio
+async def test_compose_config_matches_what_run_would_upload() -> None:
+    """compose_config(upload=False) produces the same body run() would upload.
+
+    Regression test for Bug5: GET /rss/download used to reimplement steps
+    4-6 inline, missing both the "active" field on feed dicts and the
+    inactive-but-referenced-feed inclusion logic. Now that download_config
+    calls compose_config directly, this proves the two code paths can no
+    longer diverge -- feeding compose_config the identical DB state run()
+    sees must produce the identical rssfeeds/subscriptions body.
+    """
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+    from jidou.services.rss_config import parse_rss_config
+
+    inactive_feed = _make_feed(id=5, remote_key="fi5", name="RefdInactiveFeed", active=False)
+    sub = _make_sub(feed=inactive_feed)
+    header, old_body = parse_rss_config(_MINIMAL_RAW)
+
+    # -- what run() would upload --
+    run_session = _make_session()
+    sftp = MagicMock()
+    uploaded: list[bytes] = []
+
+    async def capture(data: bytes, path: str) -> None:
+        uploaded.append(data)
+
+    sftp.upload_bytes = AsyncMock(side_effect=capture)
+    run_session.execute = AsyncMock(
+        side_effect=_std_execute_sides([inactive_feed], ["0"], [sub], ref_feed_ids=[5])
+    )
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+        run_orc = RssPublishOrchestrator(run_session, sftp, "/remote/yarss2.conf", dry_run=False)
+        await run_orc.run()
+
+    _backup, uploaded_config = uploaded
+    _, run_body = parse_rss_config(uploaded_config.decode("utf-8"))
+
+    # -- what compose_config(upload=False) produces for the identical DB state --
+    preview_session = _make_session()
+    preview_sub = _make_sub(feed=inactive_feed, remote_key="0")
+    preview_session.execute = AsyncMock(
+        side_effect=_std_execute_sides([inactive_feed], ["0"], [preview_sub], ref_feed_ids=[5])
+    )
+    preview_orc = RssPublishOrchestrator(preview_session, None, "", dry_run=True)
+    composed, _result = await preview_orc.compose_config(header, old_body, upload=False)
+    _, preview_body = parse_rss_config(composed)
+
+    assert preview_body["rssfeeds"] == run_body["rssfeeds"]
+    assert "fi5" in preview_body["rssfeeds"]
+    rssfeeds = preview_body["rssfeeds"]
+    assert isinstance(rssfeeds, dict)
+    assert rssfeeds["fi5"]["active"] is False
 
 
 @pytest.mark.asyncio
