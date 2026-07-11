@@ -2178,6 +2178,8 @@ export interface components {
             show_adult_content?: boolean | null;
             /** Calendar Enabled */
             calendar_enabled?: boolean | null;
+            /** Recent Episodes Enabled */
+            recent_episodes_enabled?: boolean | null;
         };
         /**
          * AppSettingsRead
@@ -2194,6 +2196,11 @@ export interface components {
              * @description Whether the airing calendar page and nav link are shown
              */
             calendar_enabled: boolean;
+            /**
+             * Recent Episodes Enabled
+             * @description Whether the dashboard's Recently Added Episodes carousel is shown
+             */
+            recent_episodes_enabled: boolean;
         };
         /**
          * AssignImportRequest
@@ -3102,6 +3109,10 @@ export interface components {
             episode_groups?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Episode Group Map */
+            episode_group_map?: {
+                [key: string]: unknown;
+            } | null;
             /** Status */
             status?: string | null;
             /** In Production */
@@ -3223,6 +3234,10 @@ export interface components {
             episode_groups?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Episode Group Map */
+            episode_group_map?: {
+                [key: string]: unknown;
+            } | null;
             /** Status */
             status?: string | null;
             /** In Production */

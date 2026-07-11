@@ -5,6 +5,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api } from '@/api/client'
+import { useAppSettings } from '@/hooks/useSettings'
 import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
@@ -66,6 +67,7 @@ function StatCard({ label, value, sub, tooltip, alert = false }: StatCardProps) 
 
 export default function Dashboard() {
   const { data: activeTasks = [] } = useActiveTasks()
+  const { data: appSettings } = useAppSettings()
   const cancelTask = useCancelTask()
   const [modalItem, setModalItem] = useState<ModalItem | null>(null)
   // Stable across re-renders so RecentShowsSection/RecentEpisodesSection can
@@ -229,7 +231,9 @@ export default function Dashboard() {
 
       {/* Recently added carousels */}
       <RecentShowsSection onCardClick={openShowModal} />
-      <RecentEpisodesSection onCardClick={openEpisodeModal} />
+      {(appSettings?.recent_episodes_enabled ?? true) && (
+        <RecentEpisodesSection onCardClick={openEpisodeModal} />
+      )}
 
       {/* Active tasks */}
       <section>
