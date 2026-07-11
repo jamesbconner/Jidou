@@ -1,11 +1,16 @@
 """Tests for episode tracking helper functions."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
+from jidou.services.episode_tracking import (
+    clear_episode_tracking,
+    clear_if_unreferenced,
+    dismiss_orphans_for_file,
+    mark_episode_tracked,
+)
 
 
 def _make_episode(**kwargs: object) -> MagicMock:
@@ -102,3 +107,79 @@ class TestClearEpisodeTracking:
 
         assert ep.file_tracked is False
         assert ep.file_tracked_at is None
+
+
+class TestClearIfUnreferenced:
+    async def test_noop_when_old_episode_id_is_none(self) -> None:
+        session = AsyncMock()
+        await clear_if_unreferenced(session, None, 42)
+        session.execute.assert_not_awaited()
+
+    async def test_noop_when_old_equals_new(self) -> None:
+        session = AsyncMock()
+        await clear_if_unreferenced(session, 10, 10)
+        session.execute.assert_not_awaited()
+
+    async def test_clears_when_no_other_file_references_old_episode(self) -> None:
+        old_ep = _make_episode(file_tracked=True, tracked_filename="a.mkv", tracked_source="match")
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[count_result, old_ep_result])
+
+        await clear_if_unreferenced(session, 10, 42)
+
+        assert old_ep.file_tracked is False
+        assert old_ep.tracked_filename is None
+        assert session.execute.await_count == 2
+
+    async def test_skips_clear_when_other_file_still_references_old_episode(self) -> None:
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[count_result])
+
+        await clear_if_unreferenced(session, 10, 42)
+
+        # Only the count query runs — the episode lookup is skipped entirely.
+        assert session.execute.await_count == 1
+
+    async def test_noop_when_old_episode_row_not_found(self) -> None:
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        missing_result = MagicMock()
+        missing_result.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[count_result, missing_result])
+
+        await clear_if_unreferenced(session, 10, 42)  # must not raise
+
+    async def test_treats_new_episode_id_none_as_a_change(self) -> None:
+        """Clearing episode_id back to null must still trigger the unreferenced check."""
+        old_ep = _make_episode(file_tracked=True)
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        old_ep_result = MagicMock()
+        old_ep_result.scalar_one_or_none.return_value = old_ep
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[count_result, old_ep_result])
+
+        await clear_if_unreferenced(session, 10, None)
+
+        assert old_ep.file_tracked is False
+
+
+class TestDismissOrphansForFile:
+    async def test_issues_a_delete_scoped_to_the_file(self) -> None:
+        session = AsyncMock()
+
+        await dismiss_orphans_for_file(session, 7)
+
+        session.execute.assert_awaited_once()
+        stmt = session.execute.await_args.args[0]
+        compiled = stmt.compile(compile_kwargs={"literal_binds": True})
+        sql = str(compiled)
+        assert "orphaned_tracking_records" in sql
+        assert "7" in sql

@@ -8,7 +8,12 @@ requires a change here.
 
 from datetime import UTC, datetime
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 
 # Sentinel distinguishing "caller passed None" from "caller omitted tracked_at".
 # Needed because a snapshot can have file_tracked_at = NULL, which must be
@@ -51,3 +56,46 @@ def clear_episode_tracking(ep: Episode) -> None:
     ep.file_tracked_at = None
     ep.tracked_filename = None
     ep.tracked_source = None
+
+
+async def clear_if_unreferenced(
+    session: AsyncSession,
+    old_episode_id: int | None,
+    new_episode_id: int | None,
+) -> None:
+    """Clear tracking on ``old_episode_id`` if it changed and no file still points to it.
+
+    A file being relinked to a new episode must not blindly clear the episode
+    it left behind — another ``DownloadedFile`` row may still reference it.
+
+    Args:
+        session: Active async DB session.
+        old_episode_id: ``Episode.id`` the file was previously linked to, or ``None``.
+        new_episode_id: ``Episode.id`` the file is now linked to, or ``None``.
+    """
+    if old_episode_id is None or old_episode_id == new_episode_id:
+        return
+    count_result = await session.execute(
+        select(func.count()).where(DownloadedFile.episode_id == old_episode_id)
+    )
+    if (count_result.scalar() or 0) != 0:
+        return
+    old_ep = (
+        await session.execute(select(Episode).where(Episode.id == old_episode_id))
+    ).scalar_one_or_none()
+    if old_ep is not None:
+        clear_episode_tracking(old_ep)
+
+
+async def dismiss_orphans_for_file(session: AsyncSession, file_id: int) -> None:
+    """Delete any ``OrphanedTrackingRecord`` rows tied to ``file_id``.
+
+    Args:
+        session: Active async DB session.
+        file_id: ``DownloadedFile.id`` whose orphan records should be dismissed.
+    """
+    await session.execute(
+        OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
+            OrphanedTrackingRecord.downloaded_file_id == file_id
+        )
+    )

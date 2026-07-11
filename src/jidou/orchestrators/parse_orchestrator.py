@@ -10,9 +10,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
-from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.episode_lookup import resolve_episode
+from jidou.services.episode_tracking import dismiss_orphans_for_file
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.sys_name import sanitize_sys_name
@@ -273,11 +273,7 @@ class ParseOrchestrator:
                     if ep is not None and season is None and ep.season_number is not None:
                         file.parsed_season = ep.season_number
                     if ep is not None:
-                        await self.session.execute(
-                            OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-                                OrphanedTrackingRecord.downloaded_file_id == file.id
-                            )
-                        )
+                        await dismiss_orphans_for_file(self.session, file.id)
                     file.matched_by = (
                         MatchedBy.LLM
                         if (self.llm is not None and self.llm.is_available())

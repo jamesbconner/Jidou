@@ -13,10 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
-from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.episode_lookup import resolve_episode
-from jidou.services.episode_tracking import mark_episode_tracked
+from jidou.services.episode_tracking import dismiss_orphans_for_file, mark_episode_tracked
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +153,7 @@ class RouteOrchestrator:
             )
             if ep is not None:
                 file.episode_id = ep.id
-                await self.session.execute(
-                    OrphanedTrackingRecord.__table__.delete().where(  # type: ignore[attr-defined]
-                        OrphanedTrackingRecord.downloaded_file_id == file.id
-                    )
-                )
+                await dismiss_orphans_for_file(self.session, file.id)
         else:
             ep = None
 
