@@ -17,12 +17,12 @@ one implementation instead of maintaining two copies of the same regex
 patterns and LLM prompt that would inevitably drift apart.
 """
 
-import json
 import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from jidou.services.llm_json import parse_llm_json
 from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -267,18 +267,12 @@ async def parse_filename(
         logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
         return _heuristic_parse(filename)
 
-    text = response.content.strip()
-    # Strip markdown fences — some providers emit them even with structured output.
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").strip()
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
+    parsed = parse_llm_json(response.content)
+    if not isinstance(parsed, dict):
         logger.warning(
-            "LLM returned invalid JSON for %r: %r; falling back to heuristic",
+            "LLM returned non-object JSON for %r: %r; falling back to heuristic",
             filename,
-            text,
+            response.content,
         )
         return _heuristic_parse(filename)
 
@@ -287,12 +281,20 @@ async def parse_filename(
 
     raw_season = parsed.get("season")
     raw_episode = parsed.get("episode")
+    try:
+        season = int(raw_season) if raw_season is not None else None
+        episode = int(raw_episode) if raw_episode is not None else None
+        confidence = float(parsed.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        logger.warning("LLM returned non-numeric S/E/confidence for %r: %r", filename, parsed)
+        return _heuristic_parse(filename)
+
     return FilenameParseResult(
         show_name=parsed.get("show_name"),
-        season=int(raw_season) if raw_season is not None else None,
-        episode=int(raw_episode) if raw_episode is not None else None,
+        season=season,
+        episode=episode,
         crc32=parsed.get("crc32"),
         content_type=parsed.get("content_type"),
-        confidence=float(parsed.get("confidence") or 0.0),
+        confidence=confidence,
         llm_ok=True,
     )

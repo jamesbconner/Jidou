@@ -539,7 +539,7 @@ async def suggest_regex(
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
-    import json
+    from jidou.services.llm_json import parse_llm_json
 
     stmt = _sub_stmt().where(RssSubscription.id == sub_id)
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -584,17 +584,18 @@ async def suggest_regex(
             ),
         )
 
-    # Strip markdown code fences that some models add despite the system prompt.
-    # Language tags may be uppercase (```JSON) or mixed-case — match case-insensitively.
-    raw = response.content.strip()
-    raw = re.sub(r"^```[a-zA-Z0-9]*\s*", "", raw, flags=re.MULTILINE)
-    raw = re.sub(r"```\s*$", "", raw, flags=re.MULTILINE).strip()
+    parsed = parse_llm_json(response.content)
+    if not isinstance(parsed, dict):
+        logger.warning("LLM returned unparseable regex JSON for sub_id=%d", sub_id)
+        raise HTTPException(
+            status_code=503,
+            detail="LLM returned an unparseable response.",
+        )
 
     try:
-        parsed = json.loads(raw)
         regex_include = str(parsed["regex_include"])
         regex_exclude = str(parsed["regex_exclude"])
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+    except KeyError as exc:
         logger.warning("LLM returned unparseable regex JSON for sub_id=%d: %s", sub_id, exc)
         raise HTTPException(
             status_code=503,

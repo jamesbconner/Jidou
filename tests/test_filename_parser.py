@@ -253,6 +253,72 @@ async def test_parse_filename_llm_markdown_fence_stripped():
     assert result.episode == 3
 
 
+async def test_parse_filename_llm_non_dict_json_falls_back():
+    """A JSON array (or other non-object root) from the LLM falls back to heuristic."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    response = MagicMock()
+    response.content = '["not", "an", "object"]'
+    llm.complete = AsyncMock(return_value=response)
+
+    result = await parse_filename("Attack.on.Titan.S01E02.1080p.mkv", llm=llm)
+    assert result.llm_ok is False
+    assert result.season == 1
+    assert result.episode == 2
+
+
+async def test_parse_filename_llm_non_integer_season_falls_back():
+    """A non-integer season/episode value from the LLM falls back to heuristic."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    response = MagicMock()
+    response.content = (
+        '{"show_name": "Attack on Titan", "season": "one", "episode": 2, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95}'
+    )
+    llm.complete = AsyncMock(return_value=response)
+
+    result = await parse_filename("Attack.on.Titan.S01E02.1080p.mkv", llm=llm)
+    assert result.llm_ok is False
+    assert result.season == 1
+    assert result.episode == 2
+
+
+async def test_parse_filename_llm_non_numeric_confidence_falls_back():
+    """A non-numeric confidence value from the LLM falls back to heuristic.
+
+    Regression test: confidence was previously converted with a bare
+    float(...) call outside any guard, so a non-numeric value (more likely
+    from providers that don't honor the structured-output schema, e.g.
+    Anthropic) would raise uncaught instead of degrading gracefully.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    response = MagicMock()
+    response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 2, '
+        '"crc32": null, "content_type": "anime", "confidence": "high"}'
+    )
+    llm.complete = AsyncMock(return_value=response)
+
+    result = await parse_filename("Attack.on.Titan.S01E02.1080p.mkv", llm=llm)
+    assert result.llm_ok is False
+    assert result.season == 1
+    assert result.episode == 2
+
+
 async def test_parse_filename_sends_regex_hint():
     """The regex anchor is included in the LLM prompt when present."""
     from unittest.mock import AsyncMock, MagicMock
