@@ -815,10 +815,12 @@ async def trigger_rss_import(
 
     task_id = str(uuid.uuid4())
 
-    # Delayed import avoids circular references with the Celery app
-    from jidou.workers.rss_tasks import rss_import_task
-
     def _dispatch() -> None:
+        # Delayed import avoids circular references with the Celery app, and
+        # keeps a failure here (e.g. a broken worker module) inside
+        # enqueue_task's failure handling rather than surfacing unhandled.
+        from jidou.workers.rss_tasks import rss_import_task
+
         rss_import_task.apply_async(args=[dry_run], task_id=task_id)
 
     try:
@@ -860,9 +862,12 @@ async def trigger_rss_publish(
 
     task_id = str(uuid.uuid4())
 
-    from jidou.workers.rss_tasks import rss_publish_task
-
     def _dispatch() -> None:
+        # Delayed import avoids circular references with the Celery app, and
+        # keeps a failure here (e.g. a broken worker module) inside
+        # enqueue_task's failure handling rather than surfacing unhandled.
+        from jidou.workers.rss_tasks import rss_publish_task
+
         rss_publish_task.apply_async(args=[dry_run], task_id=task_id)
 
     try:
