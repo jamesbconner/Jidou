@@ -1208,6 +1208,155 @@ async def test_import_show_episode_sync_failure_logged_not_raised() -> None:
     assert result.episodes_unmatched == 1
 
 
+@pytest.mark.asyncio
+async def test_import_show_backfills_episode_group_map_for_already_synced_show() -> None:
+    """Bugbot-caught regression: an existing show with episodes already synced
+    but no episode_group_map (e.g. synced before this feature existed) must
+    still get the map backfilled -- via the lighter sync_episode_group_map,
+    not a full re-sync -- so the cour/season remap works on re-import too.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Frieren\Season 01\ep.mkv",
+            show_dir="Frieren",
+            show_root=r"Z:\anime tv\Frieren",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show(title="Frieren")
+    show.episode_group_map = None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)  # ep_count > 0 -> no full re-sync
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_episode_group_map = AsyncMock()
+        result = await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_called_once_with(show)
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+
+
+@pytest.mark.asyncio
+async def test_import_show_skips_backfill_when_episode_group_map_already_set() -> None:
+    """An already-synced show whose episode_group_map is already populated
+    (even if it's an empty dict, meaning 'checked, no groups exist') must
+    not trigger a redundant backfill call on every import touch.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        await orch.run(entries)
+
+    mock_tmdb_orch_cls.return_value.sync_episode_group_map.assert_not_called()
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_import_show_episode_group_map_backfill_failure_logged_not_raised() -> None:
+    """A sync_episode_group_map failure for an already-synced show is logged, not raised."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    show.episode_group_map = None
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=5)
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute = AsyncMock(return_value=ep_result)
+    session.commit = AsyncMock()
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_episode_group_map = AsyncMock(
+            side_effect=RuntimeError("TMDB down")
+        )
+        result = await orch.run(entries)  # must not raise
+
+    warn_events = [(lvl, msg) for lvl, msg in events if lvl == "warn"]
+    assert any("episode_group_map backfill failed" in msg for _lvl, msg in warn_events)
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+
+
 # ---------------------------------------------------------------------------
 # _import_show — dry-run estimation for a brand-new (unpersisted) show
 # ---------------------------------------------------------------------------

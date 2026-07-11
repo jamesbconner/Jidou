@@ -1,6 +1,6 @@
 """Tests for TMDBOrchestrator."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 
@@ -232,7 +232,11 @@ async def test_sync_show_episodes_no_episode_groups_leaves_map_none():
 
 
 async def test_sync_show_episodes_group_fetch_failure_does_not_abort_sync():
-    """A failed episode_group detail fetch is best-effort -- the episode sync still completes."""
+    """A per-type episode_group detail fetch failure is swallowed inside
+    fetch_group_breakdowns itself -- the episode sync still completes, and
+    the show is left with no map since neither type fetched successfully
+    (this is a genuinely empty result, not a raised exception).
+    """
     session = _make_session(existing_episode=None)
     show = _make_show()
     show.episode_groups = _SEASONS_GROUP_SUMMARY
@@ -244,6 +248,131 @@ async def test_sync_show_episodes_group_fetch_failure_does_not_abort_sync():
 
     assert result.episodes_upserted == 2
     assert show.episode_group_map is None
+
+
+async def test_sync_show_episodes_clears_stale_absolute_number_when_groups_now_empty():
+    """A previously-backfilled absolute_episode_number must be cleared, not left
+    stale, when a later successful fetch finds no applicable episode_groups --
+    otherwise a show whose TMDB grouping changed (or was removed) keeps using
+    numbers that no longer reflect any real grouping.
+    """
+    existing = MagicMock()
+    existing.name = "Ep1"
+    existing.absolute_episode_number = 99  # stale from an earlier sync
+
+    session = _make_session(existing_episode=existing)
+    show = _make_show()
+    show.episode_groups = None  # TMDB no longer reports any qualifying group
+    tmdb = _make_tmdb(episodes=[{"id": 101, "episode_number": 1, "name": "Ep1"}])
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert existing.absolute_episode_number is None
+    assert show.episode_group_map is None
+
+
+async def test_sync_show_episodes_group_fetch_outer_failure_leaves_existing_state_untouched():
+    """An unexpected failure while resolving episode_groups -- distinct from a
+    single per-type TMDB fetch failure, which fetch_group_breakdowns already
+    handles internally -- must leave show.episode_group_map and any existing
+    absolute_episode_number values untouched rather than wiping them, so a
+    transient failure never regresses a show that previously synced fine.
+    """
+    existing = MagicMock()
+    existing.name = "Ep1"
+    existing.absolute_episode_number = 5
+    session = _make_session(existing_episode=existing)
+    show = _make_show()
+    show.episode_groups = _SEASONS_GROUP_SUMMARY
+    show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}  # a previously-successful map
+    tmdb = _make_tmdb(episodes=[{"id": 101, "episode_number": 1, "name": "Ep1"}])
+
+    orch = TMDBOrchestrator(session, tmdb)
+    with patch(
+        "jidou.orchestrators.tmdb_orchestrator.fetch_group_breakdowns",
+        AsyncMock(side_effect=RuntimeError("unexpected")),
+    ):
+        await orch.sync_show_episodes(show)
+
+    assert existing.absolute_episode_number == 5
+    assert show.episode_group_map == {"6": {"1": {"1": [1, 1]}}}
+
+
+class TestSyncEpisodeGroupMap:
+    """Tests for the lighter, already-synced-show backfill entry point."""
+
+    async def test_backfills_map_and_absolute_numbers_for_existing_episodes(self):
+        ep1 = MagicMock(season_number=1, episode_number=1, absolute_episode_number=None)
+        ep2 = MagicMock(season_number=1, episode_number=2, absolute_episode_number=None)
+        ep3 = MagicMock(season_number=1, episode_number=3, absolute_episode_number=None)
+
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = [ep1, ep2, ep3]
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=eps_result)
+        session.flush = AsyncMock()
+
+        show = _make_show()
+        show.episode_groups = _SEASONS_GROUP_SUMMARY
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=_SEASONS_GROUP_DETAIL)
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.sync_episode_group_map(show)
+
+        assert show.episode_group_map == {
+            "6": {
+                "1": {"1": [1, 1], "2": [1, 2], "3": [1, 3]},
+                "2": {"1": [1, 4], "2": [1, 5]},
+            }
+        }
+        assert ep1.absolute_episode_number == 1
+        assert ep2.absolute_episode_number == 2
+        assert ep3.absolute_episode_number == 3
+        session.flush.assert_awaited()
+
+    async def test_does_not_fetch_full_season_episode_data(self):
+        """The lighter path must never touch get_show_seasons/get_season_details --
+        that's the whole point of it existing separately from sync_show_episodes.
+        """
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=eps_result)
+
+        show = _make_show()
+        show.episode_groups = None
+        tmdb = AsyncMock()
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.sync_episode_group_map(show)
+
+        tmdb.get_show_seasons.assert_not_called()
+        tmdb.get_season_details.assert_not_called()
+
+    async def test_outer_failure_leaves_existing_state_untouched(self):
+        existing_ep = MagicMock(season_number=1, episode_number=1, absolute_episode_number=7)
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = [existing_ep]
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=eps_result)
+        session.flush = AsyncMock()
+
+        show = _make_show()
+        show.episode_groups = _SEASONS_GROUP_SUMMARY
+        show.episode_group_map = {"6": {"1": {"1": [1, 1]}}}
+        tmdb = AsyncMock()
+
+        orch = TMDBOrchestrator(session, tmdb)
+        with patch(
+            "jidou.orchestrators.tmdb_orchestrator.fetch_group_breakdowns",
+            AsyncMock(side_effect=RuntimeError("unexpected")),
+        ):
+            await orch.sync_episode_group_map(show)
+
+        assert existing_ep.absolute_episode_number == 7
+        assert show.episode_group_map == {"6": {"1": {"1": [1, 1]}}}
 
 
 async def test_sync_all_shows_skips_cached():

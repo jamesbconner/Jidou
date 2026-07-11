@@ -2,7 +2,7 @@
 
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 from typing import cast
@@ -125,25 +125,7 @@ class TMDBOrchestrator:
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
 
-        # Best-effort: resolve type-6/type-2 episode_groups into a season/cour
-        # remap for path-import's cour-vs-absolute mismatch handling, and use
-        # the same fetch to backfill absolute_episode_number where it's known.
-        # A failure here must not abort an otherwise-successful episode sync.
-        try:
-            breakdowns = await fetch_group_breakdowns(self.tmdb, show.episode_groups)
-        except Exception:
-            logger.warning(
-                "Failed to fetch episode_group breakdowns for show id=%s", show.id, exc_info=True
-            )
-            breakdowns = {}
-        # dict is invariant in its value type, so the precisely-typed
-        # StoredGroupMap needs a cast to satisfy the looser JSONB column type.
-        show.episode_group_map = cast(dict[str, object] | None, to_storage_map(breakdowns))
-        for key, absolute_number in flatten_for_absolute_numbering(breakdowns).items():
-            ep = episodes_by_key.get(key)
-            if ep is not None:
-                ep.absolute_episode_number = absolute_number
-
+        await self._apply_episode_group_map(show, episodes_by_key.values())
         await self.session.flush()
 
         logger.info(
@@ -157,6 +139,61 @@ class TMDBOrchestrator:
             episodes_upserted=episodes_upserted,
             episodes_skipped=episodes_skipped,
         )
+
+    async def sync_episode_group_map(self, show: Show) -> None:
+        """Backfill episode_group_map/absolute_episode_number for an already-synced show.
+
+        Lighter than :meth:`sync_show_episodes`: fetches only the
+        episode_groups breakdown, not the full season/episode data, so it's
+        safe for a caller (e.g. path-import resolving a show it found
+        already in the DB) to call on every touch of a show whose episodes
+        exist but whose ``episode_group_map`` was never built -- most
+        commonly a show synced before this feature existed.
+
+        Args:
+            show: Show ORM object whose episodes are already present in the DB.
+        """
+        stmt = select(Episode).where(Episode.show_id == show.id)
+        episodes = (await self.session.execute(stmt)).scalars().all()
+        await self._apply_episode_group_map(show, episodes)
+        await self.session.flush()
+
+    async def _apply_episode_group_map(self, show: Show, episodes: Iterable[Episode]) -> None:
+        """Fetch episode_groups and store the map, backfilling absolute_episode_number.
+
+        Best-effort: resolves type-6/type-2 episode_groups into a season/cour
+        remap for path-import's cour-vs-absolute mismatch handling, and uses
+        the same fetch to backfill ``Episode.absolute_episode_number`` where
+        it's known. A fetch failure must not abort an otherwise-successful
+        episode sync -- and must not overwrite a previously-successful map
+        with nothing, so a failure leaves *show* and *episodes* untouched
+        rather than clearing their existing data.
+
+        Args:
+            show: Show ORM object to update ``episode_group_map`` on.
+            episodes: Episode rows belonging to *show* to backfill
+                ``absolute_episode_number`` on. Must reflect the show's
+                full current episode set for a successful fetch to clear
+                stale absolute numbers correctly -- a partial set would
+                leave omitted episodes with whatever they had before.
+        """
+        try:
+            breakdowns = await fetch_group_breakdowns(self.tmdb, show.episode_groups)
+        except Exception:
+            logger.warning(
+                "Failed to fetch episode_group breakdowns for show id=%s; leaving existing "
+                "episode_group_map and absolute_episode_number data untouched",
+                show.id,
+                exc_info=True,
+            )
+            return
+
+        # dict is invariant in its value type, so the precisely-typed
+        # StoredGroupMap needs a cast to satisfy the looser JSONB column type.
+        show.episode_group_map = cast(dict[str, object] | None, to_storage_map(breakdowns))
+        flattened = flatten_for_absolute_numbering(breakdowns)
+        for ep in episodes:
+            ep.absolute_episode_number = flattened.get((ep.season_number, ep.episode_number))
 
     async def sync_all_shows(
         self,
