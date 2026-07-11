@@ -22,7 +22,6 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import JSONB
@@ -34,9 +33,13 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.services.episode_lookup import resolve_episode
+from jidou.services.episode_match_llm import (
+    llm_match_episode,
+    llm_parse_episode,
+    llm_pick_candidate,
+)
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
-from jidou.services.llm_json import parse_llm_json
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.tmdb import TMDBService
@@ -47,98 +50,6 @@ logger = logging.getLogger(__name__)
 # Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
 # comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
 _PUNCT = re.compile(r"[^\w\s]")
-
-_LLM_SYSTEM = (
-    "You are a filename-to-episode matcher. "
-    "Given a show title, a filename, and a numbered episode list, "
-    "identify which episode the file belongs to. "
-    "Reply with ONLY a compact JSON object: "
-    '{"season": <integer or null>, "episode": <integer or null>}. '
-    "Use null for season or episode if you cannot determine the match. "
-    "No other text, no markdown, no explanation."
-)
-
-_LLM_SHOW_MATCH_SYSTEM = (
-    "You are a TV show title matcher. "
-    "Given a directory name and a numbered list of TMDB candidates, "
-    "identify which candidate is the same show as the directory. "
-    'Directories often omit articles ("Marvel\'s", "The") or franchise subtitles '
-    '("Born Again") that appear in TMDB titles — treat those as matches. '
-    "A sequel or spin-off with a shared word is NOT a match unless the directory "
-    "clearly refers to that specific entry. "
-    'Example: "Daredevil" matches "Marvel\'s Daredevil" but NOT "Daredevil: Born Again". '
-    'Reply with ONLY a compact JSON object: {"match": <candidate number (1, 2, 3, ...) or null>}. '
-    "Use null if no candidate matches. No other text, no markdown, no explanation."
-)
-
-_LLM_EPISODE_PARSE_SYSTEM = (
-    "You are a TV episode filename parser. Extract only the season and "
-    "episode numbers from the filename.\n\n"
-    "Rules:\n"
-    "- A bare trailing number with no other marker is the episode number, "
-    'never the season (e.g. "Show 09" -> episode 9, season null).\n'
-    "- Only set season when it is explicitly marked (S02, Season 2, "
-    "2nd Season, etc.). Never infer season from a bare number.\n"
-    '- Version suffixes like "01v2" mean episode 1.\n'
-    "- Tokens like NCED, NCOP, OP, ED, PV, CM, SP, OVA, or OAD indicate "
-    "non-episode bonus content, not a numbered episode, unless an explicit "
-    "SxxEyy or E## marker is also present — set episode to null for these.\n"
-    "- If you cannot determine the episode with confidence, set episode to "
-    "null rather than guessing.\n\n"
-    "Reply with ONLY a compact JSON object: "
-    '{"season": <integer or null>, "episode": <integer or null>}. '
-    "No other text, no markdown, no explanation."
-)
-
-_LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "episode_match",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["season", "episode"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-_LLM_SHOW_MATCH_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "show_match",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "match": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["match"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-_LLM_EPISODE_PARSE_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "episode_parse",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["season", "episode"],
-            "additionalProperties": False,
-        },
-    },
-}
 
 
 def _normalize_title(s: str) -> str:
@@ -726,7 +637,9 @@ class PathImportOrchestrator:
         else:
             # No normalized exact match — ask the LLM to disambiguate before
             # falling back to the top popularity result.
-            llm_pick = await self._llm_pick_candidate(show_dir, candidates)
+            llm_pick = await llm_pick_candidate(
+                self.llm, show_dir, candidates, on_event=self.on_event
+            )
             if llm_pick is not None:
                 best = llm_pick
                 tmdb_id = best["id"]
@@ -837,85 +750,6 @@ class PathImportOrchestrator:
 
         return show, "created"
 
-    async def _llm_parse_episode(
-        self,
-        filename: str,
-        known_season: int | None = None,
-    ) -> tuple[int | None, int | None]:
-        """Use the LLM to extract season and episode numbers from a filename.
-
-        Called when regex parsing in :mod:`~jidou.services.path_parser` returns
-        ``episode=None``.  Uses a lightweight prompt that asks only for season
-        and episode — the show is already known from the directory.
-
-        Args:
-            filename: Basename of the episode file.
-            known_season: Season already inferred from the directory path, if any.
-                Passed as a grounding hint to reduce hallucination.
-
-        Returns:
-            ``(season, episode)`` tuple; either value may be None.
-        """
-        if self.llm is None or not self.llm.is_available():
-            return None, None
-
-        hint = f"\nKnown season from directory: {known_season}" if known_season is not None else ""
-        try:
-            response = await self.llm.complete(
-                prompt=f"Filename: {filename}{hint}",
-                system=_LLM_EPISODE_PARSE_SYSTEM,
-                response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
-            )
-        except Exception as exc:
-            logger.warning("LLM episode-parse failed for %r", filename)
-            await self._emit("warn", f"LLM episode-parse failed for '{filename}': {exc}")
-            return None, None
-
-        if response is None:
-            await self._emit("warn", f"LLM episode-parse returned no response for '{filename}'")
-            return None, None
-
-        parsed = parse_llm_json(response.content)
-        if parsed is None:
-            logger.warning(
-                "LLM returned invalid JSON for episode parse of %r: %r", filename, response.content
-            )
-            await self._emit(
-                "warn",
-                f"LLM episode-parse returned invalid JSON for '{filename}': {response.content!r}",
-            )
-            return None, None
-
-        if not isinstance(parsed, dict):
-            logger.warning(
-                "LLM returned non-dict JSON for episode parse of %r: %r", filename, response.content
-            )
-            content = response.content
-            await self._emit(
-                "warn", f"LLM episode-parse returned non-object JSON for '{filename}': {content!r}"
-            )
-            return None, None
-
-        raw_season = parsed.get("season")
-        raw_episode = parsed.get("episode")
-        try:
-            season = int(raw_season) if raw_season is not None else None
-            episode = int(raw_episode) if raw_episode is not None else None
-        except (TypeError, ValueError):
-            logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
-            await self._emit(
-                "warn", f"LLM episode-parse returned non-integer season/episode for '{filename}'"
-            )
-            return None, None
-
-        logger.debug("LLM episode-parse: %r → season=%s episode=%s", filename, season, episode)
-        await self._emit(
-            "info",
-            f"LLM episode-parse: '{filename}' -> season={season} episode={episode}",
-            {"filename": filename, "season": season, "episode": episode},
-        )
-        return season, episode
-
     async def _absolute_lookup(self, show_id: int, absolute_number: int) -> Episode | None:
         """Look up an Episode by absolute (series-wide) episode number.
 
@@ -977,7 +811,9 @@ class PathImportOrchestrator:
 
         if episode is None:
             filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
-            llm_season, llm_episode = await self._llm_parse_episode(filename, season)
+            llm_season, llm_episode = await llm_parse_episode(
+                self.llm, filename, season, on_event=self.on_event
+            )
             if llm_episode is None:
                 # The LLM may still have proposed a season even without an
                 # episode — surface it rather than silently discarding it.
@@ -1002,8 +838,8 @@ class PathImportOrchestrator:
                 abs_ep = await self._absolute_lookup(show_id, absolute_guess)
                 if abs_ep is not None:
                     return abs_ep, season, episode
-                llm_ep, llm_season, llm_episode_num = await self._llm_match(
-                    show_id, show_title, entry
+                llm_ep, llm_season, llm_episode_num = await llm_match_episode(
+                    self.session, self.llm, show_id, show_title, entry, on_event=self.on_event
                 )
                 return (
                     llm_ep,
@@ -1019,218 +855,11 @@ class PathImportOrchestrator:
         if abs_ep is not None:
             return abs_ep, season, episode
 
-        llm_ep, llm_season, llm_episode_num = await self._llm_match(show_id, show_title, entry)
+        llm_ep, llm_season, llm_episode_num = await llm_match_episode(
+            self.session, self.llm, show_id, show_title, entry, on_event=self.on_event
+        )
         return (
             llm_ep,
             llm_season if llm_season is not None else season,
             llm_episode_num if llm_episode_num is not None else episode,
         )
-
-    async def _llm_pick_candidate(
-        self,
-        show_dir: str,
-        candidates: list[dict[str, Any]],
-    ) -> dict[str, Any] | None:
-        """Ask the LLM to pick the best TMDB candidate for show_dir.
-
-        Only called when exact normalized matching fails across all candidates.
-        Handles cases like "Daredevil" → "Marvel's Daredevil" where the directory
-        omits a leading article or franchise tag that TMDB includes in the title.
-
-        Args:
-            show_dir: Show directory name to match.
-            candidates: TMDB search result dicts, each with at least ``"name"``.
-
-        Returns:
-            The chosen candidate dict, or None if the LLM is unavailable or
-            cannot determine a match.
-        """
-        if self.llm is None or not self.llm.is_available():
-            return None
-
-        shortlist = candidates[:10]
-        lines = [
-            f"{i + 1}. {c.get('name')} ({str(c.get('first_air_date') or '')[:4] or '?'})"
-            for i, c in enumerate(shortlist)
-        ]
-        prompt = f'Directory: "{show_dir}"\n\nCandidates:\n' + "\n".join(lines)
-
-        try:
-            response = await self.llm.complete(
-                prompt=prompt,
-                system=_LLM_SHOW_MATCH_SYSTEM,
-                response_format=_LLM_SHOW_MATCH_RESPONSE_FORMAT,
-            )
-        except Exception as exc:
-            logger.warning("LLM show-match failed for %r", show_dir)
-            await self._emit("warn", f"LLM show-match failed for '{show_dir}': {exc}")
-            return None
-
-        if response is None:
-            await self._emit("warn", f"LLM show-match returned no response for '{show_dir}'")
-            return None
-
-        parsed = parse_llm_json(response.content)
-        if parsed is None:
-            logger.warning(
-                "LLM returned invalid JSON for show-match of %r: %r", show_dir, response.content
-            )
-            await self._emit(
-                "warn",
-                f"LLM show-match returned invalid JSON for '{show_dir}': {response.content!r}",
-            )
-            return None
-
-        raw_match = parsed.get("match") if isinstance(parsed, dict) else None
-        if raw_match is None:
-            await self._emit("warn", f"LLM show-match could not pick a candidate for '{show_dir}'")
-            return None
-
-        try:
-            idx = int(raw_match) - 1
-        except (TypeError, ValueError):
-            logger.warning("LLM returned non-integer match %r for show dir %r", raw_match, show_dir)
-            await self._emit("warn", f"LLM show-match returned a non-integer pick for '{show_dir}'")
-            return None
-
-        if 0 <= idx < len(shortlist):
-            await self._emit(
-                "info",
-                f"LLM show-match: '{show_dir}' -> '{shortlist[idx].get('name')}'",
-                {"show_dir": show_dir, "picked": shortlist[idx].get("name")},
-            )
-            return shortlist[idx]
-
-        logger.warning("LLM returned out-of-range index %d for show dir %r", idx + 1, show_dir)
-        await self._emit("warn", f"LLM show-match returned an out-of-range pick for '{show_dir}'")
-        return None
-
-    async def _llm_match(
-        self,
-        show_id: int,
-        show_title: str,
-        entry: ParsedPathEntry,
-    ) -> tuple[Episode | None, int | None, int | None]:
-        """Ask the LLM to identify the episode from the filename.
-
-        Only called after all DB-based lookup strategies have failed.
-
-        Args:
-            show_id: Database ID of the parent show.
-            show_title: Show title for prompt context.
-            entry: Parsed entry with the raw file path.
-
-        Returns:
-            ``(episode, season, episode_number)`` where ``episode`` is the
-            matching :class:`Episode` or None (LLM unavailable, unconfident,
-            or its proposed season/episode has no matching DB row), and
-            ``season``/``episode_number`` are the values the LLM actually
-            proposed — None if it never got far enough to propose any — so
-            callers can log what was attempted even on a miss.
-        """
-        if self.llm is None or not self.llm.is_available():
-            return None, None, None
-
-        eps = list(
-            (
-                await self.session.execute(
-                    select(Episode)
-                    .where(Episode.show_id == show_id)
-                    .order_by(Episode.season_number, Episode.episode_number)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if not eps:
-            return None, None, None
-
-        ep_list = "\n".join(
-            f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in eps[:500]
-        )
-        filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
-        prompt = f"Show: {show_title}\nFilename: {filename}\n\nEpisodes:\n{ep_list}"
-
-        try:
-            response = await self.llm.complete(
-                prompt=prompt,
-                system=_LLM_SYSTEM,
-                response_format=_LLM_MATCH_RESPONSE_FORMAT,
-            )
-        except Exception as exc:
-            logger.warning("LLM match failed for %r in show %r", filename, show_title)
-            await self._emit("warn", f"LLM episode-list match failed for '{filename}': {exc}")
-            return None, None, None
-
-        if response is None:
-            await self._emit(
-                "warn", f"LLM episode-list match returned no response for '{filename}'"
-            )
-            return None, None, None
-
-        parsed = parse_llm_json(response.content)
-        if parsed is None:
-            content = response.content
-            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, content)
-            await self._emit(
-                "warn",
-                f"LLM episode-list match returned invalid JSON for '{filename}': {content!r}",
-            )
-            return None, None, None
-
-        if not isinstance(parsed, dict):
-            logger.warning(
-                "LLM returned non-dict JSON for match of %r: %r", filename, response.content
-            )
-            await self._emit(
-                "warn",
-                f"LLM episode-list match returned non-object JSON for '{filename}': "
-                f"{response.content!r}",
-            )
-            return None, None, None
-
-        raw_season = parsed.get("season")
-        raw_episode = parsed.get("episode")
-        if raw_season is None or raw_episode is None:
-            await self._emit(
-                "warn", f"LLM episode-list match could not identify '{filename}' among episodes"
-            )
-            return None, None, None
-
-        try:
-            season, episode_num = int(raw_season), int(raw_episode)
-        except (TypeError, ValueError):
-            logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
-            await self._emit(
-                "warn",
-                f"LLM episode-list match returned non-integer season/episode for '{filename}'",
-            )
-            return None, None, None
-
-        stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.season_number == season,
-            Episode.episode_number == episode_num,
-        )
-        ep = (await self.session.execute(stmt)).scalar_one_or_none()
-        if ep is not None:
-            logger.info(
-                "LLM matched %r -> S%02dE%02d for show %r",
-                filename,
-                season,
-                episode_num,
-                show_title,
-            )
-            await self._emit(
-                "info",
-                f"LLM episode-list match: '{filename}' -> S{season:02d}E{episode_num:02d}",
-                {"filename": filename, "season": season, "episode": episode_num},
-            )
-        else:
-            await self._emit(
-                "warn",
-                f"LLM episode-list match proposed S{season:02d}E{episode_num:02d} for "
-                f"'{filename}' but no such episode exists in the DB",
-                {"filename": filename, "season": season, "episode": episode_num},
-            )
-        return ep, season, episode_num
