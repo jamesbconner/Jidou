@@ -121,7 +121,7 @@ async def trigger_task(
         )
 
     # Delayed import to avoid circular reference with Celery
-    from jidou.services.progress import enqueue_task
+    from jidou.services.progress import TaskDispatchError, enqueue_task
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.route_tasks import route_files_task
@@ -155,5 +155,5 @@ async def trigger_task(
         return await enqueue_task(
             db_session, task_id, payload.task_type, _dispatch, dry_run=payload.dry_run
         )
-    except Exception as exc:
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc

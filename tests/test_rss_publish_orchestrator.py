@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jidou.services.progress import TaskDispatchError
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -48,9 +50,9 @@ def _fake_enqueue(task: MagicMock) -> AsyncMock:
     async def _run(session, task_id, task_type, dispatch, *, dry_run=False):  # type: ignore[no-untyped-def]
         try:
             dispatch()
-        except Exception:
+        except Exception as exc:
             await session.commit()
-            raise
+            raise TaskDispatchError(str(exc)) from exc
         return task
 
     return AsyncMock(side_effect=_run)

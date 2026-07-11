@@ -8,6 +8,7 @@ import pytest
 from jidou.models.task import BackgroundTask, TaskStatus
 from jidou.services.progress import (
     TaskCancelledError,
+    TaskDispatchError,
     check_task_cancelled,
     create_task_record,
     enqueue_task,
@@ -336,7 +337,13 @@ async def test_enqueue_task_happy_path_creates_and_dispatches() -> None:
 
 @pytest.mark.asyncio
 async def test_enqueue_task_broker_failure_marks_failed_and_reraises() -> None:
-    """A dispatch() failure marks the row FAILED with a consistent message and re-raises."""
+    """A dispatch() failure marks the row FAILED with a consistent message and re-raises.
+
+    Raises TaskDispatchError specifically (not the original ConnectionError)
+    so callers can distinguish a genuine broker failure from a
+    create_task_record failure, which is a different (database) problem and
+    must not be caught by the same except clause.
+    """
     task = MagicMock(spec=BackgroundTask)
     task.status = TaskStatus.PENDING.value
     task.progress_total = 0
@@ -344,7 +351,7 @@ async def test_enqueue_task_broker_failure_marks_failed_and_reraises() -> None:
     session = _make_mock_session(task)
     dispatch = MagicMock(side_effect=ConnectionError("broker unreachable"))
 
-    with pytest.raises(ConnectionError, match="broker unreachable"):
+    with pytest.raises(TaskDispatchError, match="broker unreachable"):
         await enqueue_task(session, "task-id", "scan", dispatch)
 
     dispatch.assert_called_once()

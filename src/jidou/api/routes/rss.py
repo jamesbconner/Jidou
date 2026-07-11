@@ -30,7 +30,7 @@ from jidou.schemas.rss_schema import (
 )
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.llm_service import LLMService
-from jidou.services.progress import enqueue_task
+from jidou.services.progress import TaskDispatchError, enqueue_task
 from jidou.services.rss_config import fill_missing_yarss2_defaults, parse_rss_config
 
 logger = logging.getLogger(__name__)
@@ -823,7 +823,7 @@ async def trigger_rss_import(
 
     try:
         new_task = await enqueue_task(db_session, task_id, "rss_import", _dispatch, dry_run=dry_run)
-    except Exception as exc:
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
     logger.info("Enqueued RSS import task %s (dry_run=%s)", task_id, dry_run)
@@ -869,7 +869,7 @@ async def trigger_rss_publish(
         new_task = await enqueue_task(
             db_session, task_id, "rss_publish", _dispatch, dry_run=dry_run
         )
-    except Exception as exc:
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
     logger.info("Enqueued RSS publish task %s (dry_run=%s)", task_id, dry_run)

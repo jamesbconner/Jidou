@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from jidou.api.routes.import_routes import _decode_upload
 from jidou.main import app
 from jidou.models.task import BackgroundTask, TaskStatus
+from jidou.services.progress import TaskDispatchError
 
 
 def _fake_enqueue(task: MagicMock) -> AsyncMock:
@@ -16,11 +17,15 @@ def _fake_enqueue(task: MagicMock) -> AsyncMock:
 
     Mirrors enqueue_task's real "create row, call dispatch, return the row"
     shape closely enough that call_args assertions against the mocked Celery
-    task (and its side_effect-raised broker failures) still work naturally.
+    task still work naturally, and re-raises a dispatch() failure as
+    TaskDispatchError to match the real function's contract.
     """
 
     async def _run(session, task_id, task_type, dispatch, *, dry_run=False):  # type: ignore[no-untyped-def]
-        dispatch()
+        try:
+            dispatch()
+        except Exception as exc:
+            raise TaskDispatchError(str(exc)) from exc
         return task
 
     return AsyncMock(side_effect=_run)

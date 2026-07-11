@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.models.task import BackgroundTask
 from jidou.schemas.task_schema import TaskRead
-from jidou.services.progress import enqueue_task
+from jidou.services.progress import TaskDispatchError, enqueue_task
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -104,7 +104,7 @@ async def import_text(
 
     try:
         return await enqueue_task(db_session, task_id, "import", _dispatch, dry_run=dry_run)
-    except Exception as exc:
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
 
@@ -153,5 +153,5 @@ async def import_database(
 
     try:
         return await enqueue_task(db_session, task_id, "db_import", _dispatch, dry_run=False)
-    except Exception as exc:
+    except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc

@@ -253,6 +253,15 @@ async def create_task_record(
     return task
 
 
+class TaskDispatchError(Exception):
+    """Raised when enqueue_task's dispatch() callable fails to reach the broker.
+
+    Deliberately distinct from whatever ``create_task_record`` might raise
+    (a DB error), so callers can translate only a genuine broker failure to a
+    503 without also catching and mislabeling database errors that way.
+    """
+
+
 async def enqueue_task(
     session: AsyncSession,
     celery_task_id: str,
@@ -266,9 +275,10 @@ async def enqueue_task(
     Pre-generating the task ID and creating the row before dispatch means the
     DB row exists even if the worker starts before this call returns. If the
     broker is unreachable, the row is marked FAILED with a consistent message
-    so it does not stay PENDING with no Celery job to ever advance it, and the
-    original exception is re-raised for the caller to translate into its own
-    HTTP response.
+    so it does not stay PENDING with no Celery job to ever advance it, and a
+    ``TaskDispatchError`` is raised for the caller to translate into its own
+    HTTP response. A failure in ``create_task_record`` itself is not caught
+    here and propagates as-is — it is a database problem, not a broker one.
 
     Args:
         session: Active database session.
@@ -281,7 +291,7 @@ async def enqueue_task(
         The created BackgroundTask row.
 
     Raises:
-        Exception: Whatever *dispatch* raised, after marking the row FAILED.
+        TaskDispatchError: If *dispatch* raised, after marking the row FAILED.
     """
     new_task = await create_task_record(session, celery_task_id, task_type, dry_run=dry_run)
     try:
@@ -294,7 +304,7 @@ async def enqueue_task(
             TaskStatus.FAILED,
             progress_message=f"Failed to enqueue task: {exc}",
         )
-        raise
+        raise TaskDispatchError(str(exc)) from exc
     return new_task
 
 
