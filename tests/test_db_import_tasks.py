@@ -331,6 +331,27 @@ class TestUpdateEpisode:
         assert ep.tracked_source == "sftp"
         assert ep.file_tracked_at == datetime(2023, 1, 1)
 
+    def test_invalid_file_tracked_at_does_not_clear_existing_timestamp(self) -> None:
+        """A malformed (non-null) file_tracked_at must not wipe a valid existing value.
+
+        Regression test for a Cursor Bugbot finding on PR-02: the key being
+        present with an unparseable value previously overwrote a good
+        timestamp with None instead of leaving it untouched.
+        """
+        ep = MagicMock()
+        ep.air_date = None
+        ep.file_tracked_at = datetime(2023, 1, 1)
+        _update_episode(ep, {"file_tracked_at": "not-a-datetime"})
+        assert ep.file_tracked_at == datetime(2023, 1, 1)
+
+    def test_explicit_null_file_tracked_at_clears_existing_timestamp(self) -> None:
+        """An explicit null file_tracked_at legitimately clears tracking state."""
+        ep = MagicMock()
+        ep.air_date = None
+        ep.file_tracked_at = datetime(2023, 1, 1)
+        _update_episode(ep, {"file_tracked_at": None})
+        assert ep.file_tracked_at is None
+
 
 # ---------------------------------------------------------------------------
 # Field coverage — restore must handle every Show/Episode column

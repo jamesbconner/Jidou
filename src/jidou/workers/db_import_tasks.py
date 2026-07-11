@@ -535,7 +535,16 @@ def _update_episode(ep: Episode, row: dict[str, Any]) -> None:
     ep.tracked_source = row.get("tracked_source", ep.tracked_source)
 
     if "file_tracked_at" in row:
-        ep.file_tracked_at = _parse_iso_datetime(row.get("file_tracked_at"))
+        raw = row.get("file_tracked_at")
+        if raw is None:
+            # Explicit null is a legitimate signal that tracking was cleared.
+            ep.file_tracked_at = None
+        else:
+            parsed = _parse_iso_datetime(raw)
+            # A malformed (non-null) value should not silently wipe a valid
+            # existing timestamp -- leave it untouched, same as air_date.
+            if parsed is not None:
+                ep.file_tracked_at = parsed
 
     air_date_raw = row.get("air_date")
     if air_date_raw:
