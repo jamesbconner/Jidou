@@ -3106,3 +3106,108 @@ class TestProcessShowEntriesDuplicateDetection:
         dup_events = [msg for _, msg, _ in events if "resolved to the same episode" in msg]
         assert len(dup_events) == 1
         assert "S01E04" in dup_events[0]
+
+    async def test_cross_group_collision_detected_via_shared_episode_ids(self) -> None:
+        """When primary and secondary groups (from _import_show's split logic)
+        resolve to the same show and the same episode, the collision must be
+        visible in episodes_already_tracked — not silently lost because each
+        _process_show_entries call used to get its own fresh collision set.
+        """
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+        from jidou.services.path_parser import ParsedPathEntry
+
+        show = _make_show(id=1, tmdb_id=100, title="Frieren")
+        show.local_path = r"Z:\anime tv\Frieren"
+        show.episode_group_map = {}
+        show.aliases = ["sousou no frieren"]
+        shared_episode = _make_episode(id=42, show_id=1, season=1, episode=4)
+
+        dedup_miss = MagicMock()
+        dedup_miss.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=dedup_miss)
+        session.commit = AsyncMock()
+        session.scalar = AsyncMock(return_value=5)  # ep_count > 0
+        session.add = MagicMock()
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+
+        # Two entries that will end up in different groups (primary vs secondary)
+        # but resolve to the same episode.
+        entries = [
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 01\Frieren.S01E04.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=1,
+                episode=4,
+                is_absolute=False,
+            ),
+            ParsedPathEntry(
+                raw_path=r"Z:\anime tv\Frieren\Season 02\Other Show S02E01.mkv",
+                show_dir="Frieren",
+                show_root=r"Z:\anime tv\Frieren",
+                season=2,
+                episode=1,
+                is_absolute=False,
+            ),
+        ]
+
+        async def fake_find_episode(
+            show_id: int,
+            show_title: str,
+            entry: ParsedPathEntry,
+            episode_group_map: dict | None = None,
+        ) -> tuple[MagicMock, int | None, int | None]:
+            # Both entries resolve to the same episode
+            return shared_episode, entry.season, entry.episode
+
+        from jidou.services.filename_parser import FilenameParseResult
+
+        # Simulate: first file agrees with the show, second file disagrees
+        # (LLM says it belongs to "Other Show") — triggering a split.
+        call_count = {"n": 0}
+
+        async def fake_parse_filename(filename: str, llm: object = None) -> FilenameParseResult:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # First file: agrees with the primary show
+                return FilenameParseResult(
+                    show_name="Frieren",
+                    season=1, episode=4, crc32=None,
+                    content_type="anime", confidence=0.95, llm_ok=True,
+                )
+            else:
+                # Second file: disagrees — LLM says "Other Show"
+                return FilenameParseResult(
+                    show_name="Other Show",
+                    season=2, episode=1, crc32=None,
+                    content_type="anime", confidence=0.95, llm_ok=True,
+                )
+
+        events, capture = _event_capture()
+        orch = PathImportOrchestrator(session, AsyncMock(), on_event=capture)
+
+        with (
+            patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+            patch.object(orch, "_find_episode", fake_find_episode),
+            patch(
+                "jidou.orchestrators.path_import_orchestrator.parse_filename",
+                fake_parse_filename,
+            ),
+            # Secondary resolution finds the same show via alias
+            patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        ):
+            results = await orch._import_show("Frieren", entries)
+
+        # Primary group: 1 file tracked (S01E04)
+        # Secondary group: 1 file resolves to same episode → already_tracked
+        total_tracked = sum(r.episodes_tracked for r in results)
+        total_already = sum(r.episodes_already_tracked for r in results)
+        total_unmatched = sum(r.episodes_unmatched for r in results)
+
+        assert total_tracked == 1
+        assert total_already == 1
+        assert total_unmatched == 0

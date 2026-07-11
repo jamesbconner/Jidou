@@ -312,7 +312,14 @@ class PathImportOrchestrator:
                 mismatched.setdefault(norm, []).append(entry)
                 mismatched_display.setdefault(norm, parsed.show_name)
 
-        results = [await self._process_show_entries(show_dir, primary_show, action, matched)]
+        # A single collision set shared across primary and all secondary
+        # groups so that cross-group duplicates (e.g. primary and secondary
+        # resolving to the same show via aliases) are visible in the
+        # episodes_already_tracked counter rather than silently vanishing.
+        shared_episode_ids: set[int] = set()
+
+        results = [await self._process_show_entries(show_dir, primary_show, action, matched,
+                                                      matched_episode_ids=shared_episode_ids)]
 
         for norm, sub_entries in mismatched.items():
             display_name = mismatched_display[norm]
@@ -330,6 +337,7 @@ class PathImportOrchestrator:
                     secondary_action,
                     sub_entries,
                     set_local_path=False,
+                    matched_episode_ids=shared_episode_ids,
                 )
             )
 
@@ -400,6 +408,7 @@ class PathImportOrchestrator:
         action: str,
         entries: list[ParsedPathEntry],
         set_local_path: bool = True,
+        matched_episode_ids: set[int] | None = None,
     ) -> ShowImportResult:
         """Match a resolved show's entries to episodes and mark them tracked.
 
@@ -417,6 +426,13 @@ class PathImportOrchestrator:
                 primary show's library folder. The show is still fully
                 created/matched; only the auto-path step is skipped, same as
                 the existing "content_type unknown" skip elsewhere.
+            matched_episode_ids: Shared set of episode IDs already claimed
+                by a previous ``_process_show_entries`` call within the same
+                ``_import_show`` invocation.  When provided, a collision
+                against this set is counted as ``episodes_already_tracked``
+                rather than silently falling into a counter gap.  When
+                ``None``, a fresh set is created (backwards-compatible for
+                any caller that doesn't need cross-group collision detection).
 
         Returns:
             :class:`ShowImportResult` for this show/entries group.
@@ -471,7 +487,8 @@ class PathImportOrchestrator:
         # same episode (e.g. a season/episode numbering mismatch collision)
         # is never silently invisible in either the tracked or unmatched
         # counters -- see episodes_already_tracked.
-        matched_episode_ids: set[int] = set()
+        if matched_episode_ids is None:
+            matched_episode_ids = set()
         for entry in entries:
             ep, resolved_season, resolved_episode = await self._find_episode(
                 show.id, show.title, entry, show.episode_group_map
