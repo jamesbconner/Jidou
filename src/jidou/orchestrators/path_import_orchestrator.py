@@ -412,6 +412,7 @@ class PathImportOrchestrator:
         entries: list[ParsedPathEntry],
         set_local_path: bool = True,
         matched_episode_ids: set[int] | None = None,
+        matched_episode_ids: set[int] | None = None,
     ) -> ShowImportResult:
         """Match a resolved show's entries to episodes and mark them tracked.
 
@@ -429,6 +430,13 @@ class PathImportOrchestrator:
                 primary show's library folder. The show is still fully
                 created/matched; only the auto-path step is skipped, same as
                 the existing "content_type unknown" skip elsewhere.
+            matched_episode_ids: Shared set of episode IDs already claimed
+                by a previous ``_process_show_entries`` call within the same
+                ``_import_show`` invocation.  When provided, a collision
+                against this set is counted as ``episodes_already_tracked``
+                rather than silently falling into a counter gap.  When
+                ``None``, a fresh set is created (backwards-compatible for
+                any caller that doesn't need cross-group collision detection).
             matched_episode_ids: Shared set of episode IDs already claimed
                 by a previous ``_process_show_entries`` call within the same
                 ``_import_show`` invocation.  When provided, a collision
@@ -490,6 +498,8 @@ class PathImportOrchestrator:
         # same episode (e.g. a season/episode numbering mismatch collision)
         # is never silently invisible in either the tracked or unmatched
         # counters -- see episodes_already_tracked.
+        if matched_episode_ids is None:
+            matched_episode_ids = set()
         if matched_episode_ids is None:
             matched_episode_ids = set()
         for entry in entries:
