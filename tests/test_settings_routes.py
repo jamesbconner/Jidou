@@ -33,7 +33,11 @@ class TestGetSettings:
         try:
             resp = TestClient(app).get("/api/settings")
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": False, "calendar_enabled": True}
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": True,
+            }
         finally:
             app.dependency_overrides.clear()
 
@@ -49,7 +53,11 @@ class TestGetSettings:
         try:
             resp = TestClient(app).get("/api/settings")
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": True, "calendar_enabled": True}
+            assert resp.json() == {
+                "show_adult_content": True,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": True,
+            }
         finally:
             app.dependency_overrides.clear()
 
@@ -65,7 +73,31 @@ class TestGetSettings:
         try:
             resp = TestClient(app).get("/api/settings")
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": False, "calendar_enabled": False}
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": False,
+                "recent_episodes_enabled": True,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_returns_stored_recent_episodes_enabled_value(self) -> None:
+        """GET /settings reflects a previously stored recent_episodes_enabled=False."""
+        row = MagicMock()
+        row.key = "dashboard.recent_episodes_enabled"
+        row.value = False
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            resp = TestClient(app).get("/api/settings")
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": False,
+            }
         finally:
             app.dependency_overrides.clear()
 
@@ -90,7 +122,11 @@ class TestUpdateSettings:
         try:
             resp = TestClient(app).patch("/api/settings", json={"show_adult_content": True})
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": True, "calendar_enabled": True}
+            assert resp.json() == {
+                "show_adult_content": True,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": True,
+            }
             # First execute() call is the upsert; second is the re-fetch in get_all_settings.
             assert session.execute.await_count == 2
         finally:
@@ -115,7 +151,39 @@ class TestUpdateSettings:
         try:
             resp = TestClient(app).patch("/api/settings", json={"calendar_enabled": False})
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": False, "calendar_enabled": False}
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": False,
+                "recent_episodes_enabled": True,
+            }
+            assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_updates_recent_episodes_enabled(self) -> None:
+        """PATCH /settings with recent_episodes_enabled applies the update and returns state."""
+        row = MagicMock()
+        row.key = "dashboard.recent_episodes_enabled"
+        row.value = False
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = [row]
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None, result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch("/api/settings", json={"recent_episodes_enabled": False})
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": False,
+            }
             assert session.execute.await_count == 2
         finally:
             app.dependency_overrides.clear()
@@ -133,7 +201,11 @@ class TestUpdateSettings:
         try:
             resp = TestClient(app).patch("/api/settings", json={})
             assert resp.status_code == 200
-            assert resp.json() == {"show_adult_content": False, "calendar_enabled": True}
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "recent_episodes_enabled": True,
+            }
             # Only the get_all_settings read — no upsert executed.
             assert session.execute.await_count == 1
         finally:

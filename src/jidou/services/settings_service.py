@@ -14,10 +14,12 @@ from jidou.models.app_setting import AppSetting
 
 SHOW_ADULT_CONTENT = "dashboard.show_adult_content"
 CALENDAR_ENABLED = "dashboard.calendar_enabled"
+RECENT_EPISODES_ENABLED = "dashboard.recent_episodes_enabled"
 
 _DEFAULTS: dict[str, Any] = {
     SHOW_ADULT_CONTENT: False,
     CALENDAR_ENABLED: True,
+    RECENT_EPISODES_ENABLED: True,
 }
 
 
