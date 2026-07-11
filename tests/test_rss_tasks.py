@@ -1,31 +1,43 @@
 """Tests for rss_tasks — RSS import and publish Celery workers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
-from jidou.models.task import TaskStatus
 from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishResult
 
 
-def _worker_session_mocks() -> tuple:
-    """Return (mock_engine, mock_session, mock_factory) for async worker tests."""
-    mock_engine = AsyncMock()
-    mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_factory = MagicMock(return_value=mock_session)
-    return mock_engine, mock_session, mock_factory
+def _capture_run_task_workflow(module_path: str) -> tuple:
+    """Patch <module_path>.run_task_workflow, capturing its call kwargs and `work` callback.
 
+    Mirrors the helper in tests/test_workers.py -- lifecycle machinery
+    (redelivery skip, RUNNING/COMPLETED/CANCELLED/FAILED transitions,
+    on_progress/on_event plumbing, soft-failure handling) is covered once,
+    generically, in tests/test_worker_harness.py. These tests only need to
+    verify rss_tasks' own orchestrator wiring and WorkflowResult shape.
+    """
+    captured: dict[str, object] = {}
 
-def _pending() -> MagicMock:
-    return MagicMock(status=TaskStatus.PENDING.value)
+    async def fake_run_task_workflow(
+        celery_task_id: str,
+        task_type: str,
+        work: object,
+        *,
+        progress_total: int = 0,
+        dry_run: bool = False,
+        running_message: str = "",
+    ) -> str:
+        captured["celery_task_id"] = celery_task_id
+        captured["task_type"] = task_type
+        captured["work"] = work
+        captured["progress_total"] = progress_total
+        captured["dry_run"] = dry_run
+        captured["running_message"] = running_message
+        return celery_task_id
 
-
-def _completed() -> MagicMock:
-    return MagicMock(status=TaskStatus.COMPLETED.value)
+    return patch(f"{module_path}.run_task_workflow", side_effect=fake_run_task_workflow), captured
 
 
 # ---------------------------------------------------------------------------
@@ -57,47 +69,25 @@ def test_rss_import_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _rss_import — redelivery skip
+# _rss_import — orchestrator wiring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_rss_import_skips_redelivery() -> None:
-    """_rss_import exits early when task is already terminal."""
+async def test_rss_import_wires_orchestrator_and_returns_summary() -> None:
+    """_rss_import wires run_task_workflow, and its `work` closure calls RssImportOrchestrator."""
     from jidou.workers.rss_tasks import _rss_import
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-    ):
-        result = await _rss_import("tid-ri1", dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
+        result = await _rss_import("tid-ri1", dry_run=True)
 
     assert result == "tid-ri1"
-    mock_update.assert_not_called()
+    assert captured["task_type"] == "rss_import"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
+    assert captured["running_message"] == "Downloading RSS config…"
 
-
-# ---------------------------------------------------------------------------
-# _rss_import — success path
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_import_success_path() -> None:
-    """_rss_import runs RssImportOrchestrator and marks task COMPLETED."""
-    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
-    from jidou.workers.rss_tasks import _rss_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    final_task = _completed()
     import_result = RssImportResult(
         feeds_created=2,
         feeds_updated=0,
@@ -107,237 +97,96 @@ async def test_rss_import_success_path() -> None:
         shows_linked=3,
         snapshot_id=42,
         errors=[],
-        dry_run=False,
+        dry_run=True,
     )
-
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=final_task,
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks._build_sftp") as mock_build_sftp,
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
             return_value=import_result,
-        ),
+        ) as mock_run,
     ):
-        result = await _rss_import("tid-ri2", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-ri2"
-    mock_engine.dispose.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# _rss_import — orchestrator reports errors
-# ---------------------------------------------------------------------------
+    mock_build_sftp.assert_called_once()
+    mock_run.assert_awaited_once()
+    assert not wf_result.errors
+    assert wf_result.result_summary == {
+        "feeds_created": 2,
+        "feeds_updated": 0,
+        "subscriptions_created": 5,
+        "subscriptions_updated": 1,
+        "subscriptions_remote_deleted": 0,
+        "shows_linked": 3,
+        "snapshot_id": 42,
+        "errors": [],
+        "dry_run": True,
+    }
 
 
 @pytest.mark.asyncio
-async def test_rss_import_error_result_marks_failed_and_raises() -> None:
-    """When RssImportOrchestrator returns errors, task is FAILED and RuntimeError raised."""
-    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+async def test_rss_import_error_result_becomes_soft_failure() -> None:
+    """RssImportOrchestrator errors become a soft failure on the WorkflowResult."""
     from jidou.workers.rss_tasks import _rss_import
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    error_result = RssImportResult(errors=["config not found"])
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
+        await _rss_import("tid-ri2", dry_run=False)
 
+    error_result = RssImportResult(errors=["config not found"])
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
             return_value=error_result,
         ),
-        pytest.raises(RuntimeError, match="Import failed"),
     ):
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+
+    assert wf_result.errors == ["config not found"]
+    assert wf_result.message == "Import failed: config not found"
+    assert wf_result.result_summary == {"errors": ["config not found"], "dry_run": False}
+
+
+@pytest.mark.asyncio
+async def test_rss_import_wires_on_event_to_orchestrator() -> None:
+    """RssImportOrchestrator receives the harness's on_event at construction time."""
+    from jidou.workers.rss_tasks import RssImportOrchestrator, _rss_import
+
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
         await _rss_import("tid-ri3", dry_run=False)
 
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
+    captured_kwargs: dict[str, object] = {}
+    real_init = RssImportOrchestrator.__init__
 
-
-# ---------------------------------------------------------------------------
-# _rss_import — on_event closure invocation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_import_on_event_closure_is_invoked() -> None:
-    """The on_event closure body executes when the orchestrator calls it."""
-    from jidou.workers.rss_tasks import _rss_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    final_task = _completed()
-    import_result = RssImportResult(errors=[])
-
-    class FakeImportOrchestrator:
-        def __init__(self, *args: object, on_event: object = None, **kwargs: object) -> None:
-            self._on_event = on_event
-
-        async def run(self) -> RssImportResult:
-            if callable(self._on_event):
-                await self._on_event("info", "Processing feed", None)  # type: ignore[operator]
-            return import_result
+    def fake_init(self: object, **kwargs: object) -> None:
+        captured_kwargs.update(kwargs)
+        real_init(self, **kwargs)  # type: ignore[arg-type]
 
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=final_task,
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock) as mock_event,
         patch("jidou.workers.rss_tasks._build_sftp"),
-        patch("jidou.workers.rss_tasks.RssImportOrchestrator", FakeImportOrchestrator),
-    ):
-        result = await _rss_import("tid-rie1", dry_run=False)
-
-    assert result == "tid-rie1"
-    mock_event.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# _rss_import — cancellation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_import_cancellation_handled_gracefully() -> None:
-    """TaskCancelledError in _rss_import is caught and swallowed."""
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.rss_tasks import _rss_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch.object(RssImportOrchestrator, "__init__", fake_init),
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
+            return_value=RssImportResult(errors=[]),
         ),
     ):
-        result = await _rss_import("tid-ric1", dry_run=False)
+        await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    # TaskCancelledError is swallowed in _rss_import
-    assert result == "tid-ric1"
-
-
-# ---------------------------------------------------------------------------
-# _rss_import — completed is None (False branch)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_import_skips_emit_when_task_is_none() -> None:
-    """No emit_progress 'complete' event when update_task_status returns None."""
-    from jidou.workers.rss_tasks import _rss_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    import_result = RssImportResult(errors=[])
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=None,  # triggers the False branch at line 144
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
-        patch(
-            "jidou.workers.rss_tasks.RssImportOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=import_result,
-        ),
-    ):
-        result = await _rss_import("tid-rin1", dry_run=False)
-
-    assert result == "tid-rin1"
-    complete_calls = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "complete"]
-    assert len(complete_calls) == 0
-
-
-# ---------------------------------------------------------------------------
-# _rss_import — unexpected exception
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_import_exception_marks_failed_and_raises() -> None:
-    """Unexpected exception in _rss_import marks FAILED and re-raises."""
-    from jidou.workers.rss_tasks import _rss_import
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
-        patch(
-            "jidou.workers.rss_tasks.RssImportOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("sftp timeout"),
-        ),
-        pytest.raises(RuntimeError),
-    ):
-        await _rss_import("tid-ri4", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    assert captured_kwargs["on_event"] is on_event
 
 
 # ---------------------------------------------------------------------------
@@ -369,47 +218,25 @@ def test_rss_publish_task_soft_timeout_calls_mark_timed_out() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _rss_publish — redelivery skip
+# _rss_publish — orchestrator wiring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_rss_publish_skips_redelivery() -> None:
-    """_rss_publish exits early when task is already terminal."""
+async def test_rss_publish_wires_orchestrator_and_returns_summary() -> None:
+    """_rss_publish wires run_task_workflow, and its `work` closure calls RssPublishOrchestrator."""
     from jidou.workers.rss_tasks import _rss_publish
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    terminal = MagicMock(status=TaskStatus.FAILED.value)
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-    ):
-        result = await _rss_publish("tid-rp1", dry_run=False)
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
+        result = await _rss_publish("tid-rp1", dry_run=True)
 
     assert result == "tid-rp1"
-    mock_update.assert_not_called()
+    assert captured["task_type"] == "rss_publish"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is True
+    assert captured["running_message"] == "Publishing RSS config…"
 
-
-# ---------------------------------------------------------------------------
-# _rss_publish — success path
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_publish_success_path() -> None:
-    """_rss_publish runs RssPublishOrchestrator and marks task COMPLETED."""
-    from jidou.orchestrators.rss_publish_orchestrator import RssPublishResult
-    from jidou.workers.rss_tasks import _rss_publish
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    final_task = _completed()
     publish_result = RssPublishResult(
         feeds_published=3,
         subscriptions_published=10,
@@ -418,232 +245,88 @@ async def test_rss_publish_success_path() -> None:
         backup_path="/tmp/backup.xml",
         errors=[],
     )
-
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=final_task,
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks._build_sftp") as mock_build_sftp,
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,
             return_value=publish_result,
-        ),
+        ) as mock_run,
     ):
-        result = await _rss_publish("tid-rp2", dry_run=False)
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    assert result == "tid-rp2"
-    mock_engine.dispose.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# _rss_publish — orchestrator reports errors
-# ---------------------------------------------------------------------------
+    mock_build_sftp.assert_called_once()
+    mock_run.assert_awaited_once()
+    assert not wf_result.errors
+    assert wf_result.result_summary == {
+        "feeds_published": 3,
+        "subscriptions_published": 10,
+        "new_keys_assigned": 2,
+        "snapshot_id": 7,
+        "backup_path": "/tmp/backup.xml",
+        "dry_run": True,
+    }
 
 
 @pytest.mark.asyncio
-async def test_rss_publish_error_result_marks_failed_and_raises() -> None:
-    """When RssPublishOrchestrator returns errors, task FAILED and RuntimeError raised."""
-    from jidou.orchestrators.rss_publish_orchestrator import RssPublishResult
+async def test_rss_publish_error_result_becomes_soft_failure() -> None:
+    """RssPublishOrchestrator errors become a soft failure on the WorkflowResult."""
     from jidou.workers.rss_tasks import _rss_publish
 
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    error_result = RssPublishResult(errors=["upload failed"])
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
+        await _rss_publish("tid-rp2", dry_run=False)
 
+    error_result = RssPublishResult(errors=["upload failed"])
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.rss_tasks._build_sftp"),
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,
             return_value=error_result,
         ),
-        pytest.raises(RuntimeError, match="Publish failed"),
     ):
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+
+    assert wf_result.errors == ["upload failed"]
+    assert wf_result.message == "Publish failed: upload failed"
+    assert wf_result.result_summary == {"errors": ["upload failed"], "dry_run": False}
+
+
+@pytest.mark.asyncio
+async def test_rss_publish_wires_on_event_to_orchestrator() -> None:
+    """RssPublishOrchestrator receives the harness's on_event at construction time."""
+    from jidou.workers.rss_tasks import RssPublishOrchestrator, _rss_publish
+
+    patcher, captured = _capture_run_task_workflow("jidou.workers.rss_tasks")
+    with patcher:
         await _rss_publish("tid-rp3", dry_run=False)
 
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
+    captured_kwargs: dict[str, object] = {}
+    real_init = RssPublishOrchestrator.__init__
 
-
-# ---------------------------------------------------------------------------
-# _rss_publish — on_event closure invocation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_publish_on_event_closure_is_invoked() -> None:
-    """The on_event closure body executes when the orchestrator calls it."""
-    from jidou.workers.rss_tasks import _rss_publish
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    final_task = _completed()
-    publish_result = RssPublishResult(errors=[])
-
-    class FakePublishOrchestrator:
-        def __init__(self, *args: object, on_event: object = None, **kwargs: object) -> None:
-            self._on_event = on_event
-
-        async def run(self) -> RssPublishResult:
-            if callable(self._on_event):
-                await self._on_event("info", "Publishing feed", None)  # type: ignore[operator]
-            return publish_result
+    def fake_init(self: object, **kwargs: object) -> None:
+        captured_kwargs.update(kwargs)
+        real_init(self, **kwargs)  # type: ignore[arg-type]
 
     with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=final_task,
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock) as mock_event,
         patch("jidou.workers.rss_tasks._build_sftp"),
-        patch("jidou.workers.rss_tasks.RssPublishOrchestrator", FakePublishOrchestrator),
-    ):
-        result = await _rss_publish("tid-rpe1", dry_run=False)
-
-    assert result == "tid-rpe1"
-    mock_event.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# _rss_publish — cancellation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_publish_cancellation_handled_gracefully() -> None:
-    """TaskCancelledError in _rss_publish is caught and swallowed."""
-    from jidou.services.progress import TaskCancelledError
-    from jidou.workers.rss_tasks import _rss_publish
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch.object(RssPublishOrchestrator, "__init__", fake_init),
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,
-            side_effect=TaskCancelledError("cancelled"),
+            return_value=RssPublishResult(errors=[]),
         ),
     ):
-        result = await _rss_publish("tid-rpc1", dry_run=False)
+        await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
-    # TaskCancelledError is swallowed in _rss_publish
-    assert result == "tid-rpc1"
-
-
-# ---------------------------------------------------------------------------
-# _rss_publish — completed is None (False branch)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_publish_skips_emit_when_task_is_none() -> None:
-    """No emit_progress 'complete' event when update_task_status returns None."""
-    from jidou.workers.rss_tasks import _rss_publish
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-    publish_result = RssPublishResult(errors=[])
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch(
-            "jidou.workers.rss_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=None,  # triggers the False branch at line 281
-        ),
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
-        patch(
-            "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
-            new_callable=AsyncMock,
-            return_value=publish_result,
-        ),
-    ):
-        result = await _rss_publish("tid-rpn1", dry_run=False)
-
-    assert result == "tid-rpn1"
-    complete_calls = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "complete"]
-    assert len(complete_calls) == 0
-
-
-# ---------------------------------------------------------------------------
-# _rss_publish — unexpected exception
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rss_publish_exception_marks_failed_and_raises() -> None:
-    """Unexpected exception in _rss_publish marks FAILED and re-raises."""
-    from jidou.workers.rss_tasks import _rss_publish
-
-    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
-
-    with (
-        patch("jidou.workers.rss_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.rss_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.rss_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending(),
-        ),
-        patch("jidou.workers.rss_tasks.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.workers.rss_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks.append_task_event", new_callable=AsyncMock),
-        patch("jidou.workers.rss_tasks._build_sftp"),
-        patch(
-            "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
-            new_callable=AsyncMock,
-            side_effect=ConnectionError("remote down"),
-        ),
-        pytest.raises(ConnectionError),
-    ):
-        await _rss_publish("tid-rp4", dry_run=False)
-
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
+    assert captured_kwargs["on_event"] is on_event

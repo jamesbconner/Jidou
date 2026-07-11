@@ -5,20 +5,13 @@ import logging
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
-from jidou.models.task import TaskStatus
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
 from jidou.services.llm_service import create_llm_service
-from jidou.services.progress import (
-    TaskCancelledError,
-    check_task_cancelled,
-    create_task_record,
-    emit_progress,
-    mark_task_timed_out,
-    update_task_status,
-)
+from jidou.services.progress import mark_task_timed_out
+from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -49,122 +42,40 @@ async def _match_files(
     dry_run: bool = False,
 ) -> str:
     """Async implementation of the parse/match task."""
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    try:
-        async with session_factory() as session:
-            task = await create_task_record(
-                session, celery_task_id, "match", progress_total=0, dry_run=dry_run
-            )
-            if task.status in {
-                TaskStatus.COMPLETED.value,
-                TaskStatus.FAILED.value,
-                TaskStatus.CANCELLED.value,
-            }:
-                logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
-                return celery_task_id
+    async def _work(
+        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+    ) -> WorkflowResult:
+        llm = create_llm_service(settings)
 
-            llm = create_llm_service(settings)
+        result = await ParseOrchestrator(
+            session,
+            llm,
+            local_tv_path=settings.local_tv_path,
+            local_anime_path=settings.local_anime_path,
+            local_movie_path=settings.local_movie_path,
+        ).run(dry_run=dry_run, on_progress=on_progress)
 
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.RUNNING,
-                progress_message="Parsing and matching files...",
-            )
+        total_processed = result.files_processed
+        return WorkflowResult(
+            progress_current=total_processed,
+            progress_total=total_processed,
+            message=f"Parse complete: {result.files_matched} matched",
+            result_summary={
+                "files_processed": result.files_processed,
+                "files_matched": result.files_matched,
+                "files_unmatched": result.files_unmatched,
+                "files_failed": result.files_failed,
+                "dry_run": dry_run,
+            },
+            complete_summary={"files_matched": result.files_matched, "dry_run": dry_run},
+        )
 
-            async def on_progress(current: int, total: int, message: str) -> None:
-                await check_task_cancelled(session, celery_task_id)
-                await update_task_status(
-                    session,
-                    celery_task_id,
-                    TaskStatus.RUNNING,
-                    progress_current=current,
-                    progress_total=total,
-                    progress_message=message,
-                )
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "progress",
-                        "data": {"current": current, "total": total, "message": message},
-                    }
-                )
-
-            result = await ParseOrchestrator(
-                session,
-                llm,
-                local_tv_path=settings.local_tv_path,
-                local_anime_path=settings.local_anime_path,
-                local_movie_path=settings.local_movie_path,
-            ).run(dry_run=dry_run, on_progress=on_progress)
-
-            total_processed = result.files_processed
-            completed = await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.COMPLETED,
-                progress_current=total_processed,
-                progress_total=total_processed,
-                progress_message=f"Parse complete: {result.files_matched} matched",
-                result_summary={
-                    "files_processed": result.files_processed,
-                    "files_matched": result.files_matched,
-                    "files_unmatched": result.files_unmatched,
-                    "files_failed": result.files_failed,
-                    "dry_run": dry_run,
-                },
-            )
-            if completed is not None and completed.status == TaskStatus.COMPLETED.value:
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "complete",
-                        "data": {
-                            "summary": {
-                                "files_matched": result.files_matched,
-                                "dry_run": dry_run,
-                            }
-                        },
-                    }
-                )
-
-        return celery_task_id
-
-    except TaskCancelledError:
-        logger.info("Match task cancelled")
-        async with session_factory() as session:
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.CANCELLED,
-                progress_message="Task cancelled",
-            )
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "cancelled",
-                    "data": {},
-                }
-            )
-        return celery_task_id
-    except Exception as exc:
-        logger.exception("Match task failed")
-        async with session_factory() as session:
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.FAILED,
-                progress_message=str(exc),
-            )
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "error",
-                    "data": {"error": str(exc)},
-                }
-            )
-        raise
-    finally:
-        await engine.dispose()
+    return await run_task_workflow(
+        celery_task_id,
+        "match",
+        _work,
+        progress_total=0,
+        dry_run=dry_run,
+        running_message="Parsing and matching files...",
+    )

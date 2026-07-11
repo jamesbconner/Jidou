@@ -10,11 +10,9 @@ from sqlalchemy import inspect
 
 from jidou.models.episode import Episode
 from jidou.models.show import Show
-from jidou.models.task import TaskStatus
 from jidou.workers.db_import_tasks import (
     _build_episode,
     _build_show,
-    _emit_progress,
     _update_episode,
     _update_show,
     check_restore_field_coverage,
@@ -457,89 +455,73 @@ class TestRestoreRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# _emit_progress
+# _db_import — shared helpers
+#
+# Lifecycle machinery (redelivery skip, RUNNING/COMPLETED/CANCELLED/FAILED
+# transitions, on_progress/on_event plumbing, engine/session lifecycle) is
+# covered once, generically, in tests/test_worker_harness.py. These tests
+# patch run_task_workflow to capture _db_import's `work` closure, then call
+# it directly with a plain session mock -- covering what's actually
+# db_import-specific: the show/episode/watchlist upsert loops. `_work` still
+# calls update_task_status (the "found N shows" RUNNING update) and
+# check_task_cancelled (per-row) directly, so those two stay patched at
+# jidou.workers.db_import_tasks -- everything else moved into the harness.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_emit_progress_calls_update_and_broadcast() -> None:
-    """_emit_progress calls update_task_status and emit_progress once each."""
-    mock_session = AsyncMock()
+def _capture_run_task_workflow(module_path: str) -> tuple:
+    """Patch <module_path>.run_task_workflow, capturing its call kwargs and `work` callback."""
+    captured: dict[str, object] = {}
 
+    async def fake_run_task_workflow(
+        celery_task_id: str,
+        task_type: str,
+        work: object,
+        *,
+        progress_total: int = 0,
+        dry_run: bool = False,
+        running_message: str = "",
+    ) -> str:
+        captured["celery_task_id"] = celery_task_id
+        captured["task_type"] = task_type
+        captured["work"] = work
+        captured["progress_total"] = progress_total
+        captured["dry_run"] = dry_run
+        captured["running_message"] = running_message
+        return celery_task_id
+
+    return patch(f"{module_path}.run_task_workflow", side_effect=fake_run_task_workflow), captured
+
+
+async def _invoke_work(captured: dict[str, object], session: AsyncMock) -> object:
+    """Call the captured `_work` closure with a no-op check_task_cancelled/update_task_status."""
     with (
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
+        patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
+        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
     ):
-        await _emit_progress(mock_session, "task-1", current=5, total=10, message="Processing")
-
-    mock_update.assert_called_once()
-    mock_emit.assert_called_once()
-    call_args = mock_emit.call_args[0][0]
-    assert call_args["type"] == "progress"
-    assert call_args["data"]["current"] == 5
-    assert call_args["data"]["total"] == 10
+        return await captured["work"](session, AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
-# _db_import — mock helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_db_mocks() -> tuple:
-    """Return (mock_engine, mock_session, mock_factory) for worker tests."""
-    mock_engine = AsyncMock()
-    mock_session = AsyncMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-    mock_factory = MagicMock(return_value=mock_session)
-    return mock_engine, mock_session, mock_factory
-
-
-def _pending_task() -> MagicMock:
-    t = MagicMock()
-    t.status = TaskStatus.PENDING.value
-    return t
-
-
-def _completed_task() -> MagicMock:
-    t = MagicMock()
-    t.status = TaskStatus.COMPLETED.value
-    return t
-
-
-# ---------------------------------------------------------------------------
-# _db_import — redelivery skip
+# _db_import — wiring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_db_import_redelivery_skip() -> None:
-    """Task already in terminal state must return immediately without processing."""
+async def test_db_import_wires_run_task_workflow() -> None:
+    """_db_import wires run_task_workflow with the right task_type/progress_total/dry_run."""
     from jidou.workers.db_import_tasks import _db_import
 
-    content = json.dumps({"shows": [{"tmdb_id": 1, "title": "S"}]})
-    terminal = MagicMock(status=TaskStatus.COMPLETED.value)
-    mock_engine, _mock_session, mock_factory = _make_db_mocks()
-
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=terminal,
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-    ):
+    content = json.dumps({"shows": [], "episodes": [], "watchlist": []})
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
         result = await _db_import("task-001", content)
 
     assert result == "task-001"
-    mock_update.assert_not_called()
-    mock_engine.dispose.assert_called_once()
+    assert captured["task_type"] == "db_import"
+    assert captured["progress_total"] == 0
+    assert captured["dry_run"] is False
+    assert captured["running_message"] == "Parsing backup file…"
 
 
 # ---------------------------------------------------------------------------
@@ -553,32 +535,22 @@ async def test_db_import_empty_backup_succeeds() -> None:
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [], "episodes": [], "watchlist": []})
-    mock_engine, _mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-002", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-002", content)
+    wf_result = await _invoke_work(captured, AsyncMock())
 
-    assert result == "task-002"
-    # "complete" event must have been emitted
-    complete_calls = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "complete"]
-    assert len(complete_calls) == 1
-    mock_engine.dispose.assert_called_once()
+    assert wf_result.progress_current == 0  # type: ignore[attr-defined]
+    assert wf_result.progress_total == 0  # type: ignore[attr-defined]
+    assert wf_result.result_summary == {  # type: ignore[attr-defined]
+        "shows_created": 0,
+        "shows_updated": 0,
+        "episodes_created": 0,
+        "episodes_updated": 0,
+        "watchlist_created": 0,
+        "watchlist_updated": 0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -592,30 +564,15 @@ async def test_db_import_show_missing_tmdb_id_skipped() -> None:
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"title": "No ID Show"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-003", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-003", content)
+    session = AsyncMock()
+    await _invoke_work(captured, session)
 
-    assert result == "task-003"
     # session.execute should not have been called (skipped before DB lookup)
-    mock_session.execute.assert_not_called()
+    session.execute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -629,29 +586,14 @@ async def test_db_import_show_missing_title_skipped() -> None:
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"tmdb_id": 42, "title": ""}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-004", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-004", content)
+    session = AsyncMock()
+    await _invoke_work(captured, session)
 
-    assert result == "task-004"
-    mock_session.execute.assert_not_called()
+    session.execute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -665,13 +607,15 @@ async def test_db_import_new_show_created() -> None:
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"id": 1, "tmdb_id": 999, "title": "New Show"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-005", content)
 
+    session = AsyncMock()
     # show not found → None
     not_found = MagicMock()
     not_found.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(return_value=not_found)
+    session.execute = AsyncMock(return_value=not_found)
 
     added_objects: list = []
 
@@ -681,27 +625,10 @@ async def test_db_import_new_show_created() -> None:
             obj.id = 100  # type: ignore[attr-defined]
 
     # session.add() is synchronous — must not be AsyncMock or side_effect never fires
-    mock_session.add = MagicMock(side_effect=on_add)
+    session.add = MagicMock(side_effect=on_add)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-005", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-005"
     # show.add was called once for the new show
     assert len(added_objects) == 1
     assert added_objects[0].tmdb_id == 999
@@ -718,132 +645,80 @@ async def test_db_import_existing_show_updated() -> None:
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"id": 1, "tmdb_id": 888, "title": "Updated Title"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-006", content)
 
+    session = AsyncMock()
     # show already exists
     existing_show = MagicMock()
     existing_show.id = 50
     existing_show.local_path = "/media/tv/Show"
     found = MagicMock()
     found.scalar_one_or_none.return_value = existing_show
-    mock_session.execute = AsyncMock(return_value=found)
+    session.execute = AsyncMock(return_value=found)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-006", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-006"
     # existing show's title was updated
     assert existing_show.title == "Updated Title"
     # session.add was NOT called for an update
-    mock_session.add.assert_not_called()
+    session.add.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# _db_import — cancellation
+# _db_import — cancellation propagates out of `work`
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_db_import_cancellation_handled_gracefully() -> None:
-    """TaskCancelledError is caught and swallowed (no re-raise)."""
+async def test_db_import_cancellation_propagates_from_work() -> None:
+    """TaskCancelledError raised by check_task_cancelled propagates out of `_work`.
+
+    The harness's own catch-and-return-cleanly behavior for TaskCancelledError
+    is covered generically in tests/test_worker_harness.py; this only checks
+    that _db_import's `work` closure doesn't swallow it itself.
+    """
     from jidou.services.progress import TaskCancelledError
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"tmdb_id": 1, "title": "S"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-007", content)
 
-    # check_task_cancelled raises cancellation after the first show row
-    not_found = MagicMock()
-    not_found.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(return_value=not_found)
-
-    added: list = []
-
-    def on_add(obj: object) -> None:
-        added.append(obj)
-        if hasattr(obj, "tmdb_id"):
-            obj.id = 1  # type: ignore[attr-defined]
-
-    mock_session.add = MagicMock(side_effect=on_add)
-
+    session = AsyncMock()
     with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
         patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
         patch(
             "jidou.workers.db_import_tasks.check_task_cancelled",
             new_callable=AsyncMock,
             side_effect=TaskCancelledError("cancelled"),
         ),
+        pytest.raises(TaskCancelledError),
     ):
-        # Should NOT raise — cancellation is caught
-        result = await _db_import("task-007", content)
-
-    assert result == "task-007"
-    mock_engine.dispose.assert_called_once()
+        await captured["work"](session, AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
-# _db_import — generic exception updates task status to FAILED
+# _db_import — malformed file content propagates from `work`
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_db_import_exception_marks_failed_and_reraises() -> None:
-    """Unexpected exception updates task to FAILED and re-raises."""
+async def test_db_import_malformed_json_propagates_from_work() -> None:
+    """A malformed backup file raises JSONDecodeError out of `_work` (harness marks it FAILED)."""
     import json as json_module
 
     from jidou.workers.db_import_tasks import _db_import
 
     content = "this is not valid json {{{"
-    mock_engine, _mock_session, mock_factory = _make_db_mocks()
-
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock
-        ) as mock_update,
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        pytest.raises(json_module.JSONDecodeError),
-    ):
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
         await _db_import("task-008", content)
 
-    # FAILED status must have been requested
-    failed_calls = [c for c in mock_update.call_args_list if c.args[2] == TaskStatus.FAILED]
-    assert len(failed_calls) >= 1
-
-    error_events = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "error"]
-    assert len(error_events) == 1
-
-    mock_engine.dispose.assert_called_once()
+    with pytest.raises(json_module.JSONDecodeError):
+        await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
@@ -859,30 +734,15 @@ async def test_db_import_episode_skipped_no_tmdb_id() -> None:
     content = json.dumps(
         {"shows": [], "episodes": [{"season_number": 1, "episode_number": 1}], "watchlist": []}
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-ep1", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-ep1", content)
+    session = AsyncMock()
+    await _invoke_work(captured, session)
 
-    assert result == "task-ep1"
     # No DB lookup should have occurred for the episode
-    mock_session.execute.assert_not_called()
+    session.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -897,30 +757,15 @@ async def test_db_import_episode_skipped_show_not_in_map() -> None:
             "watchlist": [],
         }
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-ep2", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-ep2", content)
+    session = AsyncMock()
+    await _invoke_work(captured, session)
 
-    assert result == "task-ep2"
     # show_id=99 was never in show_id_map → episode execute not called
-    mock_session.execute.assert_not_called()
+    session.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -943,14 +788,16 @@ async def test_db_import_episode_created() -> None:
             "watchlist": [],
         }
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-ep3", content)
 
+    session = AsyncMock()
     show_not_found = MagicMock()
     show_not_found.scalar_one_or_none.return_value = None
     ep_not_found = MagicMock()
     ep_not_found.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(side_effect=[show_not_found, ep_not_found])
+    session.execute = AsyncMock(side_effect=[show_not_found, ep_not_found])
 
     added_objects: list = []
 
@@ -958,27 +805,10 @@ async def test_db_import_episode_created() -> None:
         added_objects.append(obj)
         obj.id = 100  # type: ignore[attr-defined]
 
-    mock_session.add = MagicMock(side_effect=on_add)
+    session.add = MagicMock(side_effect=on_add)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-ep3", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-ep3"
     # Both the show and episode should have been added
     assert len(added_objects) == 2
 
@@ -1003,9 +833,11 @@ async def test_db_import_episode_updated() -> None:
             "watchlist": [],
         }
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-ep4", content)
 
+    session = AsyncMock()
     existing_show = MagicMock()
     existing_show.id = 50
     existing_show.local_path = None
@@ -1017,29 +849,12 @@ async def test_db_import_episode_updated() -> None:
     existing_ep.name = "Old Pilot"
     ep_found = MagicMock()
     ep_found.scalar_one_or_none.return_value = existing_ep
-    mock_session.execute = AsyncMock(side_effect=[show_found, ep_found])
+    session.execute = AsyncMock(side_effect=[show_found, ep_found])
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-ep4", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-ep4"
     # No new objects added — update path
-    mock_session.add.assert_not_called()
+    session.add.assert_not_called()
     assert existing_ep.name == "Updated Pilot"
     assert existing_ep.season_number == 2
 
@@ -1057,29 +872,14 @@ async def test_db_import_watchlist_skipped_show_not_in_map() -> None:
     content = json.dumps(
         {"shows": [], "episodes": [], "watchlist": [{"show_id": 99, "status": "watching"}]}
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-wl1", content)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-wl1", content)
+    session = AsyncMock()
+    await _invoke_work(captured, session)
 
-    assert result == "task-wl1"
-    mock_session.execute.assert_not_called()
+    session.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1094,14 +894,16 @@ async def test_db_import_watchlist_entry_created() -> None:
             "watchlist": [{"show_id": 10, "status": "watching", "notes": "love it", "position": 3}],
         }
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-wl2", content)
 
+    session = AsyncMock()
     show_not_found = MagicMock()
     show_not_found.scalar_one_or_none.return_value = None
     wl_not_found = MagicMock()
     wl_not_found.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(side_effect=[show_not_found, wl_not_found])
+    session.execute = AsyncMock(side_effect=[show_not_found, wl_not_found])
 
     added_objects: list = []
 
@@ -1109,27 +911,10 @@ async def test_db_import_watchlist_entry_created() -> None:
         added_objects.append(obj)
         obj.id = 200  # type: ignore[attr-defined]
 
-    mock_session.add = MagicMock(side_effect=on_add)
+    session.add = MagicMock(side_effect=on_add)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-wl2", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-wl2"
     # show + watchlist entry both added
     assert len(added_objects) == 2
 
@@ -1146,9 +931,11 @@ async def test_db_import_watchlist_entry_updated() -> None:
             "watchlist": [{"show_id": 10, "status": "completed", "notes": "done", "position": 7}],
         }
     )
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-wl3", content)
 
+    session = AsyncMock()
     existing_show = MagicMock()
     existing_show.id = 50
     existing_show.local_path = None
@@ -1161,35 +948,13 @@ async def test_db_import_watchlist_entry_updated() -> None:
     existing_wl.position = 1
     wl_found = MagicMock()
     wl_found.scalar_one_or_none.return_value = existing_wl
-    mock_session.execute = AsyncMock(side_effect=[show_found, wl_found])
+    session.execute = AsyncMock(side_effect=[show_found, wl_found])
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-wl3", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-wl3"
-    mock_session.add.assert_not_called()
+    session.add.assert_not_called()
     assert existing_wl.notes == "done"
     assert existing_wl.position == 7
-
-
-# ---------------------------------------------------------------------------
-# db_import_task (sync Celery wrapper) — soft timeout
-# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -1199,17 +964,19 @@ async def test_db_import_watchlist_entry_updated() -> None:
 
 @pytest.mark.asyncio
 async def test_db_import_show_created_without_backup_id() -> None:
-    """When show row has no 'id', show_id_map is not populated (branch 141->143 False)."""
+    """When show row has no 'id', show_id_map is not populated."""
     from jidou.workers.db_import_tasks import _db_import
 
     # Row lacks "id" → backup_show_id is None
     content = json.dumps({"shows": [{"tmdb_id": 5001, "title": "No ID Show"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-show-noid", content)
 
+    session = AsyncMock()
     not_found = MagicMock()
     not_found.scalar_one_or_none.return_value = None
-    mock_session.execute = AsyncMock(return_value=not_found)
+    session.execute = AsyncMock(return_value=not_found)
 
     added: list = []
 
@@ -1218,102 +985,34 @@ async def test_db_import_show_created_without_backup_id() -> None:
         if hasattr(obj, "tmdb_id"):
             obj.id = 200  # type: ignore[attr-defined]
 
-    mock_session.add = MagicMock(side_effect=on_add)
+    session.add = MagicMock(side_effect=on_add)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-show-noid", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-show-noid"
     assert len(added) == 1
 
 
 @pytest.mark.asyncio
 async def test_db_import_show_updated_without_backup_id() -> None:
-    """When existing show row has no 'id', show_id_map is not populated (branch 146->148 False)."""
+    """When existing show row has no 'id', show_id_map is not populated."""
     from jidou.workers.db_import_tasks import _db_import
 
     content = json.dumps({"shows": [{"tmdb_id": 5002, "title": "No ID Update"}]})
-    mock_engine, mock_session, mock_factory = _make_db_mocks()
-    completed = _completed_task()
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-show-upd-noid", content)
 
+    session = AsyncMock()
     existing = MagicMock()
     existing.id = 77
     existing.local_path = "/media/tv/Show"
     found = MagicMock()
     found.scalar_one_or_none.return_value = existing
-    mock_session.execute = AsyncMock(return_value=found)
+    session.execute = AsyncMock(return_value=found)
 
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=completed,
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock),
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-show-upd-noid", content)
+    await _invoke_work(captured, session)
 
-    assert result == "task-show-upd-noid"
     assert existing.title == "No ID Update"
-
-
-# ---------------------------------------------------------------------------
-# _db_import — branch 261->290: final_task is None (no complete emit)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_db_import_skips_complete_emit_when_final_task_is_none() -> None:
-    """No 'complete' emit_progress when update_task_status returns None."""
-    from jidou.workers.db_import_tasks import _db_import
-
-    content = json.dumps({"shows": [], "episodes": [], "watchlist": []})
-    mock_engine, _mock_session, mock_factory = _make_db_mocks()
-
-    with (
-        patch("jidou.workers.db_import_tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.db_import_tasks.async_sessionmaker", return_value=mock_factory),
-        patch(
-            "jidou.workers.db_import_tasks.create_task_record",
-            new_callable=AsyncMock,
-            return_value=_pending_task(),
-        ),
-        patch(
-            "jidou.workers.db_import_tasks.update_task_status",
-            new_callable=AsyncMock,
-            return_value=None,  # triggers False branch at line 261
-        ),
-        patch("jidou.workers.db_import_tasks.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
-    ):
-        result = await _db_import("task-no-emit", content)
-
-    assert result == "task-no-emit"
-    complete_calls = [c for c in mock_emit.call_args_list if c[0][0].get("type") == "complete"]
-    assert len(complete_calls) == 0
 
 
 def test_db_import_task_soft_timeout_calls_mark_timed_out() -> None:
