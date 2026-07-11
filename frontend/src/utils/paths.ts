@@ -1,11 +1,16 @@
 import type { ContentType, MediaPaths } from '@/types/api'
 
 /**
- * Sanitize a show title for use as a folder name by replacing filesystem-illegal
- * characters with underscores.
+ * Sanitize a show title for use as a folder name, mirroring the backend's
+ * sys_name.py::sanitize_sys_name exactly: filesystem-illegal characters
+ * become a space (not an underscore), runs of whitespace collapse to one,
+ * and an all-illegal title falls back to "Untitled" rather than an empty
+ * string.
  */
 export function sanitizeFolderName(title: string): string {
-  return title.replace(/[\\/:*?"<>|]/g, '_').trim()
+  const replaced = title.replace(/[\\/:*?"<>|]/g, ' ')
+  const sanitized = replaced.replace(/\s+/g, ' ').trim()
+  return sanitized || 'Untitled'
 }
 
 /**
