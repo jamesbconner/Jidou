@@ -412,7 +412,6 @@ class PathImportOrchestrator:
         entries: list[ParsedPathEntry],
         set_local_path: bool = True,
         matched_episode_ids: set[int] | None = None,
-        matched_episode_ids: set[int] | None = None,
     ) -> ShowImportResult:
         """Match a resolved show's entries to episodes and mark them tracked.
 
