@@ -320,6 +320,23 @@ class TMDBService:
         """
         return await self._request(f"/tv/{tmdb_id}/episode_groups")
 
+    async def get_episode_group(self, group_id: str) -> dict[str, Any]:
+        """Get the full per-episode breakdown for one episode group.
+
+        ``get_episode_groups`` only returns a summary (id/name/type/counts);
+        this fetches a specific group's actual sub-group structure, each
+        with its own ordered ``episodes`` list.
+
+        Args:
+            group_id: TMDB episode group ID (the ``id`` field from a
+                ``get_episode_groups`` result entry).
+
+        Returns:
+            Dictionary with a ``groups`` list of sub-groups, each carrying
+            ``name``, ``order``, and an ``episodes`` list.
+        """
+        return await self._request(f"/tv/episode_group/{group_id}")
+
     async def get_images(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get available images (posters, backdrops, logos) for a show or movie.
 

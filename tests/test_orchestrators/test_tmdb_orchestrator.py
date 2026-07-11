@@ -115,6 +115,137 @@ async def test_sync_show_episodes_skips_season_zero():
     tmdb.get_season_details.assert_called_once_with(show.tmdb_id, 1)
 
 
+# Shaped after Frieren: Beyond Journey's End's real TMDB episode_groups (a
+# single absolute-numbered season, split by a type-6 "Seasons" group into a
+# fansub-style Season 1 / Specials / Season 2 breakdown), scaled down for
+# test speed (3 + 2 episodes instead of 28 + 10).
+_SEASONS_GROUP_SUMMARY = [
+    {"id": "seasons-group-id", "name": "Seasons", "type": 6, "episode_count": 5, "group_count": 3},
+]
+
+_SEASONS_GROUP_DETAIL = {
+    "id": "seasons-group-id",
+    "name": "Seasons",
+    "groups": [
+        {
+            "name": "Specials",
+            "order": 0,
+            "episodes": [
+                {"id": 901, "season_number": 0, "episode_number": 1, "order": 0},
+            ],
+        },
+        {
+            "name": "Season 1",
+            "order": 1,
+            "episodes": [
+                {"id": 101, "season_number": 1, "episode_number": 1, "order": 0},
+                {"id": 102, "season_number": 1, "episode_number": 2, "order": 1},
+                {"id": 103, "season_number": 1, "episode_number": 3, "order": 2},
+            ],
+        },
+        {
+            "name": "Season 2",
+            "order": 2,
+            "episodes": [
+                {"id": 104, "season_number": 1, "episode_number": 4, "order": 0},
+                {"id": 105, "season_number": 1, "episode_number": 5, "order": 1},
+            ],
+        },
+    ],
+}
+
+
+async def test_sync_show_episodes_populates_episode_group_map():
+    """A type-6 episode_groups breakdown is resolved into Show.episode_group_map."""
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.episode_groups = _SEASONS_GROUP_SUMMARY
+    tmdb = _make_tmdb(
+        seasons=[{"season_number": 1}],
+        episodes=[
+            {"id": 101, "episode_number": 1, "name": "Ep1"},
+            {"id": 102, "episode_number": 2, "name": "Ep2"},
+            {"id": 103, "episode_number": 3, "name": "Ep3"},
+            {"id": 104, "episode_number": 4, "name": "Ep4"},
+            {"id": 105, "episode_number": 5, "name": "Ep5"},
+        ],
+    )
+    tmdb.get_episode_group = AsyncMock(return_value=_SEASONS_GROUP_DETAIL)
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert show.episode_group_map == {
+        "6": {
+            "1": {"1": [1, 1], "2": [1, 2], "3": [1, 3]},
+            "2": {"1": [1, 4], "2": [1, 5]},
+        }
+    }
+    tmdb.get_episode_group.assert_called_once_with("seasons-group-id")
+
+
+async def test_sync_show_episodes_backfills_absolute_episode_number():
+    """Episodes newly synced this run get absolute_episode_number from the type-6 breakdown.
+
+    No type-2 ("Absolute") group exists on this show, so flatten_for_absolute_numbering
+    falls back to type 6, concatenating its sub-groups (excluding Specials) in
+    order: Season 1 (3 eps) then Season 2 (2 eps) -> absolute 1-5.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.episode_groups = _SEASONS_GROUP_SUMMARY
+    tmdb = _make_tmdb(
+        seasons=[{"season_number": 1}],
+        episodes=[
+            {"id": 101, "episode_number": 1, "name": "Ep1"},
+            {"id": 102, "episode_number": 2, "name": "Ep2"},
+            {"id": 103, "episode_number": 3, "name": "Ep3"},
+            {"id": 104, "episode_number": 4, "name": "Ep4"},
+            {"id": 105, "episode_number": 5, "name": "Ep5"},
+        ],
+    )
+    tmdb.get_episode_group = AsyncMock(return_value=_SEASONS_GROUP_DETAIL)
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    added_episodes = {call.args[0].tmdb_id: call.args[0] for call in session.add.call_args_list}
+    assert added_episodes[101].absolute_episode_number == 1
+    assert added_episodes[102].absolute_episode_number == 2
+    assert added_episodes[103].absolute_episode_number == 3
+    assert added_episodes[104].absolute_episode_number == 4
+    assert added_episodes[105].absolute_episode_number == 5
+
+
+async def test_sync_show_episodes_no_episode_groups_leaves_map_none():
+    """A show with no episode_groups at all never calls get_episode_group and stores no map."""
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.episode_groups = None
+    tmdb = _make_tmdb()
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert show.episode_group_map is None
+    tmdb.get_episode_group.assert_not_called()
+
+
+async def test_sync_show_episodes_group_fetch_failure_does_not_abort_sync():
+    """A failed episode_group detail fetch is best-effort -- the episode sync still completes."""
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.episode_groups = _SEASONS_GROUP_SUMMARY
+    tmdb = _make_tmdb()
+    tmdb.get_episode_group = AsyncMock(side_effect=Exception("TMDB down"))
+
+    orch = TMDBOrchestrator(session, tmdb)
+    result = await orch.sync_show_episodes(show)
+
+    assert result.episodes_upserted == 2
+    assert show.episode_group_map is None
+
+
 async def test_sync_all_shows_skips_cached():
     """Shows with cached=True are excluded from the query, only uncached are synced."""
     uncached = _make_show(cached=False, show_id=1)

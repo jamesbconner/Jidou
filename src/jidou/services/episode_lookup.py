@@ -1,6 +1,6 @@
 """Resolve a parsed season/episode number to an Episode row."""
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
@@ -11,8 +11,6 @@ async def resolve_episode(
     show_id: int,
     season: int | None,
     episode: int | None,
-    *,
-    positional_fallback: bool = False,
 ) -> Episode | None:
     """Look up an Episode by season/episode number, with anime-friendly fallbacks.
 
@@ -22,28 +20,20 @@ async def resolve_episode(
        only — no further fallback is attempted even on a miss. A known
        season number means the caller has confident data; guessing further
        risks a wrong match (e.g. a Season 3 file should never silently
-       resolve to a Season 1 episode).
+       resolve to a Season 1 episode). Callers that need to resolve a
+       declared season disagreeing with TMDB's own structure (e.g. a fansub
+       cour-folder for a show TMDB tracks as one absolute season) should
+       consult ``services.episode_group_mapping.resolve_declared_season``
+       and retry with the remapped season/episode instead.
     2. If *season* is None, *episode* is treated as an absolute episode
        number:
 
-       a. Match on ``Episode.absolute_episode_number`` (TMDB-populated via
-          episode groups).
-       b. If (a) misses, the second fallback depends on *positional_fallback*:
-
-          - ``True`` — match on sequential position: episodes for the show
-            ordered by ``(season_number, episode_number)``, excluding
-            season 0 specials, matched by row position. Handles shows
-            where fansub filenames use continuous absolute numbering but
-            TMDB stores episodes per-season without populating
-            ``absolute_episode_number``.
-          - ``False`` — match on ``(season_number=1, episode_number=episode)``,
-            correct for the vast majority of anime distributed without
-            season markers.
-
-       These two strategies are mutually exclusive, not stacked: positional
-       fallback is a deliberately different (and for path-list import,
-       more reliable) guess than a literal Season 1 assumption, not an
-       additional attempt on top of it.
+       a. Match on ``Episode.absolute_episode_number`` — populated from TMDB
+          episode_groups during sync (see ``services.episode_group_mapping``)
+          when available for the show.
+       b. If (a) misses, match on ``(season_number=1, episode_number=episode)``
+          — correct for the vast majority of anime distributed without
+          season markers.
 
     Args:
         session: Active async SQLAlchemy session.
@@ -51,10 +41,6 @@ async def resolve_episode(
         season: Season number, or None for absolute/anime-style numbering.
         episode: Episode number (or absolute episode number when *season*
             is None). None short-circuits to no match.
-        positional_fallback: Use the sequential-position fallback instead
-            of the Season-1 fallback when *season* is None and the
-            absolute-number lookup misses. Off by default (Season-1
-            fallback); path-list import opts in.
 
     Returns:
         The matching Episode, or None.
@@ -77,24 +63,6 @@ async def resolve_episode(
     ep = (await session.execute(stmt)).scalar_one_or_none()
     if ep is not None:
         return ep
-
-    if positional_fallback:
-        numbered = (
-            select(
-                Episode.id,
-                func.row_number()
-                .over(order_by=[Episode.season_number, Episode.episode_number])
-                .label("row_num"),
-            )
-            .where(Episode.show_id == show_id, Episode.season_number > 0)
-            .subquery()
-        )
-        stmt = (
-            select(Episode)
-            .join(numbered, Episode.id == numbered.c.id)
-            .where(numbered.c.row_num == episode)
-        )
-        return (await session.execute(stmt)).scalar_one_or_none()
 
     stmt = select(Episode).where(
         Episode.show_id == show_id,

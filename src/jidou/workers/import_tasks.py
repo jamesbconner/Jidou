@@ -134,6 +134,7 @@ async def _path_import(
             "shows_not_found": import_result.shows_not_found,
             "episodes_tracked": import_result.episodes_tracked,
             "episodes_unmatched": import_result.episodes_unmatched,
+            "episodes_already_tracked": import_result.episodes_already_tracked,
             "show_results": [
                 {
                     "show_dir": r.show_dir,
@@ -142,7 +143,9 @@ async def _path_import(
                     "action": r.action,
                     "episodes_tracked": r.episodes_tracked,
                     "episodes_unmatched": r.episodes_unmatched,
+                    "episodes_already_tracked": r.episodes_already_tracked,
                     "unmatched_paths": r.unmatched_paths,
+                    "already_tracked_paths": r.already_tracked_paths,
                 }
                 for r in import_result.show_results
             ],

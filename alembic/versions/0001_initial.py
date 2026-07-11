@@ -58,6 +58,7 @@ def upgrade() -> None:
         sa.Column("homepage", sa.String(length=500), nullable=True),
         sa.Column("external_ids", JSONB(), nullable=True),
         sa.Column("episode_groups", JSONB(), nullable=True),
+        sa.Column("episode_group_map", JSONB(), nullable=True),
         sa.Column("status", sa.String(length=100), nullable=True),
         sa.Column("in_production", sa.Boolean(), nullable=True),
         sa.Column("number_of_seasons", sa.Integer(), nullable=True),

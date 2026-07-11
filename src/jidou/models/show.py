@@ -62,6 +62,12 @@ class Show(TimestampMixin, Base):
     external_ids: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     # TMDB episode groups; type-6 (Production) enables correct anime numbering
     episode_groups: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    # Resolved season/cour-position -> [season_number, episode_number] map, built
+    # from episode_groups by services/episode_group_mapping.py. Nested by TMDB
+    # group type ("6"/"2") -> sub-group order (as a declared season number would
+    # read it) -> 1-based position within that sub-group. Derived/cache data,
+    # not user data -- always safe to drop and recompute on the next TMDB sync.
+    episode_group_map: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     # TMDB show status: "Returning Series", "Ended", "Cancelled", "Released", etc.
     status: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # TV only: whether the show is currently in production

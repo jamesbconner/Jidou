@@ -31,6 +31,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.episode_group_mapping import resolve_declared_season
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import (
     llm_match_episode,
@@ -102,8 +103,14 @@ class ShowImportResult:
         tmdb_id: TMDB ID of the matched show, or None.
         tmdb_title: English title from TMDB, or None.
         action: One of ``"created"`` | ``"found"`` | ``"not_found"``.
-        episodes_tracked: Number of episode rows marked ``file_tracked=True``.
+        episodes_tracked: Number of episode rows newly marked ``file_tracked=True``.
         episodes_unmatched: Number of entries with no matching episode row.
+        episodes_already_tracked: Number of entries that resolved to an
+            Episode row a *different* entry in this same import already
+            tracked — e.g. two filenames whose season/episode both resolve
+            to the same real episode. Counted separately from both
+            ``episodes_tracked`` and ``episodes_unmatched`` so a resolution
+            collision is never silently invisible in either counter.
     """
 
     show_dir: str
@@ -112,7 +119,9 @@ class ShowImportResult:
     action: str = "not_found"
     episodes_tracked: int = 0
     episodes_unmatched: int = 0
+    episodes_already_tracked: int = 0
     unmatched_paths: list[str] = field(default_factory=list)
+    already_tracked_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -124,8 +133,11 @@ class PathImportResult:
         shows_created: Shows newly created from TMDB.
         shows_found: Shows that already existed in the DB.
         shows_not_found: Shows that could not be matched to TMDB.
-        episodes_tracked: Total episode rows marked ``file_tracked=True``.
+        episodes_tracked: Total episode rows newly marked ``file_tracked=True``.
         episodes_unmatched: Total entries with no matching episode row.
+        episodes_already_tracked: Total entries that resolved to an episode
+            a different entry in this same import already tracked — see
+            :attr:`ShowImportResult.episodes_already_tracked`.
         show_results: Per-show breakdown.
     """
 
@@ -135,6 +147,7 @@ class PathImportResult:
     shows_not_found: int = 0
     episodes_tracked: int = 0
     episodes_unmatched: int = 0
+    episodes_already_tracked: int = 0
     show_results: list[ShowImportResult] = field(default_factory=list)
 
 
@@ -228,6 +241,7 @@ class PathImportOrchestrator:
 
                 result.episodes_tracked += show_result.episodes_tracked
                 result.episodes_unmatched += show_result.episodes_unmatched
+                result.episodes_already_tracked += show_result.episodes_already_tracked
 
         return result
 
@@ -437,12 +451,35 @@ class PathImportOrchestrator:
                     show_result.unmatched_paths.append(entry.raw_path)
             return show_result
 
-        # Match each file entry to an Episode row.
+        # Match each file entry to an Episode row. Tracks which episode IDs
+        # this loop has already claimed so a second file resolving to the
+        # same episode (e.g. a season/episode numbering mismatch collision)
+        # is never silently invisible in either the tracked or unmatched
+        # counters -- see episodes_already_tracked.
+        matched_episode_ids: set[int] = set()
         for entry in entries:
             ep, resolved_season, resolved_episode = await self._find_episode(
-                show.id, show.title, entry
+                show.id, show.title, entry, show.episode_group_map
             )
+            if ep is not None and ep.id in matched_episode_ids:
+                filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+                show_result.episodes_already_tracked += 1
+                show_result.already_tracked_paths.append(entry.raw_path)
+                await self._emit(
+                    "warn",
+                    f"'{filename}' resolved to the same episode "
+                    f"(S{ep.season_number:02d}E{ep.episode_number:02d}) as another file "
+                    "in this import — check for a season/episode numbering mismatch",
+                    {
+                        "path": entry.raw_path,
+                        "episode_id": ep.id,
+                        "season": ep.season_number,
+                        "episode": ep.episode_number,
+                    },
+                )
+                continue
             if ep is not None:
+                matched_episode_ids.add(ep.id)
                 newly_tracked = not ep.file_tracked
                 if not self.dry_run:
                     # Only overwrite tracking metadata on first track; preserve
@@ -483,13 +520,21 @@ class PathImportOrchestrator:
                     entry.raw_path,
                 )
 
-        if show_result.episodes_unmatched:
+        if show_result.episodes_unmatched or show_result.episodes_already_tracked:
+            parts = []
+            if show_result.episodes_unmatched:
+                parts.append(f"{show_result.episodes_unmatched} unmatched")
+            if show_result.episodes_already_tracked:
+                parts.append(
+                    f"{show_result.episodes_already_tracked} resolved to a duplicate episode"
+                )
             await self._emit(
                 "warn",
-                f"{show_result.episodes_unmatched} unmatched file(s) for '{show.title}'",
+                f"{', '.join(parts)} file(s) for '{show.title}'",
                 {
                     "episodes_tracked": show_result.episodes_tracked,
                     "episodes_unmatched": show_result.episodes_unmatched,
+                    "episodes_already_tracked": show_result.episodes_already_tracked,
                 },
             )
         else:
@@ -734,33 +779,12 @@ class PathImportOrchestrator:
 
         return show, "created"
 
-    async def _absolute_lookup(self, show_id: int, absolute_number: int) -> Episode | None:
-        """Look up an Episode by absolute (series-wide) episode number.
-
-        Tries the ``absolute_episode_number`` column first (populated via
-        TMDB episode groups), then falls back to a computed sequential
-        position — ordering all non-special episodes by
-        ``(season_number, episode_number)`` and matching on row position.
-        The fallback handles shows like HxH where fansub filenames use a
-        continuous count but TMDB stores episodes per-season and doesn't
-        populate ``absolute_episode_number``.
-
-        Args:
-            show_id: Database ID of the parent show.
-            absolute_number: The absolute episode number to look up.
-
-        Returns:
-            Matching :class:`Episode`, or None.
-        """
-        return await resolve_episode(
-            self.session, show_id, None, absolute_number, positional_fallback=True
-        )
-
     async def _find_episode(
         self,
         show_id: int,
         show_title: str,
         entry: ParsedPathEntry,
+        episode_group_map: dict[str, object] | None = None,
     ) -> tuple[Episode | None, int | None, int | None]:
         """Match a parsed path entry to an Episode row.
 
@@ -768,20 +792,28 @@ class PathImportOrchestrator:
         1. If regex gave no episode, ask the LLM to parse season/episode from
            the filename alone (lightweight prompt, no episode list needed).
         2. Season + episode DB match (standard S##E## lookup).
-        3. Absolute episode number column (populated via TMDB episode groups).
-        4. ROW_NUMBER() window — sequential position across all non-special episodes.
+        3. On a season>1 miss: episode_groups-based remap — resolves a
+           declared season/episode that doesn't exist in TMDB's real
+           structure (e.g. a fansub cour-folder for a show TMDB tracks as one
+           absolute season) via
+           :func:`~jidou.services.episode_group_mapping.resolve_declared_season`.
+        4. Absolute episode number column (populated from TMDB episode_groups
+           during sync — see :mod:`~jidou.services.episode_group_mapping`).
         5. LLM episode-list match — filename + full episode list sent to the LLM.
 
-        Steps 3-4 are also tried on a season>1 S##E## miss, using
+        Steps 3-4 are only reachable past step 2's miss; step 4 is also tried
+        directly when the entry carries no season at all, using
         ``entry.absolute_candidate`` when set (the raw joined number from an
         ambiguous compact-code guess, e.g. "212" guessed as S02E12) or the
-        bare episode number otherwise — the show's real data may use
-        absolute numbering even though the filename encodes a season.
+        bare episode number otherwise.
 
         Args:
             show_id: Database ID of the parent show.
             show_title: Show title for the LLM prompt context.
             entry: Parsed entry describing the file's position.
+            episode_group_map: The show's ``episode_group_map`` (from
+                :func:`~jidou.services.episode_group_mapping.to_storage_map`),
+                or None if never built.
 
         Returns:
             ``(episode, season, episode_number)`` where ``episode`` is the
@@ -815,11 +847,19 @@ class PathImportOrchestrator:
             if ep is not None:
                 return ep, season, episode
             if season > 1:
-                # Before giving up to the LLM, try absolute-number lookups —
+                remapped = resolve_declared_season(episode_group_map, season, episode)
+                if remapped is not None:
+                    real_season, real_episode = remapped
+                    remapped_ep = await resolve_episode(
+                        self.session, show_id, real_season, real_episode
+                    )
+                    if remapped_ep is not None:
+                        return remapped_ep, real_season, real_episode
+                # Before giving up to the LLM, try the absolute-number column —
                 # the show's real data may use absolute numbering (or this
                 # season/episode pair may itself be an ambiguous compact-code
                 # guess whose raw number is the correct absolute episode).
-                abs_ep = await self._absolute_lookup(show_id, absolute_guess)
+                abs_ep = await resolve_episode(self.session, show_id, None, absolute_guess)
                 if abs_ep is not None:
                     return abs_ep, season, episode
                 llm_ep, llm_season, llm_episode_num = await llm_match_episode(
@@ -832,10 +872,10 @@ class PathImportOrchestrator:
                 )
             # Season 1 directory: the episode number may still be a continuous
             # absolute count (e.g. a show with all 148 episodes in Season 01).
-            # Fall through to absolute-number lookups before the LLM.
+            # Fall through to the absolute-number lookup before the LLM.
 
         # No season info — this is an absolute episode number.
-        abs_ep = await self._absolute_lookup(show_id, absolute_guess)
+        abs_ep = await resolve_episode(self.session, show_id, None, absolute_guess)
         if abs_ep is not None:
             return abs_ep, season, episode
 

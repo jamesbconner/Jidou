@@ -5,12 +5,18 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
+from typing import cast
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.services.episode_group_mapping import (
+    fetch_group_breakdowns,
+    flatten_for_absolute_numbering,
+    to_storage_map,
+)
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -63,6 +69,9 @@ class TMDBOrchestrator:
         total = len(seasons)
         episodes_upserted = 0
         episodes_skipped = 0
+        # Keyed for the absolute_episode_number backfill below -- avoids a
+        # second round-trip query for rows we just upserted in this session.
+        episodes_by_key: dict[tuple[int, int], Episode] = {}
 
         for idx, season in enumerate(seasons, 1):
             season_num = season["season_number"]
@@ -85,6 +94,8 @@ class TMDBOrchestrator:
                     with contextlib.suppress(ValueError):
                         air_date = date.fromisoformat(raw_date)
 
+                episode_num = ep_data.get("episode_number", 0)
+
                 if existing is not None:
                     existing.name = ep_data.get("name", existing.name)
                     existing.overview = ep_data.get("overview")
@@ -92,27 +103,47 @@ class TMDBOrchestrator:
                     existing.runtime = ep_data.get("runtime")
                     existing.episode_type = ep_data.get("episode_type")
                     existing.still_path = ep_data.get("still_path")
-                    existing.absolute_episode_number = ep_data.get("absolute_number")
+                    episodes_by_key[(season_num, episode_num)] = existing
                     episodes_skipped += 1
                 else:
                     new_ep = Episode(
                         show_id=show.id,
                         tmdb_id=tmdb_ep_id,
                         season_number=season_num,
-                        episode_number=ep_data.get("episode_number", 0),
+                        episode_number=episode_num,
                         name=ep_data.get("name", ""),
                         overview=ep_data.get("overview"),
                         air_date=air_date,
                         runtime=ep_data.get("runtime"),
                         episode_type=ep_data.get("episode_type"),
                         still_path=ep_data.get("still_path"),
-                        absolute_episode_number=ep_data.get("absolute_number"),
                     )
                     self.session.add(new_ep)
+                    episodes_by_key[(season_num, episode_num)] = new_ep
                     episodes_upserted += 1
 
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
+
+        # Best-effort: resolve type-6/type-2 episode_groups into a season/cour
+        # remap for path-import's cour-vs-absolute mismatch handling, and use
+        # the same fetch to backfill absolute_episode_number where it's known.
+        # A failure here must not abort an otherwise-successful episode sync.
+        try:
+            breakdowns = await fetch_group_breakdowns(self.tmdb, show.episode_groups)
+        except Exception:
+            logger.warning(
+                "Failed to fetch episode_group breakdowns for show id=%s", show.id, exc_info=True
+            )
+            breakdowns = {}
+        # dict is invariant in its value type, so the precisely-typed
+        # StoredGroupMap needs a cast to satisfy the looser JSONB column type.
+        show.episode_group_map = cast(dict[str, object] | None, to_storage_map(breakdowns))
+        for key, absolute_number in flatten_for_absolute_numbering(breakdowns).items():
+            ep = episodes_by_key.get(key)
+            if ep is not None:
+                ep.absolute_episode_number = absolute_number
+
         await self.session.flush()
 
         logger.info(
