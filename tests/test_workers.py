@@ -690,6 +690,57 @@ async def test_path_import_wires_orchestrator_and_returns_summary() -> None:
     assert wf_result.result_summary["show_results"] == []
 
 
+@pytest.mark.asyncio
+async def test_path_import_forwards_mode_to_orchestrator_and_summary() -> None:
+    """mode threads from _path_import's signature into PathImportOrchestrator's
+    constructor and into result_summary["mode"], and shows_only mode gets a
+    done-message that doesn't claim episodes were tracked when none were.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportResult
+    from jidou.workers.import_tasks import _path_import
+
+    patcher, captured = _capture_run_task_workflow("jidou.workers.import_tasks")
+    with patcher:
+        await _path_import("tid-pi-mode", "/show/S01E01.mkv\n", "anime", False, "shows_only")
+
+    session = AsyncMock()
+    on_progress = AsyncMock()
+    on_event = AsyncMock()
+    captured_kwargs: dict[str, object] = {}
+
+    import_result = PathImportResult(
+        shows_processed=1,
+        shows_created=1,
+        shows_found=0,
+        shows_not_found=0,
+        episodes_tracked=0,
+        episodes_unmatched=0,
+        show_results=[],
+        mode="shows_only",
+    )
+
+    class FakePathOrchestrator:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            captured_kwargs.update(kwargs)
+
+        async def run(self, *args: object, **kwargs: object) -> PathImportResult:
+            return import_result
+
+    with (
+        patch("jidou.workers.import_tasks.parse_file", return_value=[]),
+        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.TMDBService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
+        patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
+    ):
+        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+
+    assert captured_kwargs["mode"] == "shows_only"
+    assert wf_result.result_summary["mode"] == "shows_only"
+    assert "episode matching skipped" in wf_result.message
+    assert "0 episodes tracked" not in wf_result.message
+
+
 @pytest.mark.parametrize(
     ("content_type", "expected_attr"),
     [

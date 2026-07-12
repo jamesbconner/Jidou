@@ -3320,3 +3320,253 @@ class TestProcessShowEntriesDuplicateDetection:
         assert total_tracked == 1
         assert total_already == 1
         assert total_unmatched == 0
+
+
+# ---------------------------------------------------------------------------
+# Import modes: "shows_only" and "episodes_only" (issue #338)
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrator_mode_defaults_to_full() -> None:
+    """Omitting `mode=` keeps the pre-existing full-import behavior."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    orch = PathImportOrchestrator(AsyncMock(), AsyncMock())
+    assert orch.mode == "full"
+
+
+@pytest.mark.asyncio
+async def test_path_import_result_mode_field_propagates() -> None:
+    """PathImportResult.mode reflects the orchestrator's configured mode."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    for mode in ("full", "shows_only", "episodes_only"):
+        orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), mode=mode)
+        result = await orch.run([])
+        assert result.mode == mode
+
+
+@pytest.mark.asyncio
+async def test_shows_only_skips_episode_matching_loop() -> None:
+    """mode='shows_only' resolves the show but never calls _find_episode."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E01.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    tmdb = AsyncMock()
+
+    events, capture = _event_capture()
+    orch = PathImportOrchestrator(session, tmdb, mode="shows_only", on_event=capture)
+    find_episode_spy = AsyncMock()
+
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch.object(orch, "_find_episode", find_episode_spy),
+    ):
+        result = await orch.run(entries)
+
+    find_episode_spy.assert_not_called()
+    assert result.episodes_tracked == 0
+    assert result.episodes_unmatched == 0
+    assert result.mode == "shows_only"
+    assert any("episode matching skipped" in msg for _, msg, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_shows_only_skips_matching_for_dry_run_existing_show() -> None:
+    """Regression: shows_only + dry_run on an *existing* show (show.id is not
+    None) must not fall through into either the dry-run-estimate block or the
+    real matching loop — both would otherwise populate non-zero counters.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E01.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()  # show.id = 1 — an already-existing show, not freshly created
+    session = AsyncMock()
+    tmdb = AsyncMock()
+
+    orch = PathImportOrchestrator(session, tmdb, mode="shows_only", dry_run=True)
+    find_episode_spy = AsyncMock()
+
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch.object(orch, "_find_episode", find_episode_spy),
+    ):
+        result = await orch.run(entries)
+
+    find_episode_spy.assert_not_called()
+    assert result.episodes_tracked == 0
+    assert result.episodes_unmatched == 0
+
+
+@pytest.mark.asyncio
+async def test_episodes_only_never_calls_tmdb_search() -> None:
+    """mode='episodes_only': a show not in the DB is reported unmatched;
+    TMDB is never queried."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Unknown Show\Season 01\ep.mkv",
+            show_dir="Unknown Show",
+            show_root=r"Z:\anime tv\Unknown Show",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    session = AsyncMock()
+    tmdb = AsyncMock()
+
+    orch = PathImportOrchestrator(session, tmdb, mode="episodes_only")
+
+    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+        result = await orch.run(entries)
+
+    tmdb.search.assert_not_called()
+    assert result.shows_not_found == 1
+    assert result.episodes_unmatched == 1
+
+
+@pytest.mark.asyncio
+async def test_episodes_only_matches_against_existing_show() -> None:
+    """mode='episodes_only': normal episode matching proceeds unaffected for
+    a show already in the DB — mirrors test_orchestrator_finds_existing_show.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Dorohedoro\Season 01\ep.mkv",
+            show_dir="Dorohedoro",
+            show_root=r"Z:\anime tv\Dorohedoro",
+            season=1,
+            episode=2,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show()
+    episode = _make_episode(id=20, show_id=1, season=1, episode=2)
+
+    session = AsyncMock()
+    show_result = MagicMock()
+    show_result.scalars.return_value.first.return_value = show
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    dedup_result = MagicMock()
+    dedup_result.scalar_one_or_none.return_value = None
+    session.execute.side_effect = [show_result, ep_result, dedup_result]
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+
+    orch = PathImportOrchestrator(session, tmdb, mode="episodes_only")
+    result = await orch.run(entries)
+
+    assert result.shows_found == 1
+    assert result.episodes_tracked == 1
+    tmdb.search.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_episodes_only_skips_per_file_mismatch_check() -> None:
+    """mode='episodes_only' never calls parse_filename() — no per-file
+    mismatch split, even for a file whose name suggests a different show.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Gurren Lagann - 01.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=1,
+            is_absolute=True,
+        ),
+        ParsedPathEntry(
+            raw_path=r"Z:\anime tv\Gurren Lagann\Clean Intro & Endings\Bleach - Clean Ending.mkv",
+            show_dir="Gurren Lagann",
+            show_root=r"Z:\anime tv\Gurren Lagann",
+            season=None,
+            episode=None,
+            is_absolute=False,
+        ),
+    ]
+
+    primary_show = _make_show(id=1, tmdb_id=100, title="Gurren Lagann")
+    primary_episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    dedup_miss = MagicMock()
+    dedup_miss.scalar_one_or_none.return_value = None
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=dedup_miss)
+    session.commit = AsyncMock()
+    session.add = MagicMock()
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.return_value = False
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    orch = PathImportOrchestrator(session, tmdb, llm=llm, mode="episodes_only")
+
+    parse_filename_spy = AsyncMock()
+
+    async def fake_find_episode(
+        show_id: int,
+        show_title: str,
+        entry: ParsedPathEntry,
+        episode_group_map: dict | None = None,
+    ) -> tuple[MagicMock | None, int | None, int | None]:
+        return primary_episode, 1, 1
+
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(primary_show, "found"))),
+        patch.object(orch, "_find_episode", fake_find_episode),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            parse_filename_spy,
+        ),
+    ):
+        results = await orch._import_show("Gurren Lagann", entries)
+
+    parse_filename_spy.assert_not_called()
+    assert len(results) == 1
+    assert results[0].show_dir == "Gurren Lagann"

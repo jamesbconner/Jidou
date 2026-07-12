@@ -8,15 +8,18 @@ export function useImportText() {
       file,
       contentType,
       dryRun,
+      mode,
     }: {
       file: File
       contentType: string
       dryRun: boolean
+      mode: string
     }) => {
       const form = new FormData()
       form.append('file', file)
       form.append('content_type', contentType)
       form.append('dry_run', String(dryRun))
+      form.append('mode', mode)
       return api.postForm<TaskRead>('/import/text', form)
     },
   })

@@ -13,6 +13,7 @@ from jidou.services.progress import TaskDispatchError, enqueue_task
 router = APIRouter(prefix="/import", tags=["import"])
 
 _CONTENT_TYPES = {"anime", "tv", "movie"}
+_IMPORT_MODES = {"full", "shows_only", "episodes_only"}
 _MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB — more than enough for any path list
 _MAX_DB_BYTES = 100 * 1024 * 1024  # 100 MB for database exports
 
@@ -46,6 +47,7 @@ async def import_text(
     file: UploadFile,
     content_type: str = Form(default="anime"),
     dry_run: bool = Form(default=False),
+    mode: str = Form(default="full"),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> BackgroundTask:
     """Upload a text file of episode paths and import them as a background task.
@@ -55,19 +57,32 @@ async def import_text(
     POSIX-style (``/mnt/media/anime/Dorohedoro/Season 01/ep.mkv``).
     Format is detected automatically per line.
 
-    The task:
-    1. Parses every line into a show directory, season, and episode number.
-    2. Finds or creates each show by searching TMDB (handles Japanese names).
-    3. Marks matched episode rows ``file_tracked = True``.
+    The task, per ``mode``:
+    - ``"full"`` (default): finds or creates each show by searching TMDB
+      (handles Japanese names), then marks matched episode rows
+      ``file_tracked = True``.
+    - ``"shows_only"``: finds or creates shows only — episode matching is
+      skipped entirely. Useful as a first pass to populate/verify the show
+      catalog before touching episode-level data.
+    - ``"episodes_only"``: matches episodes only against shows already in
+      the database; never searches TMDB or creates a new show. Files under a
+      directory whose show isn't already in the database are reported
+      unmatched.
 
     Progress is streamed over WebSocket (``/ws``).  The completed task record
     includes a ``result_summary`` with per-show counts.
 
     Args:
         file: Plain-text file with one absolute path per line.
-        content_type: Content type assigned to newly created shows
-            (``anime``, ``tv``, or ``movie``).
+        content_type: ``anime``, ``tv``, or ``movie``. Selects which
+            configured library root anchors ``show_dir`` resolution when
+            parsing each line — required in every mode, not just
+            ``"full"``/``"shows_only"``. Also assigned to newly created shows
+            (irrelevant to that specific effect in ``"episodes_only"``, since
+            no shows are ever created there, but the path-anchoring effect
+            still applies).
         dry_run: Parse and match without writing to the database.
+        mode: ``"full"``, ``"shows_only"``, or ``"episodes_only"``.
         db_session: Injected async database session.
 
     Returns:
@@ -75,13 +90,18 @@ async def import_text(
         tracked over WebSocket.
 
     Raises:
-        HTTPException: 400 if ``content_type`` is not recognised.
+        HTTPException: 400 if ``content_type`` or ``mode`` is not recognised.
         HTTPException: 422 if the uploaded file exceeds the size limit.
     """
     if content_type not in _CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"content_type must be one of: {', '.join(sorted(_CONTENT_TYPES))}",
+        )
+    if mode not in _IMPORT_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"mode must be one of: {', '.join(sorted(_IMPORT_MODES))}",
         )
 
     raw = await file.read(_MAX_FILE_BYTES + 1)
@@ -98,7 +118,7 @@ async def import_text(
 
     def _dispatch() -> None:
         path_import_task.apply_async(
-            args=[file_content, content_type, dry_run],
+            args=[file_content, content_type, dry_run, mode],
             task_id=task_id,
         )
 

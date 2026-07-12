@@ -32,10 +32,36 @@ function LiveImportTask({ task }: { task: TaskRead }) {
 // Text File Import section
 // ---------------------------------------------------------------------------
 
+type ImportMode = 'full' | 'shows_only' | 'episodes_only'
+
+const IMPORT_MODE_OPTIONS: { value: ImportMode; label: string; description: string }[] = [
+  {
+    value: 'full',
+    label: 'Full',
+    description: 'Create/find shows and match episodes in one pass (default).',
+  },
+  {
+    value: 'shows_only',
+    label: 'Shows only',
+    description:
+      'Create/find shows and sync their episodes, but skip episode matching. Useful as a ' +
+      'first pass to populate or verify the show catalog before touching episode-level data.',
+  },
+  {
+    value: 'episodes_only',
+    label: 'Episodes only',
+    description:
+      'Match episodes only against shows already in the database — never searches TMDB or ' +
+      'creates a new show. Files under a show not already in the database are reported ' +
+      'unmatched.',
+  },
+]
+
 function TextImportSection() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [contentType, setContentType] = useState('anime')
   const [dryRun, setDryRun] = useState(false)
+  const [mode, setMode] = useState<ImportMode>('full')
   const [task, setTask] = useState<TaskRead | null>(null)
   const { mutate, isPending, error } = useImportText()
 
@@ -45,7 +71,7 @@ function TextImportSection() {
     if (!file) return
     setTask(null)
     mutate(
-      { file, contentType, dryRun },
+      { file, contentType, dryRun, mode },
       {
         onSuccess: (t) => setTask(t),
       },
@@ -63,6 +89,26 @@ function TextImportSection() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <fieldset className="space-y-2">
+          <legend className="text-xs text-gray-500 mb-1">Import mode</legend>
+          {IMPORT_MODE_OPTIONS.map((opt) => (
+            <label key={opt.value} className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="import-mode"
+                value={opt.value}
+                checked={mode === opt.value}
+                onChange={() => setMode(opt.value)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">{opt.label}</span>
+                <span className="text-gray-500"> — {opt.description}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Path file (.txt)</label>
@@ -80,6 +126,7 @@ function TextImportSection() {
             <select
               value={contentType}
               onChange={(e) => setContentType(e.target.value)}
+              title="Selects which library root anchors path parsing — required in every mode, not just for newly created shows"
               className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="anime">Anime</option>
