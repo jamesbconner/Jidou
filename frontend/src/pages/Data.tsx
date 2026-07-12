@@ -38,7 +38,8 @@ const IMPORT_MODE_OPTIONS: { value: ImportMode; label: string; description: stri
   {
     value: 'full',
     label: 'Full',
-    description: 'Create/find shows and match episodes in one pass (default).',
+    description: 'Create/find shows and match episodes in one pass (default). Each line' +
+      'should represent the full path of an episode file.',
   },
   {
     value: 'shows_only',
@@ -46,14 +47,13 @@ const IMPORT_MODE_OPTIONS: { value: ImportMode; label: string; description: stri
     description:
       'Create/find shows and sync their episodes, but skip episode matching. Useful as a ' +
       'first pass to populate or verify the show catalog before touching episode-level data. ' +
-      'Each line can be a bare show directory (e.g. "Z:\\anime tv\\Dorohedoro\\") instead of ' +
-      'a full episode file path — no filename needed for this mode.',
+      'Each line can be the path to a bare show directory instead of a full episode file path.',
   },
   {
     value: 'episodes_only',
     label: 'Episodes only',
     description:
-      'Match episodes only against shows already in the database — never searches TMDB or ' +
+      'Match episodes only against shows already in the database. Never searches TMDB or ' +
       'creates a new show. Files under a show not already in the database are reported ' +
       'unmatched.',
   },
