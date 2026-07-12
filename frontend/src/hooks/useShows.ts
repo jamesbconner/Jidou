@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { dashboardKeys } from '@/hooks/useDashboard'
 import type { ShowList, ShowRead, ShowCreate, ShowPatch, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
 
 export type ShowSortOrder =
@@ -101,7 +102,14 @@ export function useCreateShow() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: ShowCreate) => api.post<ShowRead>('/shows', payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.all })
+      // A newly added show can appear in the Dashboard's "Recently Added
+      // Shows" carousel and introduce a genre not yet in its filter list —
+      // that's a separate TanStack Query cache namespace (useDashboard.ts)
+      // this mutation would otherwise never tell to refetch.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
   })
 }
 
@@ -120,7 +128,12 @@ export function useDeleteShow() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.delete<void>(`/shows/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: showKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.all })
+      // Same cache-namespace gap as useCreateShow — without this, a deleted
+      // show keeps showing as a dead card in the Dashboard carousels.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
   })
 }
 
