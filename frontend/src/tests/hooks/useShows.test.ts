@@ -2,14 +2,26 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
-import { useSearchShows, useLibraryIndex, showKeys } from '@/hooks/useShows'
-import type { ShowList } from '@/types/api'
+import { useSearchShows, useLibraryIndex, useCreateShow, useDeleteShow, showKeys } from '@/hooks/useShows'
+import { dashboardKeys, type RecentQueryParams } from '@/hooks/useDashboard'
+import type { ShowList, ShowCreate } from '@/types/api'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return ({ children }: { children: React.ReactNode }) =>
     createElement(QueryClientProvider, { client: qc }, children)
 }
+
+/** Like makeWrapper(), but returns the QueryClient too so a test can seed
+ * cache entries before rendering and inspect invalidation state after. */
+function makeWrapperWithClient() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    createElement(QueryClientProvider, { client: qc }, children)
+  return { wrapper, qc }
+}
+
+const RECENT_PARAMS: RecentQueryParams = { sort: 'tracked', contentType: '', genre: '', limit: 12 }
 
 // vi.spyOn(globalThis, 'fetch') triggers a worker crash on Node >=22.1.x
 // (https://github.com/nodejs/node/issues/54735) — property-descriptor
@@ -106,5 +118,45 @@ describe('useLibraryIndex', () => {
     vi.mocked(fetch).mockImplementation(() => new Promise(() => {}))
     const { result } = renderHook(() => useLibraryIndex(), { wrapper: makeWrapper() })
     expect(result.current.size).toBe(0)
+  })
+})
+
+// Regression: adding/removing a show must invalidate the Dashboard's
+// separate TanStack Query cache namespace (dashboardKeys), not just
+// showKeys — otherwise "Recently Added Shows" silently goes stale. See
+// https://github.com/jamesbconner/Jidou/issues/350.
+describe('useCreateShow', () => {
+  test('invalidates dashboard queries in addition to show queries', async () => {
+    const { wrapper, qc } = makeWrapperWithClient()
+    qc.setQueryData(showKeys.all, [])
+    qc.setQueryData(dashboardKeys.recentShows(RECENT_PARAMS), [])
+
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(makeShow()))
+
+    const { result } = renderHook(() => useCreateShow(), { wrapper })
+    result.current.mutate({ tmdb_id: 1396, media_type: 'tv' } as unknown as ShowCreate)
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
+  })
+})
+
+describe('useDeleteShow', () => {
+  test('invalidates dashboard queries in addition to show queries', async () => {
+    const { wrapper, qc } = makeWrapperWithClient()
+    qc.setQueryData(showKeys.all, [])
+    qc.setQueryData(dashboardKeys.recentShows(RECENT_PARAMS), [])
+
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(null))
+
+    const { result } = renderHook(() => useDeleteShow(), { wrapper })
+    result.current.mutate(1)
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
   })
 })
