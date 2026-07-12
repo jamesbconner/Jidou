@@ -100,12 +100,15 @@ async def test_set_without_label_skips_label_write() -> None:
 
 
 @pytest.mark.asyncio
-async def test_set_evicts_oldest_when_over_maxsize() -> None:
-    """set() evicts the oldest entries via ZPOPMIN when over the configured cap."""
+async def test_set_evicts_oldest_live_entry_when_over_maxsize() -> None:
+    """set() evicts an oldest candidate via ZPOPMIN when it's confirmed still live."""
     cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=2, ttl=60)
     r = _mock_redis()
     r.zcard = AsyncMock(return_value=3)  # one over capacity
     r.zpopmin = AsyncMock(return_value=[("oldest_key", 1.0)])
+    # execute() is called 3 times: the write pipeline, the EXISTS-check
+    # pipeline (oldest_key is still live), then the delete pipeline.
+    r.pipeline().execute.side_effect = [[], [1], []]
 
     with patch("redis.asyncio.from_url", return_value=r):
         await cache.set("key3", "v3")
@@ -115,6 +118,30 @@ async def test_set_evicts_oldest_when_over_maxsize() -> None:
     delete_calls = list(pipe.delete.call_args_list)
     assert delete_calls[0].args[0] == "jidou:tmdb_cache:entry:oldest_key"
     assert delete_calls[1].args[0] == "jidou:tmdb_cache:label:oldest_key"
+
+
+@pytest.mark.asyncio
+async def test_set_skips_deleting_ghost_zset_members() -> None:
+    """A popped candidate whose entry key already expired (a "ghost") is not deleted.
+
+    Regression test: ZCARD on the order zset can overcount because expired
+    entry/label keys leave ghost members behind (TTL expiry on one key
+    doesn't prune a separate zset). Without the EXISTS check, evicting
+    "overflow" candidates could delete real, still-live entries to make up
+    for a count inflated by ghosts.
+    """
+    cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=2, ttl=60)
+    r = _mock_redis()
+    r.zcard = AsyncMock(return_value=3)
+    r.zpopmin = AsyncMock(return_value=[("ghost_key", 1.0)])
+    # EXISTS reports the ghost's entry key is gone (already TTL-expired).
+    r.pipeline().execute.side_effect = [[], [0], []]
+
+    with patch("redis.asyncio.from_url", return_value=r):
+        await cache.set("key3", "v3")
+
+    pipe = r.pipeline()
+    assert pipe.delete.call_count == 0
 
 
 @pytest.mark.asyncio

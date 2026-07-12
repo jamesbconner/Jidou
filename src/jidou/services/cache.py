@@ -97,7 +97,19 @@ class CacheBackend:
             await r.aclose()
 
     async def _enforce_maxsize(self, r: Any) -> None:
-        """Evict the oldest entries (by insertion order) if over capacity.
+        """Evict the oldest *live* entries (by insertion order) if over capacity.
+
+        ``ZCARD`` on the order zset can overcount: when an entry/label key
+        expires via Redis TTL, its zset member is not automatically removed
+        (TTL expiry on one key doesn't touch a separate zset's membership),
+        leaving "ghost" members behind. Popping the oldest ``overflow``
+        candidates and checking ``EXISTS`` before deleting avoids evicting
+        real, still-live entries just to make up for a count inflated by
+        ghosts — a ghost is simply dropped (``ZPOPMIN`` already removed it
+        from the zset) rather than counted against the eviction budget. This
+        is a soft cap: if a batch happens to pop mostly ghosts, fewer real
+        entries are evicted than the nominal overflow, but the zset is
+        cleaner for it and the true count converges over subsequent calls.
 
         Args:
             r: An open Redis async client to reuse for eviction commands.
@@ -105,11 +117,20 @@ class CacheBackend:
         overflow = await r.zcard(_ORDER_ZSET) - self._maxsize
         if overflow <= 0:
             return
-        oldest = await r.zpopmin(_ORDER_ZSET, overflow)
-        if not oldest:
+        candidates = await r.zpopmin(_ORDER_ZSET, overflow)
+        if not candidates:
+            return
+        check_pipe = r.pipeline()
+        for member, _score in candidates:
+            check_pipe.exists(_ENTRY_PREFIX + member)
+        alive_flags = await check_pipe.execute()
+        live_members = [
+            member for (member, _score), alive in zip(candidates, alive_flags, strict=True) if alive
+        ]
+        if not live_members:
             return
         pipe = r.pipeline()
-        for member, _score in oldest:
+        for member in live_members:
             pipe.delete(_ENTRY_PREFIX + member)
             pipe.delete(_LABEL_PREFIX + member)
         await pipe.execute()
