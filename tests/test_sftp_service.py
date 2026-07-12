@@ -1012,9 +1012,7 @@ class TestRunCommand:
             await sftp_service.run_command("systemctl stop deluged")
 
     @pytest.mark.asyncio
-    async def test_retries_on_transient_connection_error(
-        self, sftp_service: SFTPService
-    ) -> None:
+    async def test_retries_on_transient_connection_error(self, sftp_service: SFTPService) -> None:
         """Transient connection failures are retried like other SFTP operations."""
         proc = _FakeProc(exit_status=0)
         real_conn = _make_exec_conn(proc)

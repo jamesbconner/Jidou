@@ -699,9 +699,7 @@ class SFTPService:
                 command,
                 stderr,
             )
-            raise RuntimeError(
-                f"Remote command exited {exit_status}: {command}\n{stderr}".strip()
-            )
+            raise RuntimeError(f"Remote command exited {exit_status}: {command}\n{stderr}".strip())
 
         logger.info("Remote command succeeded in %.2fs: %s", elapsed, command)
         return CommandResult(

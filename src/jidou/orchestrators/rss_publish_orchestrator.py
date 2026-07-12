@@ -162,9 +162,7 @@ class RssPublishOrchestrator:
                     await self._on_event("error", msg, None)
                     return result
             else:
-                await self._on_event(
-                    "info", "[DRY RUN] Would stop remote Deluge service", None
-                )
+                await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
 
         try:
             # 4. Back up the current remote file
