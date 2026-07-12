@@ -70,7 +70,8 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
-      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-86400}
+      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
+      - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -167,7 +168,8 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
-      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-86400}
+      - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
+      - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}

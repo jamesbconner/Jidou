@@ -8,6 +8,73 @@ from fastapi.testclient import TestClient
 from jidou.main import app
 
 
+class _FakePipeline:
+    """Minimal fake of a redis.asyncio pipeline, backed by the parent FakeRedis dicts."""
+
+    def __init__(self, parent: "_FakeRedis") -> None:
+        self._parent = parent
+        self._ops: list[tuple[str, tuple, dict]] = []
+
+    def set(self, *args: object, **kwargs: object) -> None:
+        self._ops.append(("set", args, kwargs))
+
+    def zadd(self, *args: object, **kwargs: object) -> None:
+        self._ops.append(("zadd", args, kwargs))
+
+    def delete(self, *args: object, **kwargs: object) -> None:
+        self._ops.append(("delete", args, kwargs))
+
+    async def execute(self) -> list[object]:
+        for op, args, _kwargs in self._ops:
+            if op == "set":
+                self._parent._store[args[0]] = args[1]
+            elif op == "zadd":
+                self._parent._zset.update(args[1])
+            elif op == "delete":
+                for key in args:
+                    self._parent._store.pop(key, None)
+        self._ops.clear()
+        return []
+
+
+class _FakeRedis:
+    """In-memory fake of the subset of redis.asyncio.Redis CacheBackend uses."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, str] = {}
+        self._zset: dict[str, float] = {}
+
+    def pipeline(self) -> _FakePipeline:
+        return _FakePipeline(self)
+
+    async def get(self, key: str) -> str | None:
+        return self._store.get(key)
+
+    async def mget(self, keys: list[str]) -> list[str | None]:
+        return [self._store.get(k) for k in keys]
+
+    async def scan(self, cursor: int, match: str, count: int) -> tuple[int, list[str]]:
+        prefix = match.rstrip("*")
+        return 0, [k for k in self._store if k.startswith(prefix)]
+
+    async def delete(self, *keys: str) -> int:
+        deleted = 0
+        for key in keys:
+            if self._store.pop(key, None) is not None:
+                deleted += 1
+            self._zset.pop(key, None)
+        return deleted
+
+    async def zcard(self, key: str) -> int:
+        return len(self._zset)
+
+    async def zpopmin(self, key: str, count: int) -> list[tuple[str, float]]:
+        return []
+
+    async def aclose(self) -> None:
+        pass
+
+
 def _session_override_with_scalars(values: list[int]) -> "type[AsyncMock]":
     """Return a session override whose scalar() calls return values in order."""
 
@@ -66,8 +133,9 @@ def test_get_stats_returns_table_counts() -> None:
 
 
 def test_flush_cache_returns_ok_and_count() -> None:
-    """POST /api/admin/cache/flush clears the in-memory cache."""
-    response = TestClient(app).post("/api/admin/cache/flush")
+    """POST /api/admin/cache/flush clears the Redis-backed cache."""
+    with patch("redis.asyncio.from_url", return_value=_FakeRedis()):
+        response = TestClient(app).post("/api/admin/cache/flush")
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
@@ -79,15 +147,18 @@ async def test_flush_cache_cleared_count_matches_populated_cache() -> None:
     """Flushing a cache with N items reports cleared=N."""
     from jidou.services.cache import cache
 
-    # Populate the cache with 2 known entries
-    await cache.set("k1", "v1")
-    await cache.set("k2", "v2")
+    fake_redis = _FakeRedis()
+    with patch("redis.asyncio.from_url", return_value=fake_redis):
+        # Populate the cache with 2 known entries
+        await cache.set("k1", "v1")
+        await cache.set("k2", "v2")
 
-    response = TestClient(app).post("/api/admin/cache/flush")
-    body = response.json()
-    assert body["ok"] is True
-    # After flush the cache should be empty
-    assert await cache.get("k1") is None
+        response = TestClient(app).post("/api/admin/cache/flush")
+        body = response.json()
+        assert body["ok"] is True
+        assert body["cleared"] == 2
+        # After flush the cache should be empty
+        assert await cache.get("k1") is None
 
 
 # ---------------------------------------------------------------------------
