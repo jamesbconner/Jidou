@@ -148,6 +148,8 @@ async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:
             on_event=on_event,
             deluge_stop_command=settings.deluge_stop_command,
             deluge_restart_command=settings.deluge_restart_command,
+            deluge_stop_delay_seconds=settings.deluge_stop_delay_seconds,
+            deluge_restart_delay_seconds=settings.deluge_restart_delay_seconds,
         )
 
         publish_result = await orchestrator.run()

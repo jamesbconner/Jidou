@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # the service. Example: "systemctl stop deluged" / "systemctl start deluged".
     deluge_stop_command: str | None = None
     deluge_restart_command: str | None = None
+    # Seconds to wait after the stop command before uploading, so the daemon has
+    # actually exited (and released its own autosave lock) rather than just having
+    # been sent a signal. And after uploading, before the restart command, so the
+    # new file is fully flushed/closed on the remote side first.
+    deluge_stop_delay_seconds: float = Field(default=10.0, ge=0.0)
+    deluge_restart_delay_seconds: float = Field(default=2.0, ge=0.0)
     sftp_max_workers: int = Field(default=8, ge=1, le=32)
     sftp_max_retries: int = Field(default=3, ge=0)
     sftp_retry_delay: float = Field(default=1.0, ge=0.1)

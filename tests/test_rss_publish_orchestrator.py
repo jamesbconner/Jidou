@@ -261,9 +261,15 @@ async def test_publish_stops_and_restarts_deluge_around_upload() -> None:
     sub = _make_sub(feed=feed)
     session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
-    with patch(
-        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
-    ) as mock_orc_cls:
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", side_effect=_fake_sleep),
+    ):
         mock_orc = MagicMock()
         mock_orc.run = AsyncMock(return_value=_import_result_ok())
         mock_orc_cls.return_value = mock_orc
@@ -284,6 +290,9 @@ async def test_publish_stops_and_restarts_deluge_around_upload() -> None:
         "upload",
         "run:systemctl start deluged",
     ]
+    # Stop delay (default 10s) runs before any upload; restart delay (default
+    # 2s) runs after the upload, before the restart command.
+    assert sleeps == [10.0, 2.0]
     assert not result.errors
 
 
@@ -373,9 +382,10 @@ async def test_publish_still_restarts_deluge_if_upload_raises() -> None:
     sub = _make_sub(feed=feed)
     session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
-    with patch(
-        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
-    ) as mock_orc_cls:
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
         mock_orc = MagicMock()
         mock_orc.run = AsyncMock(return_value=_import_result_ok())
         mock_orc_cls.return_value = mock_orc
@@ -414,9 +424,10 @@ async def test_publish_records_error_if_restart_fails() -> None:
     sub = _make_sub(feed=feed)
     session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
-    with patch(
-        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
-    ) as mock_orc_cls:
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
         mock_orc = MagicMock()
         mock_orc.run = AsyncMock(return_value=_import_result_ok())
         mock_orc_cls.return_value = mock_orc
@@ -435,6 +446,87 @@ async def test_publish_records_error_if_restart_fails() -> None:
     assert "restart" in result.errors[0].lower()
     # Upload itself succeeded despite the restart failure.
     assert sftp.upload_bytes.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_publish_honors_custom_deluge_delays() -> None:
+    """Non-default stop/restart delays are passed through to asyncio.sleep."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+    sftp.run_command = AsyncMock()
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", side_effect=_fake_sleep),
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(
+            session,
+            sftp,
+            "/remote/yarss2.conf",
+            dry_run=False,
+            deluge_stop_command="systemctl stop deluged",
+            deluge_restart_command="systemctl start deluged",
+            deluge_stop_delay_seconds=30.0,
+            deluge_restart_delay_seconds=5.0,
+        )
+        result = await orc.run()
+
+    assert sleeps == [30.0, 5.0]
+    assert not result.errors
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_sleep_when_delay_is_zero() -> None:
+    """A zero delay never calls asyncio.sleep at all."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+    sftp.run_command = AsyncMock()
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(
+            session,
+            sftp,
+            "/remote/yarss2.conf",
+            dry_run=False,
+            deluge_stop_command="systemctl stop deluged",
+            deluge_restart_command="systemctl start deluged",
+            deluge_stop_delay_seconds=0.0,
+            deluge_restart_delay_seconds=0.0,
+        )
+        result = await orc.run()
+
+    mock_sleep.assert_not_called()
+    assert not result.errors
 
 
 @pytest.mark.asyncio
