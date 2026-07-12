@@ -128,7 +128,10 @@ export function SubscriptionEditModal({
   const [showPickerOpen, setShowPickerOpen] = useState(false)
   const showPickerRef = useRef<HTMLDivElement>(null)
   const patch = usePatchRssSubscription()
-  const { data: allShows = [] } = useShows()
+  // Matches Shows.tsx/Watchlist.tsx's limit override — the default (500) can
+  // silently exclude titles sorting past it once the library grows past that
+  // size, making this search miss shows that do exist.
+  const { data: allShows = [] } = useShows('title_asc', 10000)
   const isStub = sub.remote_key === null && !sub.enabled_in_config
 
   const linkedShowFromList = allShows.find((s) => s.id === draft.show_id) ?? null
