@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useFiles, fileKeys, type FilesPage } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
+import { Pagination } from '@/components/Pagination'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
@@ -353,23 +354,7 @@ export default function Files() {
       {!isLoading && total > 0 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
           <span>{total} file{total !== 1 ? 's' : ''}{(debouncedSearch || statusFilter) ? ' matching filters' : ''}</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              ← Prev
-            </button>
-            <span>Page {page + 1} of {totalPages}</span>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={(page + 1) * PAGE_SIZE >= total}
-              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next →
-            </button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
 
