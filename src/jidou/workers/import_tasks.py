@@ -92,7 +92,11 @@ async def _path_import(
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        entries = parse_file(file_content, root=_host_root_for_content_type(content_type))
+        entries = parse_file(
+            file_content,
+            root=_host_root_for_content_type(content_type),
+            directories_only=mode == "shows_only",
+        )
         total_shows = len({e.show_dir for e in entries})
 
         # parse_file() never raises — an unparseable line is simply skipped

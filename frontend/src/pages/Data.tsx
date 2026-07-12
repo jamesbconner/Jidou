@@ -45,7 +45,9 @@ const IMPORT_MODE_OPTIONS: { value: ImportMode; label: string; description: stri
     label: 'Shows only',
     description:
       'Create/find shows and sync their episodes, but skip episode matching. Useful as a ' +
-      'first pass to populate or verify the show catalog before touching episode-level data.',
+      'first pass to populate or verify the show catalog before touching episode-level data. ' +
+      'Each line can be a bare show directory (e.g. "Z:\\anime tv\\Dorohedoro\\") instead of ' +
+      'a full episode file path — no filename needed for this mode.',
   },
   {
     value: 'episodes_only',

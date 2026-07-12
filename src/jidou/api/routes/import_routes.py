@@ -63,7 +63,13 @@ async def import_text(
       ``file_tracked = True``.
     - ``"shows_only"``: finds or creates shows only — episode matching is
       skipped entirely. Useful as a first pass to populate/verify the show
-      catalog before touching episode-level data.
+      catalog before touching episode-level data. Since no episode files are
+      needed for this mode, each line may instead be a bare show directory
+      with no filename (e.g. ``Z:\\anime tv\\Dorohedoro\\`` — trailing
+      separator optional) — the mode itself is the signal that a line names
+      a show location, not a file, so any line not ending in a recognized
+      media extension is parsed as a show directory. A full per-episode file
+      listing still works too; the two line formats can even be mixed.
     - ``"episodes_only"``: matches episodes only against shows already in
       the database; never searches TMDB or creates a new show. Files under a
       directory whose show isn't already in the database are reported

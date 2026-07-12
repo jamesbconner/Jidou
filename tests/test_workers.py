@@ -806,7 +806,57 @@ async def test_path_import_passes_content_type_root_to_parse_file() -> None:
         await _path_import("tid-pi-root", "/show/S01E01.mkv\n", "anime", False)
 
     mock_parse_file.assert_called_once_with(
-        "/show/S01E01.mkv\n", root=settings.local_anime_host_path
+        "/show/S01E01.mkv\n", root=settings.local_anime_host_path, directories_only=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_path_import_shows_only_mode_passes_directories_only_true() -> None:
+    """mode='shows_only' passes directories_only=True into parse_file, so a
+    bare show-directory listing (no filenames) is accepted for this mode."""
+    from jidou.config import settings
+    from jidou.models.task import TaskStatus
+    from jidou.orchestrators.path_import_orchestrator import PathImportResult
+    from jidou.workers.import_tasks import _path_import
+
+    mock_engine, _mock_session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    import_result = PathImportResult(mode="shows_only")
+    mock_parse_file = MagicMock(return_value=[])
+
+    with (
+        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
+        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers._harness.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
+        patch("jidou.workers.import_tasks.parse_file", mock_parse_file),
+        patch("jidou.workers.import_tasks.TMDBService"),
+        patch("jidou.workers.import_tasks.create_llm_service"),
+        patch(
+            "jidou.workers.import_tasks.PathImportOrchestrator.run",
+            new_callable=AsyncMock,
+            return_value=import_result,
+        ),
+    ):
+        await _path_import(
+            "tid-pi-shows-only", "Z:\\anime tv\\Show\\\n", "anime", False, "shows_only"
+        )
+
+    mock_parse_file.assert_called_once_with(
+        "Z:\\anime tv\\Show\\\n", root=settings.local_anime_host_path, directories_only=True
     )
 
 
