@@ -87,6 +87,34 @@ async def test_set_writes_entry_and_label_with_ttl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_set_ttl_override_applies_to_entry_and_label() -> None:
+    """A per-call ttl= overrides the cache's configured default for both
+    the entry and label SET calls, so they always expire together."""
+    cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=604_800)
+    r = _mock_redis()
+
+    with patch("redis.asyncio.from_url", return_value=r):
+        await cache.set("key1", {"a": 1}, label="TMDB:/trending/tv/day", ttl=3_600)
+
+    pipe = r.pipeline()
+    assert pipe.set.call_args_list[0].kwargs["ex"] == 3_600
+    assert pipe.set.call_args_list[1].kwargs["ex"] == 3_600
+
+
+@pytest.mark.asyncio
+async def test_set_without_ttl_override_uses_configured_default() -> None:
+    """Omitting ttl= falls back to the cache's configured default TTL."""
+    cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=604_800)
+    r = _mock_redis()
+
+    with patch("redis.asyncio.from_url", return_value=r):
+        await cache.set("key1", {"a": 1}, label="TMDB:/tv/999")
+
+    pipe = r.pipeline()
+    assert pipe.set.call_args_list[0].kwargs["ex"] == 604_800
+
+
+@pytest.mark.asyncio
 async def test_set_without_label_skips_label_write() -> None:
     """set() with no label only writes the value SET, not a label SET."""
     cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=60)

@@ -12,6 +12,39 @@ from jidou.services.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
 
+# Endpoint-prefix TTL overrides (seconds), checked in order — first match wins.
+# Everything not listed here falls back to the cache's configured default
+# (settings.tmdb_cache_ttl), which is appropriate for data TMDB rarely changes
+# and that Jidou only ever fetches once anyway (show/episode/season details,
+# external_ids, episode_groups, alternative_titles, images, recommendations).
+#
+# Trending and search are different: they're read repeatedly by humans
+# (Shows page search, re-match modals) and/or a scheduled refresh job, and
+# staleness there is directly user-visible rather than a background
+# data-quality nuance — see the "trending was serving week-old data" and
+# "re-match modal showing stale search candidates" analysis.
+_TTL_OVERRIDES: tuple[tuple[str, int], ...] = (
+    ("/trending/", 86_400),  # 1 day — matches TMDB's own daily trending refresh
+    ("/search/", 3_600),  # 1 hour — balances repeat-search hit rate against staleness
+)
+
+
+def _ttl_for_endpoint(endpoint: str) -> int | None:
+    """Return a TTL override in seconds for *endpoint*, or None for the cache default.
+
+    Args:
+        endpoint: API endpoint path (e.g. ``"/trending/movie/day"``).
+
+    Returns:
+        The override TTL in seconds, or ``None`` if *endpoint* isn't in
+        :data:`_TTL_OVERRIDES` (caller should fall back to the cache's
+        configured default).
+    """
+    for prefix, ttl in _TTL_OVERRIDES:
+        if endpoint.startswith(prefix):
+            return ttl
+    return None
+
 
 class TMDBService:
     """Client for The Movie Database (TMDB) API v3.
@@ -120,7 +153,7 @@ class TMDBService:
                 response.status_code,
                 response.elapsed.total_seconds(),
             )
-            await cache.set(cache_key, result, label=endpoint)
+            await cache.set(cache_key, result, label=endpoint, ttl=_ttl_for_endpoint(endpoint))
             return result
         finally:
             if is_owner:
