@@ -104,6 +104,7 @@ def _make_episode(*, id: int = 10, show_id: int = 1) -> MagicMock:
 def _session_override(
     single: MagicMock | None = None,
     many: list[MagicMock] | None = None,
+    has_active_rss: bool = False,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -118,8 +119,8 @@ def _session_override(
         items = many or ([single] if single else [])
         result.scalar_one_or_none.return_value = single
         result.scalars.return_value.all.return_value = items
-        # list_shows returns (show, ep_count) tuples via .all()
-        result.all.return_value = [(item, 0, 0) for item in items]
+        # list_shows returns (show, ep_count, file_count, has_active_rss) tuples via .all()
+        result.all.return_value = [(item, 0, 0, has_active_rss) for item in items]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
@@ -159,6 +160,34 @@ def test_list_shows_empty_returns_empty_list() -> None:
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_active_rss_subscription_flag() -> None:
+    """has_active_rss_subscription reflects the correlated EXISTS subquery per show."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], has_active_rss=True)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["has_active_rss_subscription"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_defaults_active_rss_subscription_to_false() -> None:
+    """A show with no active/enabled subscription reports has_active_rss_subscription=False."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show])
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["has_active_rss_subscription"] is False
     finally:
         app.dependency_overrides.clear()
 

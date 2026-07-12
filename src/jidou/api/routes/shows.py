@@ -225,18 +225,34 @@ async def list_shows(
         .correlate(Show)
         .scalar_subquery()
     )
+    active_rss_sq = (
+        select(RssSubscription.id)
+        .where(
+            RssSubscription.show_id == Show.id,
+            RssSubscription.active.is_(True),
+            RssSubscription.enabled_in_config.is_(True),
+        )
+        .correlate(Show)
+        .exists()
+    )
     stmt = (
-        select(Show, ep_count_sq.label("episode_count"), file_count_sq.label("matched_file_count"))
+        select(
+            Show,
+            ep_count_sq.label("episode_count"),
+            file_count_sq.label("matched_file_count"),
+            active_rss_sq.label("has_active_rss_subscription"),
+        )
         .order_by(_SORT_MAP[sort])
         .offset(offset)
         .limit(limit)
     )
     rows = (await db_session.execute(stmt)).all()
     shows: list[ShowList] = []
-    for show, ep_count, file_count in rows:
+    for show, ep_count, file_count, has_active_rss in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
         data.matched_file_count = file_count
+        data.has_active_rss_subscription = has_active_rss
         shows.append(data)
     return shows
 

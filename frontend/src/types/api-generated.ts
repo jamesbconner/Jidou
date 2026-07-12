@@ -1251,7 +1251,7 @@ export interface paths {
         };
         /**
          * Get Cache
-         * @description Inspect the in-memory TMDB response cache.
+         * @description Inspect the shared Redis-backed TMDB response cache.
          *
          *     Returns:
          *         Dictionary with current entry count, configured capacity and TTL,
@@ -1277,7 +1277,7 @@ export interface paths {
         put?: never;
         /**
          * Flush Cache
-         * @description Flush the in-memory TMDB response cache.
+         * @description Flush the shared Redis-backed TMDB response cache.
          *
          *     Returns:
          *         ``{"ok": True, "cleared": N}`` where N is the number of entries removed.
@@ -2065,19 +2065,38 @@ export interface paths {
          *     POSIX-style (``/mnt/media/anime/Dorohedoro/Season 01/ep.mkv``).
          *     Format is detected automatically per line.
          *
-         *     The task:
-         *     1. Parses every line into a show directory, season, and episode number.
-         *     2. Finds or creates each show by searching TMDB (handles Japanese names).
-         *     3. Marks matched episode rows ``file_tracked = True``.
+         *     The task, per ``mode``:
+         *     - ``"full"`` (default): finds or creates each show by searching TMDB
+         *       (handles Japanese names), then marks matched episode rows
+         *       ``file_tracked = True``.
+         *     - ``"shows_only"``: finds or creates shows only — episode matching is
+         *       skipped entirely. Useful as a first pass to populate/verify the show
+         *       catalog before touching episode-level data. Since no episode files are
+         *       needed for this mode, each line may instead be a bare show directory
+         *       with no filename (e.g. ``Z:\anime tv\Dorohedoro\`` — trailing
+         *       separator optional) — the mode itself is the signal that a line names
+         *       a show location, not a file, so any line not ending in a recognized
+         *       media extension is parsed as a show directory. A full per-episode file
+         *       listing still works too; the two line formats can even be mixed.
+         *     - ``"episodes_only"``: matches episodes only against shows already in
+         *       the database; never searches TMDB or creates a new show. Files under a
+         *       directory whose show isn't already in the database are reported
+         *       unmatched.
          *
          *     Progress is streamed over WebSocket (``/ws``).  The completed task record
          *     includes a ``result_summary`` with per-show counts.
          *
          *     Args:
          *         file: Plain-text file with one absolute path per line.
-         *         content_type: Content type assigned to newly created shows
-         *             (``anime``, ``tv``, or ``movie``).
+         *         content_type: ``anime``, ``tv``, or ``movie``. Selects which
+         *             configured library root anchors ``show_dir`` resolution when
+         *             parsing each line — required in every mode, not just
+         *             ``"full"``/``"shows_only"``. Also assigned to newly created shows
+         *             (irrelevant to that specific effect in ``"episodes_only"``, since
+         *             no shows are ever created there, but the path-anchoring effect
+         *             still applies).
          *         dry_run: Parse and match without writing to the database.
+         *         mode: ``"full"``, ``"shows_only"``, or ``"episodes_only"``.
          *         db_session: Injected async database session.
          *
          *     Returns:
@@ -2085,7 +2104,7 @@ export interface paths {
          *         tracked over WebSocket.
          *
          *     Raises:
-         *         HTTPException: 400 if ``content_type`` is not recognised.
+         *         HTTPException: 400 if ``content_type`` or ``mode`` is not recognised.
          *         HTTPException: 422 if the uploaded file exceeds the size limit.
          */
         post: operations["import_text_api_import_text_post"];
@@ -2239,6 +2258,11 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Mode
+             * @default full
+             */
+            mode: string;
         };
         /**
          * CalendarEpisode
@@ -3145,6 +3169,11 @@ export interface components {
              * @default 0
              */
             matched_file_count: number;
+            /**
+             * Has Active Rss Subscription
+             * @default false
+             */
+            has_active_rss_subscription: boolean;
             /**
              * Created At
              * Format: date-time

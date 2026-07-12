@@ -26,6 +26,16 @@ function EyeIcon({ filled }: { filled: boolean }) {
   )
 }
 
+function RssIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none" />
+      <path d="M4 4a16 16 0 0 1 16 16" />
+      <path d="M4 10.5a9.5 9.5 0 0 1 9.5 9.5" />
+    </svg>
+  )
+}
+
 export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistPending = false }: Props) {
   const dqIssues = DQ_CHECKS.filter((c) => c.test(show))
   const inWatchlist = watchlistEntryId != null
@@ -66,6 +76,17 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
           >
             <EyeIcon filled={inWatchlist} />
           </button>
+        )}
+
+        {/* Active RSS subscription — upper left, next to watchlist toggle */}
+        {show.has_active_rss_subscription && (
+          <span
+            className="absolute top-1.5 left-9 w-6 h-6 rounded-full flex items-center justify-center shadow bg-orange-500 text-white"
+            title="Has an active RSS subscription"
+            aria-label="Has an active RSS subscription"
+          >
+            <RssIcon />
+          </span>
         )}
 
         {/* DQ badge — upper right */}
