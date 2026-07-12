@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncssh
 import pytest
 
-from jidou.services.sftp_service import DownloadProgress, SFTPService, UploadResult
+from jidou.services.sftp_service import CommandResult, DownloadProgress, SFTPService, UploadResult
 
 
 @pytest.fixture
@@ -62,6 +62,24 @@ def _make_conn(mock_sftp: AsyncMock) -> MagicMock:
 def _old_mtime() -> int:
     """Unix timestamp for 10 minutes ago (well outside the upload grace window)."""
     return int(time.time()) - 600
+
+
+class _FakeProc:
+    """Stand-in for asyncssh.SSHCompletedProcess."""
+
+    def __init__(self, exit_status: int, stdout: str = "", stderr: str = "") -> None:
+        self.exit_status = exit_status
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _make_exec_conn(proc: object) -> MagicMock:
+    """Build the single-level async context manager asyncssh.connect() returns for exec."""
+    conn = MagicMock()
+    conn.__aenter__ = AsyncMock(return_value=conn)
+    conn.__aexit__ = AsyncMock(return_value=False)
+    conn.run = AsyncMock(return_value=proc)
+    return conn
 
 
 # ---------------------------------------------------------------------------
@@ -948,3 +966,70 @@ class TestUploadFile:
             result = await sftp_service.upload_file(local, "/remote/payload.bin")
 
         assert result.size == 256
+
+
+# ---------------------------------------------------------------------------
+# run_command
+# ---------------------------------------------------------------------------
+
+
+class TestRunCommand:
+    @pytest.mark.asyncio
+    async def test_dry_run_skips_execution(self, sftp_service: SFTPService) -> None:
+        """dry_run=True must not open any SSH connection."""
+        with patch("asyncssh.connect") as mock_connect:
+            result = await sftp_service.run_command("systemctl stop deluged", dry_run=True)
+
+        mock_connect.assert_not_called()
+        assert result.dry_run is True
+        assert result.exit_status == 0
+        assert result.elapsed_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_successful_command_returns_result(self, sftp_service: SFTPService) -> None:
+        """A zero-exit command returns a populated CommandResult, no exception."""
+        proc = _FakeProc(exit_status=0, stdout="ok\n", stderr="")
+
+        with patch("asyncssh.connect", return_value=_make_exec_conn(proc)) as mock_connect:
+            result = await sftp_service.run_command("systemctl stop deluged")
+
+        mock_connect.assert_called_once()
+        assert isinstance(result, CommandResult)
+        assert result.command == "systemctl stop deluged"
+        assert result.exit_status == 0
+        assert result.stdout == "ok\n"
+        assert result.dry_run is False
+
+    @pytest.mark.asyncio
+    async def test_nonzero_exit_raises_runtime_error(self, sftp_service: SFTPService) -> None:
+        """A non-zero exit status raises, surfacing stderr in the message."""
+        proc = _FakeProc(exit_status=1, stdout="", stderr="unit not found")
+
+        with (
+            patch("asyncssh.connect", return_value=_make_exec_conn(proc)),
+            pytest.raises(RuntimeError, match="unit not found"),
+        ):
+            await sftp_service.run_command("systemctl stop deluged")
+
+    @pytest.mark.asyncio
+    async def test_retries_on_transient_connection_error(self, sftp_service: SFTPService) -> None:
+        """Transient connection failures are retried like other SFTP operations."""
+        proc = _FakeProc(exit_status=0)
+        real_conn = _make_exec_conn(proc)
+        attempts = 0
+
+        def flaky_connect(**kwargs: object) -> MagicMock:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise asyncssh.DisconnectError(2, "connection reset")
+            return real_conn
+
+        with (
+            patch("asyncssh.connect", side_effect=flaky_connect),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await sftp_service.run_command("systemctl start deluged")
+
+        assert attempts == 2
+        assert result.exit_status == 0

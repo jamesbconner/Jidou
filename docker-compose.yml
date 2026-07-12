@@ -193,6 +193,8 @@ services:
       - LOCAL_MOVIE_PATH=${LOCAL_MOVIE_PATH:-/data/media/movies}
       # RSS
       - RSS_CONFIG_REMOTE_PATH=${RSS_CONFIG_REMOTE_PATH:-}
+      - DELUGE_STOP_COMMAND=${DELUGE_STOP_COMMAND:-}
+      - DELUGE_RESTART_COMMAND=${DELUGE_RESTART_COMMAND:-}
       # Application
       - DEBUG=${DEBUG:-true}
       - JIDOU_API_KEY=${JIDOU_API_KEY:-}

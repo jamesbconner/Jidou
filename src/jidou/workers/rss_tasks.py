@@ -146,6 +146,8 @@ async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:
             remote_path=settings.rss_config_remote_path or "",
             dry_run=dry_run,
             on_event=on_event,
+            deluge_stop_command=settings.deluge_stop_command,
+            deluge_restart_command=settings.deluge_restart_command,
         )
 
         publish_result = await orchestrator.run()

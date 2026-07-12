@@ -77,6 +77,18 @@ class UploadResult:
 
 
 @dataclass
+class CommandResult:
+    """Result of a shell command executed on the remote host over SSH."""
+
+    command: str
+    exit_status: int
+    stdout: str
+    stderr: str
+    dry_run: bool
+    elapsed_seconds: float
+
+
+@dataclass
 class DownloadProgress:
     """Progress snapshot emitted after each file in a batch download."""
 
@@ -632,4 +644,69 @@ class SFTPService:
         logger.info("Uploaded %s (%d bytes) → %s in %.2fs", local.name, size, remote_path, elapsed)
         return UploadResult(
             remote_path=remote_path, size=size, dry_run=False, elapsed_seconds=elapsed
+        )
+
+    async def run_command(self, command: str, dry_run: bool = False) -> CommandResult:
+        """Execute a shell command on the remote host over an SSH exec channel.
+
+        Separate from the SFTP subsystem — opens a plain SSH connection and runs
+        *command* non-interactively. Because the remote shell is neither a login
+        nor an interactive shell, it does not source ``.bashrc``/``.bash_profile``,
+        so shell aliases and functions defined there are not available; use the
+        underlying command directly (e.g. ``systemctl stop deluged``, not an alias).
+
+        Args:
+            command: Shell command to execute on the remote host.
+            dry_run: When ``True`` the command is skipped; the result reports
+                ``exit_status=0`` and ``dry_run=True``.
+
+        Returns:
+            :class:`CommandResult` with exit status and captured output.
+
+        Raises:
+            RuntimeError: If the command exits with a non-zero status.
+        """
+        start = time.monotonic()
+
+        if dry_run:
+            logger.info("[DRY RUN] Would run remote command: %s", command)
+            return CommandResult(
+                command=command,
+                exit_status=0,
+                stdout="",
+                stderr="",
+                dry_run=True,
+                elapsed_seconds=0.0,
+            )
+
+        logger.info("Running remote command: %s", command)
+
+        async def _do() -> asyncssh.SSHCompletedProcess:
+            async with asyncssh.connect(**self._connect_kwargs()) as conn:
+                return await conn.run(command, check=False)
+
+        proc = await self._execute_with_retry(f"run_command {command}", _do)
+        elapsed = time.monotonic() - start
+        stdout = proc.stdout if isinstance(proc.stdout, str) else ""
+        stderr = proc.stderr if isinstance(proc.stderr, str) else ""
+        exit_status = proc.exit_status if proc.exit_status is not None else -1
+
+        if exit_status != 0:
+            logger.error(
+                "Remote command failed (exit %d) in %.2fs: %s\nstderr: %s",
+                exit_status,
+                elapsed,
+                command,
+                stderr,
+            )
+            raise RuntimeError(f"Remote command exited {exit_status}: {command}\n{stderr}".strip())
+
+        logger.info("Remote command succeeded in %.2fs: %s", elapsed, command)
+        return CommandResult(
+            command=command,
+            exit_status=exit_status,
+            stdout=stdout,
+            stderr=stderr,
+            dry_run=False,
+            elapsed_seconds=elapsed,
         )
