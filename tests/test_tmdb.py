@@ -107,6 +107,43 @@ def tmdb_service() -> TMDBService:
     return TMDBService(api_key="test-key")
 
 
+class TestTtlForEndpoint:
+    """Test suite for the per-endpoint TTL override policy."""
+
+    @pytest.mark.parametrize(
+        ("endpoint", "expected_ttl"),
+        [
+            ("/trending/movie/day", 86_400),
+            ("/trending/tv/week", 86_400),
+            ("/search/tv", 3_600),
+            ("/search/multi", 3_600),
+        ],
+    )
+    def test_overridden_endpoints_return_their_ttl(self, endpoint: str, expected_ttl: int) -> None:
+        from jidou.services.tmdb import _ttl_for_endpoint
+
+        assert _ttl_for_endpoint(endpoint) == expected_ttl
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "/tv/999",
+            "/movie/999",
+            "/tv/999/season/1",
+            "/tv/999/season/1/episode/1",
+            "/tv/999/external_ids",
+            "/tv/999/episode_groups",
+            "/tv/999/alternative_titles",
+            "/tv/999/images",
+            "/tv/999/recommendations",
+        ],
+    )
+    def test_unlisted_endpoints_return_none(self, endpoint: str) -> None:
+        from jidou.services.tmdb import _ttl_for_endpoint
+
+        assert _ttl_for_endpoint(endpoint) is None
+
+
 class TestTMDBService:
     """Test suite for TMDBService."""
 
@@ -485,6 +522,35 @@ class TestTMDBRequestHTTPLayer:
         mock_cache_set.assert_called_once()
         _, cached_value = mock_cache_set.call_args.args[:2]
         assert cached_value == payload
+
+    @pytest.mark.asyncio
+    async def test_trending_cached_with_1_day_ttl_override(self, tmdb_service: TMDBService) -> None:
+        """get_trending()'s cache.set() call gets the 1-day TTL override,
+        not the cache's configured multi-day default."""
+        async with _patched_http(json_data={"results": []}) as (_, mock_cache_set):
+            await tmdb_service.get_trending(media_type="tv", time_window="day")
+
+        assert mock_cache_set.call_args.kwargs["ttl"] == 86_400
+
+    @pytest.mark.asyncio
+    async def test_search_cached_with_1_hour_ttl_override(self, tmdb_service: TMDBService) -> None:
+        """search()'s cache.set() call gets the 1-hour TTL override."""
+        async with _patched_http(json_data={"results": []}) as (_, mock_cache_set):
+            await tmdb_service.search("Dorohedoro", media_type="tv")
+
+        assert mock_cache_set.call_args.kwargs["ttl"] == 3_600
+
+    @pytest.mark.asyncio
+    async def test_show_details_cached_with_no_ttl_override(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """get_details()'s cache.set() call passes ttl=None, deferring to the
+        cache's own configured default — no per-endpoint override for data
+        that's only ever fetched once."""
+        async with _patched_http(json_data={"id": 999}) as (_, mock_cache_set):
+            await tmdb_service.get_details(999, media_type="tv")
+
+        assert mock_cache_set.call_args.kwargs["ttl"] is None
 
     @pytest.mark.asyncio
     async def test_http_404_raises_http_status_error(self, tmdb_service: TMDBService) -> None:

@@ -74,7 +74,13 @@ class CacheBackend:
             return None
         return json.loads(raw)
 
-    async def set(self, key: str, value: Any, label: str | None = None) -> None:
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        label: str | None = None,
+        ttl: int | None = None,
+    ) -> None:
         """Store a value in the cache and enforce the entry-count cap.
 
         Args:
@@ -82,14 +88,21 @@ class CacheBackend:
             value: The value to cache (must be JSON-serialisable).
             label: Optional human-readable label (e.g. TMDB endpoint path).
                    Stored with the same TTL as the value.
+            ttl: Optional override for this entry's TTL in seconds. Callers
+                 whose data has a materially different freshness requirement
+                 than the cache's configured default (e.g. TMDB's daily
+                 trending list, versus show/episode details that only ever
+                 get fetched once) pass this instead of forcing every caller
+                 onto one global TTL. Defaults to the cache's configured TTL.
         """
+        effective_ttl = ttl if ttl is not None else self._ttl
         r = self._get_redis()
         try:
             payload = json.dumps(value)
             pipe = r.pipeline()
-            pipe.set(_ENTRY_PREFIX + key, payload, ex=self._ttl)
+            pipe.set(_ENTRY_PREFIX + key, payload, ex=effective_ttl)
             if label is not None:
-                pipe.set(_LABEL_PREFIX + key, label, ex=self._ttl)
+                pipe.set(_LABEL_PREFIX + key, label, ex=effective_ttl)
             pipe.zadd(_ORDER_ZSET, {key: time.time()})
             await pipe.execute()
             await self._enforce_maxsize(r)
