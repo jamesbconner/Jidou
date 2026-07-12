@@ -15,6 +15,7 @@ Run sequence:
 7. compose_rss_config(header, new_body) → upload via sftp.upload_bytes().
 """
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -75,6 +76,16 @@ class RssPublishOrchestrator:
         deluge_restart_command: Optional shell command run over SSH after the
             backup/upload, in a ``finally`` block, so Deluge always comes back
             up and reloads the new config — even if the upload itself failed.
+        deluge_stop_delay_seconds: Seconds to wait after ``deluge_stop_command``
+            succeeds before touching any remote files. The stop command only
+            requests a shutdown (e.g. ``pkill``) — it returns as soon as the
+            signal is sent, not once the process has actually exited and
+            released the config file. Ignored when ``deluge_stop_command`` is
+            unset.
+        deluge_restart_delay_seconds: Seconds to wait after the upload
+            completes, before running ``deluge_restart_command`` — gives the
+            remote write time to fully flush/close before the daemon reads it
+            back. Ignored when ``deluge_restart_command`` is unset.
     """
 
     def __init__(
@@ -86,6 +97,8 @@ class RssPublishOrchestrator:
         on_event: _OnEvent | None = None,
         deluge_stop_command: str | None = None,
         deluge_restart_command: str | None = None,
+        deluge_stop_delay_seconds: float = 10.0,
+        deluge_restart_delay_seconds: float = 2.0,
     ) -> None:
         self._session = session
         self._sftp = sftp
@@ -99,6 +112,8 @@ class RssPublishOrchestrator:
             )
         self._deluge_stop_command = deluge_stop_command
         self._deluge_restart_command = deluge_restart_command
+        self._deluge_stop_delay_seconds = deluge_stop_delay_seconds
+        self._deluge_restart_delay_seconds = deluge_restart_delay_seconds
 
     async def run(self) -> RssPublishResult:
         """Execute the full publish sequence.
@@ -161,6 +176,13 @@ class RssPublishOrchestrator:
                     result.errors.append(msg)
                     await self._on_event("error", msg, None)
                     return result
+                if self._deluge_stop_delay_seconds > 0:
+                    await self._on_event(
+                        "info",
+                        f"Waiting {self._deluge_stop_delay_seconds:g}s for Deluge to fully stop",
+                        None,
+                    )
+                    await asyncio.sleep(self._deluge_stop_delay_seconds)
             else:
                 await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
 
@@ -215,6 +237,16 @@ class RssPublishOrchestrator:
             # backup/compose/upload above raised.
             if self._deluge_restart_command:
                 if not self._dry_run:
+                    if self._deluge_restart_delay_seconds > 0:
+                        await self._on_event(
+                            "info",
+                            (
+                                f"Waiting {self._deluge_restart_delay_seconds:g}s before "
+                                "restarting Deluge"
+                            ),
+                            None,
+                        )
+                        await asyncio.sleep(self._deluge_restart_delay_seconds)
                     await self._on_event("info", "Restarting remote Deluge service", None)
                     try:
                         await self._sftp.run_command(self._deluge_restart_command)
