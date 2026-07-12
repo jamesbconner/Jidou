@@ -188,7 +188,7 @@ async def get_pipeline_status(
 
 @router.get("/cache")
 async def get_cache() -> dict[str, Any]:
-    """Inspect the in-memory TMDB response cache.
+    """Inspect the shared Redis-backed TMDB response cache.
 
     Returns:
         Dictionary with current entry count, configured capacity and TTL,
@@ -201,17 +201,14 @@ async def get_cache() -> dict[str, Any]:
 
 @router.post("/cache/flush")
 async def flush_cache() -> dict[str, Any]:
-    """Flush the in-memory TMDB response cache.
+    """Flush the shared Redis-backed TMDB response cache.
 
     Returns:
         ``{"ok": True, "cleared": N}`` where N is the number of entries removed.
     """
     from jidou.services.cache import cache
 
-    async with cache._lock:
-        count = len(cache._cache)
-        cache._cache.clear()
-        cache._labels.clear()
+    count = await cache.flush()
 
     logger.info("Admin: flushed %d cache entries", count)
     return {"ok": True, "cleared": count}

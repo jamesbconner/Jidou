@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     tmdb_api_key: str | None = None
     tmdb_base_url: str = "https://api.themoviedb.org/3"
     tmdb_rate_limit_per_second: float = Field(default=0.5, ge=0.1, le=2.0)
-    tmdb_cache_ttl: int = Field(default=86400, ge=3600)  # 24 hours in seconds
+    tmdb_cache_ttl: int = Field(default=604_800, ge=3600)  # 7 days in seconds
+    tmdb_cache_maxsize: int = Field(default=25_000, ge=1)
 
     # CORS — stored as a plain string so pydantic-settings never attempts
     # JSON-parsing. Use the cors_origins property for the parsed list.

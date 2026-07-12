@@ -12,6 +12,51 @@ import jidou.services.tmdb as tmdb_module
 from jidou.services.tmdb import TMDBService
 
 
+class _FakeRedisPipeline:
+    """Minimal fake of a redis.asyncio pipeline, backed by the parent's dict."""
+
+    def __init__(self, store: dict[str, str]) -> None:
+        self._store = store
+        self._writes: list[tuple[str, str]] = []
+
+    def set(self, key: str, value: str, **kwargs: object) -> "_FakeRedisPipeline":
+        self._writes.append((key, value))
+        return self
+
+    def zadd(self, *args: object, **kwargs: object) -> "_FakeRedisPipeline":
+        return self
+
+    async def execute(self) -> list[object]:
+        for key, value in self._writes:
+            self._store[key] = value
+        self._writes.clear()
+        return []
+
+
+class _FakeRedis:
+    """In-memory fake of the CacheBackend subset of redis.asyncio.Redis, for tests
+    that need genuine cache get/set round-trip semantics (not just call-shape mocks).
+    """
+
+    def __init__(self) -> None:
+        self._store: dict[str, str] = {}
+
+    def pipeline(self) -> _FakeRedisPipeline:
+        return _FakeRedisPipeline(self._store)
+
+    async def get(self, key: str) -> str | None:
+        return self._store.get(key)
+
+    async def zcard(self, key: str) -> int:
+        return 0
+
+    async def zpopmin(self, key: str, count: int) -> list[tuple[str, float]]:
+        return []
+
+    async def aclose(self) -> None:
+        pass
+
+
 @asynccontextmanager
 async def _patched_http(
     json_data: dict | None = None,
@@ -263,6 +308,7 @@ class TestTMDBService:
         with (
             patch("httpx2.AsyncClient", return_value=mock_client),
             patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
+            patch("redis.asyncio.from_url", return_value=_FakeRedis()),
         ):
             results = await asyncio.gather(
                 tmdb_service.get_trending(),
@@ -317,6 +363,7 @@ class TestTMDBService:
         with (
             patch("httpx2.AsyncClient", return_value=mock_client),
             patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
+            patch("redis.asyncio.from_url", return_value=_FakeRedis()),
         ):
             # Use media_type="movie" to get a distinct cache key from the
             # success-path dedup test which uses the default "multi" endpoint.
