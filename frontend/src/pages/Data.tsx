@@ -126,13 +126,8 @@ function TextImportSection() {
             <select
               value={contentType}
               onChange={(e) => setContentType(e.target.value)}
-              disabled={mode === 'episodes_only'}
-              title={
-                mode === 'episodes_only'
-                  ? 'Unused in episodes-only mode — no shows are created'
-                  : undefined
-              }
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Selects which library root anchors path parsing — required in every mode, not just for newly created shows"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="anime">Anime</option>
               <option value="tv">TV</option>

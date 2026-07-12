@@ -74,9 +74,13 @@ async def import_text(
 
     Args:
         file: Plain-text file with one absolute path per line.
-        content_type: Content type assigned to newly created shows
-            (``anime``, ``tv``, or ``movie``). Unused when ``mode`` is
-            ``"episodes_only"``, since no shows are ever created in that mode.
+        content_type: ``anime``, ``tv``, or ``movie``. Selects which
+            configured library root anchors ``show_dir`` resolution when
+            parsing each line — required in every mode, not just
+            ``"full"``/``"shows_only"``. Also assigned to newly created shows
+            (irrelevant to that specific effect in ``"episodes_only"``, since
+            no shows are ever created there, but the path-anchoring effect
+            still applies).
         dry_run: Parse and match without writing to the database.
         mode: ``"full"``, ``"shows_only"``, or ``"episodes_only"``.
         db_session: Injected async database session.
