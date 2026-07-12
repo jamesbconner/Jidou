@@ -425,6 +425,110 @@ class TestParseLineWithRoot:
 
 
 # ---------------------------------------------------------------------------
+# path_parser — directories_only (shows_only import mode)
+# ---------------------------------------------------------------------------
+
+
+class TestParseLineDirectoriesOnly:
+    def test_directory_line_with_trailing_backslash(self) -> None:
+        entry = parse_line(
+            "Z:\\anime tv\\Wistoria Wand and Sword\\",
+            root=r"Z:\anime tv",
+            directories_only=True,
+        )
+        assert entry is not None
+        assert entry.show_dir == "Wistoria Wand and Sword"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\Wistoria Wand and Sword"))
+        assert entry.season is None
+        assert entry.episode is None
+        assert entry.is_absolute is False
+
+    def test_directory_line_without_trailing_separator(self) -> None:
+        """The mode flag is the signal, not the trailing slash — a bare
+        directory line works identically with or without one."""
+        entry = parse_line(r"Z:\anime tv\KILL BLUE", root=r"Z:\anime tv", directories_only=True)
+        assert entry is not None
+        assert entry.show_dir == "KILL BLUE"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\KILL BLUE"))
+
+    def test_directory_line_rejected_when_directories_only_false(self) -> None:
+        """Backward compatible: without the mode flag, a non-media line is
+        still just skipped, exactly as before this feature existed."""
+        entry = parse_line("Z:\\anime tv\\KILL BLUE\\", root=r"Z:\anime tv")
+        assert entry is None
+
+    def test_media_extension_line_still_parses_normally_in_directories_only_mode(
+        self,
+    ) -> None:
+        """A full per-episode file path still works even with directories_only=True
+        — a directory listing and a file listing can be mixed in one import."""
+        entry = parse_line(
+            r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E01.mkv",
+            root=r"Z:\anime tv",
+            directories_only=True,
+        )
+        assert entry is not None
+        assert entry.show_dir == "Dorohedoro"
+        assert entry.season == 1
+        assert entry.episode == 1
+
+    def test_directory_line_no_root_configured_uses_last_segment(self) -> None:
+        entry = parse_line("Z:\\anime tv\\KILL BLUE\\", directories_only=True)
+        assert entry is not None
+        assert entry.show_dir == "KILL BLUE"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\KILL BLUE"))
+
+    def test_directory_line_not_under_root_falls_back(self) -> None:
+        entry = parse_line(
+            "Z:\\anime tv\\KILL BLUE\\", root=r"D:\some\other\root", directories_only=True
+        )
+        assert entry is not None
+        assert entry.show_dir == "KILL BLUE"
+
+    def test_nested_subdirectory_still_resolves_to_anchored_show_dir(self) -> None:
+        """A directory-only line pointing at a subfolder under the show (e.g. a
+        bonus-content folder) still anchors to the show itself, not the subfolder."""
+        entry = parse_line(
+            "Z:\\anime tv\\Gurren Lagann\\Clean Intro & Endings\\",
+            root=r"Z:\anime tv",
+            directories_only=True,
+        )
+        assert entry is not None
+        assert entry.show_dir == "Gurren Lagann"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\Gurren Lagann"))
+
+    def test_line_that_is_exactly_the_root_returns_none(self) -> None:
+        entry = parse_line("Z:\\anime tv\\", root=r"Z:\anime tv", directories_only=True)
+        assert entry is None
+
+    def test_posix_directory_line(self) -> None:
+        entry = parse_line(
+            "/mnt/media/anime/Dorohedoro", root="/mnt/media/anime", directories_only=True
+        )
+        assert entry is not None
+        assert entry.show_dir == "Dorohedoro"
+
+    def test_parse_file_directories_only_mixed_with_file_lines(self) -> None:
+        content = "\n".join(
+            [
+                "Z:\\anime tv\\KILL BLUE\\",
+                r"Z:\anime tv\Wistoria Wand and Sword",
+                r"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E01.mkv",
+                "# a comment",
+                "",
+            ]
+        )
+        entries = parse_file(content, root=r"Z:\anime tv", directories_only=True)
+        assert {e.show_dir for e in entries} == {
+            "KILL BLUE",
+            "Wistoria Wand and Sword",
+            "Dorohedoro",
+        }
+        dorohedoro = next(e for e in entries if e.show_dir == "Dorohedoro")
+        assert dorohedoro.episode == 1
+
+
+# ---------------------------------------------------------------------------
 # path_parser — parse_file and group_by_show
 # ---------------------------------------------------------------------------
 
@@ -3383,6 +3487,60 @@ async def test_shows_only_skips_episode_matching_loop() -> None:
     assert result.episodes_unmatched == 0
     assert result.mode == "shows_only"
     assert any("episode matching skipped" in msg for _, msg, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_shows_only_handles_directory_only_entry_in_mismatch_check() -> None:
+    """A directory-only ParsedPathEntry (from a shows_only directory listing)
+    flows safely through _import_show's per-file confirmation check. Its
+    raw_path has no trailing separator (PurePath normalizes it away when the
+    entry is built), so the "filename" derived for the mismatch check is the
+    show's own directory name — not an empty string.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import parse_file
+
+    entries = parse_file("Z:\\anime tv\\KILL BLUE\\", root=r"Z:\anime tv", directories_only=True)
+    assert len(entries) == 1
+    assert entries[0].raw_path == str(PureWindowsPath(r"Z:\anime tv\KILL BLUE"))
+
+    show = _make_show(title="KILL BLUE")
+    show.aliases = []
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+
+    orch = PathImportOrchestrator(session, tmdb, llm=llm, mode="shows_only")
+
+    parse_filename_calls: list[str] = []
+
+    async def fake_parse_filename(filename: str, llm_arg: object) -> FilenameParseResult:
+        parse_filename_calls.append(filename)
+        return FilenameParseResult(
+            show_name=filename,
+            season=None,
+            episode=None,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            fake_parse_filename,
+        ),
+    ):
+        results = await orch._import_show("KILL BLUE", entries)
+
+    assert parse_filename_calls == ["KILL BLUE"]  # non-empty: the directory's own name
+    assert len(results) == 1  # no spurious split
+    assert results[0].show_dir == "KILL BLUE"
 
 
 @pytest.mark.asyncio

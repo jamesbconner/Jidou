@@ -138,7 +138,60 @@ def _relative_parts(path: PurePath, root: str) -> tuple[str, ...] | None:
         return None
 
 
-def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
+def _parse_directory_line(path: PurePath, root: str | None) -> ParsedPathEntry | None:
+    """Parse a directory-only line — a show location with no filename.
+
+    Used for the ``shows_only`` import mode, where the input is a bare list of
+    show directories rather than per-episode file paths — there's no filename
+    to extract season/episode information from, so this entry exists purely
+    so :class:`~jidou.orchestrators.path_import_orchestrator.PathImportOrchestrator`
+    can resolve or create the show it names.
+
+    Args:
+        path: The line's directory path (trailing separator already stripped
+            by :class:`~pathlib.PurePath` construction).
+        root: Configured library root, or None — same anchoring rules as
+            :func:`parse_line`.
+
+    Returns:
+        A :class:`ParsedPathEntry` with ``season``/``episode`` both None, or
+        None if the line doesn't resolve to a usable directory (e.g. it *is*
+        the root itself, with nothing below it).
+    """
+    rel_parts = _relative_parts(path, root) if root else None
+
+    if rel_parts is not None and root is not None:
+        if not rel_parts:
+            # Line is exactly the configured root itself — nothing below it
+            # to treat as a show directory.
+            return None
+        # Anchored: the first segment below the configured library root is
+        # the show directory, even if this line points at a subdirectory
+        # further inside it (e.g. a bonus-content folder).
+        show_dir = rel_parts[0]
+        show_root = str(_as_pure_path(root) / show_dir)
+    else:
+        # Fallback: no configured root, or the line doesn't fall under it —
+        # the line already names the show's own directory.
+        parts = path.parts
+        if len(parts) < 2:
+            return None
+        show_dir = parts[-1]
+        show_root = str(path)
+
+    return ParsedPathEntry(
+        raw_path=str(path),
+        show_dir=show_dir,
+        show_root=show_root,
+        season=None,
+        episode=None,
+        is_absolute=False,
+    )
+
+
+def parse_line(
+    line: str, root: str | None = None, directories_only: bool = False
+) -> ParsedPathEntry | None:
     """Parse one line from a path file into a structured entry.
 
     Skips blank lines and comment lines (starting with ``#``).  Accepts both
@@ -155,6 +208,16 @@ def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
             ``root``, falls back to treating the file's immediate parent
             directory as the show directory (or its grandparent, if the
             immediate parent looks like ``Season N``).
+        directories_only: True for the ``shows_only`` import mode. The mode
+            itself is the signal that a line names a show location, not a
+            file — so any line that doesn't end in a recognized media
+            extension is parsed as a bare show directory (trailing ``\\``/``/``
+            optional; see :func:`_parse_directory_line`) instead of being
+            rejected. A line that *does* end in a media extension is still
+            parsed as a normal file — a directory-listing file and a
+            per-episode file listing both work for this mode without
+            needing separate formats. When False (``full``/``episodes_only``),
+            every line must end in a recognized media extension, as before.
 
     Returns:
         A :class:`ParsedPathEntry`, or None if the line should be ignored.
@@ -169,11 +232,16 @@ def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
     except Exception:
         return None
 
+    is_media_file = path.suffix.lower() in _MEDIA_EXTENSIONS
+
+    if directories_only and not is_media_file:
+        return _parse_directory_line(path, root)
+
     # Need at least: root + show_dir + filename with one intermediate directory (4 parts).
     if len(parts) < 4:
         return None
 
-    if path.suffix.lower() not in _MEDIA_EXTENSIONS:
+    if not is_media_file:
         return None
 
     rel_parts = _relative_parts(path, root) if root else None
@@ -222,20 +290,24 @@ def parse_line(line: str, root: str | None = None) -> ParsedPathEntry | None:
     )
 
 
-def parse_file(content: str, root: str | None = None) -> list[ParsedPathEntry]:
+def parse_file(
+    content: str, root: str | None = None, directories_only: bool = False
+) -> list[ParsedPathEntry]:
     """Parse every line of a path file.
 
     Args:
         content: Full text content of the path file (``\\n``-separated lines).
         root: Configured library root for this import's content type; see
             :func:`parse_line` for how it anchors show directory resolution.
+        directories_only: True for the ``shows_only`` import mode; see
+            :func:`parse_line`.
 
     Returns:
         List of successfully parsed entries; blank/comment/non-media lines skipped.
     """
     entries: list[ParsedPathEntry] = []
     for line in content.splitlines():
-        entry = parse_line(line, root=root)
+        entry = parse_line(line, root=root, directories_only=directories_only)
         if entry is not None:
             entries.append(entry)
     return entries
