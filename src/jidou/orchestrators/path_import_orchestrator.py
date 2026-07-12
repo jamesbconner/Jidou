@@ -139,6 +139,11 @@ class PathImportResult:
             a different entry in this same import already tracked — see
             :attr:`ShowImportResult.episodes_already_tracked`.
         show_results: Per-show breakdown.
+        mode: The import mode this run used — ``"full"``, ``"shows_only"``,
+            or ``"episodes_only"``. Included so a result_summary is
+            unambiguous about why episode counters may be all-zero
+            (``shows_only``) or why no new shows were created
+            (``episodes_only``).
     """
 
     shows_processed: int = 0
@@ -149,6 +154,7 @@ class PathImportResult:
     episodes_unmatched: int = 0
     episodes_already_tracked: int = 0
     show_results: list[ShowImportResult] = field(default_factory=list)
+    mode: str = "full"
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +173,17 @@ class PathImportOrchestrator:
         dry_run: When True, performs all lookups and matching but skips all
             database writes (no show creation, episode sync, or file_tracked
             updates).
+        mode: ``"full"`` (default) resolves/creates shows via TMDB and
+            matches episodes, exactly as before this option existed.
+            ``"shows_only"`` resolves/creates shows (TMDB search/create,
+            episode sync, alias generation) but skips episode matching
+            entirely — useful as a first pass to populate/verify the show
+            catalog before touching episode-level data. ``"episodes_only"``
+            matches episodes only against shows already in the DB and never
+            calls TMDB to search for or create a new show; a directory whose
+            show isn't already in the DB reports its files as unmatched. Not
+            validated here — the API route layer validates it, the same way
+            ``content_type`` is validated only there.
     """
 
     def __init__(
@@ -177,6 +194,7 @@ class PathImportOrchestrator:
         dry_run: bool = False,
         llm: LLMService | None = None,
         on_event: Callable[[str, str, dict[str, object] | None], Awaitable[None]] | None = None,
+        mode: str = "full",
     ) -> None:
         self.session = session
         self.tmdb = tmdb
@@ -184,6 +202,7 @@ class PathImportOrchestrator:
         self.dry_run = dry_run
         self.llm = llm
         self.on_event = on_event
+        self.mode = mode
 
     async def _emit(
         self,
@@ -217,7 +236,19 @@ class PathImportOrchestrator:
                 "fallback attempt for this run",
             )
 
-        result = PathImportResult()
+        if self.mode == "shows_only":
+            await self._emit(
+                "info",
+                "Running in shows-only mode — episode matching will be skipped for all shows",
+            )
+        elif self.mode == "episodes_only":
+            await self._emit(
+                "info",
+                "Running in episodes-only mode — no new shows will be created; "
+                "files under a show not already in the database will be reported unmatched",
+            )
+
+        result = PathImportResult(mode=self.mode)
         grouped = group_by_show(entries)
         result.shows_processed = len(grouped)
         total = len(grouped)
@@ -277,12 +308,22 @@ class PathImportOrchestrator:
         Returns:
             One :class:`ShowImportResult` per resolved show — normally just
             one (the whole directory is one show), but more if the
-            directory turned out to contain files from multiple shows.
+            directory turned out to contain files from multiple shows. In
+            ``episodes_only`` mode this per-file confirmation is skipped
+            entirely (see below), so it is always exactly one.
         """
         primary_show, action = await self._resolve_show(show_dir)
 
         if primary_show is None:
             return [await self._process_show_entries(show_dir, None, action, entries)]
+
+        if self.mode == "episodes_only":
+            # Trust the directory-resolved show for every entry — no per-file
+            # parse_filename() calls, so no risk of a bad LLM extraction
+            # splitting off a group (which, in this mode, could only ever
+            # resolve to an existing DB show or report unmatched anyway, but
+            # skipping the check avoids the LLM call cost entirely).
+            return [await self._process_show_entries(show_dir, primary_show, action, entries)]
 
         matched: list[ParsedPathEntry] = []
         mismatched: dict[str, list[ParsedPathEntry]] = {}
@@ -350,7 +391,10 @@ class PathImportOrchestrator:
         """Find or create a show by name: DB lookup first, then TMDB search/create.
 
         Shared by the primary directory-derived resolution and any secondary
-        per-file-derived resolution triggered by a show-name mismatch.
+        per-file-derived resolution triggered by a show-name mismatch. This is
+        the single choke point for TMDB show creation — in ``episodes_only``
+        mode it never falls through to :meth:`_tmdb_create_show`, so gating
+        here is sufficient regardless of which caller reached it.
 
         Args:
             name: Show name to resolve — a directory name, or a per-file
@@ -363,6 +407,9 @@ class PathImportOrchestrator:
         show = await self._db_find_show(name)
 
         if show is None:
+            if self.mode == "episodes_only":
+                await self._emit("info", f"Not in DB — skipping (episodes-only mode): '{name}'")
+                return None, "not_found"
             await self._emit("info", f"Not in DB — searching TMDB for '{name}'")
             return await self._tmdb_create_show(name)
 
@@ -429,8 +476,7 @@ class PathImportOrchestrator:
                 root (the primary show's location), not this show's, so
                 auto-setting it here would point the wrong show at the
                 primary show's library folder. The show is still fully
-                created/matched; only the auto-path step is skipped, same as
-                the existing "content_type unknown" skip elsewhere.
+                created/matched; only the auto-path step is skipped.
             matched_episode_ids: Shared set of episode IDs already claimed
                 by a previous ``_process_show_entries`` call within the same
                 ``_import_show`` invocation.  When provided, a collision
@@ -445,9 +491,17 @@ class PathImportOrchestrator:
         show_result = ShowImportResult(show_dir=label, action=action)
 
         if show is None:
-            await self._emit(
-                "warn", f"No TMDB match found for '{label}' — {len(entries)} file(s) unmatched"
-            )
+            if self.mode == "episodes_only":
+                await self._emit(
+                    "warn",
+                    f"Show '{label}' not found in database (episodes-only mode) — "
+                    f"{len(entries)} file(s) unmatched",
+                )
+            else:
+                await self._emit(
+                    "warn",
+                    f"No TMDB match found for '{label}' — {len(entries)} file(s) unmatched",
+                )
             logger.warning("Could not resolve show for %r", label)
             show_result.episodes_unmatched = len(entries)
             show_result.unmatched_paths = [e.raw_path for e in entries]
@@ -474,6 +528,23 @@ class PathImportOrchestrator:
                 show.id,
                 show.title,
             )
+
+        if self.mode == "shows_only":
+            # Show resolution (including creation/sync/aliasing, already done
+            # by _resolve_show before this method was called) is the whole
+            # point of this mode — skip episode matching entirely. Must come
+            # before the dry-run-estimate block below: for an *existing* show
+            # under dry_run, show.id is not None, so without this early
+            # return execution would otherwise fall through into the real
+            # matching loop and populate non-zero counters.
+            await self._emit(
+                "info",
+                f"Show ready: '{show.title}' ({action}) — episode matching skipped "
+                "(shows-only mode)",
+            )
+            if not self.dry_run:
+                await self.session.commit()
+            return show_result
 
         # In dry-run mode, a newly "created" show has no database id and no
         # synced episodes yet, so _find_episode would query show_id=NULL and

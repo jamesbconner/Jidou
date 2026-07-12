@@ -54,6 +54,7 @@ def path_import_task(  # type: ignore[no-untyped-def]
     file_content: str,
     content_type: str = "anime",
     dry_run: bool = False,
+    mode: str = "full",
 ) -> str:
     """Import an episode path file, creating shows and marking episodes tracked.
 
@@ -66,12 +67,14 @@ def path_import_task(  # type: ignore[no-untyped-def]
         content_type: Content type assigned to newly created shows
             (``"anime"``, ``"tv"``, or ``"movie"``).
         dry_run: Parse and match without writing to the database.
+        mode: ``"full"``, ``"shows_only"``, or ``"episodes_only"`` — see
+            :class:`~jidou.orchestrators.path_import_orchestrator.PathImportOrchestrator`.
 
     Returns:
         The Celery task ID.
     """
     try:
-        return asyncio.run(_path_import(self.request.id, file_content, content_type, dry_run))
+        return asyncio.run(_path_import(self.request.id, file_content, content_type, dry_run, mode))
     except SoftTimeLimitExceeded:
         asyncio.run(mark_task_timed_out(self.request.id))
         raise
@@ -82,6 +85,7 @@ async def _path_import(
     file_content: str,
     content_type: str,
     dry_run: bool,
+    mode: str = "full",
 ) -> str:
     """Async implementation of the path-file import task."""
 
@@ -124,6 +128,7 @@ async def _path_import(
             dry_run=dry_run,
             llm=llm,
             on_event=on_event,
+            mode=mode,
         )
         import_result = await orchestrator.run(entries, on_progress=on_progress)
 
@@ -150,16 +155,25 @@ async def _path_import(
                 for r in import_result.show_results
             ],
             "dry_run": dry_run,
+            "mode": import_result.mode,
         }
+
+        if import_result.mode == "shows_only":
+            done_message = (
+                f"Done — {import_result.shows_created} created, "
+                f"{import_result.shows_found} found (episode matching skipped)"
+            )
+        else:
+            done_message = (
+                f"Done — {import_result.shows_created} created, "
+                f"{import_result.shows_found} found, "
+                f"{import_result.episodes_tracked} episodes tracked"
+            )
 
         return WorkflowResult(
             progress_current=import_result.shows_processed,
             progress_total=import_result.shows_processed,
-            message=(
-                f"Done — {import_result.shows_created} created, "
-                f"{import_result.shows_found} found, "
-                f"{import_result.episodes_tracked} episodes tracked"
-            ),
+            message=done_message,
             result_summary=summary,
         )
 

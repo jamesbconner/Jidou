@@ -81,6 +81,16 @@ class TestImportText:
         assert resp.status_code == 400
         assert "content_type must be one of" in resp.json()["detail"]
 
+    def test_import_text_invalid_mode_returns_400(self) -> None:
+        """Invalid mode param returns 400 error."""
+        client = TestClient(app)
+
+        files = {"file": ("paths.txt", BytesIO(b"Z:\\anime tv\\Show\\ep.mkv"), "text/plain")}
+        resp = client.post("/api/import/text", data={"mode": "bogus_mode"}, files=files)
+
+        assert resp.status_code == 400
+        assert "mode must be one of" in resp.json()["detail"]
+
     def test_import_text_file_too_large_returns_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """File exceeding the size limit returns 422 error.
 
@@ -148,6 +158,65 @@ class TestImportText:
 
                     assert resp.status_code == 200
                     assert resp.json()["task_type"] == "import"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_import_text_defaults_mode_to_full_and_forwards_it(self) -> None:
+        """mode defaults to 'full', and a non-default value is forwarded to
+        path_import_task.apply_async as the 4th positional arg."""
+        client = TestClient(app)
+
+        task = MagicMock(spec=BackgroundTask)
+        task.id = 1
+        task.celery_task_id = "abc-123"
+        task.task_type = "import"
+        task.status = TaskStatus.PENDING.value
+        task.progress_current = 0
+        task.progress_total = 0
+        task.progress_message = None
+        task.dry_run = False
+        task.result_summary = None
+
+        from datetime import UTC, datetime
+
+        task.created_at = datetime.now(UTC)
+        task.updated_at = datetime.now(UTC)
+        task.completed_at = None
+
+        async def _mock_session() -> AsyncMock:
+            session = AsyncMock()
+            yield session
+
+        from jidou.database import get_session
+
+        app.dependency_overrides[get_session] = _mock_session
+
+        try:
+            with (
+                patch(
+                    "jidou.api.routes.import_routes.enqueue_task",
+                    _fake_enqueue(task),
+                ),
+                patch("jidou.workers.import_tasks.path_import_task") as mock_task,
+            ):
+                mock_task.apply_async = MagicMock()
+                content = b"Z:\\anime tv\\Show\\Season 1\\Show.S01E01.mkv\n"
+
+                # No `mode` field at all → defaults to "full".
+                files = {"file": ("paths.txt", BytesIO(content), "text/plain")}
+                resp = client.post("/api/import/text", data={"content_type": "anime"}, files=files)
+                assert resp.status_code == 200
+                assert mock_task.apply_async.call_args.kwargs["args"][3] == "full"
+
+                # Explicit non-default mode is forwarded unchanged.
+                files = {"file": ("paths.txt", BytesIO(content), "text/plain")}
+                resp = client.post(
+                    "/api/import/text",
+                    data={"content_type": "anime", "mode": "shows_only"},
+                    files=files,
+                )
+                assert resp.status_code == 200
+                assert mock_task.apply_async.call_args.kwargs["args"][3] == "shows_only"
         finally:
             app.dependency_overrides.clear()
 
