@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     sftp_remote_paths: str = "/"
     # Full remote path to the YaRSS2 config file managed by Jidou
     rss_config_remote_path: str | None = None
+    # Shell commands run over SSH (exec, not SFTP) to bookend the RSS config
+    # upload — stop the Deluge service before writing so its own autosave can't
+    # clobber the new file, then restart so it reloads the config fresh.
+    # Both are optional; when unset, the publish just uploads without touching
+    # the service. Example: "systemctl stop deluged" / "systemctl start deluged".
+    deluge_stop_command: str | None = None
+    deluge_restart_command: str | None = None
     sftp_max_workers: int = Field(default=8, ge=1, le=32)
     sftp_max_retries: int = Field(default=3, ge=0)
     sftp_retry_delay: float = Field(default=1.0, ge=0.1)

@@ -69,6 +69,12 @@ class RssPublishOrchestrator:
         dry_run: When ``True``, compute the new config without uploading.
         on_event: Optional async callback ``(level, message, ctx)`` for
             structured log events surfaced to the task event log.
+        deluge_stop_command: Optional shell command run over SSH before the
+            backup/upload so Deluge's own autosave cannot clobber the write.
+            If it fails, the publish aborts before touching any remote files.
+        deluge_restart_command: Optional shell command run over SSH after the
+            backup/upload, in a ``finally`` block, so Deluge always comes back
+            up and reloads the new config — even if the upload itself failed.
     """
 
     def __init__(
@@ -78,12 +84,21 @@ class RssPublishOrchestrator:
         remote_path: str,
         dry_run: bool = False,
         on_event: _OnEvent | None = None,
+        deluge_stop_command: str | None = None,
+        deluge_restart_command: str | None = None,
     ) -> None:
         self._session = session
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
         self._on_event = on_event or _default_on_event
+        if bool(deluge_stop_command) != bool(deluge_restart_command):
+            raise ValueError(
+                "deluge_stop_command and deluge_restart_command must be set together "
+                "— a stop command with no restart command would leave Deluge down"
+            )
+        self._deluge_stop_command = deluge_stop_command
+        self._deluge_restart_command = deluge_restart_command
 
     async def run(self) -> RssPublishResult:
         """Execute the full publish sequence.
@@ -92,8 +107,10 @@ class RssPublishOrchestrator:
             :class:`RssPublishResult` summarising what was published.
 
         Raises:
-            ValueError: If this instance was constructed without an sftp
-                service — valid for a compose_config()-only instance (e.g.
+            ValueError: If constructed with only one of deluge_stop_command /
+                deluge_restart_command set, or if this instance was constructed
+                without an sftp service — valid for a compose_config()-only
+                instance (e.g.
                 the download-preview route), but run() needs real SFTP
                 access for import reconciliation, backup, and upload.
         """
@@ -129,51 +146,89 @@ class RssPublishOrchestrator:
             result.errors.append(msg)
             return result
 
-        # 3. Back up the current remote file
-        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        remote = PurePosixPath(self._remote_path)
-        backup_path = str(remote.with_name(f"{remote.stem}_backup_{ts}{remote.suffix}"))
-        result.backup_path = backup_path
-        if not self._dry_run:
-            await self._sftp.upload_bytes(raw_str.encode("utf-8"), backup_path)
-            await self._on_event("info", f"Backed up current config to {backup_path}", None)
-        else:
-            await self._on_event(
-                "info", f"[DRY RUN] Would back up current config to {backup_path}", None
-            )
+        # 3. Stop the remote Deluge service so it cannot clobber this write with its
+        # own autosave, and so it re-reads the config fresh once restarted. If the
+        # stop command fails, abort before touching any remote files — Deluge's
+        # state is unknown and there is nothing to restart.
+        if self._deluge_stop_command:
+            if not self._dry_run:
+                await self._on_event("info", "Stopping remote Deluge service", None)
+                try:
+                    await self._sftp.run_command(self._deluge_stop_command)
+                except Exception as exc:
+                    msg = f"Failed to stop remote Deluge service; aborting publish: {exc}"
+                    logger.error(msg)
+                    result.errors.append(msg)
+                    await self._on_event("error", msg, None)
+                    return result
+            else:
+                await self._on_event(
+                    "info", "[DRY RUN] Would stop remote Deluge service", None
+                )
 
-        # 4-6. Build feeds + subscriptions dicts from DB and assemble the new body.
-        composed, compose_result = await self.compose_config(
-            header, old_body, upload=not self._dry_run
-        )
-        result.feeds_published = compose_result.feeds_published
-        result.subscriptions_published = compose_result.subscriptions_published
-        result.new_keys_assigned = compose_result.new_keys_assigned
+        try:
+            # 4. Back up the current remote file
+            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            remote = PurePosixPath(self._remote_path)
+            backup_path = str(remote.with_name(f"{remote.stem}_backup_{ts}{remote.suffix}"))
+            result.backup_path = backup_path
+            if not self._dry_run:
+                await self._sftp.upload_bytes(raw_str.encode("utf-8"), backup_path)
+                await self._on_event("info", f"Backed up current config to {backup_path}", None)
+            else:
+                await self._on_event(
+                    "info", f"[DRY RUN] Would back up current config to {backup_path}", None
+                )
 
-        # 7. Upload
-        if not self._dry_run:
-            await self._sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
-            await self._on_event(
-                "info",
-                (
-                    f"Published config to {self._remote_path} — "
-                    f"{result.feeds_published} feeds, "
-                    f"{result.subscriptions_published} subscriptions "
-                    f"({result.new_keys_assigned} new keys assigned)"
-                ),
-                None,
+            # 5-7. Build feeds + subscriptions dicts from DB and assemble the new body.
+            composed, compose_result = await self.compose_config(
+                header, old_body, upload=not self._dry_run
             )
-        else:
-            await self._on_event(
-                "info",
-                (
-                    f"[DRY RUN] Would publish config to {self._remote_path} — "
-                    f"{result.feeds_published} feeds, "
-                    f"{result.subscriptions_published} subscriptions "
-                    f"({result.new_keys_assigned} new keys assigned)"
-                ),
-                None,
-            )
+            result.feeds_published = compose_result.feeds_published
+            result.subscriptions_published = compose_result.subscriptions_published
+            result.new_keys_assigned = compose_result.new_keys_assigned
+
+            # 8. Upload
+            if not self._dry_run:
+                await self._sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
+                await self._on_event(
+                    "info",
+                    (
+                        f"Published config to {self._remote_path} — "
+                        f"{result.feeds_published} feeds, "
+                        f"{result.subscriptions_published} subscriptions "
+                        f"({result.new_keys_assigned} new keys assigned)"
+                    ),
+                    None,
+                )
+            else:
+                await self._on_event(
+                    "info",
+                    (
+                        f"[DRY RUN] Would publish config to {self._remote_path} — "
+                        f"{result.feeds_published} feeds, "
+                        f"{result.subscriptions_published} subscriptions "
+                        f"({result.new_keys_assigned} new keys assigned)"
+                    ),
+                    None,
+                )
+        finally:
+            # 9. Always try to bring Deluge back up if we stopped it — even if the
+            # backup/compose/upload above raised.
+            if self._deluge_restart_command:
+                if not self._dry_run:
+                    await self._on_event("info", "Restarting remote Deluge service", None)
+                    try:
+                        await self._sftp.run_command(self._deluge_restart_command)
+                    except Exception as exc:
+                        msg = f"Failed to restart remote Deluge service: {exc}"
+                        logger.error(msg)
+                        result.errors.append(msg)
+                        await self._on_event("error", msg, None)
+                else:
+                    await self._on_event(
+                        "info", "[DRY RUN] Would restart remote Deluge service", None
+                    )
 
         return result
 
