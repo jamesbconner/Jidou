@@ -3,6 +3,7 @@ import { useTasks, useTaskCount, useActiveTasks, useTask, useTaskDetail, useTask
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { TaskEventLog } from '@/components/TaskEventLog'
+import { Pagination } from '@/components/Pagination'
 import type { TaskList, TaskType } from '@/types/api'
 
 function LiveTask({ taskId }: { taskId: number }) {
@@ -227,41 +228,9 @@ export default function Tasks() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <button
-            onClick={() => setPage(0)}
-            disabled={page === 0}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >
-            «
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >
-            ‹
-          </button>
-          <span className="text-gray-600">
-            Page {page + 1} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >
-            ›
-          </button>
-          <button
-            onClick={() => setPage(totalPages - 1)}
-            disabled={page >= totalPages - 1}
-            className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
-          >
-            »
-          </button>
-        </div>
-      )}
+      <div className="flex items-center justify-center">
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      </div>
     </div>
   )
 }
