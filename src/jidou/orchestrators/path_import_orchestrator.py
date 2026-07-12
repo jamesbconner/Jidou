@@ -301,6 +301,14 @@ class PathImportOrchestrator:
         cleaned name as show_name, which would otherwise disagree with every
         real show and split off a rename-worthy fraction of every import.
 
+        A directory-only entry (``entry.is_directory``, from ``shows_only``
+        mode's bare directory listings) always skips this check too — its
+        "filename" would just be its own directory name, so the comparison
+        would only be against a differently-normalized copy of itself (e.g.
+        the LLM's title-cleanup pass merging "Iron Blooded" into
+        "Ironblooded", which then disagrees with ``_agrees_with_show``'s
+        punctuation-stripped "Iron Blooded") rather than any real signal.
+
         Args:
             show_dir: Show directory name (used as the primary search key).
             entries: All parsed file entries under this directory.
@@ -330,6 +338,17 @@ class PathImportOrchestrator:
         mismatched_display: dict[str, str] = {}
 
         for entry in entries:
+            if entry.is_directory:
+                # A directory-only entry's "filename" is just its own directory
+                # name — there's no independent file name to disagree with the
+                # directory, so running it through parse_filename() only
+                # compares that name against itself via two different
+                # normalizers (this one's LLM-based title cleanup vs.
+                # _agrees_with_show's punctuation stripping), which can
+                # legitimately diverge (e.g. "Iron Blooded" -> "Ironblooded")
+                # and produce a false-positive split.
+                matched.append(entry)
+                continue
             filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
             try:
                 parsed = await parse_filename(filename, self.llm)

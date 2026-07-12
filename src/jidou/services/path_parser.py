@@ -93,6 +93,9 @@ class ParsedPathEntry:
             just be a plain absolute episode number" interpretation, since
             shows with pure absolute numbering (e.g. One Piece) produce
             exactly this kind of filename with no season directory.
+        is_directory: True when this entry came from a directory-only line
+            (``shows_only`` import mode's ``directories_only`` parsing) rather
+            than a real episode file — see :func:`_parse_directory_line`.
     """
 
     raw_path: str
@@ -102,6 +105,7 @@ class ParsedPathEntry:
     episode: int | None
     is_absolute: bool
     absolute_candidate: int | None = None
+    is_directory: bool = False
 
 
 def _as_pure_path(line: str) -> PurePath:
@@ -186,6 +190,7 @@ def _parse_directory_line(path: PurePath, root: str | None) -> ParsedPathEntry |
         season=None,
         episode=None,
         is_absolute=False,
+        is_directory=True,
     )
 
 

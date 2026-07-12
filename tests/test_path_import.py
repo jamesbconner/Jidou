@@ -3490,20 +3490,18 @@ async def test_shows_only_skips_episode_matching_loop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_shows_only_handles_directory_only_entry_in_mismatch_check() -> None:
-    """A directory-only ParsedPathEntry (from a shows_only directory listing)
-    flows safely through _import_show's per-file confirmation check. Its
-    raw_path has no trailing separator (PurePath normalizes it away when the
-    entry is built), so the "filename" derived for the mismatch check is the
-    show's own directory name — not an empty string.
+async def test_shows_only_directory_entry_skips_mismatch_check_entirely() -> None:
+    """A directory-only ParsedPathEntry never reaches parse_filename() at all —
+    its "filename" would just be its own directory name, so the check would
+    only ever compare that name against a differently-normalized copy of
+    itself, never a real second name.
     """
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
-    from jidou.services.filename_parser import FilenameParseResult
     from jidou.services.path_parser import parse_file
 
     entries = parse_file("Z:\\anime tv\\KILL BLUE\\", root=r"Z:\anime tv", directories_only=True)
     assert len(entries) == 1
-    assert entries[0].raw_path == str(PureWindowsPath(r"Z:\anime tv\KILL BLUE"))
+    assert entries[0].is_directory is True
 
     show = _make_show(title="KILL BLUE")
     show.aliases = []
@@ -3514,13 +3512,63 @@ async def test_shows_only_handles_directory_only_entry_in_mismatch_check() -> No
     llm.is_available.return_value = True
 
     orch = PathImportOrchestrator(session, tmdb, llm=llm, mode="shows_only")
+    parse_filename_spy = AsyncMock()
 
-    parse_filename_calls: list[str] = []
+    with (
+        patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.parse_filename",
+            parse_filename_spy,
+        ),
+    ):
+        results = await orch._import_show("KILL BLUE", entries)
 
-    async def fake_parse_filename(filename: str, llm_arg: object) -> FilenameParseResult:
-        parse_filename_calls.append(filename)
+    parse_filename_spy.assert_not_called()
+    assert len(results) == 1  # no spurious split
+    assert results[0].show_dir == "KILL BLUE"
+
+
+@pytest.mark.asyncio
+async def test_shows_only_directory_entry_does_not_false_split_on_llm_renormalization() -> None:
+    """Regression: a directory-only entry must not get split off because the
+    per-file LLM's title-cleanup pass normalizes its own directory name
+    differently than _agrees_with_show's punctuation stripping does (e.g. a
+    hyphenated compound word getting merged into one word by the LLM but
+    turned into two space-separated words by punctuation stripping).
+
+    Without the is_directory skip, this reproduces a real false-positive: the
+    directory "Show Iron Blooded Orphans" resolves to a show titled
+    "Show: Iron-Blooded Orphans", and the per-file LLM call on that directory
+    name (treated as a "filename") returns "Show Ironblooded Orphans" —
+    which disagrees with _agrees_with_show's normalized "show iron blooded
+    orphans" (hyphen -> space, not merged), triggering a bogus split even
+    though it's the same show being compared against a mangled copy of itself.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.filename_parser import FilenameParseResult
+    from jidou.services.path_parser import parse_file
+
+    entries = parse_file(
+        "Z:\\anime tv\\Show Iron Blooded Orphans\\", root=r"Z:\anime tv", directories_only=True
+    )
+    assert len(entries) == 1
+
+    show = _make_show(title="Show: Iron-Blooded Orphans")
+    show.aliases = ["show iron blooded orphans"]
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    tmdb = AsyncMock()
+    llm = MagicMock()
+    llm.is_available.return_value = True
+
+    orch = PathImportOrchestrator(session, tmdb, llm=llm, mode="shows_only")
+
+    async def mangling_parse_filename(filename: str, llm_arg: object) -> FilenameParseResult:
+        # Simulates the LLM merging "Iron Blooded" into one word during its
+        # own title-cleanup pass -- this is real observed behavior, not a
+        # contrived input.
         return FilenameParseResult(
-            show_name=filename,
+            show_name=filename.replace("Iron Blooded", "Ironblooded"),
             season=None,
             episode=None,
             crc32=None,
@@ -3533,14 +3581,14 @@ async def test_shows_only_handles_directory_only_entry_in_mismatch_check() -> No
         patch.object(orch, "_resolve_show", AsyncMock(return_value=(show, "found"))),
         patch(
             "jidou.orchestrators.path_import_orchestrator.parse_filename",
-            fake_parse_filename,
+            mangling_parse_filename,
         ),
     ):
-        results = await orch._import_show("KILL BLUE", entries)
+        results = await orch._import_show("Show Iron Blooded Orphans", entries)
 
-    assert parse_filename_calls == ["KILL BLUE"]  # non-empty: the directory's own name
-    assert len(results) == 1  # no spurious split
-    assert results[0].show_dir == "KILL BLUE"
+    assert len(results) == 1  # no split, even though the mangled name would disagree
+    assert results[0].show_dir == "Show Iron Blooded Orphans"
+    assert results[0].action == "found"
 
 
 @pytest.mark.asyncio
