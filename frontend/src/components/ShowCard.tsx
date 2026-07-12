@@ -38,11 +38,11 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
             <img
               src={`${TMDB_IMG}${show.poster_path}`}
               alt={show.title}
-              className="w-full h-48 object-cover"
+              className="w-full aspect-[2/3] object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
               No image
             </div>
           )}
