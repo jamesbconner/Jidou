@@ -442,9 +442,9 @@ export default function Watchlist() {
                         <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {s.poster_path ? (
-                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full h-36 object-cover" loading="lazy" />
+                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
                             ) : (
-                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                              <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
                             )}
                             {wlStatus && (
                               <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
@@ -483,9 +483,9 @@ export default function Watchlist() {
                         <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {r.poster_path ? (
-                              <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                              <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
                             ) : (
-                              <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                              <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
                             )}
                             {wlStatus && (
                               <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>

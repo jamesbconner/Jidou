@@ -12,6 +12,10 @@ interface Props {
 /** A single episode card in the dashboard's "Recently Added Episodes" carousel. */
 export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
   const image = episode.still_path ?? episode.show.poster_path
+  // Episode stills are 16:9 (backdrop-style); the poster fallback is 2:3 —
+  // genuinely different source aspect ratios, so the box has to match
+  // whichever one is actually being shown rather than a single fixed value.
+  const imageAspectClass = episode.still_path ? 'aspect-video' : 'aspect-[2/3]'
   // Show whichever date the current sort actually orders by, rather than
   // always preferring file_tracked_at — with "release" sort selected, the
   // list is ordered by air_date, so the card should reflect that.
@@ -26,11 +30,13 @@ export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
         <img
           src={`${TMDB_IMG}${image}`}
           alt={episode.name}
-          className="w-full h-56 object-cover"
+          className={`w-full ${imageAspectClass} object-cover`}
           loading="lazy"
         />
       ) : (
-        <div className="w-full h-56 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+        <div
+          className={`w-full ${imageAspectClass} bg-gray-100 flex items-center justify-center text-gray-400 text-sm`}
+        >
           No image
         </div>
       )}

@@ -408,9 +408,9 @@ export default function Shows() {
                             <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
                               <div className="relative">
                                 {r.poster_path ? (
-                                  <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full h-36 object-cover" loading="lazy" />
+                                  <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
                                 ) : (
-                                  <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                                  <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
                                 )}
                                 {inLibrary && (
                                   <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
