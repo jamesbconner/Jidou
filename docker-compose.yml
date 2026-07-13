@@ -126,6 +126,12 @@ services:
       # paths like D:\media\staging); LOCAL_*_PATH is the container-internal target
       # used by the application.  Set both in .env; they may differ on Windows.
       # HOST_PATH falls back to LOCAL_*_PATH so existing .env files keep working.
+      #
+      # If your media roots live on a NAS share reached only over the network,
+      # a plain bind mount of a Windows mapped drive/UNC path often can't write
+      # new files/directories even though it's fully writable from Windows itself
+      # (see docker-compose.nas.yml). This default (bind mount) is what CI and a
+      # fresh local checkout use — no NAS dependency, works everywhere.
       - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
       - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
       - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}

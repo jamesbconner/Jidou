@@ -1,0 +1,62 @@
+# Optional override: mount routed media (TV/anime/movies) via Docker's own
+# CIFS volume driver instead of a plain Windows bind mount.
+#
+# Why this exists: bind-mounting a Windows mapped drive letter or UNC path for
+# a NAS share into the container does not reliably support write access for
+# *new* files/directories — reads work, but creating a new show directory can
+# fail with a permission error even though the share is fully writable from
+# Windows itself. Windows' network-share session/credential translation
+# doesn't carry through Docker Desktop's bind-mount layer for writes. Docker's
+# CIFS volume driver avoids this entirely by mounting the share directly from
+# Docker's Linux VM.
+#
+# Requires NAS_SHARE_HOST / NAS_SHARE_USERNAME / NAS_SHARE_PASSWORD (and
+# optionally NAS_SHARE_VERSION) set in .env — see .env.example. Not applied by
+# default: docker-compose.yml alone (bind mount) is what CI and a fresh local
+# checkout use, since they have no NAS to connect to.
+#
+# Usage: apply on top of the base file —
+#   docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
+# or set in .env so a plain `docker compose up` picks it up automatically:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.nas.yml
+
+services:
+  jidou-api:
+    volumes: !override
+      - ./src:/app/src
+      - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
+      - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
+      - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
+      - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+
+  jidou-worker:
+    volumes: !override
+      - ./src:/app/src
+      - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
+      - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
+      - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
+      - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+
+volumes:
+  # uid=1000/gid=1000 matches appuser (see Dockerfile.worker/Dockerfile.api)
+  # so the container can write directly without a chown step.
+  nas_tv:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "${NAS_SHARE_HOST}/tv"
+      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
+  nas_anime:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "${NAS_SHARE_HOST}/anime tv"
+      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
+  nas_movies:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "${NAS_SHARE_HOST}/movies"
+      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
