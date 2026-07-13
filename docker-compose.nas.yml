@@ -17,8 +17,14 @@
 #
 # Usage: apply on top of the base file —
 #   docker compose -f docker-compose.yml -f docker-compose.nas.yml up -d
-# or set in .env so a plain `docker compose up` picks it up automatically:
-#   COMPOSE_FILE=docker-compose.yml:docker-compose.nas.yml
+# or set in .env so a plain `docker compose up` picks it up automatically —
+# NOTE the separator differs by OS: colon (:) on Linux/macOS, semicolon (;)
+# on Windows. The wrong separator doesn't apply just docker-compose.yml — it
+# fails outright ("GetFileAttributesEx ...: The system cannot find the file
+# specified" on Windows), so verify with `docker compose config --services`
+# before relying on it:
+#   Linux/macOS: COMPOSE_FILE=docker-compose.yml:docker-compose.nas.yml
+#   Windows:     COMPOSE_FILE=docker-compose.yml;docker-compose.nas.yml
 
 services:
   jidou-api:
