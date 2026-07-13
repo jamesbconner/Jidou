@@ -262,6 +262,39 @@ class TaskDispatchError(Exception):
     """
 
 
+# Statuses that indicate a task is still occupying the pipeline.
+_ACTIVE_STATUSES = {TaskStatus.PENDING.value, TaskStatus.RUNNING.value}
+
+
+async def get_active_task(session: AsyncSession, task_type: str) -> BackgroundTask | None:
+    """Return the currently PENDING/RUNNING BackgroundTask of this type, if any.
+
+    Used to avoid dispatching a duplicate concurrent run of a task type whose
+    orchestrator selects an overlapping pool of DB rows upfront without
+    per-row claiming. ``RouteOrchestrator.run()`` is the motivating case: it
+    selects all MATCHED/ROUTING files in one batch, then commits each file's
+    status transition individually inside the loop -- so two overlapping
+    ``route`` dispatches (e.g. RematchModal firing one per fix, in quick
+    succession) can each see the same still-MATCHED file in their initial
+    SELECT and both route it, producing duplicate copies at the destination.
+
+    Args:
+        session: Active database session.
+        task_type: Type label (e.g. ``"route"``).
+
+    Returns:
+        The active BackgroundTask row, or None if no task of this type is
+        currently active.
+    """
+    stmt = (
+        select(BackgroundTask)
+        .where(BackgroundTask.task_type == task_type, BackgroundTask.status.in_(_ACTIVE_STATUSES))
+        .order_by(BackgroundTask.created_at.desc())
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def enqueue_task(
     session: AsyncSession,
     celery_task_id: str,

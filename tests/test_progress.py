@@ -12,6 +12,7 @@ from jidou.services.progress import (
     check_task_cancelled,
     create_task_record,
     enqueue_task,
+    get_active_task,
     mark_task_timed_out,
     update_task_status,
 )
@@ -311,6 +312,35 @@ async def test_mark_task_timed_out_calls_update_and_emit() -> None:
     emitted = mock_emit.call_args.args[0]
     assert emitted["type"] == "error"
     assert emitted["celery_task_id"] == "task-123"
+
+
+# ---------------------------------------------------------------------------
+# get_active_task
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_active_task_returns_task_when_one_is_active() -> None:
+    """A PENDING/RUNNING task of the given type is returned."""
+    task = MagicMock(spec=BackgroundTask)
+    task.task_type = "route"
+    task.status = TaskStatus.RUNNING.value
+
+    session = _make_mock_session(task)
+
+    result = await get_active_task(session, "route")
+
+    assert result is task
+
+
+@pytest.mark.asyncio
+async def test_get_active_task_returns_none_when_no_task_is_active() -> None:
+    """No PENDING/RUNNING task of the given type returns None."""
+    session = _make_mock_session(None)
+
+    result = await get_active_task(session, "route")
+
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

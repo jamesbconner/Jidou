@@ -121,6 +121,65 @@ async def test_trigger_task_creates_row_before_dispatch() -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/tasks/trigger — route overlap guard
+#
+# RouteOrchestrator selects all MATCHED/ROUTING files upfront and commits each
+# file's status transition individually inside the loop, rather than claiming
+# rows atomically. Two overlapping route dispatches (e.g. RematchModal firing
+# one per fix) can each see the same still-MATCHED file in their own initial
+# SELECT and both route it, producing duplicate copies at the destination.
+# See https://github.com/jamesbconner/Jidou/issues/357.
+# ---------------------------------------------------------------------------
+
+
+def test_trigger_task_route_reuses_active_task_instead_of_duplicating() -> None:
+    """route must not dispatch a second time while one is already active."""
+    active_task = _make_task(
+        id=99, celery_task_id="already-running", task_type="route", status=TaskStatus.RUNNING.value
+    )
+    mock_celery = MagicMock()
+
+    with (
+        patch(
+            "jidou.services.progress.get_active_task",
+            new_callable=AsyncMock,
+            return_value=active_task,
+        ),
+        patch("jidou.workers.route_tasks.route_files_task", mock_celery),
+    ):
+        response = TestClient(app).post("/api/tasks/trigger", json={"task_type": "route"})
+
+    assert response.status_code == 200
+    assert response.json()["celery_task_id"] == "already-running"
+    mock_celery.apply_async.assert_not_called()
+
+
+def test_trigger_task_route_dispatches_when_no_active_task() -> None:
+    """route dispatches normally when no route task is currently active."""
+    mock_task = _make_task(celery_task_id="new-route-run", task_type="route")
+    mock_celery = MagicMock()
+    mock_celery.apply_async.return_value = MagicMock(id="new-route-run")
+
+    with (
+        patch(
+            "jidou.services.progress.get_active_task",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "jidou.services.progress.create_task_record",
+            new_callable=AsyncMock,
+            return_value=mock_task,
+        ),
+        patch("jidou.workers.route_tasks.route_files_task", mock_celery),
+    ):
+        response = TestClient(app).post("/api/tasks/trigger", json={"task_type": "route"})
+
+    assert response.status_code == 200
+    mock_celery.apply_async.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # POST /api/tasks/{task_id}/cancel
 # ---------------------------------------------------------------------------
 
