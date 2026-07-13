@@ -122,23 +122,20 @@ services:
       # Set SFTP_KEY_FILE in .env to the host path of your private key.
       # The container path /run/secrets/sftp_key matches SFTP_KEY_PATH default.
       - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
-      # Staging: plain bind mount. HOST_PATH is the source on the Docker host
-      # (supports Windows paths like D:\media\staging); LOCAL_*_PATH is the
-      # container-internal target. HOST_PATH falls back to LOCAL_*_PATH so
-      # existing .env files keep working.
+      # Media paths — HOST_PATH is the source on the Docker host (supports Windows
+      # paths like D:\media\staging); LOCAL_*_PATH is the container-internal target
+      # used by the application.  Set both in .env; they may differ on Windows.
+      # HOST_PATH falls back to LOCAL_*_PATH so existing .env files keep working.
+      #
+      # If your media roots live on a NAS share reached only over the network,
+      # a plain bind mount of a Windows mapped drive/UNC path often can't write
+      # new files/directories even though it's fully writable from Windows itself
+      # (see docker-compose.nas.yml). This default (bind mount) is what CI and a
+      # fresh local checkout use — no NAS dependency, works everywhere.
       - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
-      # Routed media (TV/anime/movies): NAS-backed named volumes (see the
-      # `volumes:` section at the bottom of this file) — NOT a bind mount.
-      # A Windows mapped-drive/UNC bind mount does not reliably support write
-      # access for new files/directories on a network share (reads work, but
-      # creating a new show directory can silently fail with a permission
-      # error); Docker's own CIFS volume driver avoids this by mounting the
-      # share directly from Docker's Linux VM. LOCAL_*_HOST_PATH is still used
-      # elsewhere (display in /api/config, manual import path parsing) but no
-      # longer determines where these three are actually mounted from.
-      - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
-      - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
-      - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
+      - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
     command: >
       uvicorn jidou.main:app
       --host 0.0.0.0
@@ -219,12 +216,11 @@ services:
       - ./src:/app/src
       # Mount SSH private key for SFTP key-based auth (optional).
       - ${SFTP_KEY_FILE:-/dev/null}:/run/secrets/sftp_key:ro
-      # Staging: plain bind mount — see jidou-api volumes comment above.
+      # Media paths — see jidou-api volumes comment above for HOST vs container path split.
       - ${LOCAL_STAGING_HOST_PATH:-${LOCAL_STAGING_PATH:-/data/staging}}:${LOCAL_STAGING_PATH:-/data/staging}
-      # Routed media: NAS-backed named volumes — see jidou-api volumes comment above.
-      - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
-      - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
-      - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
+      - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
+      - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
     depends_on:
       postgres:
         condition: service_healthy
@@ -315,25 +311,3 @@ volumes:
     driver: local
   celerybeat_data:
     driver: local
-  # NAS CIFS-backed routed media storage. See the LOCAL_TV/ANIME/MOVIE_HOST_PATH
-  # comment in .env.example for why this replaces a plain Windows bind mount.
-  # uid=1000/gid=1000 matches appuser (see Dockerfile.worker/Dockerfile.api) so
-  # the container can write directly without a chown step.
-  nas_tv:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "${NAS_SHARE_HOST}/tv"
-      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
-  nas_anime:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "${NAS_SHARE_HOST}/anime tv"
-      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
-  nas_movies:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "${NAS_SHARE_HOST}/movies"
-      o: "vers=${NAS_SHARE_VERSION:-3.0},username=${NAS_SHARE_USERNAME},password=${NAS_SHARE_PASSWORD},uid=1000,gid=1000,file_mode=0775,dir_mode=0775"
