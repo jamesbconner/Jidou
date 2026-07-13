@@ -441,11 +441,12 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
-        assert len(files) == 2
-        assert files[0].name == "ep01.mkv"
-        assert files[0].path == "/show/Season 01/ep01.mkv"
+        assert len(result.files) == 2
+        assert result.files[0].name == "ep01.mkv"
+        assert result.files[0].path == "/show/Season 01/ep01.mkv"
+        assert result.fully_walked is True
 
     @pytest.mark.asyncio
     async def test_skips_excluded_directories(self, sftp_service: SFTPService) -> None:
@@ -464,9 +465,9 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
-        assert len(files) == 1
+        assert len(result.files) == 1
         # Only Season 01 was read
         assert mock_sftp.readdir.call_count == 2
 
@@ -483,10 +484,10 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
-        assert len(files) == 1
-        assert files[0].name == "ep01.mkv"
+        assert len(result.files) == 1
+        assert result.files[0].name == "ep01.mkv"
 
     @pytest.mark.asyncio
     async def test_mixes_root_files_and_subdir_files(self, sftp_service: SFTPService) -> None:
@@ -503,21 +504,22 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
-        names = {f.name for f in files}
+        names = {f.name for f in result.files}
         assert names == {"special.mkv", "ep01.mkv"}
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_empty_tree(self, sftp_service: SFTPService) -> None:
-        """An entirely empty directory tree returns an empty list."""
+        """An entirely empty directory tree returns an empty list and is fully walked."""
         mock_sftp = AsyncMock()
         mock_sftp.readdir = AsyncMock(return_value=[_make_entry(".", 0), _make_entry("..", 0)])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive()
+            result = await sftp_service.list_remote_files_recursive()
 
-        assert files == []
+        assert result.files == []
+        assert result.fully_walked is True
 
     @pytest.mark.asyncio
     async def test_results_sorted_by_name(self, sftp_service: SFTPService) -> None:
@@ -532,15 +534,19 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(return_value=root_entries)
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive()
+            result = await sftp_service.list_remote_files_recursive()
 
-        assert [f.name for f in files] == ["ep01.mkv", "ep02.mkv", "ep03.mkv"]
+        assert [f.name for f in result.files] == ["ep01.mkv", "ep02.mkv", "ep03.mkv"]
 
     @pytest.mark.asyncio
     async def test_readdir_failure_on_subdirectory_is_skipped(
         self, sftp_service: SFTPService
     ) -> None:
-        """A readdir error on one subdirectory is logged and skipped; others succeed."""
+        """A readdir error on one subdirectory is logged, counted, and skipped; others succeed.
+
+        The walk is NOT fully_walked — a caller must not treat a directory
+        with a partial failure like this as permanently known.
+        """
         import stat as _stat
 
         season1 = MagicMock()
@@ -567,11 +573,14 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=readdir_side_effect)
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
         # Season 01 failed but Season 02 should still be returned
-        assert len(files) == 1
-        assert files[0].name == "ep01.mkv"
+        assert len(result.files) == 1
+        assert result.files[0].name == "ep01.mkv"
+        assert result.io_failures == 1
+        assert result.recently_modified_skipped == 0
+        assert result.fully_walked is False
 
     @pytest.mark.asyncio
     async def test_pattern_filters_files_in_subdirectory(self, sftp_service: SFTPService) -> None:
@@ -586,16 +595,20 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show", pattern="*.mkv")
+            result = await sftp_service.list_remote_files_recursive(path="/show", pattern="*.mkv")
 
-        assert len(files) == 1
-        assert files[0].name == "ep01.mkv"
+        assert len(result.files) == 1
+        assert result.files[0].name == "ep01.mkv"
 
     @pytest.mark.asyncio
     async def test_excludes_recently_modified_file_in_subdirectory(
         self, sftp_service: SFTPService
     ) -> None:
-        """A file still being uploaded inside a subdirectory is skipped, like at the root."""
+        """A file still being uploaded inside a subdirectory is skipped, like at the root.
+
+        The walk is NOT fully_walked — the in-flight file must be picked up
+        by a later walk, not permanently missed.
+        """
         fresh_mtime = int(time.time()) - 5
         root_entries = [_make_entry("Season 01", 0, is_dir=True)]
         season_entries = [
@@ -607,10 +620,190 @@ class TestListRemoteFilesRecursive:
         mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
 
         with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
-            files = await sftp_service.list_remote_files_recursive(path="/show")
+            result = await sftp_service.list_remote_files_recursive(path="/show")
 
-        assert len(files) == 1
-        assert files[0].name == "ep01.mkv"
+        assert len(result.files) == 1
+        assert result.files[0].name == "ep01.mkv"
+        assert result.io_failures == 0
+        assert result.recently_modified_skipped == 1
+        assert result.fully_walked is False
+
+    @pytest.mark.asyncio
+    async def test_counters_accumulate_across_nested_subdirectories(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """io_failures/recently_modified_skipped accumulate tree-wide, not just one level."""
+        import stat as _stat
+
+        fresh_mtime = int(time.time()) - 5
+
+        season1 = MagicMock()
+        season1.filename = "Season 01"
+        season1.attrs = MagicMock()
+        season1.attrs.permissions = _stat.S_IFDIR | 0o755
+
+        season2 = MagicMock()
+        season2.filename = "Season 02"
+        season2.attrs = MagicMock()
+        season2.attrs.permissions = _stat.S_IFDIR | 0o755
+
+        root_entries = [season1, season2]
+        season1_entries = [_make_entry("ep01.mkv", 500, mtime=fresh_mtime)]  # in-flight upload
+
+        mock_sftp = AsyncMock()
+
+        async def readdir_side_effect(path: str):
+            if path == "/show":
+                return root_entries
+            if "Season 01" in path:
+                return season1_entries
+            if "Season 02" in path:
+                raise OSError("connection reset")
+            raise AssertionError(f"unexpected path {path}")
+
+        mock_sftp.readdir = AsyncMock(side_effect=readdir_side_effect)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.list_remote_files_recursive(path="/show")
+
+        assert result.files == []
+        assert result.io_failures == 1
+        assert result.recently_modified_skipped == 1
+        assert result.fully_walked is False
+
+
+# ---------------------------------------------------------------------------
+# list_remote_children
+# ---------------------------------------------------------------------------
+
+
+class TestListRemoteChildren:
+    @pytest.mark.asyncio
+    async def test_returns_files_and_directories_with_correct_is_dir(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Both files and directories are returned, is_dir set correctly for each."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("Show A", 0, is_dir=True),
+                _make_entry("loose_file.mkv", 1024, mtime=_old_mtime()),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        by_name = {c.name: c for c in children}
+        assert by_name["Show A"].is_dir is True
+        assert by_name["Show A"].size == 0
+        assert by_name["Show A"].mtime is None
+        assert by_name["loose_file.mkv"].is_dir is False
+        assert by_name["loose_file.mkv"].size == 1024
+
+    @pytest.mark.asyncio
+    async def test_excludes_directory_names_via_is_valid_directory(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Directories matching exclusion keywords (e.g. 'sample') are dropped."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("Show A", 0, is_dir=True),
+                _make_entry("sample", 0, is_dir=True),
+                _make_entry("screens", 0, is_dir=True),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["Show A"]
+
+    @pytest.mark.asyncio
+    async def test_excludes_invalid_files(self, sftp_service: SFTPService) -> None:
+        """Non-media files are filtered out, same rules as list_remote_files."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("ep01.mkv", 1024, mtime=_old_mtime()),
+                _make_entry("show.nfo", 500, mtime=_old_mtime()),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["ep01.mkv"]
+
+    @pytest.mark.asyncio
+    async def test_excludes_recently_modified_files(self, sftp_service: SFTPService) -> None:
+        """A file still uploading is excluded, but a sibling directory is unaffected."""
+        fresh_mtime = int(time.time()) - 5
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("Show A", 0, is_dir=True),
+                _make_entry("ep01.mkv", 1024, mtime=fresh_mtime),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["Show A"]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_for_empty_directory(self, sftp_service: SFTPService) -> None:
+        """An empty directory (excluding . and ..) returns an empty list."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(return_value=[_make_entry(".", 0), _make_entry("..", 0)])
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert children == []
+
+    @pytest.mark.asyncio
+    async def test_results_sorted_by_name(self, sftp_service: SFTPService) -> None:
+        """Results are alphabetically sorted, files and directories mixed together."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("Show C", 0, is_dir=True),
+                _make_entry("Show A", 0, is_dir=True),
+                _make_entry("Show B.mkv", 100, mtime=_old_mtime()),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["Show A", "Show B.mkv", "Show C"]
+
+    @pytest.mark.asyncio
+    async def test_retries_on_transient_error(self, sftp_service: SFTPService) -> None:
+        """A transient connection error is retried, matching list_remote_files."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(return_value=[_make_entry("Show A", 0, is_dir=True)])
+
+        call_count = 0
+
+        def flaky_connect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("connection reset")
+            return _make_conn(mock_sftp)
+
+        with (
+            patch("asyncssh.connect", side_effect=flaky_connect),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["Show A"]
+        assert call_count == 2
 
 
 # ---------------------------------------------------------------------------

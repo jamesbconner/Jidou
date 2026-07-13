@@ -5,6 +5,15 @@ service (e.g. Sync2NAS).  Creates a DownloadedFile record with status SEEDED
 for every remote file that is not already tracked, preventing the normal scan →
 download pipeline from re-downloading files that already exist on the SFTP server.
 
+Also backfills ScannedDirectory rows for every top-level directory under each
+configured remote path, so ScanOrchestrator's shallow-scan-plus-lazy-deep-walk
+design doesn't treat an already-seeded library as entirely new on its first
+regular scan. A directory is only marked known when its remote path's walk
+was fully successful (not in paths_failed, and no I/O failures or in-flight-
+upload skips) — a partial or racy walk is left unmarked so a later seed re-run
+can retry it, matching the same "only mark permanently known after a provably
+complete walk" rule ScanOrchestrator follows.
+
 The operation is idempotent: re-running skips any remote_path already in the
 database regardless of its current status and never mutates existing rows.
 """
@@ -18,6 +27,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.models.scanned_directory import ScannedDirectory
+from jidou.orchestrators._bulk_existence import chunked_existing_paths
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
@@ -89,20 +100,71 @@ class SeedOrchestrator:
         skipped_by_status: dict[str, int] = {}
 
         # Collect all remote files across all paths first so we can report
-        # accurate totals and do bulk existence checks.
+        # accurate totals and do bulk existence checks. Also collect
+        # top-level directories eligible for ScannedDirectory marking — only
+        # from paths whose walk fully succeeded.
         all_remote: list[tuple[str, str, int]] = []  # (name, path, size)
+        eligible_dirs: set[str] = set()
 
         for idx, remote_path in enumerate(self.remote_paths, 1):
             logger.info("Listing remote path %d/%d: %s", idx, total_paths, remote_path)
             try:
-                remote_files = await self.sftp.list_remote_files_recursive(remote_path)
+                walk_result = await self.sftp.list_remote_files_recursive(remote_path)
             except Exception:
                 logger.exception("Failed to list remote path %s; skipping", remote_path)
                 paths_failed += 1
                 continue
 
-            for rf in remote_files:
+            for rf in walk_result.files:
                 all_remote.append((rf.name, rf.path, rf.size))
+
+            if not walk_result.fully_walked:
+                logger.info(
+                    "Remote path %s not fully walked (io_failures=%d, "
+                    "recently_modified_skipped=%d) — its directories will not "
+                    "be marked known this run; re-run seed later to retry",
+                    remote_path,
+                    walk_result.io_failures,
+                    walk_result.recently_modified_skipped,
+                )
+                continue
+
+            try:
+                children = await self.sftp.list_remote_children(remote_path)
+            except Exception:
+                logger.exception(
+                    "Failed to shallow-list remote path %s for directory marking; skipping",
+                    remote_path,
+                )
+                continue
+
+            eligible_dirs.update(c.path for c in children if c.is_dir)
+
+        # Mark eligible directories as known now, independent of whether any
+        # files were found — a directory with zero eligible media files is
+        # exactly the case this shallow listing exists to cover, and must not
+        # be silently skipped by the files_found==0 early return below.
+        if eligible_dirs:
+            existing_dirs = await chunked_existing_paths(
+                self.session, ScannedDirectory.remote_path, sorted(eligible_dirs)
+            )
+            new_dirs = sorted(eligible_dirs - existing_dirs)
+            if dry_run:
+                for d in new_dirs:
+                    logger.info("[DRY RUN] Would mark directory as known: %s", d)
+            else:
+                for d in new_dirs:
+                    try:
+                        async with self.session.begin_nested():
+                            self.session.add(ScannedDirectory(remote_path=d))
+                    except IntegrityError as exc:
+                        orig = getattr(exc, "orig", None)
+                        pgcode = getattr(orig, "pgcode", None)
+                        if pgcode is not None and pgcode != "23505":
+                            raise
+                        logger.debug("ScannedDirectory already exists (race): %s", d)
+                if new_dirs:
+                    await self.session.commit()
 
         files_found = len(all_remote)
 
@@ -123,6 +185,9 @@ class SeedOrchestrator:
             )
 
         # Bulk existence check: chunk paths to avoid oversized IN() clauses.
+        # Needs the status per path (for skipped_by_status), not just a bare
+        # existence set, so this stays a direct query rather than routing
+        # through chunked_existing_paths (which only returns a set[str]).
         all_paths = [path for _, path, _ in all_remote]
         existing: dict[str, str] = {}  # remote_path → status
         for i in range(0, len(all_paths), _EXISTENCE_CHUNK):

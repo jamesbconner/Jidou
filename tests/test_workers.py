@@ -546,7 +546,9 @@ async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
     assert captured["progress_total"] == 0
     assert captured["dry_run"] is True
 
-    scan_result = ScanResult(paths_scanned=5, files_found=10, files_created=3, files_skipped=7)
+    scan_result = ScanResult(
+        paths_scanned=5, files_found=10, files_created=3, files_skipped=7, dirs_discovered=2
+    )
     session = AsyncMock()
     on_progress = AsyncMock()
     on_event = AsyncMock()
@@ -569,6 +571,7 @@ async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
         "files_found": 10,
         "files_created": 3,
         "files_skipped": 7,
+        "dirs_discovered": 2,
         "dry_run": True,
     }
     assert wf_result.complete_summary == {"files_created": 3, "dry_run": True}

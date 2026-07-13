@@ -53,6 +53,7 @@ async def _scan_remote(
             password=settings.sftp_password,
             key_path=settings.sftp_key_path,
             known_hosts=None,
+            max_workers=settings.sftp_max_workers,
             max_retries=settings.sftp_max_retries,
             retry_delay=settings.sftp_retry_delay,
         )
@@ -65,12 +66,16 @@ async def _scan_remote(
         return WorkflowResult(
             progress_current=result.paths_scanned,
             progress_total=result.paths_scanned,
-            message=f"Scan complete: {result.files_created} new files found",
+            message=(
+                f"Scan complete: {result.files_created} new files found, "
+                f"{result.dirs_discovered} new directories discovered"
+            ),
             result_summary={
                 "paths_scanned": result.paths_scanned,
                 "files_found": result.files_found,
                 "files_created": result.files_created,
                 "files_skipped": result.files_skipped,
+                "dirs_discovered": result.dirs_discovered,
                 "dry_run": dry_run,
             },
             complete_summary={"files_created": result.files_created, "dry_run": dry_run},

@@ -9,7 +9,9 @@ import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
 from jidou.models.downloaded_file import FileStatus
+from jidou.models.scanned_directory import ScannedDirectory
 from jidou.orchestrators.seed_orchestrator import SeedOrchestrator
+from jidou.services.sftp_service import RecursiveListResult, RemoteFile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,9 +88,25 @@ class _FakeRow:
 class TestSeedOrchestrator:
     """Unit tests for SeedOrchestrator.run()."""
 
-    def _make_sftp(self, files: list[MagicMock]) -> MagicMock:
+    def _make_sftp(
+        self,
+        files: list[MagicMock],
+        children: list[RemoteFile] | None = None,
+        io_failures: int = 0,
+        recently_modified_skipped: int = 0,
+    ) -> MagicMock:
+        """Build an SFTP mock. children defaults to [] (no top-level directories
+        to mark known) so existing file-seeding tests are unaffected by the
+        directory-marking logic."""
         sftp = MagicMock()
-        sftp.list_remote_files_recursive = AsyncMock(return_value=files)
+        sftp.list_remote_files_recursive = AsyncMock(
+            return_value=RecursiveListResult(
+                files=files,
+                io_failures=io_failures,
+                recently_modified_skipped=recently_modified_skipped,
+            )
+        )
+        sftp.list_remote_children = AsyncMock(return_value=children or [])
         return sftp
 
     @pytest.mark.asyncio
@@ -164,6 +182,7 @@ class TestSeedOrchestrator:
         """A listing failure on one path increments paths_failed and continues."""
         sftp = MagicMock()
         sftp.list_remote_files_recursive = AsyncMock(side_effect=OSError("Connection refused"))
+        sftp.list_remote_children = AsyncMock(return_value=[])
         session = _FakeSession()
 
         result = await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
@@ -213,10 +232,11 @@ class TestSeedOrchestrator:
         sftp = MagicMock()
         sftp.list_remote_files_recursive = AsyncMock(
             side_effect=[
-                [_make_remote_file("ep01.mkv", "/tv/ep01.mkv")],
-                [_make_remote_file("ep02.mkv", "/anime/ep02.mkv")],
+                RecursiveListResult(files=[_make_remote_file("ep01.mkv", "/tv/ep01.mkv")]),
+                RecursiveListResult(files=[_make_remote_file("ep02.mkv", "/anime/ep02.mkv")]),
             ]
         )
+        sftp.list_remote_children = AsyncMock(return_value=[])
         session = _FakeSession()
 
         result = await SeedOrchestrator(session, sftp, ["/tv", "/anime"]).run(dry_run=False)
@@ -260,6 +280,162 @@ class TestSeedOrchestrator:
             "parse_orchestrator references FileStatus.SEEDED — "
             "check that SEEDED files are not being picked up for matching"
         )
+
+
+# ---------------------------------------------------------------------------
+# SeedOrchestrator directory-marking (ScannedDirectory backfill)
+# ---------------------------------------------------------------------------
+
+
+def _patch_dir_existing(existing_dirs: set[str] | None = None):
+    """Patch chunked_existing_paths as used for SeedOrchestrator's ScannedDirectory check."""
+    existing_dirs = existing_dirs or set()
+
+    async def fake(
+        session: Any, column: Any, paths: list[str], chunk_size: int = 1_000
+    ) -> set[str]:
+        return {p for p in paths if p in existing_dirs}
+
+    return patch("jidou.orchestrators.seed_orchestrator.chunked_existing_paths", new=fake)
+
+
+def _make_dir(name: str, path: str) -> RemoteFile:
+    return RemoteFile(name=name, path=path, size=0, is_dir=True)
+
+
+class TestSeedOrchestratorDirectoryMarking:
+    """ScannedDirectory backfill during seeding — see issue #355."""
+
+    @pytest.mark.asyncio
+    async def test_marks_one_scanned_directory_per_distinct_top_level_dir(self) -> None:
+        """Multiple files under the same directory still produce exactly one marker."""
+        show_dir = _make_dir("Show A", "/sftp/show/Show A")
+        files = [
+            _make_remote_file("ep01.mkv", "/sftp/show/Show A/ep01.mkv"),
+            _make_remote_file("ep02.mkv", "/sftp/show/Show A/ep02.mkv"),
+        ]
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(return_value=RecursiveListResult(files=files))
+        sftp.list_remote_children = AsyncMock(return_value=[show_dir])
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
+
+        markers = [o for o in session.added if isinstance(o, ScannedDirectory)]
+        assert len(markers) == 1
+        assert markers[0].remote_path == "/sftp/show/Show A"
+
+    @pytest.mark.asyncio
+    async def test_directory_with_zero_files_still_gets_marked(self) -> None:
+        """A top-level directory with no eligible media files still gets a marker.
+
+        This is exactly the case the extra shallow list_remote_children() call
+        exists to cover -- deriving directories from file paths alone would
+        miss it entirely.
+        """
+        empty_dir = _make_dir("Empty Show", "/sftp/show/Empty Show")
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(return_value=RecursiveListResult(files=[]))
+        sftp.list_remote_children = AsyncMock(return_value=[empty_dir])
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            result = await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
+
+        assert result.files_found == 0
+        markers = [o for o in session.added if isinstance(o, ScannedDirectory)]
+        assert [m.remote_path for m in markers] == ["/sftp/show/Empty Show"]
+
+    @pytest.mark.asyncio
+    async def test_files_at_root_create_no_spurious_marker(self) -> None:
+        """Files sitting directly at the remote root (no subdirectory) mark nothing."""
+        files = [_make_remote_file("special.mkv", "/sftp/show/special.mkv")]
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(return_value=RecursiveListResult(files=files))
+        sftp.list_remote_children = AsyncMock(return_value=[])  # no directories, only loose files
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
+
+        assert not any(isinstance(o, ScannedDirectory) for o in session.added)
+
+    @pytest.mark.asyncio
+    async def test_rerun_is_idempotent_no_duplicate_markers(self) -> None:
+        """A directory already marked known is not re-added on a second seed run."""
+        show_dir = _make_dir("Show A", "/sftp/show/Show A")
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(return_value=RecursiveListResult(files=[]))
+        sftp.list_remote_children = AsyncMock(return_value=[show_dir])
+        session = _FakeSession()
+
+        with _patch_dir_existing(existing_dirs={"/sftp/show/Show A"}):
+            await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
+
+        assert not any(isinstance(o, ScannedDirectory) for o in session.added)
+
+    @pytest.mark.asyncio
+    async def test_failed_path_walk_skips_directory_marking_for_that_path_only(self) -> None:
+        """A path whose recursive walk fails gets no directory marking; other paths still do."""
+        good_dir = _make_dir("Good Show", "/good/Good Show")
+        bad_dir = _make_dir("Bad Show", "/bad/Bad Show")
+
+        sftp = MagicMock()
+
+        async def fake_walk(path: str, pattern: str = "*") -> RecursiveListResult:
+            if path == "/bad":
+                raise OSError("connection refused")
+            return RecursiveListResult(files=[])
+
+        sftp.list_remote_files_recursive = AsyncMock(side_effect=fake_walk)
+
+        async def fake_children(path: str) -> list[RemoteFile]:
+            return [good_dir] if path == "/good" else [bad_dir]
+
+        sftp.list_remote_children = AsyncMock(side_effect=fake_children)
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            result = await SeedOrchestrator(session, sftp, ["/good", "/bad"]).run(dry_run=False)
+
+        assert result.paths_failed == 1
+        markers = [o for o in session.added if isinstance(o, ScannedDirectory)]
+        assert [m.remote_path for m in markers] == ["/good/Good Show"]
+
+    @pytest.mark.asyncio
+    async def test_partial_walk_skips_directory_marking_for_that_path(self) -> None:
+        """A path whose walk completes but with io_failures/recently_modified_skipped is
+        not marked known either -- only paths_failed is distinct from fully_walked=False."""
+        show_dir = _make_dir("Show A", "/sftp/show/Show A")
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(
+            return_value=RecursiveListResult(files=[], io_failures=1)
+        )
+        sftp.list_remote_children = AsyncMock(return_value=[show_dir])
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            result = await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=False)
+
+        assert result.paths_failed == 0  # the path listing itself succeeded
+        assert not any(isinstance(o, ScannedDirectory) for o in session.added)
+        # list_remote_children must not even be called for a not-fully-walked path
+        sftp.list_remote_children.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dry_run_marks_nothing(self) -> None:
+        """dry_run inserts no ScannedDirectory rows."""
+        show_dir = _make_dir("Show A", "/sftp/show/Show A")
+        sftp = MagicMock()
+        sftp.list_remote_files_recursive = AsyncMock(return_value=RecursiveListResult(files=[]))
+        sftp.list_remote_children = AsyncMock(return_value=[show_dir])
+        session = _FakeSession()
+
+        with _patch_dir_existing():
+            await SeedOrchestrator(session, sftp, ["/sftp/show"]).run(dry_run=True)
+
+        assert session.added == []
 
 
 # ---------------------------------------------------------------------------
