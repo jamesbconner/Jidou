@@ -8,23 +8,18 @@ so a directory known once is treated as permanently immutable and is never
 walked again. See ``ScannedDirectory``.
 """
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.scanned_directory import ScannedDirectory
-from jidou.orchestrators._bulk_existence import chunked_existing_paths
+from jidou.orchestrators._bulk_existence import chunked_existing_paths, insert_or_skip_duplicate
 from jidou.services.sftp_service import RecursiveListResult, RemoteFile, SFTPService
 
 logger = logging.getLogger(__name__)
-
-# A directory's deep-walk result, or the exception raised while walking it.
-_WalkOutcome = tuple[str, "RecursiveListResult | BaseException"]
 
 
 @dataclass
@@ -46,11 +41,19 @@ class ScanOrchestrator:
     ``remote_path`` alone (unique on the SFTP server regardless of show).
 
     Only the immediate children of each configured remote path are listed on
-    every run. A directory not yet seen is deep-walked once (concurrently,
-    bounded by ``sftp.max_workers``) and, if the walk completes without any
-    I/O failures or in-flight-upload skips, marked permanently known via a
-    ``ScannedDirectory`` row so it is never walked again. A directory already
-    known is skipped entirely — no SFTP round trip into it at all.
+    every run. A directory not yet seen is deep-walked once (concurrently
+    across all configured remote paths combined, bounded by
+    ``sftp.max_workers``) and, if the walk completes without any I/O
+    failures, in-flight-upload skips, or deferred-too-fresh subdirectories,
+    marked permanently known via a ``ScannedDirectory`` row so it is never
+    walked again. A directory already known is skipped entirely — no SFTP
+    round trip into it at all.
+
+    Existence checks (both for top-level files and top-level directories, and
+    for files found inside newly-walked directories) are batched once across
+    *all* configured remote paths rather than once per path, to keep the
+    round-trip count constant regardless of how many remote paths are
+    configured.
 
     Args:
         session: Active async SQLAlchemy session.
@@ -80,85 +83,102 @@ class ScanOrchestrator:
 
         Args:
             dry_run: Log what would be created without writing to the DB.
-            on_progress: Optional async callback(current, total, message).
+            on_progress: Optional async callback(current, total, message),
+                called once per configured remote path during the initial
+                shallow-listing phase.
 
         Returns:
             ScanResult with counts. ``files_found``/``files_skipped`` reflect
             only files discovered this run (top-level files plus any newly
             deep-walked directories) — a known, skipped directory contributes
-            nothing to these counts, unlike a full rescan.
+            nothing to these counts, unlike a full rescan. ``dirs_discovered``
+            counts only directories actually marked known this run, not
+            merely seen as new.
         """
         total = len(self.remote_paths)
-        files_found = 0
-        files_created = 0
-        files_skipped = 0
-        dirs_discovered = 0
+        all_top_level_files: list[RemoteFile] = []
+        all_top_level_dirs: list[RemoteFile] = []
 
+        # Phase 1: shallow-list every configured remote path.
         for idx, remote_path in enumerate(self.remote_paths, 1):
             if on_progress:
                 await on_progress(idx, total, f"Scanning {remote_path}")
-
             try:
                 children = await self.sftp.list_remote_children(remote_path)
             except Exception:
                 logger.exception("Failed to list remote path %s; skipping", remote_path)
                 continue
+            all_top_level_files.extend(c for c in children if not c.is_dir)
+            all_top_level_dirs.extend(c for c in children if c.is_dir)
 
-            top_level_files = [c for c in children if not c.is_dir]
-            top_level_dirs = [c for c in children if c.is_dir]
-            files_found += len(top_level_files)
+        files_found = len(all_top_level_files)
+        files_created = 0
+        files_skipped = 0
 
-            existing_file_paths = await chunked_existing_paths(
-                self.session, DownloadedFile.remote_path, [f.path for f in top_level_files]
-            )
-            for rf in top_level_files:
-                if rf.path in existing_file_paths:
-                    files_skipped += 1
+        # Phase 2: one combined existence check for top-level files across ALL paths.
+        existing_file_paths = await chunked_existing_paths(
+            self.session, DownloadedFile.remote_path, [f.path for f in all_top_level_files]
+        )
+        for rf in all_top_level_files:
+            if rf.path in existing_file_paths:
+                files_skipped += 1
+                continue
+            if await self._create_discovered_file(rf, dry_run):
+                files_created += 1
+            else:
+                files_skipped += 1
+
+        # Phase 3: one combined existence check for top-level directories across ALL paths.
+        existing_dir_paths = await chunked_existing_paths(
+            self.session, ScannedDirectory.remote_path, [d.path for d in all_top_level_dirs]
+        )
+        new_dirs = [d for d in all_top_level_dirs if d.path not in existing_dir_paths]
+
+        dirs_discovered = 0
+        if new_dirs:
+            # Phase 4: deep-walk ALL new directories concurrently, across every
+            # configured remote path together (SFTP I/O only — no session access).
+            outcomes = await self.sftp.list_remote_files_recursive_batch([d.path for d in new_dirs])
+
+            successful: list[tuple[str, RecursiveListResult]] = []
+            all_new_files: list[RemoteFile] = []
+            for dir_path, outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    logger.warning("Failed to deep-walk new directory %s: %s", dir_path, outcome)
                     continue
-                if await self._create_discovered_file(rf, dry_run):
+                successful.append((dir_path, outcome))
+                all_new_files.extend(outcome.files)
+
+            files_found += len(all_new_files)
+
+            # Phase 5: one combined existence check for files across ALL newly-walked directories.
+            new_dir_existing = await chunked_existing_paths(
+                self.session, DownloadedFile.remote_path, [f.path for f in all_new_files]
+            )
+            for rf in all_new_files:
+                if rf.path in new_dir_existing:
+                    files_skipped += 1
+                elif await self._create_discovered_file(rf, dry_run):
                     files_created += 1
                 else:
                     files_skipped += 1
 
-            existing_dir_paths = await chunked_existing_paths(
-                self.session, ScannedDirectory.remote_path, [d.path for d in top_level_dirs]
-            )
-            new_dirs = [d for d in top_level_dirs if d.path not in existing_dir_paths]
-            dirs_discovered += len(new_dirs)
-
-            if not new_dirs:
-                continue
-
-            for dir_path, outcome in await self._deep_walk_new_dirs(new_dirs):
-                if isinstance(outcome, BaseException):
-                    logger.warning("Failed to deep-walk new directory %s: %s", dir_path, outcome)
-                    continue
-
-                files_found += len(outcome.files)
-                dir_existing = await chunked_existing_paths(
-                    self.session, DownloadedFile.remote_path, [f.path for f in outcome.files]
-                )
-                for rf in outcome.files:
-                    if rf.path in dir_existing:
-                        files_skipped += 1
-                        continue
-                    if await self._create_discovered_file(rf, dry_run):
-                        files_created += 1
-                    else:
-                        files_skipped += 1
-
+            for dir_path, outcome in successful:
                 if outcome.fully_walked:
                     if dry_run:
                         logger.info("[DRY RUN] Would mark directory as known: %s", dir_path)
                     else:
                         await self._mark_scanned_directory(dir_path)
+                    dirs_discovered += 1
                 else:
                     logger.info(
                         "Directory %s not fully walked (io_failures=%d, "
-                        "recently_modified_skipped=%d) — will retry on next scan",
+                        "recently_modified_skipped=%d, directories_deferred=%d) "
+                        "— will retry on next scan",
                         dir_path,
                         outcome.io_failures,
                         outcome.recently_modified_skipped,
+                        outcome.directories_deferred,
                     )
 
         if not dry_run:
@@ -182,34 +202,6 @@ class ScanOrchestrator:
             dirs_discovered=dirs_discovered,
         )
 
-    async def _deep_walk_new_dirs(self, dirs: list[RemoteFile]) -> list[_WalkOutcome]:
-        """Deep-walk each newly-discovered directory concurrently (SFTP I/O only).
-
-        Bounded by ``sftp.max_workers``. Exceptions are captured per-directory
-        rather than propagated, so one directory's failure doesn't cancel the
-        others. Results are collected and returned for the caller to process
-        sequentially against the DB session afterward — ``AsyncSession`` is
-        not safe for concurrent use, so no session access happens here.
-
-        Args:
-            dirs: Newly-discovered top-level directory entries to walk.
-
-        Returns:
-            List of ``(remote_path, RecursiveListResult | exception)`` pairs,
-            one per input directory.
-        """
-        semaphore = asyncio.Semaphore(max(1, self.sftp.max_workers))
-
-        async def _walk_one(d: RemoteFile) -> _WalkOutcome:
-            async with semaphore:
-                try:
-                    result = await self.sftp.list_remote_files_recursive(d.path)
-                except Exception as exc:
-                    return d.path, exc
-                return d.path, result
-
-        return await asyncio.gather(*[_walk_one(d) for d in dirs])
-
     async def _create_discovered_file(self, rf: RemoteFile, dry_run: bool) -> bool:
         """Create a DISCOVERED DownloadedFile row for *rf*.
 
@@ -224,25 +216,10 @@ class ScanOrchestrator:
         if dry_run:
             logger.info("[DRY RUN] Would create DownloadedFile for %s", rf.path)
             return True
-        try:
-            async with self.session.begin_nested():
-                self.session.add(
-                    DownloadedFile(
-                        show_id=None,
-                        original_filename=rf.name,
-                        remote_path=rf.path,
-                        file_size=rf.size,
-                        status=FileStatus.DISCOVERED,
-                    )
-                )
-            return True
-        except IntegrityError as exc:
-            orig = getattr(exc, "orig", None)
-            pgcode = getattr(orig, "pgcode", None)
-            if pgcode is not None and pgcode != "23505":
-                raise
-            logger.debug("Skipping duplicate file (race): remote_path=%s", rf.path)
-            return False
+        row = DownloadedFile.new_from_remote(
+            name=rf.name, remote_path=rf.path, size=rf.size, status=FileStatus.DISCOVERED
+        )
+        return await insert_or_skip_duplicate(self.session, row)
 
     async def _mark_scanned_directory(self, remote_path: str) -> None:
         """Insert a ScannedDirectory row marking *remote_path* as permanently known.
@@ -250,12 +227,4 @@ class ScanOrchestrator:
         Args:
             remote_path: Full remote path of the directory to mark.
         """
-        try:
-            async with self.session.begin_nested():
-                self.session.add(ScannedDirectory(remote_path=remote_path))
-        except IntegrityError as exc:
-            orig = getattr(exc, "orig", None)
-            pgcode = getattr(orig, "pgcode", None)
-            if pgcode is not None and pgcode != "23505":
-                raise
-            logger.debug("ScannedDirectory already exists (race): remote_path=%s", remote_path)
+        await insert_or_skip_duplicate(self.session, ScannedDirectory(remote_path=remote_path))

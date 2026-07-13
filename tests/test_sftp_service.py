@@ -1,5 +1,6 @@
 """Tests for the SFTPService."""
 
+import asyncio
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,7 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncssh
 import pytest
 
-from jidou.services.sftp_service import CommandResult, DownloadProgress, SFTPService, UploadResult
+from jidou.services.sftp_service import (
+    CommandResult,
+    DownloadProgress,
+    RecursiveListResult,
+    RemoteFile,
+    SFTPService,
+    UploadResult,
+)
 
 
 @pytest.fixture
@@ -671,6 +679,141 @@ class TestListRemoteFilesRecursive:
         assert result.recently_modified_skipped == 1
         assert result.fully_walked is False
 
+    @pytest.mark.asyncio
+    async def test_defers_recently_modified_subdirectory_without_descending(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A subdirectory whose own mtime is within the grace window is skipped
+        entirely (not descended into) rather than trusted -- a directory's own
+        mtime bumps whenever a child is added/removed directly inside it, so a
+        fresh mtime signals it may still be receiving files."""
+        fresh_mtime = int(time.time()) - 5
+        root_entries = [_make_entry("Season 01", 0, is_dir=True, mtime=fresh_mtime)]
+
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(return_value=root_entries)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.list_remote_files_recursive(path="/show")
+
+        assert result.files == []
+        assert result.directories_deferred == 1
+        assert result.io_failures == 0
+        assert result.recently_modified_skipped == 0
+        assert result.fully_walked is False
+        # Only the root readdir() happened -- Season 01 was never descended into.
+        assert mock_sftp.readdir.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_stale_subdirectory_is_still_descended_into(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A subdirectory with an old mtime is trusted and walked normally."""
+        root_entries = [_make_entry("Season 01", 0, is_dir=True, mtime=_old_mtime())]
+        season_entries = [_make_entry("ep01.mkv", 1000, mtime=_old_mtime())]
+
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(side_effect=[root_entries, season_entries])
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.list_remote_files_recursive(path="/show")
+
+        assert len(result.files) == 1
+        assert result.directories_deferred == 0
+        assert result.fully_walked is True
+
+
+# ---------------------------------------------------------------------------
+# list_remote_files_recursive_batch
+# ---------------------------------------------------------------------------
+
+
+class TestListRemoteFilesRecursiveBatch:
+    @pytest.mark.asyncio
+    async def test_walks_each_path_independently(self, sftp_service: SFTPService) -> None:
+        """Each input path gets its own recursive walk, results returned in order."""
+        entries_by_path = {
+            "/show1": [_make_entry("ep01.mkv", 100, mtime=_old_mtime())],
+            "/show2": [_make_entry("ep01.mkv", 200, mtime=_old_mtime())],
+        }
+        mock_sftp = AsyncMock()
+
+        async def readdir_side_effect(path: str):
+            return entries_by_path[path]
+
+        mock_sftp.readdir = AsyncMock(side_effect=readdir_side_effect)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            results = await sftp_service.list_remote_files_recursive_batch(["/show1", "/show2"])
+
+        assert [path for path, _ in results] == ["/show1", "/show2"]
+        outcome1 = dict(results)["/show1"]
+        outcome2 = dict(results)["/show2"]
+        assert outcome1.files[0].size == 100
+        assert outcome2.files[0].size == 200
+
+    @pytest.mark.asyncio
+    async def test_one_path_exception_does_not_affect_others(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """An exception escaping list_remote_files_recursive for one path is captured
+        and returned rather than raised or cancelling the other paths' walks.
+
+        A plain readdir() failure on a subdirectory is already absorbed inside
+        _collect_files_recursive as an io_failures increment (see
+        test_readdir_failure_on_subdirectory_is_skipped), so it never reaches
+        this level -- what this batch method guards against is something that
+        genuinely escapes the whole per-path call (e.g. retries exhausted).
+        """
+
+        async def fake_walk(path: str, pattern: str = "*") -> RecursiveListResult:
+            if path == "/bad":
+                raise OSError("permission denied")
+            return RecursiveListResult(files=[RemoteFile(name="ep01.mkv", path=path, size=100)])
+
+        with patch.object(sftp_service, "list_remote_files_recursive", side_effect=fake_walk):
+            results = await sftp_service.list_remote_files_recursive_batch(["/good", "/bad"])
+
+        by_path = dict(results)
+        good_outcome = by_path["/good"]
+        bad_outcome = by_path["/bad"]
+        assert not isinstance(good_outcome, BaseException)
+        assert good_outcome.files[0].size == 100
+        assert isinstance(bad_outcome, OSError)
+
+    @pytest.mark.asyncio
+    async def test_empty_paths_returns_empty_list(self, sftp_service: SFTPService) -> None:
+        """No paths means no walks and an empty result."""
+        with patch("asyncssh.connect") as mock_connect:
+            results = await sftp_service.list_remote_files_recursive_batch([])
+
+        assert results == []
+        mock_connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrency_bounded_by_max_workers(self) -> None:
+        """No more than max_workers walks run concurrently at once."""
+        svc = SFTPService(host="h", username="u", max_workers=2)
+        in_flight = 0
+        max_in_flight = 0
+
+        mock_sftp = AsyncMock()
+
+        async def readdir_side_effect(path: str):
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            await asyncio.sleep(0)  # yield control so overlap is actually possible
+            in_flight -= 1
+            return []
+
+        mock_sftp.readdir = AsyncMock(side_effect=readdir_side_effect)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            await svc.list_remote_files_recursive_batch([f"/p{i}" for i in range(6)])
+
+        assert max_in_flight <= 2
+
 
 # ---------------------------------------------------------------------------
 # list_remote_children
@@ -752,6 +895,39 @@ class TestListRemoteChildren:
             children = await sftp_service.list_remote_children()
 
         assert [c.name for c in children] == ["Show A"]
+
+    @pytest.mark.asyncio
+    async def test_excludes_recently_modified_directory(self, sftp_service: SFTPService) -> None:
+        """A directory whose own mtime is within the grace window is excluded entirely
+        (deferred to a later call) rather than surfaced as a new top-level entry."""
+        fresh_mtime = int(time.time()) - 5
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[
+                _make_entry("Settled Show", 0, is_dir=True, mtime=_old_mtime()),
+                _make_entry("Still Downloading", 0, is_dir=True, mtime=fresh_mtime),
+            ]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert [c.name for c in children] == ["Settled Show"]
+
+    @pytest.mark.asyncio
+    async def test_stale_directory_mtime_is_captured_not_discarded(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A directory's own mtime is captured on the returned entry, not hardcoded to None."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[_make_entry("Show A", 0, is_dir=True, mtime=_old_mtime())]
+        )
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            children = await sftp_service.list_remote_children()
+
+        assert children[0].mtime is not None
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_for_empty_directory(self, sftp_service: SFTPService) -> None:

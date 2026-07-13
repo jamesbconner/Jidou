@@ -68,17 +68,27 @@ class RecursiveListResult:
     files: list[RemoteFile] = field(default_factory=list)
     io_failures: int = 0
     recently_modified_skipped: int = 0
+    directories_deferred: int = 0
 
     @property
     def fully_walked(self) -> bool:
-        """True only if nothing was lost or skipped during the walk.
+        """True only if nothing was lost, skipped, or deferred during the walk.
 
-        False if any subdirectory failed to list (``io_failures``) or any
-        file was excluded by the upload-grace window (``recently_modified_skipped``)
-        — either case means this walk cannot be trusted as a complete,
-        permanent picture of the directory's contents.
+        False if any subdirectory failed to list (``io_failures``), any file
+        was excluded by the upload-grace window (``recently_modified_skipped``),
+        or any subdirectory was itself too recently modified to trust its
+        contents yet and was skipped without being descended into
+        (``directories_deferred``) — a directory's own mtime bumps whenever a
+        child is added or removed directly inside it, so a fresh directory
+        mtime is a signal that it may still be receiving files. Any of these
+        means this walk cannot be trusted as a complete, permanent picture of
+        the directory's contents.
         """
-        return self.io_failures == 0 and self.recently_modified_skipped == 0
+        return (
+            self.io_failures == 0
+            and self.recently_modified_skipped == 0
+            and self.directories_deferred == 0
+        )
 
 
 @dataclass
@@ -344,15 +354,18 @@ class SFTPService:
     ) -> None:
         """Collect files recursively within an already-open SFTP session.
 
-        Directories that pass ``is_valid_directory()`` are descended into;
-        files that pass ``is_valid_media_file()`` and *pattern* and are not
-        recently modified are appended to *result.files*. A subdirectory that
-        fails to list, or a file skipped for being recently modified,
-        increments the corresponding counter on *result* instead of only
-        being logged — callers that need to know whether the walk was
-        complete (e.g. before treating a directory as permanently known)
-        must check ``result.fully_walked`` rather than assume a returned
-        file list is exhaustive.
+        Directories that pass ``is_valid_directory()`` are descended into —
+        unless the directory's own mtime is within the upload-grace window,
+        in which case it is skipped entirely without being read this round
+        (see ``directories_deferred``). Files that pass
+        ``is_valid_media_file()`` and *pattern* and are not recently modified
+        are appended to *result.files*. A subdirectory that fails to list, a
+        file skipped for being recently modified, or a subdirectory deferred
+        for being too fresh, increments the corresponding counter on *result*
+        instead of only being logged — callers that need to know whether the
+        walk was complete (e.g. before treating a directory as permanently
+        known) must check ``result.fully_walked`` rather than assume a
+        returned file list is exhaustive.
 
         Args:
             sftp: Open asyncssh SFTP client.
@@ -374,10 +387,21 @@ class SFTPService:
             entry_path = f"{path.rstrip('/')}/{name}"
 
             if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
-                if is_valid_directory(name):
-                    await self._collect_files_recursive(sftp, entry_path, pattern, result)
-                else:
+                if not is_valid_directory(name):
                     logger.debug("Skipping excluded directory: %s", name)
+                    continue
+                # A directory's own mtime bumps whenever a child is added or
+                # removed directly inside it. A fresh mtime here means this
+                # directory may still be receiving files that a readdir()
+                # partway through this walk would never observe — defer the
+                # whole subtree rather than trust a possibly-incomplete
+                # snapshot of it.
+                dir_mtime = self._parse_mtime(entry)
+                if dir_mtime is not None and is_recently_modified(dir_mtime):
+                    logger.debug("Deferring recently modified directory: %s", entry_path)
+                    result.directories_deferred += 1
+                    continue
+                await self._collect_files_recursive(sftp, entry_path, pattern, result)
                 continue
 
             if not fnmatch.fnmatch(name, pattern):
@@ -435,26 +459,67 @@ class SFTPService:
 
         result = await self._execute_with_retry(f"recursive list {remote_path}", _do)
         logger.info(
-            "Found %d files recursively at %s (io_failures=%d, recently_modified_skipped=%d)",
+            "Found %d files recursively at %s "
+            "(io_failures=%d, recently_modified_skipped=%d, directories_deferred=%d)",
             len(result.files),
             remote_path,
             result.io_failures,
             result.recently_modified_skipped,
+            result.directories_deferred,
         )
         return result
+
+    async def list_remote_files_recursive_batch(
+        self, paths: list[str], pattern: str = "*"
+    ) -> list[tuple[str, RecursiveListResult | BaseException]]:
+        """Recursively list files beneath each of *paths*, concurrently, bounded by ``max_workers``.
+
+        Mirrors :meth:`download_files`'s concurrency-bounding pattern but for
+        recursive listing, so every caller that needs to walk several
+        directories at once gets the same concurrency guarantee automatically
+        rather than each one reimplementing its own semaphore. Each path's
+        walk is fully independent; a failure walking one path is captured and
+        returned alongside the others rather than propagated, so one bad
+        directory never cancels the rest of the batch.
+
+        Args:
+            paths: Remote directory paths to walk, each independently.
+            pattern: Glob pattern applied to filenames within each walk.
+
+        Returns:
+            List of ``(path, RecursiveListResult | exception)`` pairs, one
+            per input path, in the same order as *paths*.
+        """
+        semaphore = asyncio.Semaphore(max(1, self._max_workers))
+
+        async def _walk_one(path: str) -> tuple[str, RecursiveListResult | BaseException]:
+            async with semaphore:
+                try:
+                    result = await self.list_remote_files_recursive(path, pattern)
+                except Exception as exc:
+                    return path, exc
+                return path, result
+
+        return await asyncio.gather(*[_walk_one(p) for p in paths])
 
     async def list_remote_children(self, path: str | None = None) -> list[RemoteFile]:
         """List immediate children of *path* (non-recursive), files and directories alike.
 
         Unlike :meth:`list_remote_files`, directories ARE included (with
-        ``is_dir=True``, ``size=0``, ``mtime=None``) so the caller can decide
-        which ones need a full recursive walk — this is the shallow "what
-        top-level entries exist here" call used by scan/seed to avoid
-        re-walking already-known directories. Files are filtered by the same
+        ``is_dir=True``, ``size=0``) so the caller can decide which ones need
+        a full recursive walk — this is the shallow "what top-level entries
+        exist here" call used by scan/seed to avoid re-walking already-known
+        directories. Files are filtered by the same
         ``is_valid_media_file``/``is_recently_modified`` rules as
         :meth:`list_remote_files`; directories are filtered by
         ``is_valid_directory`` (excluded directories like ``sample`` never
-        surface as scan candidates).
+        surface as scan candidates) AND by ``is_recently_modified`` applied to
+        the directory's own mtime — a directory whose own mtime is within the
+        upload-grace window may still be receiving new top-level entries and
+        is excluded entirely this round rather than surfaced as "new," so its
+        discovery (and any deep walk of it) is simply deferred to a later
+        call once it settles. This has no risk of permanent loss: an excluded
+        directory is invisible, not marked known.
 
         Args:
             path: Remote directory path.  Defaults to ``remote_base_path``.
@@ -476,19 +541,22 @@ class SFTPService:
                         continue
                     entry_path = f"{remote_path.rstrip('/')}/{name}"
                     is_dir = bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions))
+                    mtime = self._parse_mtime(entry)
                     if is_dir:
                         if not is_valid_directory(name):
                             logger.debug("Skipping excluded directory: %s", name)
                             continue
+                        if mtime is not None and is_recently_modified(mtime):
+                            logger.debug("Deferring recently modified directory: %s", name)
+                            continue
                         entries_out.append(
-                            RemoteFile(name=name, path=entry_path, size=0, is_dir=True)
+                            RemoteFile(name=name, path=entry_path, size=0, mtime=mtime, is_dir=True)
                         )
                         continue
 
                     if not is_valid_media_file(name):
                         logger.debug("Filtered out %s (extension/keyword rule)", name)
                         continue
-                    mtime = self._parse_mtime(entry)
                     if mtime is not None and is_recently_modified(mtime):
                         logger.debug("Skipping recently modified file: %s", name)
                         continue

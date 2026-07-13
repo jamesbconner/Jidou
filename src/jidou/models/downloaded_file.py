@@ -126,3 +126,35 @@ class DownloadedFile(TimestampMixin, Base):
             f"filename={self.original_filename!r}, "
             f"status={self.status})>"
         )
+
+    @classmethod
+    def new_from_remote(
+        cls,
+        *,
+        name: str,
+        remote_path: str,
+        size: int,
+        status: FileStatus,
+    ) -> DownloadedFile:
+        """Build a not-yet-persisted row for a freshly discovered remote file.
+
+        Shared by ``ScanOrchestrator`` (``status=DISCOVERED``) and
+        ``SeedOrchestrator`` (``status=SEEDED``) — the only difference
+        between how the two orchestrators record a newly-seen remote file.
+
+        Args:
+            name: Bare filename (``original_filename``).
+            remote_path: Full remote path (unique key).
+            size: File size in bytes.
+            status: Initial lifecycle status.
+
+        Returns:
+            A ``DownloadedFile`` instance, not yet added to any session.
+        """
+        return cls(
+            show_id=None,
+            original_filename=name,
+            remote_path=remote_path,
+            file_size=size,
+            status=status,
+        )
