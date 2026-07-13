@@ -121,13 +121,28 @@ async def trigger_task(
         )
 
     # Delayed import to avoid circular reference with Celery
-    from jidou.services.progress import TaskDispatchError, enqueue_task
+    from jidou.services.progress import TaskDispatchError, enqueue_task, get_active_task
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.route_tasks import route_files_task
     from jidou.workers.scan_tasks import scan_remote_task
     from jidou.workers.seed_tasks import seed_remote_task
     from jidou.workers.sync_tasks import sync_all_task
+
+    # RouteOrchestrator selects all MATCHED/ROUTING files upfront and commits
+    # each file's status transition individually inside the loop, rather than
+    # claiming rows atomically -- two overlapping route dispatches can each
+    # see the same still-MATCHED file in their own initial SELECT and both
+    # route it, producing duplicate copies at the destination. RematchModal
+    # triggers a route dispatch after every single fix, so fixing several
+    # files in quick succession reliably overlaps. Reuse the existing active
+    # task instead of starting a second one -- it already covers whatever
+    # this call would have routed, since the query is a global "everything
+    # currently MATCHED" scan, not scoped to one file.
+    if payload.task_type == "route":
+        active = await get_active_task(db_session, "route")
+        if active is not None:
+            return active
 
     # Pre-generate task ID so the DB row exists before the worker can start.
     # Workers call create_task_record too (idempotent upsert), so they will
