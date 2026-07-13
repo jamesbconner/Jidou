@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +84,7 @@ class DownloadOrchestrator:
         dry_run: bool = False,
         max_workers: int = 8,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> DownloadResult:
         """Download all DISCOVERED files, updating status to DOWNLOADED or ERROR.
 
@@ -99,10 +101,20 @@ class DownloadOrchestrator:
             on_progress: Optional async callback(current, total, message).
                 Called sequentially after each batch; callers may raise
                 TaskCancelledError inside the callback to abort the run.
+            on_event: Optional async callback(level, message, ctx) for
+                structured per-file event log entries.
 
         Returns:
             DownloadResult with counts.
         """
+
+        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
+            if on_event:
+                try:
+                    await on_event(level, msg, ctx)
+                except Exception:
+                    logger.warning("Event logging failed; continuing", exc_info=True)
+
         files_downloaded = 0
         bytes_downloaded = 0
         files_failed = 0
@@ -124,6 +136,11 @@ class DownloadOrchestrator:
                     await on_progress(idx, total, f"Downloading {file.original_filename}")
                 local_path = _staging_path_for(file.remote_path, self.local_staging_path)
                 logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
+                await _emit(
+                    "info",
+                    f"[Dry run] Would download {file.original_filename!r} → {local_path}",
+                    {"file_id": file.id, "dest": str(local_path)},
+                )
                 files_downloaded += 1
 
             logger.info(
@@ -194,10 +211,20 @@ class DownloadOrchestrator:
                             file.error_message = None
                             files_downloaded += 1
                             bytes_downloaded += r.size
+                            await _emit(
+                                "info",
+                                f"Downloaded {file.original_filename!r}",
+                                {"file_id": file.id, "bytes": r.size},
+                            )
                         elif file.status == FileStatus.DOWNLOADING:
                             file.status = FileStatus.ERROR
                             file.error_message = "Download interrupted"
                             files_failed += 1
+                            await _emit(
+                                "error",
+                                f"Download interrupted: {file.original_filename!r}",
+                                {"file_id": file.id},
+                            )
                     try:
                         await self.session.flush()
                         await self.session.commit()
@@ -221,6 +248,11 @@ class DownloadOrchestrator:
                         file.status = FileStatus.ERROR
                         file.error_message = error_msg
                         files_failed += 1
+                        await _emit(
+                            "error",
+                            f"Failed to download {file.original_filename!r}: {error_msg}",
+                            {"file_id": file.id, "error": error_msg},
+                        )
                     else:
                         file.status = FileStatus.DOWNLOADED
                         file.local_path = str(local_path)
@@ -228,6 +260,11 @@ class DownloadOrchestrator:
                         file.error_message = None
                         files_downloaded += 1
                         bytes_downloaded += result.size
+                        await _emit(
+                            "info",
+                            f"Downloaded {file.original_filename!r}",
+                            {"file_id": file.id, "bytes": result.size},
+                        )
 
                 await self.session.flush()
                 await self.session.commit()
@@ -250,6 +287,11 @@ class DownloadOrchestrator:
                             file.status = FileStatus.ERROR
                             file.error_message = "Download interrupted"
                             files_failed += 1
+                            await _emit(
+                                "error",
+                                f"Download interrupted: {file.original_filename!r}",
+                                {"file_id": file.id},
+                            )
                     try:
                         await self.session.flush()
                         await self.session.commit()

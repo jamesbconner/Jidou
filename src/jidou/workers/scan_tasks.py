@@ -60,7 +60,7 @@ async def _scan_remote(
 
         remote_paths = settings.sftp_remote_paths_list or ["/"]
         result = await ScanOrchestrator(session, sftp, remote_paths).run(
-            dry_run=dry_run, on_progress=on_progress
+            dry_run=dry_run, on_progress=on_progress, on_event=on_event
         )
 
         return WorkflowResult(

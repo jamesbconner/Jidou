@@ -604,3 +604,109 @@ async def test_dry_run_skips_directory_marker(monkeypatch: pytest.MonkeyPatch) -
     await orch.run(dry_run=True)
 
     session.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# on_event callback
+# ---------------------------------------------------------------------------
+
+
+async def test_on_event_called_for_created_and_skipped_top_level_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every top-level file emits an event, whether created or skipped."""
+    new_file = _make_file("new.mkv", "/remote/new.mkv")
+    known_file = _make_file("known.mkv", "/remote/known.mkv")
+    session = _make_session()
+    sftp = _make_sftp(children_by_path={"/remote": [new_file, known_file]})
+    _patch_existing(monkeypatch, existing_files={known_file.path})
+
+    on_event = AsyncMock()
+    orch = ScanOrchestrator(session, sftp, ["/remote"])
+    await orch.run(on_event=on_event)
+
+    assert on_event.call_count == 2
+    created_calls = [c for c in on_event.call_args_list if "Discovered" in c[0][1]]
+    known_calls = [c for c in on_event.call_args_list if "Already known" in c[0][1]]
+    assert len(created_calls) == 1
+    assert len(known_calls) == 1
+
+
+async def test_on_event_called_for_shallow_listing_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed shallow listing emits an error event."""
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.max_workers = 8
+    sftp.list_remote_children = AsyncMock(side_effect=Exception("connection error"))
+    sftp.list_remote_files_recursive_batch = AsyncMock(return_value=[])
+    _patch_existing(monkeypatch)
+
+    on_event = AsyncMock()
+    orch = ScanOrchestrator(session, sftp, ["/bad/path"])
+    await orch.run(on_event=on_event)
+
+    error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
+    assert len(error_calls) == 1
+
+
+async def test_on_event_called_for_marked_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fully-walked, newly-marked directory emits an info event."""
+    show_dir = _make_dir("Show A", "/remote/Show A")
+    ep = _make_file("ep01.mkv", "/remote/Show A/ep01.mkv")
+    session = _make_session()
+    sftp = _make_sftp(
+        children_by_path={"/remote": [show_dir]},
+        walk_by_path={"/remote/Show A": _walk_result([ep])},
+    )
+    _patch_existing(monkeypatch)
+
+    on_event = AsyncMock()
+    orch = ScanOrchestrator(session, sftp, ["/remote"])
+    await orch.run(on_event=on_event)
+
+    marked_calls = [c for c in on_event.call_args_list if "marked known" in c[0][1]]
+    assert len(marked_calls) == 1
+    discovered_calls = [c for c in on_event.call_args_list if "Discovered" in c[0][1]]
+    assert len(discovered_calls) == 1
+
+
+async def test_on_event_called_for_deferred_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A not-fully-walked directory emits a warn event, not marked known."""
+    show_dir = _make_dir("Show A", "/remote/Show A")
+    session = _make_session()
+    sftp = _make_sftp(
+        children_by_path={"/remote": [show_dir]},
+        walk_by_path={"/remote/Show A": _walk_result([], io_failures=1)},
+    )
+    _patch_existing(monkeypatch)
+
+    on_event = AsyncMock()
+    orch = ScanOrchestrator(session, sftp, ["/remote"])
+    await orch.run(on_event=on_event)
+
+    warn_calls = [c for c in on_event.call_args_list if c[0][0] == "warn"]
+    assert len(warn_calls) == 1
+    assert "not fully walked" in warn_calls[0][0][1]
+
+
+async def test_on_event_called_for_directory_walk_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exception raised walking a new directory emits an error event."""
+    bad_dir = _make_dir("Show Bad", "/remote/Show Bad")
+    session = _make_session()
+    sftp = _make_sftp(
+        children_by_path={"/remote": [bad_dir]},
+        walk_by_path={"/remote/Show Bad": RuntimeError("connection reset")},
+    )
+    _patch_existing(monkeypatch)
+
+    on_event = AsyncMock()
+    orch = ScanOrchestrator(session, sftp, ["/remote"])
+    await orch.run(on_event=on_event)
+
+    error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
+    assert len(error_calls) == 1
+    assert "Show Bad" in error_calls[0][0][1]

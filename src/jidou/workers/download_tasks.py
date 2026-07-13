@@ -62,6 +62,7 @@ async def _download_files(
             dry_run=dry_run,
             max_workers=settings.sftp_max_workers,
             on_progress=on_progress,
+            on_event=on_event,
         )
 
         total_processed = result.files_downloaded + result.files_failed

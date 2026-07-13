@@ -54,7 +54,7 @@ async def _match_files(
             local_tv_path=settings.local_tv_path,
             local_anime_path=settings.local_anime_path,
             local_movie_path=settings.local_movie_path,
-        ).run(dry_run=dry_run, on_progress=on_progress)
+        ).run(dry_run=dry_run, on_progress=on_progress, on_event=on_event)
 
         total_processed = result.files_processed
         return WorkflowResult(

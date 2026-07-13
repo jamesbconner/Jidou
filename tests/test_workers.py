@@ -389,7 +389,7 @@ async def test_match_files_wires_orchestrator_and_returns_summary() -> None:
         wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
     mock_create_llm.assert_called_once()
-    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
     assert wf_result.progress_current == 4
     assert wf_result.progress_total == 4
     assert wf_result.result_summary == {
@@ -563,7 +563,7 @@ async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
         wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
 
     mock_sftp.assert_called_once()
-    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)
+    mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
     assert wf_result.progress_current == 5
     assert wf_result.progress_total == 5
     assert wf_result.result_summary == {
@@ -616,6 +616,7 @@ async def test_download_files_wires_orchestrator_and_returns_summary() -> None:
     mock_sftp.assert_called_once()
     mock_run.assert_awaited_once()
     assert mock_run.call_args.kwargs["on_progress"] is on_progress
+    assert mock_run.call_args.kwargs["on_event"] is on_event
     assert wf_result.progress_current == 5
     assert wf_result.progress_total == 5
     assert wf_result.result_summary == {

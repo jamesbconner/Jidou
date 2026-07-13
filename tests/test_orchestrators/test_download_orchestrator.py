@@ -388,3 +388,59 @@ async def test_run_outer_exception_non_gather_resets_downloading():
     assert file1.error_message == "Download interrupted"
     # Session should have tried to persist the error
     assert session.flush.call_count > 0
+
+
+# ---------------------------------------------------------------------------
+# run() — on_event callback
+# ---------------------------------------------------------------------------
+
+
+async def test_on_event_called_for_each_successful_download():
+    """on_event emits an info event for every successfully downloaded file."""
+    file1 = _make_file(file_id=1, filename="ep1.mkv", remote_path="/remote/ep1.mkv")
+    file2 = _make_file(file_id=2, filename="ep2.mkv", remote_path="/remote/ep2.mkv")
+
+    session = _make_session(files=[file1, file2])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result(size=500))
+
+    on_event = AsyncMock()
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+    await orch.run(on_event=on_event)
+
+    success_calls = [c for c in on_event.call_args_list if "Downloaded" in c[0][1]]
+    assert len(success_calls) == 2
+    assert all(c[0][0] == "info" for c in success_calls)
+
+
+async def test_on_event_called_for_download_failure():
+    """on_event emits an error event when a file fails to download."""
+    file1 = _make_file()
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=OSError("connection refused"))
+
+    on_event = AsyncMock()
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+    await orch.run(on_event=on_event)
+
+    error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
+    assert len(error_calls) == 1
+    assert "connection refused" in error_calls[0][0][1]
+
+
+async def test_on_event_called_in_dry_run():
+    """on_event emits a dry-run info event for each file."""
+    file1 = _make_file(file_id=1, filename="ep1.mkv")
+    file2 = _make_file(file_id=2, filename="ep2.mkv")
+
+    session = _make_session(files=[file1, file2], dry_run=True)
+    sftp = MagicMock()
+
+    on_event = AsyncMock()
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+    await orch.run(dry_run=True, on_event=on_event)
+
+    dry_run_calls = [c for c in on_event.call_args_list if "Dry run" in c[0][1]]
+    assert len(dry_run_calls) == 2

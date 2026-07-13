@@ -11,6 +11,7 @@ walked again. See ``ScannedDirectory``.
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,6 +76,7 @@ class ScanOrchestrator:
         self,
         dry_run: bool = False,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> ScanResult:
         """Scan every remote path and create DISCOVERED records for new files.
 
@@ -86,6 +88,8 @@ class ScanOrchestrator:
             on_progress: Optional async callback(current, total, message),
                 called once per configured remote path during the initial
                 shallow-listing phase.
+            on_event: Optional async callback(level, message, ctx) for
+                structured per-item event log entries.
 
         Returns:
             ScanResult with counts. ``files_found``/``files_skipped`` reflect
@@ -95,6 +99,14 @@ class ScanOrchestrator:
             counts only directories actually marked known this run, not
             merely seen as new.
         """
+
+        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
+            if on_event:
+                try:
+                    await on_event(level, msg, ctx)
+                except Exception:
+                    logger.warning("Event logging failed; continuing", exc_info=True)
+
         total = len(self.remote_paths)
         all_top_level_files: list[RemoteFile] = []
         all_top_level_dirs: list[RemoteFile] = []
@@ -105,8 +117,13 @@ class ScanOrchestrator:
                 await on_progress(idx, total, f"Scanning {remote_path}")
             try:
                 children = await self.sftp.list_remote_children(remote_path)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Failed to list remote path %s; skipping", remote_path)
+                await _emit(
+                    "error",
+                    f"Failed to list {remote_path!r}: {exc}",
+                    {"remote_path": remote_path, "error": str(exc)},
+                )
                 continue
             all_top_level_files.extend(c for c in children if not c.is_dir)
             all_top_level_dirs.extend(c for c in children if c.is_dir)
@@ -122,11 +139,20 @@ class ScanOrchestrator:
         for rf in all_top_level_files:
             if rf.path in existing_file_paths:
                 files_skipped += 1
+                await _emit("info", f"Already known: {rf.name!r}", {"remote_path": rf.path})
                 continue
             if await self._create_discovered_file(rf, dry_run):
                 files_created += 1
+                await _emit(
+                    "info", f"Discovered {rf.name!r}", {"remote_path": rf.path, "size": rf.size}
+                )
             else:
                 files_skipped += 1
+                await _emit(
+                    "info",
+                    f"Skipped {rf.name!r}: concurrent scan already created it",
+                    {"remote_path": rf.path},
+                )
 
         # Phase 3: one combined existence check for top-level directories across ALL paths.
         existing_dir_paths = await chunked_existing_paths(
@@ -145,6 +171,11 @@ class ScanOrchestrator:
             for dir_path, outcome in outcomes:
                 if isinstance(outcome, BaseException):
                     logger.warning("Failed to deep-walk new directory %s: %s", dir_path, outcome)
+                    await _emit(
+                        "error",
+                        f"Failed to walk directory {dir_path!r}: {outcome}",
+                        {"remote_path": dir_path, "error": str(outcome)},
+                    )
                     continue
                 successful.append((dir_path, outcome))
                 all_new_files.extend(outcome.files)
@@ -158,17 +189,38 @@ class ScanOrchestrator:
             for rf in all_new_files:
                 if rf.path in new_dir_existing:
                     files_skipped += 1
+                    await _emit("info", f"Already known: {rf.name!r}", {"remote_path": rf.path})
                 elif await self._create_discovered_file(rf, dry_run):
                     files_created += 1
+                    await _emit(
+                        "info",
+                        f"Discovered {rf.name!r}",
+                        {"remote_path": rf.path, "size": rf.size},
+                    )
                 else:
                     files_skipped += 1
+                    await _emit(
+                        "info",
+                        f"Skipped {rf.name!r}: concurrent scan already created it",
+                        {"remote_path": rf.path},
+                    )
 
             for dir_path, outcome in successful:
                 if outcome.fully_walked:
                     if dry_run:
                         logger.info("[DRY RUN] Would mark directory as known: %s", dir_path)
+                        await _emit(
+                            "info",
+                            f"[Dry run] Would mark directory known: {dir_path!r}",
+                            {"remote_path": dir_path},
+                        )
                     else:
                         await self._mark_scanned_directory(dir_path)
+                        await _emit(
+                            "info",
+                            f"Directory fully walked and marked known: {dir_path!r}",
+                            {"remote_path": dir_path},
+                        )
                     dirs_discovered += 1
                 else:
                     logger.info(
@@ -179,6 +231,15 @@ class ScanOrchestrator:
                         outcome.io_failures,
                         outcome.recently_modified_skipped,
                         outcome.directories_deferred,
+                    )
+                    await _emit(
+                        "warn",
+                        f"Directory {dir_path!r} not fully walked "
+                        f"(io_failures={outcome.io_failures}, "
+                        f"recently_modified_skipped={outcome.recently_modified_skipped}, "
+                        f"directories_deferred={outcome.directories_deferred}) "
+                        "— will retry on next scan",
+                        {"remote_path": dir_path},
                     )
 
         if not dry_run:
