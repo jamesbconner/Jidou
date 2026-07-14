@@ -28,7 +28,26 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | GET | `/api/admin/stats/files-timeline` | Files added per day (last 30 days) |
 | GET | `/api/admin/stats/pipeline-status` | File counts by status |
 | GET | `/api/admin/cache` | Inspect TMDB response cache entries |
-| POST | `/api/admin/cache/flush` | Clear in-memory TMDB cache |
+| POST | `/api/admin/cache/flush` | Clear the TMDB response cache (Redis-backed, shared across API and worker processes) |
+
+---
+
+## Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard/recent-shows` | Recently added shows for the dashboard carousel; filter by `content_type`/`genre`, sort by `tracked` or `release` |
+| GET | `/api/dashboard/recent-episodes` | Recently tracked episodes for the dashboard carousel; same filters/sort |
+| GET | `/api/dashboard/genres` | Distinct TMDB genre names across the library, for the genre filter dropdown |
+
+Adult-flagged shows/episodes are excluded from both carousels unless the `show_adult_content` setting is enabled — this is enforced server-side in SQL, not a client-side filter.
+
+## Settings
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `recent_episodes_enabled`) |
+| PATCH | `/api/settings` | Update one or more settings |
 
 ---
 
@@ -60,7 +79,12 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | GET | `/api/shows/tmdb/{tmdb_id}` | Fetch TMDB detail for a specific ID |
 | POST | `/api/shows/{id}/rematch` | Re-link show to a different TMDB entry |
 | POST | `/api/shows/{id}/sync-episodes` | Sync episode metadata from TMDB |
+| POST | `/api/shows/{id}/aliases/regenerate` | Rebuild TMDB + LLM alias sources; preserves user-added aliases |
+| POST | `/api/shows/{id}/rss-stub` | Link (or create) an RSS subscription for this show |
+| GET | `/api/shows/calendar` | Episodes airing in a date range, across all shows, with computed `tracked`/`missing`/`upcoming` status |
 | GET | `/api/shows/{id}/episodes` | List episodes for a show |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/begin-rematch` | Prepare a tracked episode's backing file for re-matching (download-backed episodes only) |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/assign-import` | Reassign a path-imported episode's tracked filename to a different episode, atomically |
 
 **Query parameters for `GET /api/shows`:**
 
@@ -77,6 +101,9 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/files` | List files with optional filters |
+| GET | `/api/files/unmatched` | List `unmatched` files awaiting manual review |
+| GET | `/api/files/{id}` | Get a single file record |
+| GET | `/api/files/{id}/tmdb-suggestions` | TMDB search results seeded from the file's `parsed_show_name`, for the Resolve modal |
 | PATCH | `/api/files/{id}` | Correct `show_id`, `episode_id`, `status`, or `error_message` |
 | POST | `/api/files/{id}/match` | Manually assign a show; runs heuristic S/E detection |
 
@@ -144,9 +171,11 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 }
 ```
 
-**Task types:** `scan`, `download`, `match`, `route`, `sync`
+**Task types:** `scan`, `download`, `match`, `route`, `sync`, `seed`, `import`, `db_import`, `rss_import`, `rss_publish`
 
-All task types support `dry_run: true` — validation and planning runs but no files are moved and no tracking data is written.
+All task types support `dry_run: true` — validation and planning runs but no files are moved and no tracking data is written. `seed` is triggered from the Settings page, not the Tasks trigger panel.
+
+Every task type streams a structured, append-only `event_log` — one entry per file/directory processed, not just failures or a final summary — viewable live on the Tasks page and replayed from `GET /api/tasks/{id}` after the fact.
 
 ---
 
@@ -176,14 +205,28 @@ curl http://localhost:8192/api/export/database -o backup.yaml
 
 ## RSS
 
+Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tracker feed) and **subscriptions** (a filtered link between a feed and a show). Both are separate resources with independent CRUD.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/rss/subscriptions` | List RSS subscriptions |
-| POST | `/api/rss/subscriptions` | Create a subscription |
+| GET | `/api/rss/feeds` | List RSS feeds |
+| POST | `/api/rss/feeds` | Create a feed |
+| PATCH | `/api/rss/feeds/{id}` | Update a feed |
+| DELETE | `/api/rss/feeds/{id}` | Delete a feed |
+| GET | `/api/rss/subscriptions` | List subscriptions, with optional filters |
+| POST | `/api/rss/subscriptions` | Create a subscription (feed + show + optional include/exclude regex) |
+| GET | `/api/rss/subscriptions/{id}` | Get a single subscription |
 | PATCH | `/api/rss/subscriptions/{id}` | Update a subscription |
+| PATCH | `/api/rss/subscriptions/bulk` | Apply active-flag changes to multiple subscriptions in one transaction |
 | DELETE | `/api/rss/subscriptions/{id}` | Delete a subscription |
-| POST | `/api/rss/sync` | Push current subscriptions to the remote RSS config file |
-| POST | `/api/rss/suggest-regex` | LLM-assisted regex suggestion for a show name |
+| GET | `/api/rss/subscriptions/recommendations` | Health-check recommendations (e.g. stale/unlinked subscriptions) |
+| POST | `/api/rss/subscriptions/{id}/suggest-regex` | LLM-assisted include/exclude regex suggestion |
+| GET | `/api/rss/subscriptions/{id}/preview` | Preview the YaRSS2 dict Jidou would publish for one subscription |
+| GET | `/api/rss/download` | Compose and download the current DB state as a YaRSS2 config file |
+| GET | `/api/rss/snapshots` | List recent published config snapshots, most recent first |
+| GET | `/api/rss/snapshots/{id}` | Get one snapshot including its full raw content |
+| POST | `/api/rss/import` | Background task: download the remote YaRSS2 config and reconcile it into the DB |
+| POST | `/api/rss/publish` | Background task: compose the DB state and upload it to the remote YaRSS2 config (optionally stopping/restarting Deluge around the upload) |
 
 ---
 
