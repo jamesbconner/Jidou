@@ -2,7 +2,7 @@
 
 How Jidou decides what a media file *is* — show, season, episode, content type — and how that decision gets written to the database. This is a reference for the actual current behavior of the code, not an aspirational design; where the code has gaps or dead ends, they're called out explicitly rather than glossed over.
 
-There are **two independent pipelines** that both end up creating/updating `Show`, `Episode`, and `DownloadedFile` rows, but they make their decisions completely differently and don't share code for the show/episode-resolution step. Mixing them up when debugging a specific file is the most common source of confusion.
+There are **two independent pipelines** that both end up creating/updating `Show`, `Episode`, and `DownloadedFile` rows. They decide *what triggers a match attempt* completely differently (filename-driven vs. directory-driven), but as of a later refactor they now share the core show/episode-resolution primitives — `find_show_by_name` and `resolve_episode` — rather than each having its own copy. Mixing the two pipelines up when debugging a specific file is still the most common source of confusion, since the fallback logic *layered on top* of those shared primitives (see each pipeline's episode-resolution section below) still differs a lot.
 
 | | SFTP pipeline | Path-list import |
 |---|---|---|
@@ -12,7 +12,7 @@ There are **two independent pipelines** that both end up creating/updating `Show
 | Files table role | Full lifecycle (`discovered` → ... → `routed`) | Display-only synthetic row, already `routed` |
 | Orchestrators | `ScanOrchestrator`, `ParseOrchestrator`, `RouteOrchestrator` | `PathImportOrchestrator` |
 | Code | `src/jidou/orchestrators/{scan,parse,route}_orchestrator.py` | `src/jidou/orchestrators/path_import_orchestrator.py`, `src/jidou/services/path_parser.py` |
-| Shared code | `src/jidou/services/filename_parser.py` — regex heuristics + LLM filename parsing, used by both pipelines | (same) |
+| Shared code | `services/filename_parser.py` (regex heuristics + LLM filename parsing), `services/show_lookup.py` (`find_show_by_name`), `services/episode_lookup.py` (`resolve_episode`) — all used by both pipelines | (same) |
 
 ---
 
@@ -55,14 +55,16 @@ If the LLM is unavailable, returns no response, or returns unparseable JSON, thi
 
 **Stage 2 — confidence gate.** Only applies when the LLM actually ran (`llm_ok=True`) and the result isn't a movie (movies legitimately have `episode=null`, which would otherwise trigger the same penalty as a genuinely low-confidence parse). If `confidence < 0.7`, the file is set to `UNMATCHED` with an explanatory `error_message` and the pipeline moves on — no show/episode lookup is even attempted. Heuristic-only results skip this gate entirely and always proceed to lookup, regardless of their fixed 0.6/0.1 confidence.
 
-**Stage 3 — show lookup (`_find_show`).**
+**Stage 3 — show lookup (`_find_show`).** Thin wrapper around the shared `services/show_lookup.find_show_by_name(session, name, fuzzy=True)`, also used by Pipeline B (see below):
 1. `show.aliases` (GIN-indexed JSONB array) contains the case-folded parsed name — exact containment, not substring.
-2. Case-insensitive `ILIKE '%name%'` against `show.title` (with `%`/`_`/`\` escaped so a parsed name containing those doesn't act as a wildcard).
+2. `fuzzy=True` here → case-insensitive `ILIKE '%name%'` against `show.title` (with `%`/`_`/`\` escaped so a parsed name containing those doesn't act as a wildcard).
 
-**Stage 4 — episode lookup (`_find_episode`).**
-1. `season` known → `(show_id, season_number, episode_number)` exact match.
-2. `season` unknown → `absolute_episode_number == episode` (see [the caveat below](#episodeabsolute_episode_number-is-effectively-always-null) about this column).
+**Stage 4 — episode lookup.** Calls the shared `services/episode_lookup.resolve_episode(session, show_id, season, episode)`, also used by Pipeline B (see below):
+1. `season` known → `(show_id, season_number, episode_number)` exact match, no fallback on a miss.
+2. `season` unknown → `absolute_episode_number == episode` (see [Episode.absolute_episode_number](#episodeabsolute_episode_number-is-now-populated-via-tmdb-episode_groups) below for how this column gets populated).
 3. Still nothing → assume `season=1, episode_number=episode` — correct for the common case of anime distributed with no season marker at all.
+
+Unlike Pipeline B, this pipeline never attempts the `episode_group_map` cour/season remap (below) — a season mismatch here just falls through to `UNMATCHED` rather than being reinterpreted.
 
 **Side effects on a successful match:**
 - The parsed name is taught back into `show.aliases` / `show.aliases_sources["user"]` (`_add_alias`) — every subsequent file with that exact name skips the LLM entirely and resolves via the GIN index.
@@ -70,7 +72,7 @@ If the LLM is unavailable, returns no response, or returns unparseable JSON, thi
 - `show.local_path` is auto-populated via `_resolve_local_path` (content_type/media_type → base dir + `sys_name`) **only if** `show.content_type` is set, or `show.media_type == "movie"` (unambiguous either way). A show whose `media_type == "tv"` with no `content_type` set is intentionally left with `local_path=None` — TMDB's `"tv"` covers both real TV and anime, so guessing would risk routing to the wrong base directory. A warning is logged; someone has to `PATCH /shows/{id}` to set it manually.
 - If the LLM returned `season=null` (anime absolute numbering) but the episode resolved successfully, `file.parsed_season` is backfilled from the resolved episode's actual `season_number` so `RouteOrchestrator` doesn't place the file at the show root by mistake.
 
-No structured per-decision event log exists for this pipeline — `ParseOrchestrator.run()` only takes an `on_progress` callback, not an `on_event` one. LLM failures, low-confidence flags, and match outcomes are only visible via `logger.debug`/`logger.warning`/`logger.info` calls (Docker logs), never on the Tasks page. This is the same gap that was fixed for path-import in a recent PR (#279) — it has **not** been applied here.
+`ParseOrchestrator.run()` takes both `on_progress` and `on_event` (issue #361) — every file gets a structured event on the Tasks page, not just a Docker log line: `info` on a match (dry-run or real), `warn` on the low-confidence gate or a no-show-found miss, `error` if parsing the file raised. This closes the gap that had already been fixed for path-import (issue #274) and for Route.
 
 ### 4. Route (`RouteOrchestrator`)
 
@@ -118,23 +120,27 @@ Before resolving a show, `_import_show` no longer assumes every file grouped und
 
 ### 3. Show resolution (`_resolve_show` → `_db_find_show` / `_tmdb_create_show`)
 
-- DB lookup: GIN-indexed alias containment, then **exact** case-insensitive title match — deliberately *not* a substring match, so `"Daredevil"` never accidentally resolves to `"Daredevil: Born Again"`.
-- Not found → TMDB search (`media_type="tv"` only). A normalized-exact title match wins outright; otherwise the LLM disambiguates among the top candidates (`_llm_pick_candidate`, given up to 10 candidate titles + years), falling back to TMDB's top-relevance result if the LLM is unavailable or doesn't pick one confidently.
+- DB lookup: `_db_find_show` calls the same shared `services/show_lookup.find_show_by_name(session, name)` Pipeline A uses, but with `fuzzy=False` (the default) — GIN-indexed alias containment, then **exact** case-insensitive title match, deliberately *not* a substring match, so `"Daredevil"` never accidentally resolves to `"Daredevil: Born Again"`.
+- Not found → TMDB search (`media_type="tv"` only). A normalized-exact title match wins outright; otherwise the LLM disambiguates among the top candidates (`services/episode_match_llm.llm_pick_candidate`, given up to 10 candidate titles + years — scanned across *all* returned candidates, not just the top 5), falling back to TMDB's top-relevance result if the LLM is unavailable or doesn't pick one confidently.
 - A newly created show gets `content_type` set to exactly whatever was passed to the import task — never inferred.
 - `show.local_path` is set to `entry.show_root` (the literal directory the files were already found under) the first time it's unset, for the primary directory-derived group only (see above for why a split-off secondary group skips this) — no base-path + `sys_name` construction needed, since these files are already in place.
 - Episodes are synced via `TMDBOrchestrator`, and aliases via `alias_orchestrator.generate_aliases` (TMDB alternative titles from JP/US/GB/KR country codes or transliteration-flagged entries, plus optional LLM-generated aliases, plus any preserved user-added aliases — merged into the same flat GIN-indexed array Pipeline A reads).
+- `TMDBOrchestrator.ensure_episode_group_map` also runs here (best-effort, exceptions swallowed) whenever a resolved show already has episodes but has never had its `episode_group_map` built — see [episode_group_map](#episodeabsolute_episode_number-is-now-populated-via-tmdb-episode_groups) below. This runs even in `dry_run`, since it only backfills derived TMDB cache data and doesn't touch anything user-visible.
 
 ### 4. Episode resolution (`_find_episode`)
 
-1. If regex found no episode at all, `_llm_parse_episode` (lightweight prompt — season/episode only, no show name needed since the directory already told us that) attempts to fill it in from the bare filename.
-2. `season` known → exact `(season_number, episode_number)` lookup.
-3. **On a miss with `season > 1`**: tries an absolute-number lookup (`_absolute_lookup`, using `absolute_candidate` when the entry came from the ambiguous compact-code guess, or the bare episode number otherwise) *before* falling to the LLM. This is what correctly resolves `One Piece 212.mkv` (guessed `S02E12`, but `212` is the real absolute episode) and `Bleach - 260 Conclusion!...avi` (same shape) without ever hitting the LLM.
-4. `season == 1` or unknown → same `_absolute_lookup` chain, then the full-episode-list LLM match (`_llm_match` — sends the show's entire episode list + filename, asks the LLM to pick one).
-5. `_absolute_lookup` itself: `absolute_episode_number` column check first, then a `ROW_NUMBER()` window ordering all non-special episodes by `(season_number, episode_number)` and matching on sequential position — this second step is what actually carries the load in practice (see caveat below).
+Delegates the actual DB lookups to the same shared `services/episode_lookup.resolve_episode(session, show_id, season, episode)` Pipeline A uses, but wraps it with extra fallbacks Pipeline A doesn't need (the directory structure already gives this pipeline a season/episode guess to refine, where Pipeline A only has a bare filename):
+
+1. If regex found no episode at all, `services/episode_match_llm.llm_parse_episode` (lightweight prompt — season/episode only, no show name needed since the directory already told us that) attempts to fill it in from the bare filename.
+2. `season` known → `resolve_episode` exact `(season_number, episode_number)` lookup.
+3. **On a miss with `season > 1`**: tries `services/episode_group_mapping.resolve_declared_season(show.episode_group_map, season, episode)` first — a declared season/episode that doesn't exist in TMDB's real structure (e.g. a fansub's `Season 02` cour-folder for a show TMDB tracks as one absolute season) gets remapped to the real `(season, episode)` and re-looked-up via `resolve_episode`. If that doesn't resolve either, falls back to an absolute-number lookup (`resolve_episode(..., season=None, episode=absolute_guess)`, using `entry.absolute_candidate` when the entry came from the ambiguous compact-code guess, or the bare episode number otherwise) *before* finally trying the LLM. This is what correctly resolves `One Piece 212.mkv` (guessed `S02E12`, but `212` is the real absolute episode) and `Bleach - 260 Conclusion!...avi` (same shape) without ever hitting the LLM.
+4. `season == 1` or unknown → same absolute-number lookup (no remap attempt — the remap step is specifically for a *mismatched* declared season), then the full-episode-list LLM match (`services/episode_match_llm.llm_match_episode` — sends the show's entire episode list + filename, asks the LLM to pick one).
+
+The old positional `ROW_NUMBER()`-over-episodes fallback this doc used to describe here is gone — it was a blind guess that this whole redesign (issue #330/#332) replaced with the TMDB-`episode_groups`-derived remap and absolute-number column, both of which are based on real TMDB data rather than positional order.
 
 **Side effects on a match:** `mark_episode_tracked` sets `file_tracked=True`, `tracked_filename`, `tracked_source="import"`. A synthetic `DownloadedFile` row is created (`remote_path="synthetic-import://<raw_path>"`, `status=ROUTED`) purely so the file shows up correctly on the Files page — it never enters the match/route pipeline; reassigning it later goes through the dedicated `assign-import` endpoint, which also keeps this row's `episode_id` in sync.
 
-Every LLM call site in this pipeline (`_llm_parse_episode`, `_llm_match`, `_llm_pick_candidate`) emits a structured event via `on_event` on both success and failure — attempted, resolved values, or the specific failure reason — visible on the Tasks page's event log. The final "No match" event reflects whatever the LLM actually resolved, not the pre-LLM regex output.
+Every LLM call site in this pipeline (`services/episode_match_llm.llm_parse_episode`, `llm_match_episode`, `llm_pick_candidate`) emits a structured event via `on_event` on both success and failure — attempted, resolved values, or the specific failure reason — visible on the Tasks page's event log. The final "No match" event reflects whatever the LLM actually resolved, not the pre-LLM regex output.
 
 ---
 
@@ -159,7 +165,9 @@ There is no single "decide content type" function; each entry point does it diff
 
 **`Show`** — fields relevant to matching/routing: `content_type` (see above), `media_type` (TMDB's own `tv`/`movie`, never user-editable), `sys_name` (filesystem-safe directory name, derived from title), `local_path`, `aliases` (flat, GIN-indexed `list[str]`, lower-cased), `aliases_sources` (`{"tmdb": [...], "llm": [...], "user": [...]}` — the provenance map the UI reads/writes; `aliases` is always the deduplicated union).
 
-**`Episode`** — `season_number`, `episode_number`, `absolute_episode_number` (see caveat below), `file_tracked` / `file_tracked_at` / `tracked_filename` / `tracked_source` (set by `mark_episode_tracked`, `tracked_source` is `"match"` or `"import"` depending on which pipeline tracked it).
+**`Episode`** — `season_number`, `episode_number`, `absolute_episode_number` (see [below](#episodeabsolute_episode_number-is-now-populated-via-tmdb-episode_groups)), `file_tracked` / `file_tracked_at` / `tracked_filename` / `tracked_source` (set by `mark_episode_tracked`, `tracked_source` is `"match"` or `"import"` depending on which pipeline tracked it).
+
+**`Show.episode_group_map`** — a small JSON dict, `to_storage_map()`'s output from `services/episode_group_mapping.py`: a declared-season → real-`(season, episode)` remap built from TMDB's `episode_groups` (type-6 "Production" or type-2 "Absolute"). Three-state semantics, not just set/unset: `None` means "never checked" (triggers a lazy backfill via `TMDBOrchestrator.ensure_episode_group_map`), `{}` means "checked, this show has no qualifying groups" (a real, cached negative — never re-fetched), and a populated dict means remap data is available. Reset to `None` on any TMDB-identity-changing rematch so a stale map from the old identity can't be misapplied to the new episode set.
 
 **`DownloadedFile`** — `status` (state machine documented on the model itself: `discovered → downloading → downloaded → matched/unmatched → routing → routed`, plus `error` from any stage and the terminal `seeded` state from the one-time baseline operation), `matched_by` (`llm` / `heuristic` / `manual`), `parsed_show_name` / `parsed_season` / `parsed_episode` / `parsed_confidence` / `parsed_content_type` (Pipeline A only — path-import's synthetic rows don't populate these).
 
@@ -173,17 +181,15 @@ These are real, current behaviors worth knowing about when debugging a specific 
 
 `path_parser._MEDIA_EXTENSIONS` (path-import) has 9 entries and does **not** include `.iso`, `.av1`, or `.ogm`, which `file_filters.MEDIA_EXTENSIONS` (SFTP scan) has had since a recent fix. A path-list import containing any of those three extensions silently drops that line — no warning, not counted as unmatched, just absent from every count in the task's result summary. Not yet filed as a tracked issue.
 
-#### `Episode.absolute_episode_number` is effectively always `None`
+#### `Episode.absolute_episode_number` is now populated via TMDB `episode_groups` (issue #330/#332, fixed)
 
-`TMDBOrchestrator.sync_show_episodes` populates it from `ep_data.get("absolute_number")` on each episode returned by TMDB's raw `/tv/{id}/season/{n}` response — but that endpoint doesn't return an `absolute_number` field in TMDB's actual API shape, and no code anywhere merges the separately-fetched `/tv/{id}/episode_groups` (type-6 "Production" group) per-episode ordering into this column. `episode_groups` gets fetched and stored as raw summary metadata on `Show.episode_groups`, but never processed into per-episode absolute numbers. In practice, every absolute-number lookup in both pipelines falls through to the `ROW_NUMBER()` sequential-position fallback — the column check is a no-op step that always misses.
+This section used to describe `absolute_episode_number` as effectively always `None` — TMDB's raw `/tv/{id}/season/{n}` response never actually returns an `absolute_number` field, and nothing processed the separately-fetched `episode_groups` summary into per-episode numbers, so the column was a permanent no-op and every absolute-number lookup silently fell through to a blind `ROW_NUMBER()` positional guess.
+
+That's been replaced. `services/episode_group_mapping.py` reads a show's TMDB `episode_groups` summary, looks for a type-6 ("Production") or type-2 ("Absolute") group, and derives both a declared-season remap (`Show.episode_group_map`, see [Data model reference](#data-model-reference)) and per-episode `absolute_episode_number` backfill from whichever group it finds. `TMDBOrchestrator.sync_episode_group_map` does the actual DB writes; `ensure_episode_group_map` is the lazy trigger for shows that already have episodes but haven't had a map built yet (called from show creation, rematch, and path-import's `_resolve_show`). The `ROW_NUMBER()` fallback described in an earlier version of this doc is gone — deleted, not just superseded — both pipelines' absolute-number lookups now go through `services/episode_lookup.resolve_episode`, which only ever checks the real `absolute_episode_number` column, with a `season=1` fallback if that misses too. A show whose TMDB entry has no type-2/type-6 groups at all (common — most shows don't need this) simply never gets `absolute_episode_number` populated; `episode_group_map` caches that as `{}` rather than `None` so it isn't re-checked on every subsequent sync.
 
 #### Four separate LLM prompts are involved in matching, at different levels of detail
 
-`src/jidou/services/prompts/parse_filename.txt` (used by `filename_parser.parse_filename`, shared by both pipelines) is a full, detailed spec — 9 rule sections, worked examples, extracts show name + season + episode + content type + CRC32 + confidence + reasoning in one call. Path-import calls it once per file purely for the `show_name` field (see per-file show-name confirmation above) — the `season`/`episode`/`content_type`/`crc32` it also returns are discarded there, since `path_parser.py`'s own regex plus path-import's other prompts already own that job. Path-import's own three inline prompts (`_LLM_EPISODE_PARSE_SYSTEM`, `_LLM_SYSTEM`, `_LLM_SHOW_MATCH_SYSTEM` in `path_import_orchestrator.py`) remain intentionally much narrower — season/episode only, or episode-list matching, or TMDB candidate picking. Tuning the shared `parse_filename.txt` prompt now affects both pipelines' show-name extraction; tuning any of path-import's other three affects only that one narrow step.
-
-#### SFTP match pipeline has no structured event log
-
-`ParseOrchestrator.run()` takes `on_progress` but no `on_event` — every match/failure decision only reaches the Python logger (Docker logs), never the Tasks page. Path-import got this fixed (issue #274); the SFTP pipeline has the identical gap and hasn't been touched.
+`src/jidou/services/prompts/parse_filename.txt` (used by `filename_parser.parse_filename`, shared by both pipelines) is a full, detailed spec — 9 rule sections, worked examples, extracts show name + season + episode + content type + CRC32 + confidence + reasoning in one call. Path-import calls it once per file purely for the `show_name` field (see per-file show-name confirmation above) — the `season`/`episode`/`content_type`/`crc32` it also returns are discarded there, since `path_parser.py`'s own regex plus path-import's other prompts already own that job. Path-import's own three narrower prompts (`_LLM_EPISODE_PARSE_SYSTEM`, `_LLM_SYSTEM`, `_LLM_SHOW_MATCH_SYSTEM`, all in `services/episode_match_llm.py`) remain intentionally much narrower — season/episode only, or episode-list matching, or TMDB candidate picking. Tuning the shared `parse_filename.txt` prompt now affects both pipelines' show-name extraction; tuning any of path-import's other three affects only that one narrow step.
 
 #### Remakes/reboots sharing a directory name collide (issue #271, open)
 
