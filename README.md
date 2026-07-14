@@ -4,6 +4,8 @@
 
 Jidou ("自動", *automatic*) is a self-hosted TV show and anime management system. It tracks shows via [TMDB](https://www.themoviedb.org/), scans remote SFTP servers for downloaded files, matches files to episodes using an LLM or heuristic fallback, and routes them to your local library — with real-time progress streaming to the browser.
 
+<!-- screenshot: dashboard-overview -->
+
 ---
 
 ## Quick start
@@ -27,6 +29,7 @@ Open http://localhost:3100
 | [Features](docs/features.md) | Scanning, matching, routing, watchlist, RSS, import |
 | [API Reference](docs/api.md) | REST endpoints, authentication, WebSocket |
 | [Architecture](docs/architecture.md) | Design decisions and system structure |
+| [Matching Pipeline](docs/matching-pipeline.md) | How a file gets resolved to a show/episode — both the SFTP and path-import pipelines, in detail |
 | [Developer Guide](docs/developer.md) | Tooling, conventions, make.py, contributing |
 | [Troubleshooting](docs/troubleshooting.md) | Common failures with diagnosis and fixes |
 

@@ -69,11 +69,31 @@ Route handlers contain no business logic. If a handler is more than ~30 lines, t
 
 Celery tasks in `src/jidou/workers/` are intentionally thin: they receive a task ID, mark the task as running, delegate to an orchestrator, then mark the task as completed or failed. All logic lives in the orchestrator.
 
-Progress is written to the `background_tasks` table by the orchestrators, and then published to a Redis PubSub channel. The FastAPI WebSocket handler subscribes to that channel and forwards events to connected browser clients.
+A shared harness, `run_task_workflow()` (`src/jidou/workers/_harness.py`), wraps every task's `_work` closure with two callbacks: `on_progress` (current/total/message) and `on_event` (level/message/context). Orchestrators call `on_event` for every item they process — success, skip, or failure — not just for errors; every orchestrator (Scan, Download, Match/Parse, Route, path-import) follows the same internal pattern: an `_emit()` closure that wraps the callback in a try/except so a logging failure can never break the task itself.
+
+Progress and events are written to the `background_tasks` table (`event_log` is an append-only JSONB column) by the orchestrators, and then published to a Redis PubSub channel. The FastAPI WebSocket handler subscribes to that channel and forwards events to connected browser clients.
 
 This means:
 - The API and worker can be on different machines (they share only the database and Redis).
 - Progress is not lost if a browser disconnects — the event log is stored in the database and replayed on reconnect.
+
+---
+
+## SFTP scan design — shallow listing plus lazy deep walk
+
+`ScanOrchestrator` does **not** recursively walk the entire remote library on every run. This was a deliberate redesign (issue #355) after profiling showed a full recursive walk taking minutes on a populated library, most of it re-listing directories that hadn't changed since the last scan.
+
+Instead, each scan run:
+1. Shallow-lists only the immediate children of each configured remote path (`SFTPService.list_remote_children`) — one round trip, no recursion.
+2. Checks new top-level files directly against `DownloadedFile.remote_path` (batched, not per-file).
+3. Checks top-level directories against the `ScannedDirectory` table. A directory already marked known is **never listed into again** — no SFTP round trip at all.
+4. A genuinely new directory gets one full recursive deep-walk (`list_remote_files_recursive`), bounded by `asyncio.Semaphore(SFTP_MAX_WORKERS)` for concurrency across multiple new directories in the same run.
+
+**Why marking is conditional, not automatic:** a deep walk that hit an I/O failure partway through, or skipped files still inside the 60-second upload grace window, must not be marked as a fully-known directory — doing so would permanently lose those files. `list_remote_files_recursive` reports `fully_walked` alongside the file list; the `ScannedDirectory` row is only inserted when that's `True`. A partial walk is simply retried on the next scan.
+
+**Why this is safe for Jidou's domain:** SFTP sources here (seedbox/torrent-client `downloads`/`completed` directories) are wide, flat, and single-use — each remote directory is populated once and never appended to afterward. A directory known once can be treated as permanently immutable. `SeedOrchestrator` (the one-time baseline task) backfills `ScannedDirectory` rows for pre-existing directories, including ones with zero eligible media files, so the first real scan after seeding starts fast rather than re-walking the whole library once more.
+
+This is a scan-layer-only optimization — it has no relationship to show/episode matching, and doesn't change what a file's `DownloadedFile` record looks like once discovered.
 
 ---
 
