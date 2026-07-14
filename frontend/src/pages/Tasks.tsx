@@ -70,7 +70,12 @@ export default function Tasks() {
   const [page, setPage] = useState(0)
 
   const offset = page * pageSize
-  const params = { limit: pageSize, offset, taskType: filterType || undefined }
+  // Cap the fetched page at maxRecords total across all pages combined — the
+  // last page under the cap is truncated rather than showing a full pageSize.
+  const effectiveLimit = maxRecords !== null
+    ? Math.max(0, Math.min(pageSize, maxRecords - offset))
+    : pageSize
+  const params = { limit: effectiveLimit, offset, taskType: filterType || undefined }
 
   const { data: tasks = [], isLoading } = useTasks(params)
   const { data: countData } = useTaskCount(filterType || undefined)
