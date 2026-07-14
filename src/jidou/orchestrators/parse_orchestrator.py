@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,6 +169,7 @@ class ParseOrchestrator:
         self,
         dry_run: bool = False,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> ParseResult:
         """Parse all DOWNLOADED files and update their status to MATCHED or UNMATCHED.
 
@@ -181,10 +183,20 @@ class ParseOrchestrator:
         Args:
             dry_run: Log results without modifying the DB.
             on_progress: Optional async callback(current, total, message).
+            on_event: Optional async callback(level, message, ctx) for
+                structured per-file event log entries.
 
         Returns:
             ParseResult with counts.
         """
+
+        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
+            if on_event:
+                try:
+                    await on_event(level, msg, ctx)
+                except Exception:
+                    logger.warning("Event logging failed; continuing", exc_info=True)
+
         stmt = select(DownloadedFile).where(DownloadedFile.status == FileStatus.DOWNLOADED)
         files = list((await self.session.execute(stmt)).scalars().all())
         total = len(files)
@@ -231,8 +243,19 @@ class ParseOrchestrator:
                     gate_passes = not apply_gate or confidence >= _CONFIDENCE_THRESHOLD
                     if dry_show is not None and gate_passes:
                         files_matched += 1
+                        await _emit(
+                            "info",
+                            f"[Dry run] Would match {file.original_filename!r} → "
+                            f"{dry_show.title!r}",
+                            {"file_id": file.id, "show_id": dry_show.id},
+                        )
                     else:
                         files_unmatched += 1
+                        await _emit(
+                            "info",
+                            f"[Dry run] Would leave unmatched: {file.original_filename!r}",
+                            {"file_id": file.id},
+                        )
                     continue
 
                 # Persist parsed metadata regardless of match outcome
@@ -255,6 +278,12 @@ class ParseOrchestrator:
                         "Low confidence (%.2f) for %s, flagging UNMATCHED",
                         confidence,
                         file.original_filename,
+                    )
+                    await _emit(
+                        "warn",
+                        f"Low confidence ({confidence:.2f}) for "
+                        f"{file.original_filename!r}, flagging UNMATCHED",
+                        {"file_id": file.id, "confidence": confidence},
                     )
                     await self.session.flush()
                     continue
@@ -317,6 +346,11 @@ class ParseOrchestrator:
                         show.id,
                         show.title,
                     )
+                    await _emit(
+                        "info",
+                        f"Matched {file.original_filename!r} → {show.title!r}",
+                        {"file_id": file.id, "show_id": show.id},
+                    )
                 else:
                     file.status = FileStatus.UNMATCHED
                     file.error_message = (
@@ -330,11 +364,21 @@ class ParseOrchestrator:
                         file.original_filename,
                         show_name,
                     )
+                    await _emit(
+                        "warn",
+                        f"Unmatched {file.original_filename!r} (parsed_name={show_name!r})",
+                        {"file_id": file.id, "parsed_name": show_name},
+                    )
 
                 await self.session.flush()
 
             except Exception as exc:
                 logger.error("Failed to parse %s: %s", file.original_filename, exc)
+                await _emit(
+                    "error",
+                    f"Failed to parse {file.original_filename!r}: {exc}",
+                    {"file_id": file.id, "error": str(exc)},
+                )
                 if not dry_run:
                     file.status = FileStatus.ERROR
                     file.error_message = str(exc)

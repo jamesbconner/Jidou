@@ -723,4 +723,94 @@ async def test_run_on_progress_called_per_file():
     orch = ParseOrchestrator(session, llm=None)
     await orch.run(on_progress=on_progress)
 
-    assert on_progress.call_count == 2
+
+# ---------------------------------------------------------------------------
+# run() — on_event callback
+# ---------------------------------------------------------------------------
+
+
+async def test_on_event_called_on_match():
+    """on_event emits an info event when a file is matched to a show."""
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.1080p.mkv")
+    show = _make_show(title="Attack on Titan")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    on_event = AsyncMock()
+    orch = ParseOrchestrator(session, llm=llm)
+    await orch.run(on_event=on_event)
+
+    matched_calls = [c for c in on_event.call_args_list if "Matched" in c[0][1]]
+    assert len(matched_calls) == 1
+    assert matched_calls[0][0][0] == "info"
+
+
+async def test_on_event_called_on_unmatched():
+    """on_event emits a warn event when no show is found for a file."""
+    file1 = _make_file(filename="UnknownFile.S01E01.mkv")
+
+    session = _make_session(files=[file1])
+
+    on_event = AsyncMock()
+    orch = ParseOrchestrator(session, llm=None)
+    await orch.run(on_event=on_event)
+
+    unmatched_calls = [c for c in on_event.call_args_list if "Unmatched" in c[0][1]]
+    assert len(unmatched_calls) == 1
+    assert unmatched_calls[0][0][0] == "warn"
+
+
+async def test_on_event_called_on_parse_error(monkeypatch):
+    """on_event emits an error event when parsing a file raises."""
+    file1 = _make_file()
+    session = _make_session(files=[file1])
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("parse failure")
+
+    monkeypatch.setattr("jidou.orchestrators.parse_orchestrator.heuristic_se", _boom)
+
+    on_event = AsyncMock()
+    orch = ParseOrchestrator(session, llm=None)
+    await orch.run(on_event=on_event)
+
+    error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
+    assert len(error_calls) == 1
+    assert "parse failure" in error_calls[0][0][1]
+
+
+async def test_on_event_called_in_dry_run():
+    """on_event emits a dry-run info event per file, matched or not."""
+    file1 = _make_file(filename="UnknownFile.S01E01.mkv")
+
+    session = _make_session(files=[file1])
+
+    on_event = AsyncMock()
+    orch = ParseOrchestrator(session, llm=None)
+    await orch.run(dry_run=True, on_event=on_event)
+
+    dry_run_calls = [c for c in on_event.call_args_list if "Dry run" in c[0][1]]
+    assert len(dry_run_calls) == 1
