@@ -6,8 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
-- Initial project skeleton with Python 3.13, hatchling, ruff, mypy, pytest, and uv tooling.
+Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
+
+### RSS / YaRSS2 integration
+- New `RssFeed` and `RssSubscription` models; full CRUD API (`/api/rss/feeds`, `/api/rss/subscriptions`), each subscription linkable to a show with optional include/exclude regex filters.
+- `rss_import` task — downloads the remote YaRSS2 config and reconciles it into the DB (fuzzy show linking, stub promotion, feed-link resolution via `rssfeed_key`).
+- `rss_publish` task — composes the DB state back into a YaRSS2 config and uploads it; optionally stops/restarts Deluge over SSH around the publish with configurable delays so the client doesn't read a half-written file.
+- Config snapshots (`GET /api/rss/snapshots`) retained on every publish for diffing/audit.
+- LLM-assisted regex suggestions (`POST /api/rss/subscriptions/{id}/suggest-regex`), hardened against prompt injection.
+- Subscription health-check Recommendations tab; RSS page with feed/subscription tabs, bulk active-flag patching, and a preview/download of the composed config.
+- Active RSS subscription badge on show cards; one-click RSS stub creation from a show or the watchlist.
+
+### Path import overhaul
+- Per-file show-name confirmation (issue #282) — each file's own LLM-extracted show name is cross-checked against the directory-resolved show; a confirmed disagreement splits that file off and resolves it independently instead of silently mismatching it.
+- `shows-only` and `episodes-only` import modes for partial re-imports.
+- Absolute-episode-number fallback for season > 1 misses and ambiguous compact season/episode codes (e.g. `One Piece 212`), tried before falling back to the LLM.
+- `assign-import` endpoint to reassign an already-imported episode's tracked filename to a different episode without re-creating file records.
+- Ten-pattern episode-number regex (`path_parser.py`), including bare `Title NN` filenames with bonus-content-marker guarding (`NCED`/`OP`/`SP`/etc.).
+
+### SFTP scan redesign (issue #355)
+- Scanning no longer recursively walks the entire remote library on every run. A shallow listing finds top-level directories; each directory is deep-walked and marked `ScannedDirectory` **once**, then skipped on every later scan. Cut scan time from ~14 minutes to seconds on a populated library.
+- Directory-marking is gated on walk completeness — a partial walk (I/O failure, or files still mid-upload) is retried on the next scan rather than being permanently (and wrongly) marked known.
+- `seed` task/SEEDED file status — one-time baseline that marks all pre-existing SFTP files as seeded so they're never mistaken for new downloads; also backfills `ScannedDirectory` rows so the first real scan after seeding doesn't re-walk everything.
+- Bulk chunked existence checks replace an N+1 per-file query during scanning.
+
+### Task observability
+- Structured, append-only per-item event log (`on_event`) now emitted by every task — Scan, Download, and Match (issue #361) join Route and path-import, which already had it. Every file/directory processed produces an event, not just failures.
+- Task list exposes `result_summary` and `dry_run`; Tasks page shows a live/replayable event log per task and a working **Max records** cap on the task list (previously the control updated the label but not the actual fetch).
+- Scheduled auto-sync via Celery beat, with overlap guarding so a scheduled run never races a manually-triggered one.
+
+### Dashboard, calendar, and library UX
+- Dashboard "Recently Added" carousels for shows and episodes (sort by tracked-date or release date, filter by content type/genre), each independently toggleable from Settings.
+- Airing calendar page (issue #220), toggleable from Settings.
+- Adult-content visibility is a server-enforced setting, not a client filter — hidden rows never leave the API.
+- Manual episode matching UI on the Files page (issue #46): **Fix Show** / **Fix Eps** actions, an inline episode picker, and a rematch flow (`begin-rematch`) for already-matched files.
+- Files page pagination, filename search, and a raised list cap (1000) to support show-scoped file lookups.
+- Show alias auto-generation from TMDB alternative titles plus optional LLM normalization, preserving user-added aliases (`POST /api/shows/{id}/aliases/regenerate`).
+- Absolute/cour season-numbering mismatches resolved via TMDB `episode_groups` (#332).
+
+### Infrastructure and security
+- Static `X-API-Key` authentication, enforced at the router level, injected automatically by the nginx proxy for browser traffic.
+- TMDB response cache centralized in Redis (shared across API and worker processes) with per-endpoint TTL overrides.
+- Routed media can mount via a Docker CIFS volume driver instead of a Windows bind mount, as an opt-in override — not a hard dependency.
+- Route-task duplicate-dispatch race fixed — concurrent route triggers no longer double-move the same file.
+- LLM prompt-injection hygiene sweep across all LLM call sites (#329).
+- All Alembic migrations squashed into a single `0001_initial` baseline; subsequent migrations (index on `episodes.air_date`, `scanned_directories` table) build on top of it.
+
+### Internal refactors
+- Celery worker harness eliminating per-task boilerplate; shared episode-resolution, LLM-JSON-parsing, and show-lookup services extracted out of the orchestrators that used to duplicate them; dead `MatchOrchestrator` removed; backend status/type enums surfaced in the OpenAPI schema so frontend types no longer need hand-widening.
 
 ## [0.1.0] — 2026-06-27
 

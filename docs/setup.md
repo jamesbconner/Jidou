@@ -26,6 +26,8 @@ docker compose exec jidou-api alembic upgrade head
 
 The `default` profile starts all five services: `postgres`, `redis`, `jidou-api`, `jidou-worker`, `jidou-frontend`.
 
+<!-- screenshot: docker-compose-up-output -->
+
 ### Profiles
 
 | Profile | Services started |
@@ -207,12 +209,13 @@ uv run alembic revision --autogenerate -m "add index on files.status"
 
 ### Migration history
 
+All migrations up to and including the original `0002`–`0004` set were squashed into a single `0001_initial` baseline once the schema stabilized — there is no upgrade path from a pre-squash database; wipe and re-migrate (see [Wiping and reinitializing the database](troubleshooting.md#wiping-and-reinitializing-the-database)) or restore from an export.
+
 | Revision | Description |
 |----------|-------------|
-| `0001` | Initial schema: `shows`, `episodes`, `downloaded_files`, `background_tasks`, `watchlist` |
-| `0002` | Add `file_tracked_at` to `episodes` |
-| `0003` | Add `tracked_filename` and `tracked_source` to `episodes` |
-| `0004` | Add `orphaned_tracking_records` table |
+| `0001_initial` | Full baseline schema: `shows`, `episodes` (incl. `file_tracked`/`file_tracked_at`/`tracked_filename`/`tracked_source`), `downloaded_files`, `background_tasks`, `watchlist`, `orphaned_tracking_records`, `rss_feeds`, `rss_subscriptions`, `rss_config_snapshots`, `app_settings` |
+| `f437cd782b1b` | Add index on `episodes.air_date` (calendar page query) |
+| `287c0908e5d1` | Add `scanned_directories` table (shallow-scan redesign, issue #355) |
 
 ---
 
@@ -235,5 +238,8 @@ A healthy response looks like:
   "llm": "disabled"
 }
 ```
+
+<!-- screenshot: admin-health-response -->
+<!-- screenshot: settings-page -->
 
 See [Troubleshooting](troubleshooting.md) if any service reports an error.
