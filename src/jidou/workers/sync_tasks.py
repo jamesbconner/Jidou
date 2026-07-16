@@ -18,7 +18,16 @@ from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True)  # type: ignore[untyped-decorator]
+# Overrides the app-wide 50min/60min limits (celery_app.py) for this task
+# specifically. Unlike scan/download/match/route, which each budget the
+# default window for a single phase, sync runs all four of those phases
+# sequentially inside one task execution — scan (fast after the first run),
+# then download (bandwidth-bound file transfer), then match (sequential,
+# per-file LLM parsing), then route. On any real backlog the combined time
+# of all four phases routinely exceeds the 50-minute default meant for a
+# single phase alone, causing sync to hit SoftTimeLimitExceeded well before
+# it's actually stuck.
+@shared_task(bind=True, time_limit=25200, soft_time_limit=21600)  # type: ignore[untyped-decorator]
 def sync_all_task(  # type: ignore[no-untyped-def]
     self,
     dry_run: bool = False,

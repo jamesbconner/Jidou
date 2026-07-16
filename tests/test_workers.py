@@ -32,9 +32,11 @@ class TestCeleryApp:
         scratch, racing against itself on the same DB rows.
         """
         from jidou.workers.import_tasks import path_import_task
+        from jidou.workers.sync_tasks import sync_all_task
 
         visibility_timeout = celery_app.conf.broker_transport_options["visibility_timeout"]
         assert visibility_timeout > path_import_task.time_limit
+        assert visibility_timeout > sync_all_task.time_limit
         assert visibility_timeout > celery_app.conf.task_time_limit
 
 
@@ -405,6 +407,22 @@ async def test_match_files_wires_orchestrator_and_returns_summary() -> None:
 # ---------------------------------------------------------------------------
 # sync_tasks
 # ---------------------------------------------------------------------------
+
+
+def test_sync_all_task_has_extended_time_limits() -> None:
+    """sync_all_task overrides the app-wide 50min/60min limits.
+
+    Unlike scan/download/match/route, which each budget the default window
+    for a single phase, sync chains all four sequentially in one task
+    execution and can legitimately exceed the global default on any real
+    backlog — regression test for the celery_app.py-wide default being
+    silently reapplied if the decorator override were ever removed.
+    """
+    from jidou.workers.celery_app import celery_app
+    from jidou.workers.sync_tasks import sync_all_task
+
+    assert sync_all_task.soft_time_limit > celery_app.conf.task_soft_time_limit
+    assert sync_all_task.time_limit > celery_app.conf.task_time_limit
 
 
 def test_sync_task_soft_timeout_calls_mark_timed_out() -> None:
