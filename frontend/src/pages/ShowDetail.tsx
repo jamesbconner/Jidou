@@ -460,6 +460,7 @@ export default function ShowDetail() {
       {linkFileEp && (
         <LinkFileModal
           showId={showId}
+          showLocalPath={show.local_path ?? null}
           episode={linkFileEp}
           onClose={() => setLinkFileEp(null)}
         />
