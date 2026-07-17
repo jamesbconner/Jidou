@@ -154,6 +154,12 @@ class AssignImportRequest(BaseModel):
     filename: str
 
 
+class LinkFileRequest(BaseModel):
+    """Payload for manually linking an on-disk file path to an untracked episode."""
+
+    path: str
+
+
 class RematchRequest(BaseModel):
     """Payload for re-matching a show to a different TMDB entry."""
 

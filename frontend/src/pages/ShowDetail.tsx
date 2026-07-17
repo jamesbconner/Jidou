@@ -14,6 +14,7 @@ import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useR
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
+import { LinkFileModal } from '@/components/LinkFileModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
@@ -66,6 +67,7 @@ export default function ShowDetail() {
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
   const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
   const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
+  const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export default function ShowDetail() {
     setFileForRematch(null)
     setFileForFixEps(null)
     setAssignImportEp(null)
+    setLinkFileEp(null)
     setRssModalSub(null)
     syncEpisodes.reset()
     updatePaths.reset()
@@ -349,15 +352,23 @@ export default function ShowDetail() {
                             onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
                             fixMatchDisabled={beginRematch.isPending}
                           />
-                        ) : hasImportEps ? (
-                          <button
-                            onClick={() => handleEpisodeFixEps(ep)}
-                            className="shrink-0 text-xs text-blue-600 hover:underline"
-                          >
-                            Fix Eps
-                          </button>
                         ) : (
-                          <span className="shrink-0 text-xs text-zinc-600">—</span>
+                          <div className="shrink-0 flex items-center gap-2">
+                            <button
+                              onClick={() => setLinkFileEp(ep)}
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              Match File
+                            </button>
+                            {hasImportEps && (
+                              <button
+                                onClick={() => handleEpisodeFixEps(ep)}
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Fix Eps
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -444,6 +455,13 @@ export default function ShowDetail() {
           showId={showId}
           episode={assignImportEp}
           onClose={() => setAssignImportEp(null)}
+        />
+      )}
+      {linkFileEp && (
+        <LinkFileModal
+          showId={showId}
+          episode={linkFileEp}
+          onClose={() => setLinkFileEp(null)}
         />
       )}
     </div>

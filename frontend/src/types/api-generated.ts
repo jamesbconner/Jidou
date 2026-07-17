@@ -587,6 +587,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/episodes/{episode_id}/link-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Episode File
+         * @description Manually link an on-disk file path to an untracked episode.
+         *
+         *     For files that already sit at their final library location but were never
+         *     downloaded or path-imported by Jidou, so no ``DownloadedFile`` row exists
+         *     yet. Creates a display-only, already-ROUTED record using the same
+         *     ``synthetic-import://`` convention as bulk path-import, and marks the
+         *     episode tracked with ``tracked_source="import"`` — this keeps it in the
+         *     ``assign-import`` reassignment pool and existing "Imported" UI treatment
+         *     rather than introducing a third tracking source.
+         *
+         *     To link a file Jidou already knows about (an ``unmatched`` DownloadedFile
+         *     row), use ``PATCH /api/files/{file_id}`` instead.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         episode_id: Database primary key of the episode.
+         *         payload: Contains ``path`` — the absolute on-disk path of the file.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The created (or pre-existing) ``DownloadedFile`` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show or episode is not found.
+         *         HTTPException: 422 if the episode is already tracked, or *path* does
+         *             not point to an existing file.
+         */
+        post: operations["link_episode_file_api_shows__show_id__episodes__episode_id__link_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files": {
         parameters: {
             query?: never;
@@ -2511,6 +2556,14 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * LinkFileRequest
+         * @description Payload for manually linking an on-disk file path to an untracked episode.
+         */
+        LinkFileRequest: {
+            /** Path */
+            path: string;
+        };
+        /**
          * OrphanRead
          * @description Orphaned tracking record returned by ``GET /orphans``.
          */
@@ -4257,6 +4310,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_episode_file_api_shows__show_id__episodes__episode_id__link_file_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+                episode_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
                 };
             };
             /** @description Validation Error */

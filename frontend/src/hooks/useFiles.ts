@@ -44,6 +44,13 @@ export function useFilesByShow(showId: number) {
   })
 }
 
+export function useUnmatchedFilesForShow(showId: number) {
+  return useQuery({
+    queryKey: [...fileKeys.all, 'unmatched-for-show', showId] as const,
+    queryFn: () => api.get<FileRead[]>(`/files?status=unmatched&show_id=${showId}&limit=1000`),
+  })
+}
+
 export function useFile(id: number) {
   return useQuery({
     queryKey: fileKeys.detail(id),
@@ -84,6 +91,25 @@ export function useBeginEpisodeRematch() {
     },
     onSuccess: (_data, { showId }) => {
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    },
+  })
+}
+
+export function useLinkEpisodeFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      showId,
+      episodeId,
+      path,
+    }: {
+      showId: number
+      episodeId: number
+      path: string
+    }) => api.post<FileRead>(`/shows/${showId}/episodes/${episodeId}/link-file`, { path }),
+    onSuccess: (_data, { showId }) => {
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+      qc.invalidateQueries({ queryKey: fileKeys.all })
     },
   })
 }

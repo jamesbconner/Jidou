@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,6 +23,7 @@ from jidou.schemas.file_schema import FileRead
 from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
+    LinkFileRequest,
     RematchRequest,
     ShowAliasesUpdate,
     ShowCreate,
@@ -34,6 +36,7 @@ from jidou.services.episode_tracking import clear_episode_tracking, mark_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.rss_stub import ensure_rss_stub
+from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 
@@ -1012,6 +1015,85 @@ async def assign_import_episode(
     await db_session.flush()
     await db_session.commit()
     return {"ok": True}
+
+
+@router.post(
+    "/{show_id}/episodes/{episode_id}/link-file",
+    response_model=FileRead,
+)
+async def link_episode_file(
+    show_id: int,
+    episode_id: int,
+    payload: LinkFileRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> DownloadedFile:
+    """Manually link an on-disk file path to an untracked episode.
+
+    For files that already sit at their final library location but were never
+    downloaded or path-imported by Jidou, so no ``DownloadedFile`` row exists
+    yet. Creates a display-only, already-ROUTED record using the same
+    ``synthetic-import://`` convention as bulk path-import, and marks the
+    episode tracked with ``tracked_source="import"`` — this keeps it in the
+    ``assign-import`` reassignment pool and existing "Imported" UI treatment
+    rather than introducing a third tracking source.
+
+    To link a file Jidou already knows about (an ``unmatched`` DownloadedFile
+    row), use ``PATCH /api/files/{file_id}`` instead.
+
+    Args:
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+        payload: Contains ``path`` — the absolute on-disk path of the file.
+        db_session: DB session (injected).
+
+    Returns:
+        The created (or pre-existing) ``DownloadedFile`` record.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+        HTTPException: 422 if the episode is already tracked, or *path* does
+            not point to an existing file.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
+    ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+    if ep is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if ep.file_tracked:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Episode is already tracked. Use begin-rematch or assign-import to reassign it."
+            ),
+        )
+
+    if not Path(payload.path).is_file():
+        raise HTTPException(
+            status_code=422,
+            detail=f"No file exists at path: {payload.path}",
+        )
+
+    mark_episode_tracked(ep, payload.path, "import")
+    await create_synthetic_import_file(db_session, show_id, episode_id, payload.path)
+    await db_session.commit()
+
+    synthetic_remote_path = f"synthetic-import://{payload.path}"
+    refreshed = (
+        await db_session.execute(
+            select(DownloadedFile)
+            .where(DownloadedFile.remote_path == synthetic_remote_path)
+            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        )
+    ).scalar_one()
+    logger.info(
+        "Linked file path=%r to episode id=%d (show id=%d)", payload.path, episode_id, show_id
+    )
+    return refreshed
 
 
 async def _resync_synthetic_file_episode(
