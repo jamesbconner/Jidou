@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUnmatchedFilesForShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
 import { showKeys } from '@/hooks/useShows'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { api } from '@/api/client'
-import type { EpisodeList, FileRead } from '@/types/api'
+import { parseContainerPath } from '@/utils/paths'
+import type { AppConfig, ContentType, EpisodeList, FileRead } from '@/types/api'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -16,18 +17,42 @@ function basename(path: string) {
 
 interface Props {
   showId: number
+  showLocalPath: string | null
   episode: EpisodeList
   onClose: () => void
 }
 
-export function LinkFileModal({ showId, episode, onClose }: Props) {
+export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
   const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const qc = useQueryClient()
   const [mode, setMode] = useState<'existing' | 'path'>('existing')
   const [selectedFileId, setSelectedFileId] = useState('')
-  const [pathInput, setPathInput] = useState('')
+  const [contentType, setContentType] = useState<ContentType>('tv')
+  const [relativePath, setRelativePath] = useState('')
 
   const { data: unmatchedFiles = [], isLoading: filesLoading } = useUnmatchedFilesForShow(showId)
+
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.get<AppConfig>('/config'),
+    staleTime: 60_000,
+  })
+  const mediaPaths = config?.media_paths
+
+  // Seed content type + a starting folder name from the show's existing local
+  // path (the same base it already lives under) once config loads — but only
+  // the first time, so it doesn't clobber what the user has already typed.
+  useEffect(() => {
+    if (!mediaPaths || relativePath !== '') return
+    const parsed = parseContainerPath(showLocalPath, mediaPaths)
+    setContentType(parsed.contentType)
+    setRelativePath(parsed.folderName ? `${parsed.folderName}/` : '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaPaths])
+
+  const containerBase = mediaPaths?.[contentType].container
+  const relativeTrimmed = relativePath.replace(/^\/+/, '').trim()
+  const fullPath = containerBase && relativeTrimmed ? `${containerBase}/${relativeTrimmed}` : null
 
   const linkExisting = useMutation({
     mutationFn: (fileId: number) =>
@@ -50,9 +75,9 @@ export function LinkFileModal({ showId, episode, onClose }: Props) {
       if (!selectedFileId) return
       linkExisting.mutate(Number(selectedFileId))
     } else {
-      if (!pathInput.trim()) return
+      if (!fullPath) return
       linkPath.mutate(
-        { showId, episodeId: episode.id, path: pathInput.trim() },
+        { showId, episodeId: episode.id, path: fullPath },
         { onSuccess: onClose },
       )
     }
@@ -60,7 +85,7 @@ export function LinkFileModal({ showId, episode, onClose }: Props) {
 
   const pending = linkExisting.isPending || linkPath.isPending
   const error = linkExisting.error ?? linkPath.error
-  const canSave = mode === 'existing' ? !!selectedFileId : !!pathInput.trim()
+  const canSave = mode === 'existing' ? !!selectedFileId : !!fullPath
 
   return (
     <div
@@ -127,18 +152,43 @@ export function LinkFileModal({ showId, episode, onClose }: Props) {
               )}
             </div>
           ) : (
-            <div className="space-y-1.5">
-              <div className="text-xs text-zinc-400">
-                Absolute path of a file already at its final on-disk location
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="text-xs text-zinc-400">Content type</div>
+                <div className="flex gap-4">
+                  {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
+                    <label key={t} className="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="link_file_content_type"
+                        value={t}
+                        checked={contentType === t}
+                        onChange={() => setContentType(t)}
+                        disabled={pending}
+                        className="accent-indigo-600"
+                      />
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </label>
+                  ))}
+                </div>
               </div>
-              <input
-                value={pathInput}
-                onChange={(e) => setPathInput(e.target.value)}
-                disabled={pending}
-                placeholder="/data/media/tv/Show/Season 01/show.s01e01.mkv"
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-                autoFocus
-              />
+
+              <div className="space-y-1.5">
+                <div className="text-xs text-zinc-400">
+                  Path within the {contentType} folder (show / season / filename)
+                </div>
+                <input
+                  value={relativePath}
+                  onChange={(e) => setRelativePath(e.target.value)}
+                  disabled={pending}
+                  placeholder="Show Name/Season 01/show.s01e01.mkv"
+                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                  autoFocus
+                />
+                {fullPath && (
+                  <p className="text-xs text-zinc-500 font-mono truncate">{fullPath}</p>
+                )}
+              </div>
             </div>
           )}
 
