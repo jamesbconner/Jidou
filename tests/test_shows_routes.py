@@ -1,5 +1,6 @@
 """Tests for the /shows API routes."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -2449,5 +2450,195 @@ def test_begin_episode_rematch_with_file_id_returns_404_when_not_found() -> None
     try:
         response = TestClient(app).post("/api/shows/1/episodes/10/begin-rematch?file_id=999")
         assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/episodes/{episode_id}/link-file
+# ---------------------------------------------------------------------------
+
+
+def _make_linked_file(
+    *, show_id: int = 1, episode_id: int = 10, raw_path: str = "/media/show/ep01.mkv"
+) -> MagicMock:
+    """Build a minimal synthetic DownloadedFile mock suitable for FileRead responses."""
+    from datetime import UTC, datetime
+
+    from jidou.models.downloaded_file import DownloadedFile, FileStatus
+
+    f = MagicMock(spec=DownloadedFile)
+    f.id = 55
+    f.show_id = show_id
+    f.episode_id = episode_id
+    f.original_filename = "ep01.mkv"
+    f.remote_path = f"synthetic-import://{raw_path}"
+    f.local_path = raw_path
+    f.file_size = 0
+    f.hash_sha256 = None
+    f.status = FileStatus.ROUTED
+    f.matched_by = None
+    f.error_message = None
+    f.parsed_show_name = None
+    f.parsed_season = None
+    f.parsed_episode = None
+    f.parsed_confidence = None
+    f.parsed_content_type = None
+    f.created_at = datetime.now(UTC)
+    f.updated_at = datetime.now(UTC)
+    f.show = None
+    f.episode = None
+    return f
+
+
+def test_link_file_returns_404_when_show_missing() -> None:
+    """Returns 404 when the show does not exist."""
+    from jidou.database import get_session
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        no_hit = MagicMock()
+        no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=no_hit)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/9999/episodes/1/link-file",
+            json={"path": "/media/show/ep01.mkv"},
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_file_returns_404_when_episode_missing() -> None:
+    """Returns 404 when the episode does not exist."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/9999/link-file",
+            json={"path": "/media/show/ep01.mkv"},
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_file_returns_422_when_episode_already_tracked() -> None:
+    """Returns 422 when the episode is already tracked by a file or import."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": "/media/show/ep01.mkv"},
+        )
+        assert response.status_code == 422
+        assert "already tracked" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_file_returns_422_when_path_does_not_exist(tmp_path: Path) -> None:
+    """Returns 422 when the given path does not point to an existing file."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    missing_path = str(tmp_path / "does-not-exist.mkv")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": missing_path},
+        )
+        assert response.status_code == 422
+        assert "No file exists" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> None:
+    """On success, marks the episode tracked (source=import) and returns the file."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    real_file = tmp_path / "ep01.mkv"
+    real_file.write_text("data")
+    raw_path = str(real_file)
+
+    linked = _make_linked_file(show_id=1, episode_id=10, raw_path=raw_path)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        dedup_result = MagicMock()
+        dedup_result.scalar_one_or_none.return_value = None
+        refetch_result = MagicMock()
+        refetch_result.scalar_one.return_value = linked
+        session.execute = AsyncMock(
+            side_effect=[show_result, ep_result, dedup_result, refetch_result]
+        )
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": raw_path},
+        )
+        assert response.status_code == 200
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "import"
+        assert ep.tracked_filename == raw_path
+        assert response.json()["id"] == linked.id
     finally:
         app.dependency_overrides.clear()
