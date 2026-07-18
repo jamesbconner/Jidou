@@ -7,9 +7,30 @@ import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '
 import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import type { ShowList, TmdbResult, OrphanedTrackingRecord } from '@/types/api'
+
+interface ShowsFilterState {
+  sort: ShowSortOrder
+  filterContentType: string
+  filterStatus: string
+  filterGenre: string
+  filterLanguage: string
+  filterUpcoming: boolean
+  filterMinRating: string
+}
+
+const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
+  sort: 'title_asc',
+  filterContentType: '',
+  filterStatus: '',
+  filterGenre: '',
+  filterLanguage: '',
+  filterUpcoming: false,
+  filterMinRating: '',
+}
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
@@ -76,19 +97,28 @@ export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
   const [dqFilter, setDqFilter] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<ShowSortOrder>('title_asc')
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
   const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'library' | 'tmdb'>('library')
 
   const [pendingWatchlistShowIds, setPendingWatchlistShowIds] = useState<Set<number>>(new Set())
 
-  const [filterContentType, setFilterContentType] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterGenre, setFilterGenre] = useState('')
-  const [filterLanguage, setFilterLanguage] = useState('')
-  const [filterUpcoming, setFilterUpcoming] = useState(false)
-  const [filterMinRating, setFilterMinRating] = useState('')
+  // Persisted so sort/filter choices survive navigating away (e.g. into a
+  // show's detail page) and back, not just page reloads.
+  const [filters, setFilters] = useLocalStorageState<ShowsFilterState>(
+    'jidou:shows-filters',
+    DEFAULT_SHOWS_FILTERS,
+  )
+  const {
+    sort, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating,
+  } = filters
+  const setSort = (v: ShowSortOrder) => setFilters({ ...filters, sort: v })
+  const setFilterContentType = (v: string) => setFilters({ ...filters, filterContentType: v })
+  const setFilterStatus = (v: string) => setFilters({ ...filters, filterStatus: v })
+  const setFilterGenre = (v: string) => setFilters({ ...filters, filterGenre: v })
+  const setFilterLanguage = (v: string) => setFilters({ ...filters, filterLanguage: v })
+  const setFilterUpcoming = (v: boolean) => setFilters({ ...filters, filterUpcoming: v })
+  const setFilterMinRating = (v: string) => setFilters({ ...filters, filterMinRating: v })
 
   const debouncedQuery = useDebounce(query, 300)
 
@@ -189,12 +219,15 @@ export default function Shows() {
   ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
 
   function clearFilters() {
-    setFilterContentType('')
-    setFilterStatus('')
-    setFilterGenre('')
-    setFilterLanguage('')
-    setFilterUpcoming(false)
-    setFilterMinRating('')
+    setFilters({
+      ...filters,
+      filterContentType: '',
+      filterStatus: '',
+      filterGenre: '',
+      filterLanguage: '',
+      filterUpcoming: false,
+      filterMinRating: '',
+    })
   }
 
   function closeModal() {
