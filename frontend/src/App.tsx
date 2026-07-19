@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
 import Dashboard from '@/pages/Dashboard'
 import Shows from '@/pages/Shows'
+import Discover from '@/pages/Discover'
 import ShowDetail from '@/pages/ShowDetail'
 import Files from '@/pages/Files'
 import Watchlist from '@/pages/Watchlist'
@@ -34,6 +35,7 @@ export default function App() {
               <Route element={<Layout />}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/shows" element={<Shows />} />
+                <Route path="/discover" element={<Discover />} />
                 <Route path="/shows/:id" element={<ShowDetail />} />
                 <Route path="/files" element={<Files />} />
                 <Route path="/watchlist" element={<Watchlist />} />

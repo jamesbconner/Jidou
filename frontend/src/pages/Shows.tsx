@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ShowCard } from '@/components/ShowCard'
+import { TmdbResultCard } from '@/components/TmdbResultCard'
 import { useShows, useSearchShows, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
@@ -436,40 +437,15 @@ export default function Shows() {
                         {searchData.results.slice(0, 12).map((r) => {
                           const mediaType = r.media_type ?? 'tv'
                           const libraryShow = libraryIndex.get(`${r.id}:${mediaType}`)
-                          const inLibrary = libraryShow !== undefined
                           return (
-                            <div key={`${r.id}:${mediaType}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
-                              <div className="relative">
-                                {r.poster_path ? (
-                                  <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
-                                ) : (
-                                  <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
-                                )}
-                                {inLibrary && (
-                                  <span className="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
-                                )}
-                              </div>
-                              <div className="p-2 flex flex-col flex-1">
-                                <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
-                                {inLibrary && libraryShow ? (
-                                  <Link
-                                    to={`/shows/${libraryShow.id}`}
-                                    onClick={closeModal}
-                                    className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
-                                  >
-                                    View in Library
-                                  </Link>
-                                ) : (
-                                  <button
-                                    onClick={() => handleTrack(r)}
-                                    disabled={createShow.isPending}
-                                    className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
-                                  >
-                                    Add
-                                  </button>
-                                )}
-                              </div>
-                            </div>
+                            <TmdbResultCard
+                              key={`${r.id}:${mediaType}`}
+                              result={r}
+                              inLibraryShowId={libraryShow?.id ?? null}
+                              onAdd={() => handleTrack(r)}
+                              addPending={createShow.isPending}
+                              onNavigate={closeModal}
+                            />
                           )
                         })}
                       </div>

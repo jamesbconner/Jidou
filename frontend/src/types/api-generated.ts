@@ -112,6 +112,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover Shows
+         * @description Return a personalized discovery feed of shows not yet in the library.
+         *
+         *     Seeded from TMDB recommendations for the user's most recently engaged
+         *     watchlist shows (``watching``/``completed``), deduplicated and merged with
+         *     trending TV/movies to fill out the feed. Shows already in the library are
+         *     excluded. The assembled feed is cached for 24h, keyed by the current seed
+         *     show set so a watchlist change invalidates it without waiting out the TTL.
+         *
+         *     Args:
+         *         limit: Maximum results to return (1-100, default 40).
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         List of :class:`DiscoverResult`, seeded items first.
+         */
+        get: operations["discover_shows_api_shows_discover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows": {
         parameters: {
             query?: never;
@@ -2373,6 +2407,49 @@ export interface components {
             adult?: boolean | null;
         };
         /**
+         * DiscoverResult
+         * @description A single TMDB item surfaced on the Discover page.
+         *
+         *     Field names mirror TMDB's own raw response shape (``id``/``name``/
+         *     ``title``/etc.) rather than Jidou's internal Show model, so the frontend
+         *     can feed this directly into the existing TMDB-result-based add-to-library
+         *     flow without a translation layer.
+         */
+        DiscoverResult: {
+            /** Id */
+            id: number;
+            /** Media Type */
+            media_type: string;
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Overview */
+            overview?: string | null;
+            /** Poster Path */
+            poster_path?: string | null;
+            /** Backdrop Path */
+            backdrop_path?: string | null;
+            /** Vote Average */
+            vote_average?: number | null;
+            /** Vote Count */
+            vote_count?: number | null;
+            /** Release Date */
+            release_date?: string | null;
+            /** First Air Date */
+            first_air_date?: string | null;
+            /** Original Language */
+            original_language?: string | null;
+            /** Genre Ids */
+            genre_ids?: number[] | null;
+            /** Origin Country */
+            origin_country?: string[] | null;
+            /** Adult */
+            adult?: boolean | null;
+            /** Seeded From */
+            seeded_from?: string[];
+        };
+        /**
          * EpisodeBrief
          * @description Minimal episode fields embedded in file responses.
          */
@@ -3783,6 +3860,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_shows_api_shows_discover_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverResult"][];
                 };
             };
             /** @description Validation Error */

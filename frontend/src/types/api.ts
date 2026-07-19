@@ -433,6 +433,22 @@ export interface TmdbSearchResponse {
   page: number
 }
 
+// GET /shows/discover returns a synthesized feed (recommendations merged with
+// trending), not a single raw TMDB response, but the field shape still
+// mirrors TmdbResult's (so it can feed directly into the existing
+// add-to-library flow). media_type is narrowed from the backend's bare
+// string, and seeded_from is forced non-optional — the backend field always
+// has a value (empty list default), but openapi-typescript still marks a
+// field with a default as `?` — see the FileRead comment above for the same
+// pattern.
+export type DiscoverResult = Omit<
+  components['schemas']['DiscoverResult'],
+  'media_type' | 'seeded_from'
+> & {
+  media_type: 'tv' | 'movie'
+  seeded_from: string[]
+}
+
 // ─── Path Import ──────────────────────────────────────────────────────────────
 // Celery task result payloads, not a live HTTP response_model — no backend
 // schema to alias.
