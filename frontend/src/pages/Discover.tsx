@@ -23,8 +23,12 @@ export default function Discover() {
   // 'failed' — show creation itself failed, nothing was added.
   // 'partial' — the show was created, but the watchlist entry and/or RSS
   // stub afterward didn't (Promise.allSettled never rejects, so this can
-  // only be detected by checking each settled result individually).
-  const [issueKeys, setIssueKeys] = useState<Map<string, 'failed' | 'partial'>>(new Map())
+  // only be detected by checking each settled result individually) — message
+  // is specific about which of the two succeeded so it doesn't imply a step
+  // failed when it actually went through.
+  const [issueKeys, setIssueKeys] = useState<
+    Map<string, { kind: 'failed' } | { kind: 'partial'; message: string }>
+  >(new Map())
 
   async function handleAdd(result: DiscoverResult) {
     const key = `${result.id}:${result.media_type}`
@@ -36,15 +40,36 @@ export default function Discover() {
     })
     try {
       const show = await createShow.mutateAsync(buildShowCreatePayload(result))
-      const settled = await Promise.allSettled([
+      const [watchlistResult, rssResult] = await Promise.allSettled([
         createWatchlistEntry.mutateAsync({ show_id: show.id }),
         ensureRssStub.mutateAsync(show.id),
       ])
-      if (settled.some((s) => s.status === 'rejected')) {
-        setIssueKeys((prev) => new Map(prev).set(key, 'partial'))
+      const watchlistFailed = watchlistResult.status === 'rejected'
+      const rssFailed = rssResult.status === 'rejected'
+      if (watchlistFailed && rssFailed) {
+        setIssueKeys((prev) =>
+          new Map(prev).set(key, {
+            kind: 'partial',
+            message: 'Added to library, but watchlist and RSS stub setup both failed.',
+          }),
+        )
+      } else if (watchlistFailed) {
+        setIssueKeys((prev) =>
+          new Map(prev).set(key, {
+            kind: 'partial',
+            message: 'Added to library, but watchlist setup failed.',
+          }),
+        )
+      } else if (rssFailed) {
+        setIssueKeys((prev) =>
+          new Map(prev).set(key, {
+            kind: 'partial',
+            message: 'Added to library and watchlist, but RSS stub creation failed.',
+          }),
+        )
       }
     } catch {
-      setIssueKeys((prev) => new Map(prev).set(key, 'failed'))
+      setIssueKeys((prev) => new Map(prev).set(key, { kind: 'failed' }))
     } finally {
       setPendingKeys((prev) => {
         const next = new Set(prev)
@@ -87,13 +112,11 @@ export default function Discover() {
                   addLabel="Add + Watchlist"
                   subtitle={subtitleFor(r)}
                 />
-                {issue === 'failed' && (
+                {issue?.kind === 'failed' && (
                   <p className="text-[11px] text-red-500 mt-1">Failed to add — try again.</p>
                 )}
-                {issue === 'partial' && (
-                  <p className="text-[11px] text-amber-500 mt-1">
-                    Added, but watchlist/RSS setup failed — check the show page.
-                  </p>
+                {issue?.kind === 'partial' && (
+                  <p className="text-[11px] text-amber-500 mt-1">{issue.message}</p>
                 )}
               </div>
             )

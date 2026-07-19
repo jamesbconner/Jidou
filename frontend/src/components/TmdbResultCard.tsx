@@ -38,7 +38,7 @@ export function TmdbResultCard({
         {result.poster_path ? (
           <img
             src={`${TMDB_IMG}${result.poster_path}`}
-            alt={result.name ?? result.title ?? undefined}
+            alt={result.name ?? result.title ?? ''}
             className="w-full aspect-[2/3] object-cover"
             loading="lazy"
           />
