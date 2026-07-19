@@ -1,10 +1,18 @@
 import { Link } from 'react-router-dom'
-import type { TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
+// Only the fields this card actually renders — kept narrower than the full
+// TmdbResult/DiscoverResult shape so both (which differ in how strictly they
+// type overview/vote_average/etc.) can be passed here without friction.
+interface CardResult {
+  poster_path?: string | null
+  name?: string | null
+  title?: string | null
+}
+
 interface Props {
-  result: TmdbResult
+  result: CardResult
   inLibraryShowId?: number | null
   onAdd: () => void
   addPending: boolean
@@ -30,7 +38,7 @@ export function TmdbResultCard({
         {result.poster_path ? (
           <img
             src={`${TMDB_IMG}${result.poster_path}`}
-            alt={result.name ?? result.title}
+            alt={result.name ?? result.title ?? undefined}
             className="w-full aspect-[2/3] object-cover"
             loading="lazy"
           />

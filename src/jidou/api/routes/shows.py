@@ -177,8 +177,11 @@ async def get_tmdb_details(
 
 
 # Number of most-recently-updated watching/completed watchlist entries used to
-# seed recommendations — bounds the number of TMDB calls per request.
-_DISCOVER_SEED_LIMIT = 10
+# seed recommendations. Each seed show costs one rate-limited TMDB call
+# (~2s, serialized — the shared RateLimiter holds a single lock across all
+# callers, so concurrency doesn't help here), so this also bounds worst-case
+# latency on a cache-cold request to roughly _DISCOVER_SEED_LIMIT * 2s.
+_DISCOVER_SEED_LIMIT = 5
 # Recommendations taken from each seed show, before dedup/exclusion.
 _DISCOVER_PER_SHOW_LIMIT = 10
 _DISCOVER_CACHE_TTL = 86_400  # 24h — the assembled/deduped feed, not the underlying TMDB calls

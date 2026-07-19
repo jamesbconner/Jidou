@@ -20,24 +20,31 @@ export default function Discover() {
   const ensureRssStub = useEnsureRssStub()
 
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set())
-  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set())
+  // 'failed' — show creation itself failed, nothing was added.
+  // 'partial' — the show was created, but the watchlist entry and/or RSS
+  // stub afterward didn't (Promise.allSettled never rejects, so this can
+  // only be detected by checking each settled result individually).
+  const [issueKeys, setIssueKeys] = useState<Map<string, 'failed' | 'partial'>>(new Map())
 
   async function handleAdd(result: DiscoverResult) {
     const key = `${result.id}:${result.media_type}`
     setPendingKeys((prev) => new Set(prev).add(key))
-    setFailedKeys((prev) => {
-      const next = new Set(prev)
+    setIssueKeys((prev) => {
+      const next = new Map(prev)
       next.delete(key)
       return next
     })
     try {
       const show = await createShow.mutateAsync(buildShowCreatePayload(result))
-      await Promise.allSettled([
+      const settled = await Promise.allSettled([
         createWatchlistEntry.mutateAsync({ show_id: show.id }),
         ensureRssStub.mutateAsync(show.id),
       ])
+      if (settled.some((s) => s.status === 'rejected')) {
+        setIssueKeys((prev) => new Map(prev).set(key, 'partial'))
+      }
     } catch {
-      setFailedKeys((prev) => new Set(prev).add(key))
+      setIssueKeys((prev) => new Map(prev).set(key, 'failed'))
     } finally {
       setPendingKeys((prev) => {
         const next = new Set(prev)
@@ -69,6 +76,7 @@ export default function Discover() {
           {results.map((r) => {
             const key = `${r.id}:${r.media_type}`
             const libraryShow = libraryIndex.get(key)
+            const issue = issueKeys.get(key)
             return (
               <div key={key}>
                 <TmdbResultCard
@@ -79,8 +87,13 @@ export default function Discover() {
                   addLabel="Add + Watchlist"
                   subtitle={subtitleFor(r)}
                 />
-                {failedKeys.has(key) && (
+                {issue === 'failed' && (
                   <p className="text-[11px] text-red-500 mt-1">Failed to add — try again.</p>
+                )}
+                {issue === 'partial' && (
+                  <p className="text-[11px] text-amber-500 mt-1">
+                    Added, but watchlist/RSS setup failed — check the show page.
+                  </p>
                 )}
               </div>
             )

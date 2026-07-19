@@ -2865,3 +2865,100 @@ def test_discover_respects_limit() -> None:
         assert len(response.json()) == 2
     finally:
         app.dependency_overrides.clear()
+
+
+def test_discover_falls_back_to_trending_when_recommendations_fail() -> None:
+    """If every seed show's recommendations call fails, trending still fills the feed."""
+    import httpx2 as httpx
+
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_entry = _make_seed_entry(tmdb_id=100, title="Seed Show")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_entry]
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    req = httpx.Request("GET", "https://api.themoviedb.org/3/tv/100/recommendations")
+    error = httpx.HTTPStatusError(
+        "429 Too Many Requests", request=req, response=httpx.Response(429)
+    )
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(side_effect=error)
+    tmdb_mock.get_trending = AsyncMock(
+        return_value={"results": [{"id": 1, "media_type": "tv", "name": "Trending Show"}]}
+    )
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["id"] == 1
+        assert body[0]["seeded_from"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_discover_sorts_by_seeded_count_then_rating() -> None:
+    """Results are ranked by how many seed shows recommended them, then rating."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_a = _make_seed_entry(tmdb_id=100, title="Show A")
+    seed_b = _make_seed_entry(tmdb_id=200, title="Show B")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_a, seed_b]
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    def _recommendations(tmdb_id: int, _media_type: str) -> dict:
+        if tmdb_id == 100:
+            return {
+                "results": [
+                    # Recommended by only one seed, but the highest rating overall —
+                    # must still rank below the double-seeded item.
+                    {"id": 1, "name": "High Rated Single Seed", "vote_average": 9.5},
+                    {"id": 2, "name": "Shared Rec Low", "vote_average": 6.0},
+                ]
+            }
+        return {"results": [{"id": 2, "name": "Shared Rec Low", "vote_average": 6.0}]}
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(side_effect=_recommendations)
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert [r["id"] for r in body] == [2, 1]
+        assert len(body[0]["seeded_from"]) == 2
+        assert len(body[1]["seeded_from"]) == 1
+    finally:
+        app.dependency_overrides.clear()
