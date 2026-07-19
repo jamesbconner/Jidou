@@ -2642,3 +2642,226 @@ def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> 
         assert response.json()["id"] == linked.id
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/shows/discover
+# ---------------------------------------------------------------------------
+
+
+def _make_seed_entry(
+    *, tmdb_id: int, media_type: str = "tv", title: str = "Seed Show"
+) -> MagicMock:
+    """Build a WatchlistEntry mock carrying a minimal Show for discover seeding."""
+    show = MagicMock()
+    show.id = tmdb_id
+    show.tmdb_id = tmdb_id
+    show.media_type = media_type
+    show.title = title
+    entry = MagicMock()
+    entry.show = show
+    return entry
+
+
+def test_discover_cache_hit_skips_tmdb_calls() -> None:
+    """A warm cache short-circuits before any recommendations/trending calls."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_entry = _make_seed_entry(tmdb_id=100, title="Attack on Titan")
+    cached_payload = [
+        {"id": 5, "media_type": "tv", "name": "Cached Show", "seeded_from": ["Attack on Titan"]}
+    ]
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_entry]
+        session.execute = AsyncMock(return_value=seed_result)
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch.object(cache, "get", AsyncMock(return_value=cached_payload)):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["id"] == 5
+        assert body[0]["seeded_from"] == ["Attack on Titan"]
+        tmdb_mock.get_recommendations.assert_not_called()
+        tmdb_mock.get_trending.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_discover_falls_back_to_trending_when_watchlist_empty() -> None:
+    """With no watching/completed shows, the feed is trending-only with empty seeded_from."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = []
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_trending = AsyncMock(
+        return_value={
+            "results": [
+                {"id": 1, "media_type": "tv", "name": "Trending Show", "vote_average": 8.0},
+                {"id": 2, "media_type": "person", "name": "Someone Famous"},
+            ]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["id"] == 1
+        assert body[0]["seeded_from"] == []
+        tmdb_mock.get_recommendations.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_discover_seeds_from_watchlist_and_excludes_library() -> None:
+    """Recommendations are pulled per seed show; results already in the library are dropped."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_entry = _make_seed_entry(tmdb_id=100, title="Attack on Titan")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_entry]
+        existing_result = MagicMock()
+        # tmdb_id=2 is already in the library and must be excluded.
+        existing_result.all.return_value = [(2, "tv")]
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={
+            "results": [
+                {"id": 1, "name": "New Show", "vote_average": 9.0},
+                {"id": 2, "name": "Already Owned", "vote_average": 7.0},
+            ]
+        }
+    )
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()) as mock_cache_set,
+        ):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["id"] == 1
+        assert body[0]["seeded_from"] == ["Attack on Titan"]
+        tmdb_mock.get_recommendations.assert_called_once_with(100, "tv")
+        assert mock_cache_set.call_args.kwargs["ttl"] == 86_400
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_discover_accumulates_seeded_from_across_seeds() -> None:
+    """The same recommendation from two seed shows appears once with both titles."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_a = _make_seed_entry(tmdb_id=100, title="Show A")
+    seed_b = _make_seed_entry(tmdb_id=200, title="Show B")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_a, seed_b]
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={"results": [{"id": 1, "name": "Shared Rec", "vote_average": 8.0}]}
+    )
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/discover")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert sorted(body[0]["seeded_from"]) == ["Show A", "Show B"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_discover_respects_limit() -> None:
+    """The response never exceeds the requested limit."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    seed_entry = _make_seed_entry(tmdb_id=100, title="Seed Show")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = [seed_entry]
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={
+            "results": [{"id": i, "name": f"Show {i}", "vote_average": 5.0} for i in range(5)]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/discover?limit=2")
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+    finally:
+        app.dependency_overrides.clear()

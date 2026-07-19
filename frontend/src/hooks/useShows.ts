@@ -2,7 +2,16 @@ import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { dashboardKeys } from '@/hooks/useDashboard'
-import type { ShowList, ShowRead, ShowCreate, ShowPatch, ShowPaths, EpisodeList, TmdbSearchResponse } from '@/types/api'
+import type {
+  ShowList,
+  ShowRead,
+  ShowCreate,
+  ShowPatch,
+  ShowPaths,
+  EpisodeList,
+  TmdbSearchResponse,
+  DiscoverResult,
+} from '@/types/api'
 
 export type ShowSortOrder =
   | 'title_asc'
@@ -35,6 +44,7 @@ export const showKeys = {
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
+  discover: () => ['tmdb', 'discover'] as const,
 }
 
 export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
@@ -73,6 +83,14 @@ export function useSearchShows(query: string, mediaType?: string) {
         `/shows/search?query=${encodeURIComponent(query)}${mediaType ? `&media_type=${mediaType}` : ''}`,
       ),
     enabled: query.length >= 2,
+  })
+}
+
+export function useDiscoverShows(limit = 40) {
+  return useQuery({
+    queryKey: showKeys.discover(),
+    queryFn: () => api.get<DiscoverResult[]>(`/shows/discover?limit=${limit}`),
+    staleTime: 60 * 60 * 1000,
   })
 }
 

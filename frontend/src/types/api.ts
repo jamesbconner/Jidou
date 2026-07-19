@@ -433,6 +433,15 @@ export interface TmdbSearchResponse {
   page: number
 }
 
+// GET /shows/discover returns a synthesized feed (recommendations merged with
+// trending), not a single raw TMDB response — same field shape as TmdbResult
+// (so it can feed directly into the existing add-to-library flow) plus
+// seeded_from to explain why each item was recommended.
+export type DiscoverResult = TmdbResult & {
+  media_type: 'tv' | 'movie'
+  seeded_from: string[]
+}
+
 // ─── Path Import ──────────────────────────────────────────────────────────────
 // Celery task result payloads, not a live HTTP response_model — no backend
 // schema to alias.
