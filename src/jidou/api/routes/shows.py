@@ -1287,9 +1287,7 @@ async def scan_show_local_files(
 
     entries = scan_show_directory(show.local_path)
 
-    existing_paths_stmt = select(DownloadedFile.local_path).where(
-        DownloadedFile.show_id == show_id
-    )
+    existing_paths_stmt = select(DownloadedFile.local_path).where(DownloadedFile.show_id == show_id)
     existing_paths = {p for (p,) in (await db_session.execute(existing_paths_stmt)).all() if p}
 
     results: list[ScannedFileMatch] = []
