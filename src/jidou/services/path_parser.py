@@ -11,7 +11,7 @@ prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POS
 
 import re
 from dataclasses import dataclass
-from pathlib import PurePath, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
@@ -315,6 +315,62 @@ def parse_file(
         entry = parse_line(line, root=root, directories_only=directories_only)
         if entry is not None:
             entries.append(entry)
+    return entries
+
+
+def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
+    """Walk an already-known show's own local directory and parse every media file.
+
+    Unlike :func:`parse_line`, ``show_dir`` doesn't need to be inferred here —
+    the caller already knows which show this directory belongs to (this is
+    used by the show-scoped "scan local files" feature, not bulk path-import)
+    — so this only needs season detection from any ``Season N`` ancestor
+    directory and episode extraction from the filename, both reusing
+    :func:`_parse_episode` so the two features never drift apart on parsing
+    behavior.
+
+    Args:
+        show_root: Absolute container-side path to the show's own directory.
+
+    Returns:
+        List of :class:`ParsedPathEntry`, one per media file found (recursive,
+        any depth), sorted by path. Empty if *show_root* doesn't exist or
+        isn't a directory.
+    """
+    root = Path(show_root)
+    if not root.is_dir():
+        return []
+
+    entries: list[ParsedPathEntry] = []
+    for file_path in sorted(root.rglob("*")):
+        if not file_path.is_file() or file_path.suffix.lower() not in _MEDIA_EXTENSIONS:
+            continue
+
+        rel_parts = file_path.relative_to(root).parts
+        dir_season: int | None = None
+        for seg in rel_parts[:-1]:
+            season_match = _SEASON_DIR.match(seg)
+            if season_match:
+                dir_season = int(season_match.group(1))
+                break
+
+        fn_season, episode, absolute_candidate = _parse_episode(
+            file_path.stem, dir_season=dir_season
+        )
+        season = dir_season if dir_season is not None else fn_season
+        is_absolute = season is None and episode is not None
+
+        entries.append(
+            ParsedPathEntry(
+                raw_path=str(file_path),
+                show_dir=root.name,
+                show_root=str(root),
+                season=season,
+                episode=episode,
+                is_absolute=is_absolute,
+                absolute_candidate=absolute_candidate,
+            )
+        )
     return entries
 
 

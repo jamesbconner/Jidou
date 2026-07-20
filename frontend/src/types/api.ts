@@ -404,6 +404,10 @@ export type OrphanedTrackingRecord = Omit<
 
 export type FilePatch = components['schemas']['FilePatch']
 
+// ─── Show local-directory scan ─────────────────────────────────────────────
+
+export type ScannedFileMatch = components['schemas']['ScannedFileMatch']
+
 // ─── TMDB raw responses (proxied through backend) ─────────────────────────
 // TMDB search/trending/details endpoints return raw dict[str, Any] — no
 // response_model, so no backend schema to alias.

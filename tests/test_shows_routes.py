@@ -2962,3 +2962,210 @@ def test_discover_sorts_by_seeded_count_then_rating() -> None:
         assert len(body[1]["seeded_from"]) == 1
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/scan-local-files
+# ---------------------------------------------------------------------------
+
+
+def test_scan_show_local_files_returns_404_when_show_missing() -> None:
+    """Returns 404 when the show does not exist."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        no_hit = MagicMock()
+        no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=no_hit)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        response = TestClient(app).post("/api/shows/9999/scan-local-files")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_returns_422_when_no_local_path() -> None:
+    """Returns 422 when the show has no local_path configured."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=None)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        session.execute = AsyncMock(return_value=show_result)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_skips_already_imported_paths(tmp_path: Path) -> None:
+    """A file whose exact path is already recorded on a DownloadedFile is omitted."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    real_file = tmp_path / "Show - 01.mkv"
+    real_file.write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = [(str(real_file),)]
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(side_effect=AssertionError("should not be reached")),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        assert response.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_returns_matched_status_for_untracked_episode(
+    tmp_path: Path,
+) -> None:
+    """A file resolving to an untracked episode is returned with status='matched'."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    (tmp_path / "Show.S01E01.mkv").write_text("data")
+
+    ep = _make_episode(id=10, show_id=1)
+    ep.file_tracked = False
+    ep.season_number = 1
+    ep.episode_number = 1
+    ep.name = "Pilot"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(return_value=(ep, 1, 1)),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "matched"
+        assert body[0]["episode"]["id"] == 10
+        assert body[0]["season"] == 1
+        assert body[0]["episode_number"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_returns_conflict_status_for_tracked_episode(
+    tmp_path: Path,
+) -> None:
+    """A file resolving to an already-tracked episode is returned with status='conflict'."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    (tmp_path / "Show.S01E01.mkv").write_text("data")
+
+    ep = _make_episode(id=10, show_id=1)
+    ep.file_tracked = True
+    ep.season_number = 1
+    ep.episode_number = 1
+    ep.name = "Pilot"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(return_value=(ep, 1, 1)),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "conflict"
+        assert body[0]["episode"]["id"] == 10
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_returns_unmatched_status_when_no_episode_found(
+    tmp_path: Path,
+) -> None:
+    """A file that resolves to no episode is returned with status='unmatched'."""
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    (tmp_path / "Show - Extras.mkv").write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(return_value=(None, None, None)),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "unmatched"
+        assert body[0]["episode"] is None
+    finally:
+        app.dependency_overrides.clear()
