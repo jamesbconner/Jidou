@@ -29,7 +29,10 @@ export function DashboardSectionControls({
   genre,
   onGenreChange,
   genreOptions,
-  contentType,
+  // Defaulted so the <select> below is always controlled, even before a
+  // caller that omits contentType entirely (it's only meaningful paired
+  // with onContentTypeChange) ever renders it.
+  contentType = '',
   onContentTypeChange,
   contentTypeOptions = DEFAULT_CONTENT_TYPE_OPTIONS,
   limit,

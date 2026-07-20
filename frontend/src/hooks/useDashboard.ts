@@ -11,13 +11,9 @@ export const RECENT_SORT_LABELS: Record<RecentSort, string> = {
 
 export interface RecentQueryParams {
   sort: RecentSort
-  contentType: string
-  genre: string
-  limit: number
-}
-
-export interface RecentMovieQueryParams {
-  sort: RecentSort
+  // Omitted entirely by callers scoped to a single content type already
+  // (e.g. the movies carousel, where it'd always be redundant).
+  contentType?: string
   genre: string
   limit: number
 }
@@ -25,7 +21,7 @@ export interface RecentMovieQueryParams {
 export const dashboardKeys = {
   all: ['dashboard'] as const,
   recentShows: (params: RecentQueryParams) => [...dashboardKeys.all, 'recent-shows', params] as const,
-  recentMovies: (params: RecentMovieQueryParams) =>
+  recentMovies: (params: RecentQueryParams) =>
     [...dashboardKeys.all, 'recent-movies', params] as const,
   recentEpisodes: (params: RecentQueryParams) =>
     [...dashboardKeys.all, 'recent-episodes', params] as const,
@@ -39,12 +35,6 @@ function buildQuery(params: RecentQueryParams): string {
   return search.toString()
 }
 
-function buildMovieQuery(params: RecentMovieQueryParams): string {
-  const search = new URLSearchParams({ sort: params.sort, limit: String(params.limit) })
-  if (params.genre) search.set('genre', params.genre)
-  return search.toString()
-}
-
 export function useRecentShows(params: RecentQueryParams) {
   return useQuery({
     queryKey: dashboardKeys.recentShows(params),
@@ -52,10 +42,10 @@ export function useRecentShows(params: RecentQueryParams) {
   })
 }
 
-export function useRecentMovies(params: RecentMovieQueryParams) {
+export function useRecentMovies(params: RecentQueryParams) {
   return useQuery({
     queryKey: dashboardKeys.recentMovies(params),
-    queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-movies?${buildMovieQuery(params)}`),
+    queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-movies?${buildQuery(params)}`),
   })
 }
 
