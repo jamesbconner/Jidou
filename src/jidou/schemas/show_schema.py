@@ -1,10 +1,12 @@
 """Pydantic schemas for Show API request/response validation."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from jidou.models.show import ContentType
+from jidou.schemas.file_schema import EpisodeBrief
 
 
 class ShowCreate(BaseModel):
@@ -158,6 +160,31 @@ class LinkFileRequest(BaseModel):
     """Payload for manually linking an on-disk file path to an untracked episode."""
 
     path: str
+
+
+class ScannedFileMatch(BaseModel):
+    """One media file found while scanning a show's own local directory.
+
+    Field name mirrors the file's proposed episode assignment. Persisting an
+    accepted match reuses ``POST /shows/{show_id}/episodes/{episode_id}/link-file``
+    rather than a dedicated endpoint here — this response is purely a
+    read-only proposal.
+    """
+
+    path: str
+    filename: str
+    season: int | None = None
+    episode_number: int | None = None
+    episode: EpisodeBrief | None = Field(
+        default=None, description="Proposed episode match, or null if unmatched"
+    )
+    status: Literal["matched", "unmatched", "conflict"] = Field(
+        description=(
+            "'matched': proposed episode is untracked and ready to confirm. "
+            "'unmatched': no episode could be resolved for this file. "
+            "'conflict': the proposed episode is already tracked by a different file."
+        )
+    )
 
 
 class RematchRequest(BaseModel):

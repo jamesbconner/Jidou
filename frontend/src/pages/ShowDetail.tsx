@@ -15,6 +15,7 @@ import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
 import { LinkFileModal } from '@/components/LinkFileModal'
+import { ScanLocalFilesModal } from '@/components/ScanLocalFilesModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
@@ -68,6 +69,7 @@ export default function ShowDetail() {
   const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
   const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
   const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
+  const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
 
   useEffect(() => {
@@ -80,6 +82,7 @@ export default function ShowDetail() {
     setFileForFixEps(null)
     setAssignImportEp(null)
     setLinkFileEp(null)
+    setScanLocalFilesOpen(false)
     setRssModalSub(null)
     syncEpisodes.reset()
     updatePaths.reset()
@@ -275,6 +278,12 @@ export default function ShowDetail() {
             Manage Aliases
           </button>
           <button
+            onClick={() => setScanLocalFilesOpen(true)}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            Scan Local Files
+          </button>
+          <button
             onClick={handleRssButtonClick}
             disabled={ensureRssStub.isPending}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
@@ -464,6 +473,9 @@ export default function ShowDetail() {
           episode={linkFileEp}
           onClose={() => setLinkFileEp(null)}
         />
+      )}
+      {scanLocalFilesOpen && (
+        <ScanLocalFilesModal showId={showId} onClose={() => setScanLocalFilesOpen(false)} />
       )}
     </div>
   )

@@ -1,5 +1,6 @@
 """API routes for show management and TMDB discovery."""
 
+import asyncio
 import logging
 from datetime import date
 from pathlib import Path
@@ -22,12 +23,13 @@ from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.calendar_schema import CalendarEpisode
 from jidou.schemas.discover_schema import DiscoverResult
 from jidou.schemas.episode_schema import BackingFile, EpisodeList
-from jidou.schemas.file_schema import FileRead
+from jidou.schemas.file_schema import EpisodeBrief, FileRead
 from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
     LinkFileRequest,
     RematchRequest,
+    ScannedFileMatch,
     ShowAliasesUpdate,
     ShowCreate,
     ShowList,
@@ -36,8 +38,10 @@ from jidou.schemas.show_schema import (
     ShowRead,
 )
 from jidou.services.cache import cache
+from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.llm_service import LLMService
+from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.synthetic_file import create_synthetic_import_file
@@ -1195,7 +1199,16 @@ async def link_episode_file(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
 
-    ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
+    # Locked so two concurrent link-file calls targeting the same episode
+    # (e.g. a bulk "Confirm All Matched" batch) can't both read
+    # file_tracked=False before either commits — the second request blocks
+    # here until the first's transaction ends, then sees the now-tracked
+    # state and 422s below instead of double-linking.
+    ep_stmt = (
+        select(Episode)
+        .where(Episode.id == episode_id, Episode.show_id == show_id)
+        .with_for_update()
+    )
     ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
     if ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -1230,6 +1243,107 @@ async def link_episode_file(
         "Linked file path=%r to episode id=%d (show id=%d)", payload.path, episode_id, show_id
     )
     return refreshed
+
+
+@router.post(
+    "/{show_id}/scan-local-files",
+    response_model=list[ScannedFileMatch],
+)
+async def scan_show_local_files(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
+) -> list[ScannedFileMatch]:
+    """List and auto-match media files found under a show's own local directory.
+
+    An alternative to bulk text-file import for episodes whose files are
+    already sitting at their final on-disk location — e.g. picking up
+    stragglers a prior import missed, or files that predate Jidou entirely.
+    Read-only: nothing is written. The same matching pipeline bulk path-import
+    uses (regex heuristics, episode_group remap, LLM fallback — see
+    :func:`~jidou.services.episode_file_matching.match_entry_to_episode`)
+    resolves each file to a proposed episode.
+
+    Files whose path matches an already-recorded ``DownloadedFile`` for this
+    show (a prior import or download — compared via
+    :func:`~jidou.services.path_parser.path_comparison_key`, since a prior
+    bulk-import path string and this scan's live-filesystem path string can
+    differ in format while referring to the same file) are skipped entirely.
+    Everything else is returned with a status:
+
+    - ``matched``: proposed episode is untracked and not claimed by an
+      earlier row in this same scan; ready to confirm via
+      ``POST /shows/{show_id}/episodes/{episode_id}/link-file``.
+    - ``unmatched``: no episode could be resolved.
+    - ``conflict``: the proposed episode is already tracked by a different
+      file, or was already claimed by an earlier row in this scan (e.g. a
+      duplicate file) — confirming would need ``link-file``'s existing 422
+      guard overridden by picking a different episode first.
+
+    Args:
+        show_id: Database primary key of the show.
+        db_session: DB session (injected).
+        llm: LLM service (injected) — used as a fallback when regex parsing
+            can't resolve a filename; matching still works without one.
+
+    Returns:
+        One :class:`ScannedFileMatch` per file found, sorted by path.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+        HTTPException: 422 if the show has no local path configured.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if not show.local_path:
+        raise HTTPException(status_code=422, detail="Show has no local path configured")
+
+    # Filesystem I/O is synchronous — run it off the event loop so a large or
+    # slow-mounted show directory doesn't stall every other concurrent request.
+    entries = await asyncio.to_thread(scan_show_directory, show.local_path)
+
+    existing_paths_stmt = select(DownloadedFile.local_path).where(DownloadedFile.show_id == show_id)
+    existing_keys = {
+        path_comparison_key(p)
+        for (p,) in (await db_session.execute(existing_paths_stmt)).all()
+        if p
+    }
+
+    results: list[ScannedFileMatch] = []
+    # Tracks episodes already claimed by an earlier row in this same scan, so
+    # two files resolving to the same untracked episode (e.g. a duplicate)
+    # are never both reported "matched" — only the first (by sort order).
+    claimed_episode_ids: set[int] = set()
+    for entry in entries:
+        if path_comparison_key(entry.raw_path) in existing_keys:
+            continue
+
+        ep, season, episode_number = await match_entry_to_episode(
+            db_session, llm, show_id, show.title, entry, show.episode_group_map
+        )
+
+        if ep is None:
+            status: Literal["matched", "unmatched", "conflict"] = "unmatched"
+        elif ep.file_tracked or ep.id in claimed_episode_ids:
+            status = "conflict"
+        else:
+            status = "matched"
+            claimed_episode_ids.add(ep.id)
+
+        results.append(
+            ScannedFileMatch(
+                path=entry.raw_path,
+                filename=Path(entry.raw_path).name,
+                season=season,
+                episode_number=episode_number,
+                episode=EpisodeBrief.model_validate(ep) if ep is not None else None,
+                status=status,
+            )
+        )
+
+    return results
 
 
 async def _resync_synthetic_file_episode(

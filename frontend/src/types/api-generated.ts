@@ -666,6 +666,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/scan-local-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Show Local Files
+         * @description List and auto-match media files found under a show's own local directory.
+         *
+         *     An alternative to bulk text-file import for episodes whose files are
+         *     already sitting at their final on-disk location — e.g. picking up
+         *     stragglers a prior import missed, or files that predate Jidou entirely.
+         *     Read-only: nothing is written. The same matching pipeline bulk path-import
+         *     uses (regex heuristics, episode_group remap, LLM fallback — see
+         *     :func:`~jidou.services.episode_file_matching.match_entry_to_episode`)
+         *     resolves each file to a proposed episode.
+         *
+         *     Files whose exact path is already recorded on a ``DownloadedFile`` for
+         *     this show (a prior import or download) are skipped entirely — they're
+         *     already accounted for. Everything else is returned with a status:
+         *
+         *     - ``matched``: proposed episode is untracked; ready to confirm via
+         *       ``POST /shows/{show_id}/episodes/{episode_id}/link-file``.
+         *     - ``unmatched``: no episode could be resolved.
+         *     - ``conflict``: the proposed episode is already tracked by a different
+         *       file — confirming would need ``link-file``'s existing 422 guard
+         *       overridden by picking a different episode first.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         db_session: DB session (injected).
+         *         llm: LLM service (injected) — used as a fallback when regex parsing
+         *             can't resolve a filename; matching still works without one.
+         *
+         *     Returns:
+         *         One :class:`ScannedFileMatch` per file found, sorted by path.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         *         HTTPException: 422 if the show has no local path configured.
+         */
+        post: operations["scan_show_local_files_api_shows__show_id__scan_local_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files": {
         parameters: {
             query?: never;
@@ -3128,6 +3180,33 @@ export interface components {
             } | null;
         };
         /**
+         * ScannedFileMatch
+         * @description One media file found while scanning a show's own local directory.
+         *
+         *     Field name mirrors the file's proposed episode assignment. Persisting an
+         *     accepted match reuses ``POST /shows/{show_id}/episodes/{episode_id}/link-file``
+         *     rather than a dedicated endpoint here — this response is purely a
+         *     read-only proposal.
+         */
+        ScannedFileMatch: {
+            /** Path */
+            path: string;
+            /** Filename */
+            filename: string;
+            /** Season */
+            season?: number | null;
+            /** Episode Number */
+            episode_number?: number | null;
+            /** @description Proposed episode match, or null if unmatched */
+            episode?: components["schemas"]["EpisodeBrief"] | null;
+            /**
+             * Status
+             * @description 'matched': proposed episode is untracked and ready to confirm. 'unmatched': no episode could be resolved for this file. 'conflict': the proposed episode is already tracked by a different file.
+             * @enum {string}
+             */
+            status: "matched" | "unmatched" | "conflict";
+        };
+        /**
          * ShowAliasesUpdate
          * @description Payload for replacing the user-defined alias list on a show.
          *
@@ -4503,6 +4582,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_show_local_files_api_shows__show_id__scan_local_files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannedFileMatch"][];
                 };
             };
             /** @description Validation Error */

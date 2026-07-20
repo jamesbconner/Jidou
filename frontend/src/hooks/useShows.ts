@@ -11,6 +11,7 @@ import type {
   EpisodeList,
   TmdbSearchResponse,
   DiscoverResult,
+  ScannedFileMatch,
 } from '@/types/api'
 
 export type ShowSortOrder =
@@ -209,6 +210,13 @@ export function useRegenerateShowAliases(showId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
     },
+  })
+}
+
+export function useScanShowLocalFiles() {
+  return useMutation({
+    mutationFn: (showId: number) =>
+      api.post<ScannedFileMatch[]>(`/shows/${showId}/scan-local-files`),
   })
 }
 
