@@ -2316,6 +2316,8 @@ export interface components {
             calendar_enabled?: boolean | null;
             /** Recent Episodes Enabled */
             recent_episodes_enabled?: boolean | null;
+            /** Recent Movies Enabled */
+            recent_movies_enabled?: boolean | null;
         };
         /**
          * AppSettingsRead
@@ -2337,6 +2339,11 @@ export interface components {
              * @description Whether the dashboard's Recently Added Episodes carousel is shown
              */
             recent_episodes_enabled: boolean;
+            /**
+             * Recent Movies Enabled
+             * @description Whether the dashboard's Recently Added Movies carousel is shown
+             */
+            recent_movies_enabled: boolean;
         };
         /**
          * AssignImportRequest

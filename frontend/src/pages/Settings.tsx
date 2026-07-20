@@ -136,6 +136,24 @@ export default function Settings() {
             className="h-4 w-4 shrink-0 accent-indigo-600"
           />
         </label>
+        <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+          <span className="text-gray-700">
+            Recently added movies
+            <span className="block text-xs text-gray-400 font-normal">
+              Show the &quot;Recently Added Movies&quot; carousel on the dashboard.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={appSettings?.recent_movies_enabled ?? true}
+            disabled={!appSettings || updateAppSettings.isPending}
+            onChange={(e) =>
+              updateAppSettings.mutate({ recent_movies_enabled: e.target.checked })
+            }
+            className="h-4 w-4 shrink-0 accent-indigo-600"
+          />
+        </label>
       </div>
 
       {/* Services — health status + on-demand connection tests in one place */}
