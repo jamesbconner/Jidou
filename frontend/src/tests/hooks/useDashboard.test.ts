@@ -2,7 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
-import { useRecentShows, useRecentEpisodes, useDashboardGenres } from '@/hooks/useDashboard'
+import {
+  useRecentShows,
+  useRecentMovies,
+  useRecentEpisodes,
+  useDashboardGenres,
+} from '@/hooks/useDashboard'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -61,6 +66,44 @@ describe('useRecentShows', () => {
       () => useRecentShows({ sort: 'tracked', contentType: '', genre: '', limit: 12 }),
       { wrapper: makeWrapper() },
     )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toHaveLength(1)
+  })
+})
+
+describe('useRecentMovies', () => {
+  test('requests recent-movies with sort, genre, and limit query params', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
+    const { result } = renderHook(
+      () => useRecentMovies({ sort: 'release', genre: 'Action', limit: 24 }),
+      { wrapper: makeWrapper() },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const url = vi.mocked(fetch).mock.calls[0][0] as string
+    expect(url).toContain('/api/dashboard/recent-movies')
+    expect(url).toContain('sort=release')
+    expect(url).toContain('genre=Action')
+    expect(url).toContain('limit=24')
+    expect(url).not.toContain('content_type=')
+  })
+
+  test('omits genre param when empty', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
+    const { result } = renderHook(() => useRecentMovies({ sort: 'tracked', genre: '', limit: 12 }), {
+      wrapper: makeWrapper(),
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const url = vi.mocked(fetch).mock.calls[0][0] as string
+    expect(url).not.toContain('genre=')
+  })
+
+  test('returns the fetched movies', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([{ id: 1, title: 'Movie A' }]))
+    const { result } = renderHook(() => useRecentMovies({ sort: 'tracked', genre: '', limit: 12 }), {
+      wrapper: makeWrapper(),
+    })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
   })

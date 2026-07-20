@@ -11,7 +11,7 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import ColumnElement, Select, nullslast, select, text
+from sqlalchemy import ColumnElement, Select, nullslast, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
@@ -50,9 +50,14 @@ def _build_recent_shows_stmt(
 ) -> Select[tuple[Show]]:
     """Build the SELECT for the "Recently Added Shows" carousel.
 
+    Movies are always excluded — they get their own "Recently Added Movies"
+    carousel (see :func:`_build_recent_movies_stmt`) instead of mixing into
+    this one. A show with no ``content_type`` set yet is kept rather than
+    hidden, since it isn't known to be a movie.
+
     Args:
         sort: ``"tracked"`` (Show.created_at) or ``"release"`` (Show.release_date).
-        content_type: Optional exact-match filter (``"anime"``, ``"tv"``, ``"movie"``).
+        content_type: Optional exact-match filter (``"anime"`` or ``"tv"``).
         genre: Optional TMDB genre name; matched via JSONB containment.
         include_adult: When ``False``, excludes shows with ``adult IS TRUE``.
         limit: Maximum number of rows to return.
@@ -60,9 +65,34 @@ def _build_recent_shows_stmt(
     Returns:
         A ready-to-execute SQLAlchemy Select statement.
     """
-    stmt = select(Show)
+    stmt = select(Show).where(or_(Show.content_type != "movie", Show.content_type.is_(None)))
     if content_type is not None:
         stmt = stmt.where(Show.content_type == content_type)
+    if genre is not None:
+        stmt = stmt.where(Show.genres.contains([{"name": genre}]))
+    if not include_adult:
+        stmt = stmt.where(Show.adult.isnot(True))
+    return stmt.order_by(_SHOW_SORT_MAP[sort]).limit(limit)
+
+
+def _build_recent_movies_stmt(
+    sort: SortOrder,
+    genre: str | None,
+    include_adult: bool,
+    limit: int,
+) -> Select[tuple[Show]]:
+    """Build the SELECT for the "Recently Added Movies" carousel.
+
+    Args:
+        sort: ``"tracked"`` (Show.created_at) or ``"release"`` (Show.release_date).
+        genre: Optional TMDB genre name; matched via JSONB containment.
+        include_adult: When ``False``, excludes movies with ``adult IS TRUE``.
+        limit: Maximum number of rows to return.
+
+    Returns:
+        A ready-to-execute SQLAlchemy Select statement.
+    """
+    stmt = select(Show).where(Show.content_type == "movie")
     if genre is not None:
         stmt = stmt.where(Show.genres.contains([{"name": genre}]))
     if not include_adult:
@@ -116,22 +146,55 @@ async def get_recent_shows(
 ) -> list[RecentShowItem]:
     """Return the most recently added shows for the dashboard carousel.
 
+    Movies are never included — see ``GET /dashboard/recent-movies`` instead.
+
     Args:
         sort: ``"tracked"`` (when added to Jidou) or ``"release"`` (TMDB release date).
-        content_type: Optional filter (``"anime"``, ``"tv"``, ``"movie"``).
+        content_type: Optional filter (``"anime"`` or ``"tv"``).
         genre: Optional TMDB genre name filter.
         limit: Maximum number of shows to return (1-50).
         db_session: DB session (injected).
 
     Returns:
-        Up to *limit* shows, most-recent first. Adult-flagged shows are
-        excluded unless the ``dashboard.show_adult_content`` setting is
+        Up to *limit* non-movie shows, most-recent first. Adult-flagged shows
+        are excluded unless the ``dashboard.show_adult_content`` setting is
         enabled — this is not a caller-controlled query parameter.
     """
     include_adult = await get_show_adult_content(db_session)
     stmt = _build_recent_shows_stmt(sort, content_type, genre, include_adult, limit)
     shows = (await db_session.execute(stmt)).scalars().all()
     return [RecentShowItem.model_validate(show) for show in shows]
+
+
+@router.get("/recent-movies", response_model=list[RecentShowItem])
+async def get_recent_movies(
+    sort: SortOrder = Query(default="tracked"),  # noqa: B008
+    genre: str | None = Query(default=None),
+    limit: int = Query(default=12, ge=1, le=50),
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[RecentShowItem]:
+    """Return the most recently added movies for the dashboard carousel.
+
+    A dedicated endpoint rather than a ``content_type=movie`` filter on
+    ``GET /dashboard/recent-shows``, mirroring how recent-shows and
+    recent-episodes are already split by kind rather than sharing one
+    parameterized endpoint.
+
+    Args:
+        sort: ``"tracked"`` (when added to Jidou) or ``"release"`` (TMDB release date).
+        genre: Optional TMDB genre name filter.
+        limit: Maximum number of movies to return (1-50).
+        db_session: DB session (injected).
+
+    Returns:
+        Up to *limit* movies, most-recent first. Adult-flagged movies are
+        excluded unless the ``dashboard.show_adult_content`` setting is
+        enabled — this is not a caller-controlled query parameter.
+    """
+    include_adult = await get_show_adult_content(db_session)
+    stmt = _build_recent_movies_stmt(sort, genre, include_adult, limit)
+    movies = (await db_session.execute(stmt)).scalars().all()
+    return [RecentShowItem.model_validate(movie) for movie in movies]
 
 
 @router.get("/recent-episodes", response_model=list[RecentEpisodeItem])

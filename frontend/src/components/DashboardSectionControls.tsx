@@ -1,7 +1,7 @@
 import { RECENT_SORT_LABELS, type RecentSort } from '@/hooks/useDashboard'
 
 const CARD_COUNT_OPTIONS = [6, 12, 18, 24, 36]
-const CONTENT_TYPE_OPTIONS = ['anime', 'tv', 'movie']
+const DEFAULT_CONTENT_TYPE_OPTIONS = ['anime', 'tv', 'movie']
 
 interface Props {
   sort: RecentSort
@@ -9,8 +9,12 @@ interface Props {
   genre: string
   onGenreChange: (genre: string) => void
   genreOptions: string[]
-  contentType: string
-  onContentTypeChange: (contentType: string) => void
+  // Omit both to hide the content-type select entirely — used by sections
+  // that are already scoped to a single content type (e.g. movies), where
+  // the filter would always be redundant.
+  contentType?: string
+  onContentTypeChange?: (contentType: string) => void
+  contentTypeOptions?: string[]
   limit: number
   onLimitChange: (limit: number) => void
 }
@@ -27,6 +31,7 @@ export function DashboardSectionControls({
   genreOptions,
   contentType,
   onContentTypeChange,
+  contentTypeOptions = DEFAULT_CONTENT_TYPE_OPTIONS,
   limit,
   onLimitChange,
 }: Props) {
@@ -45,19 +50,21 @@ export function DashboardSectionControls({
         ))}
       </select>
 
-      <select
-        value={contentType}
-        onChange={(e) => onContentTypeChange(e.target.value)}
-        className={selectCls}
-        aria-label="Content type"
-      >
-        <option value="">All types</option>
-        {CONTENT_TYPE_OPTIONS.map((t) => (
-          <option key={t} value={t}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </option>
-        ))}
-      </select>
+      {onContentTypeChange && (
+        <select
+          value={contentType}
+          onChange={(e) => onContentTypeChange(e.target.value)}
+          className={selectCls}
+          aria-label="Content type"
+        >
+          <option value="">All types</option>
+          {contentTypeOptions.map((t) => (
+            <option key={t} value={t}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </option>
+          ))}
+        </select>
+      )}
 
       <select
         value={genre}

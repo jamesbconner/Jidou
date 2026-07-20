@@ -10,6 +10,7 @@ import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { RecentShowsSection } from '@/components/RecentShowsSection'
+import { RecentMoviesSection } from '@/components/RecentMoviesSection'
 import { RecentEpisodesSection } from '@/components/RecentEpisodesSection'
 import { MediaDetailModal } from '@/components/MediaDetailModal'
 import type { RecentSort } from '@/hooks/useDashboard'
@@ -231,6 +232,7 @@ export default function Dashboard() {
 
       {/* Recently added carousels */}
       <RecentShowsSection onCardClick={openShowModal} />
+      <RecentMoviesSection onCardClick={openShowModal} />
       {(appSettings?.recent_episodes_enabled ?? true) && (
         <RecentEpisodesSection onCardClick={openEpisodeModal} />
       )}

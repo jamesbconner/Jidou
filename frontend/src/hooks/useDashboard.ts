@@ -16,9 +16,17 @@ export interface RecentQueryParams {
   limit: number
 }
 
+export interface RecentMovieQueryParams {
+  sort: RecentSort
+  genre: string
+  limit: number
+}
+
 export const dashboardKeys = {
   all: ['dashboard'] as const,
   recentShows: (params: RecentQueryParams) => [...dashboardKeys.all, 'recent-shows', params] as const,
+  recentMovies: (params: RecentMovieQueryParams) =>
+    [...dashboardKeys.all, 'recent-movies', params] as const,
   recentEpisodes: (params: RecentQueryParams) =>
     [...dashboardKeys.all, 'recent-episodes', params] as const,
   genres: () => [...dashboardKeys.all, 'genres'] as const,
@@ -31,10 +39,23 @@ function buildQuery(params: RecentQueryParams): string {
   return search.toString()
 }
 
+function buildMovieQuery(params: RecentMovieQueryParams): string {
+  const search = new URLSearchParams({ sort: params.sort, limit: String(params.limit) })
+  if (params.genre) search.set('genre', params.genre)
+  return search.toString()
+}
+
 export function useRecentShows(params: RecentQueryParams) {
   return useQuery({
     queryKey: dashboardKeys.recentShows(params),
     queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-shows?${buildQuery(params)}`),
+  })
+}
+
+export function useRecentMovies(params: RecentMovieQueryParams) {
+  return useQuery({
+    queryKey: dashboardKeys.recentMovies(params),
+    queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-movies?${buildMovieQuery(params)}`),
   })
 }
 
