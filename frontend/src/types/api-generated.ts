@@ -1408,19 +1408,57 @@ export interface paths {
          * Get Recent Shows
          * @description Return the most recently added shows for the dashboard carousel.
          *
+         *     Movies are never included — see ``GET /dashboard/recent-movies`` instead.
+         *
          *     Args:
          *         sort: ``"tracked"`` (when added to Jidou) or ``"release"`` (TMDB release date).
-         *         content_type: Optional filter (``"anime"``, ``"tv"``, ``"movie"``).
+         *         content_type: Optional filter (``"anime"`` or ``"tv"``).
          *         genre: Optional TMDB genre name filter.
          *         limit: Maximum number of shows to return (1-50).
          *         db_session: DB session (injected).
          *
          *     Returns:
-         *         Up to *limit* shows, most-recent first. Adult-flagged shows are
-         *         excluded unless the ``dashboard.show_adult_content`` setting is
+         *         Up to *limit* non-movie shows, most-recent first. Adult-flagged shows
+         *         are excluded unless the ``dashboard.show_adult_content`` setting is
          *         enabled — this is not a caller-controlled query parameter.
          */
         get: operations["get_recent_shows_api_dashboard_recent_shows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/recent-movies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Recent Movies
+         * @description Return the most recently added movies for the dashboard carousel.
+         *
+         *     A dedicated endpoint rather than a ``content_type=movie`` filter on
+         *     ``GET /dashboard/recent-shows``, mirroring how recent-shows and
+         *     recent-episodes are already split by kind rather than sharing one
+         *     parameterized endpoint.
+         *
+         *     Args:
+         *         sort: ``"tracked"`` (when added to Jidou) or ``"release"`` (TMDB release date).
+         *         genre: Optional TMDB genre name filter.
+         *         limit: Maximum number of movies to return (1-50).
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         Up to *limit* movies, most-recent first. Adult-flagged movies are
+         *         excluded unless the ``dashboard.show_adult_content`` setting is
+         *         enabled — this is not a caller-controlled query parameter.
+         */
+        get: operations["get_recent_movies_api_dashboard_recent_movies_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5419,6 +5457,41 @@ export interface operations {
             query?: {
                 sort?: "tracked" | "release";
                 content_type?: string | null;
+                genre?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentShowItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recent_movies_api_dashboard_recent_movies_get: {
+        parameters: {
+            query?: {
+                sort?: "tracked" | "release";
                 genre?: string | null;
                 limit?: number;
             };

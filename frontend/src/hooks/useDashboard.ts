@@ -11,7 +11,9 @@ export const RECENT_SORT_LABELS: Record<RecentSort, string> = {
 
 export interface RecentQueryParams {
   sort: RecentSort
-  contentType: string
+  // Omitted entirely by callers scoped to a single content type already
+  // (e.g. the movies carousel, where it'd always be redundant).
+  contentType?: string
   genre: string
   limit: number
 }
@@ -19,6 +21,8 @@ export interface RecentQueryParams {
 export const dashboardKeys = {
   all: ['dashboard'] as const,
   recentShows: (params: RecentQueryParams) => [...dashboardKeys.all, 'recent-shows', params] as const,
+  recentMovies: (params: RecentQueryParams) =>
+    [...dashboardKeys.all, 'recent-movies', params] as const,
   recentEpisodes: (params: RecentQueryParams) =>
     [...dashboardKeys.all, 'recent-episodes', params] as const,
   genres: () => [...dashboardKeys.all, 'genres'] as const,
@@ -35,6 +39,13 @@ export function useRecentShows(params: RecentQueryParams) {
   return useQuery({
     queryKey: dashboardKeys.recentShows(params),
     queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-shows?${buildQuery(params)}`),
+  })
+}
+
+export function useRecentMovies(params: RecentQueryParams) {
+  return useQuery({
+    queryKey: dashboardKeys.recentMovies(params),
+    queryFn: () => api.get<RecentShowItem[]>(`/dashboard/recent-movies?${buildQuery(params)}`),
   })
 }
 

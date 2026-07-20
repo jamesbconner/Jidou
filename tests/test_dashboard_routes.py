@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 
-from jidou.api.routes.dashboard import _build_recent_episodes_stmt, _build_recent_shows_stmt
+from jidou.api.routes.dashboard import (
+    _build_recent_episodes_stmt,
+    _build_recent_movies_stmt,
+    _build_recent_shows_stmt,
+)
 from jidou.database import get_session
 from jidou.main import app
 
@@ -33,14 +37,20 @@ class TestBuildRecentShowsStmt:
     def test_content_type_filter_applied_when_given(self) -> None:
         sql, params = _compile(_build_recent_shows_stmt("tracked", "anime", None, True, 12))
         assert "shows.content_type = " in sql
-        assert params["content_type_1"] == "anime"
+        assert params["content_type_2"] == "anime"
 
-    def test_no_where_clause_when_all_filters_absent(self) -> None:
-        # select(Show) always SELECTs the content_type/genres/adult columns,
-        # so absence of a filter must be checked via the WHERE clause, not
-        # bare substring presence.
+    def test_excludes_movies_unconditionally(self) -> None:
+        # Movies always have their own carousel now — kept even when no
+        # other filter is given, and null content_type is treated as "not
+        # known to be a movie" rather than hidden.
+        sql, params = _compile(_build_recent_shows_stmt("tracked", None, None, True, 12))
+        assert "shows.content_type != " in sql
+        assert "shows.content_type IS NULL" in sql
+        assert params["content_type_1"] == "movie"
+
+    def test_only_movie_exclusion_clause_when_all_other_filters_absent(self) -> None:
         sql, _ = _compile(_build_recent_shows_stmt("tracked", None, None, True, 12))
-        assert "WHERE" not in sql
+        assert sql.count("WHERE") == 1
 
     def test_genre_filter_uses_jsonb_containment(self) -> None:
         sql, params = _compile(_build_recent_shows_stmt("tracked", None, "Action", True, 12))
@@ -57,6 +67,43 @@ class TestBuildRecentShowsStmt:
 
     def test_limit_propagated(self) -> None:
         _, params = _compile(_build_recent_shows_stmt("tracked", None, None, True, 37))
+        assert params["param_1"] == 37
+
+
+# ---------------------------------------------------------------------------
+# _build_recent_movies_stmt
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRecentMoviesStmt:
+    def test_filters_to_movies_only(self) -> None:
+        sql, params = _compile(_build_recent_movies_stmt("tracked", None, True, 12))
+        assert "shows.content_type = " in sql
+        assert params["content_type_1"] == "movie"
+
+    def test_tracked_sort_orders_by_created_at(self) -> None:
+        sql, _ = _compile(_build_recent_movies_stmt("tracked", None, True, 12))
+        assert "ORDER BY shows.created_at DESC" in sql
+
+    def test_release_sort_orders_by_release_date_nulls_last(self) -> None:
+        sql, _ = _compile(_build_recent_movies_stmt("release", None, True, 12))
+        assert "ORDER BY shows.release_date DESC NULLS LAST" in sql
+
+    def test_genre_filter_uses_jsonb_containment(self) -> None:
+        sql, params = _compile(_build_recent_movies_stmt("tracked", "Action", True, 12))
+        assert "shows.genres @>" in sql
+        assert params["genres_1"] == [{"name": "Action"}]
+
+    def test_adult_clause_present_when_include_adult_false(self) -> None:
+        sql, _ = _compile(_build_recent_movies_stmt("tracked", None, False, 12))
+        assert "shows.adult IS NOT true" in sql
+
+    def test_adult_clause_absent_when_include_adult_true(self) -> None:
+        sql, _ = _compile(_build_recent_movies_stmt("tracked", None, True, 12))
+        assert "adult IS NOT" not in sql
+
+    def test_limit_propagated(self) -> None:
+        _, params = _compile(_build_recent_movies_stmt("tracked", None, True, 37))
         assert params["param_1"] == 37
 
 
@@ -164,6 +211,68 @@ class TestGetRecentShows:
             with patch("jidou.api.routes.dashboard.get_show_adult_content", mock_get_adult):
                 TestClient(app).get("/api/dashboard/recent-shows")
             mock_get_adult.assert_awaited_once()
+        finally:
+            app.dependency_overrides.clear()
+
+
+class TestGetRecentMovies:
+    def test_returns_empty_list(self) -> None:
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            with patch(
+                "jidou.api.routes.dashboard.get_show_adult_content",
+                AsyncMock(return_value=False),
+            ):
+                resp = TestClient(app).get("/api/dashboard/recent-movies")
+            assert resp.status_code == 200
+            assert resp.json() == []
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_invalid_sort_returns_422(self) -> None:
+        app.dependency_overrides[get_session] = _session_override(MagicMock())
+        try:
+            resp = TestClient(app).get("/api/dashboard/recent-movies?sort=bogus")
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_limit_zero_returns_422(self) -> None:
+        app.dependency_overrides[get_session] = _session_override(MagicMock())
+        try:
+            resp = TestClient(app).get("/api/dashboard/recent-movies?limit=0")
+            assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_consults_adult_content_setting(self) -> None:
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        app.dependency_overrides[get_session] = _session_override(result)
+        mock_get_adult = AsyncMock(return_value=False)
+        try:
+            with patch("jidou.api.routes.dashboard.get_show_adult_content", mock_get_adult):
+                TestClient(app).get("/api/dashboard/recent-movies")
+            mock_get_adult.assert_awaited_once()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_does_not_accept_content_type_param(self) -> None:
+        # Unlike recent-shows, content_type isn't a parameter here at all —
+        # it's always "movie". Passing it is simply ignored (FastAPI/Query
+        # params not declared on the route are silently dropped).
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            with patch(
+                "jidou.api.routes.dashboard.get_show_adult_content",
+                AsyncMock(return_value=False),
+            ):
+                resp = TestClient(app).get("/api/dashboard/recent-movies?content_type=tv")
+            assert resp.status_code == 200
         finally:
             app.dependency_overrides.clear()
 
