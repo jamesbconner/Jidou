@@ -15,6 +15,9 @@ class AppSettingsRead(BaseModel):
     recent_episodes_enabled: bool = Field(
         description="Whether the dashboard's Recently Added Episodes carousel is shown",
     )
+    recent_movies_enabled: bool = Field(
+        description="Whether the dashboard's Recently Added Movies carousel is shown",
+    )
 
 
 class AppSettingsPatch(BaseModel):
@@ -23,3 +26,4 @@ class AppSettingsPatch(BaseModel):
     show_adult_content: bool | None = None
     calendar_enabled: bool | None = None
     recent_episodes_enabled: bool | None = None
+    recent_movies_enabled: bool | None = None

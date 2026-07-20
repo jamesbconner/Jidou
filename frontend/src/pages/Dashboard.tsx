@@ -232,7 +232,9 @@ export default function Dashboard() {
 
       {/* Recently added carousels */}
       <RecentShowsSection onCardClick={openShowModal} />
-      <RecentMoviesSection onCardClick={openShowModal} />
+      {(appSettings?.recent_movies_enabled ?? true) && (
+        <RecentMoviesSection onCardClick={openShowModal} />
+      )}
       {(appSettings?.recent_episodes_enabled ?? true) && (
         <RecentEpisodesSection onCardClick={openEpisodeModal} />
       )}

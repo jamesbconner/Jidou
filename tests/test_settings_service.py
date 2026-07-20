@@ -7,6 +7,7 @@ import pytest
 from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     RECENT_EPISODES_ENABLED,
+    RECENT_MOVIES_ENABLED,
     SHOW_ADULT_CONTENT,
     get_all_settings,
     get_setting,
@@ -100,6 +101,7 @@ class TestGetAllSettings:
             SHOW_ADULT_CONTENT: False,
             CALENDAR_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
+            RECENT_MOVIES_ENABLED: True,
         }
 
     @pytest.mark.asyncio
@@ -119,4 +121,5 @@ class TestGetAllSettings:
             SHOW_ADULT_CONTENT: True,
             CALENDAR_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
+            RECENT_MOVIES_ENABLED: True,
         }
