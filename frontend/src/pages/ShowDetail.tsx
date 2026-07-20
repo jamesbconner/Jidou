@@ -206,24 +206,27 @@ export default function ShowDetail() {
               </p>
             </div>
 
-            {/* Destructive action — upper right */}
+            {/* Show-level actions — upper right */}
             <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
               <button
                 onClick={() => setDeleteConfirmOpen(true)}
                 disabled={isDeleting}
-                className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+                className="w-28 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
               >
                 {isDeleting ? 'Removing…' : 'Remove Show'}
               </button>
-              <span
-                className={`px-3 py-1 text-xs rounded whitespace-nowrap cursor-default select-none ${
-                  existingRssSub
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-gray-50 text-gray-400 border border-gray-200'
-                }`}
+              <button
+                onClick={handleRssButtonClick}
+                disabled={ensureRssStub.isPending}
+                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
               >
-                {existingRssSub ? 'In RSS Feed' : 'Not in RSS Feed'}
-              </span>
+                {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
+              </button>
+              {ensureRssStub.isError && (
+                <span className="text-xs text-red-600 text-right max-w-[10rem]">
+                  {(ensureRssStub.error as Error).message}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -243,60 +246,64 @@ export default function ShowDetail() {
       </section>
 
       {/* Actions */}
-      <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="font-semibold mb-3">Actions</h2>
-        <div className="flex gap-2 flex-wrap items-center">
-          <button
-            onClick={() => syncEpisodes.mutate(showId)}
-            disabled={syncEpisodes.isPending}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
-          </button>
-          <button
-            onClick={() => setPathModalOpen(true)}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-          >
-            Edit Path
-          </button>
-          <button
-            onClick={() => setRematchOpen(true)}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-          >
-            Change TMDB Match
-          </button>
-          <button
-            onClick={() => setContentTypeOpen(true)}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-          >
-            {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
-          </button>
-          <button
-            onClick={() => setAliasModalOpen(true)}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-          >
-            Manage Aliases
-          </button>
-          <button
-            onClick={() => setScanLocalFilesOpen(true)}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-          >
-            Scan Local Files
-          </button>
-          <button
-            onClick={handleRssButtonClick}
-            disabled={ensureRssStub.isPending}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
-          </button>
-          {syncEpisodes.isSuccess && <span className="text-xs text-green-600">Episodes synced</span>}
-          {syncEpisodes.isError && (
-            <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
-          )}
-          {ensureRssStub.isError && (
-            <span className="text-xs text-red-600">{(ensureRssStub.error as Error).message}</span>
-          )}
+      <section className="bg-white rounded-lg shadow p-4 space-y-4">
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Show Info
+          </h3>
+          <div className="flex gap-2 flex-wrap items-center">
+            <button
+              onClick={() => setPathModalOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              Edit Path
+            </button>
+            <button
+              onClick={() => setRematchOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              Change TMDB Match
+            </button>
+            <button
+              onClick={() => setContentTypeOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
+            </button>
+            <button
+              onClick={() => setAliasModalOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              Manage Aliases
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t pt-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Episodes &amp; Files
+          </h3>
+          <div className="flex gap-2 flex-wrap items-center">
+            <button
+              onClick={() => syncEpisodes.mutate(showId)}
+              disabled={syncEpisodes.isPending}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+            >
+              {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
+            </button>
+            <button
+              onClick={() => setScanLocalFilesOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+            >
+              Scan Local Files
+            </button>
+            {syncEpisodes.isSuccess && (
+              <span className="text-xs text-green-600">Episodes synced</span>
+            )}
+            {syncEpisodes.isError && (
+              <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
+            )}
+          </div>
         </div>
       </section>
 
