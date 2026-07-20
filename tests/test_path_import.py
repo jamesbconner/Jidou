@@ -652,6 +652,79 @@ class TestScanShowDirectory:
         entries = scan_show_directory(str(tmp_path))
         assert [e.raw_path for e in entries] == sorted(e.raw_path for e in entries)
 
+    def test_sample_file_excluded(self, tmp_path: Path) -> None:
+        """A file with 'sample' in its name is excluded, matching file_filters.py
+        (the same rule the SFTP scan pipeline already applies)."""
+        from jidou.services.path_parser import scan_show_directory
+
+        (tmp_path / "Show.S01E01.sample.mkv").write_text("x")
+        (tmp_path / "Show.S01E01.mkv").write_text("x")
+
+        entries = scan_show_directory(str(tmp_path))
+        assert [Path(e.raw_path).name for e in entries] == ["Show.S01E01.mkv"]
+
+    def test_sample_directory_pruned(self, tmp_path: Path) -> None:
+        """Files inside a 'Sample'-named directory are excluded entirely."""
+        from jidou.services.path_parser import scan_show_directory
+
+        sample_dir = tmp_path / "Sample"
+        sample_dir.mkdir()
+        (sample_dir / "preview.mkv").write_text("x")
+        (tmp_path / "Show.S01E01.mkv").write_text("x")
+
+        entries = scan_show_directory(str(tmp_path))
+        assert [Path(e.raw_path).name for e in entries] == ["Show.S01E01.mkv"]
+
+
+class TestPathComparisonKey:
+    def test_same_posix_path_matches_itself(self) -> None:
+        from jidou.services.path_parser import path_comparison_key
+
+        assert path_comparison_key("/data/media/anime/Show/Season 01/ep.mkv") == (
+            path_comparison_key("/data/media/anime/Show/Season 01/ep.mkv")
+        )
+
+    def test_windows_and_posix_style_match_when_suffix_agrees(self) -> None:
+        """A Windows-style bulk-import path and a POSIX-style live scan path
+        for the same show/season/filename compare equal, even though the
+        roots are completely different strings."""
+        from jidou.services.path_parser import path_comparison_key
+
+        windows_style = r"Z:\anime tv\Show\Season 01\Show - 01.mkv"
+        posix_style = "/data/media/anime/Show/Season 01/Show - 01.mkv"
+        assert path_comparison_key(windows_style) == path_comparison_key(posix_style)
+
+    def test_different_filename_does_not_match(self) -> None:
+        from jidou.services.path_parser import path_comparison_key
+
+        a = "/data/media/anime/Show/Season 01/Show - 01.mkv"
+        b = "/data/media/anime/Show/Season 01/Show - 02.mkv"
+        assert path_comparison_key(a) != path_comparison_key(b)
+
+    def test_case_insensitive(self) -> None:
+        from jidou.services.path_parser import path_comparison_key
+
+        assert path_comparison_key("/data/Show/Season 01/EP.MKV") == path_comparison_key(
+            "/data/show/season 01/ep.mkv"
+        )
+
+
+class TestDetectSeasonFromSegments:
+    def test_returns_season_from_matching_segment(self) -> None:
+        from jidou.services.path_parser import _detect_season_from_segments
+
+        assert _detect_season_from_segments(["Season 02", "Extras"]) == 2
+
+    def test_returns_none_when_no_segment_matches(self) -> None:
+        from jidou.services.path_parser import _detect_season_from_segments
+
+        assert _detect_season_from_segments(["Extras", "Misc"]) is None
+
+    def test_first_match_wins(self) -> None:
+        from jidou.services.path_parser import _detect_season_from_segments
+
+        assert _detect_season_from_segments(["Season 02", "Season 01"]) == 2
+
 
 # ---------------------------------------------------------------------------
 # PathImportOrchestrator (unit — DB and TMDB fully mocked)

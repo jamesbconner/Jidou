@@ -19,7 +19,7 @@ interface Props {
   onClose: () => void
 }
 
-type RowOutcome = 'linked' | 'failed'
+type RowOutcome = { kind: 'linked' } | { kind: 'failed'; message: string }
 
 export function ScanLocalFilesModal({ showId, onClose }: Props) {
   const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
@@ -28,6 +28,11 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
   const { data: episodes = [] } = useShowEpisodes(showId)
 
   const [selections, setSelections] = useState<Record<string, string>>({})
+  // Paths the user has explicitly changed via the <select> — distinct from
+  // `selections` itself, so the reseed effect below can tell "user chose
+  // this" apart from "auto-seeded from a since-superseded scan" and only
+  // preserve the former across a Rescan.
+  const [touchedPaths, setTouchedPaths] = useState<Set<string>>(new Set())
   const [pendingPaths, setPendingPaths] = useState<Set<string>>(new Set())
   const [outcomes, setOutcomes] = useState<Record<string, RowOutcome>>({})
   const [bulkPending, setBulkPending] = useState(false)
@@ -37,24 +42,30 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showId])
 
-  // Seed each row's picker with its proposed episode — but only once per scan
-  // result, so a user's manual override survives a later re-render.
+  // Seed each row's picker with its proposed episode on every fresh scan
+  // result — except for paths the user has manually touched, which keep
+  // their own choice across a Rescan instead of being overwritten.
   useEffect(() => {
     if (!scan.data) return
     setSelections((prev) => {
       const next = { ...prev }
       for (const row of scan.data!) {
-        if (!(row.path in next)) {
+        if (!touchedPaths.has(row.path)) {
           next[row.path] = row.status === 'matched' && row.episode ? String(row.episode.id) : ''
         }
       }
       return next
     })
-  }, [scan.data])
+  }, [scan.data, touchedPaths])
 
   const seasonMap = useMemo(() => buildSeasonMap(episodes), [episodes])
   const seasons = useMemo(() => Array.from(seasonMap.keys()).sort((a, b) => a - b), [seasonMap])
   const episodeById = useMemo(() => new Map(episodes.map((e) => [e.id, e])), [episodes])
+
+  function handleSelectChange(path: string, value: string) {
+    setTouchedPaths((prev) => new Set(prev).add(path))
+    setSelections((prev) => ({ ...prev, [path]: value }))
+  }
 
   function rowIsActionable(row: ScannedFileMatch): boolean {
     const selected = selections[row.path]
@@ -69,9 +80,10 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
     setPendingPaths((prev) => new Set(prev).add(row.path))
     try {
       await linkFile.mutateAsync({ showId, episodeId: Number(selected), path: row.path })
-      setOutcomes((prev) => ({ ...prev, [row.path]: 'linked' }))
-    } catch {
-      setOutcomes((prev) => ({ ...prev, [row.path]: 'failed' }))
+      setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'linked' } }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to link'
+      setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'failed', message } }))
     } finally {
       setPendingPaths((prev) => {
         const next = new Set(prev)
@@ -83,11 +95,20 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
 
   async function handleConfirmAll() {
     const rows = (scan.data ?? []).filter(
-      (row) => outcomes[row.path] !== 'linked' && rowIsActionable(row),
+      (row) => outcomes[row.path]?.kind !== 'linked' && rowIsActionable(row),
     )
     setBulkPending(true)
     try {
-      await Promise.allSettled(rows.map((row) => linkRow(row)))
+      // Sequential, not concurrent: two rows could target the same episode
+      // (manually assigned, or a scan-time collision the backend didn't
+      // catch), and firing every link-file call at once would race past the
+      // backend's already-tracked check before either commit lands. The
+      // backend also takes a row lock (link_episode_file's with_for_update)
+      // as defense in depth, but avoiding the race client-side means the
+      // user sees an honest per-row result instead of a surprise 422.
+      for (const row of rows) {
+        await linkRow(row)
+      }
     } finally {
       setBulkPending(false)
     }
@@ -95,7 +116,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
 
   const rows = scan.data ?? []
   const actionableCount = rows.filter(
-    (row) => outcomes[row.path] !== 'linked' && rowIsActionable(row),
+    (row) => outcomes[row.path]?.kind !== 'linked' && rowIsActionable(row),
   ).length
 
   return (
@@ -140,7 +161,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
             const isPending = pendingPaths.has(row.path)
             const selected = selections[row.path] ?? ''
             const selectedEp = selected ? episodeById.get(Number(selected)) : undefined
-            const actionable = rowIsActionable(row) && outcome !== 'linked'
+            const actionable = rowIsActionable(row) && outcome?.kind !== 'linked'
 
             return (
               <div
@@ -159,7 +180,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                   </div>
                   <span
                     className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium ${
-                      outcome === 'linked'
+                      outcome?.kind === 'linked'
                         ? 'bg-green-900/40 text-green-400'
                         : row.status === 'matched'
                           ? 'bg-indigo-900/40 text-indigo-400'
@@ -168,21 +189,19 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                             : 'bg-zinc-700 text-zinc-400'
                     }`}
                   >
-                    {outcome === 'linked'
+                    {outcome?.kind === 'linked'
                       ? 'linked'
-                      : outcome === 'failed'
+                      : outcome?.kind === 'failed'
                         ? 'failed'
                         : row.status}
                   </span>
                 </div>
 
-                {outcome !== 'linked' && (
+                {outcome?.kind !== 'linked' && (
                   <div className="flex items-center gap-2">
                     <select
                       value={selected}
-                      onChange={(e) =>
-                        setSelections((prev) => ({ ...prev, [row.path]: e.target.value }))
-                      }
+                      onChange={(e) => handleSelectChange(row.path, e.target.value)}
                       disabled={isPending}
                       className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
                     >
@@ -209,13 +228,13 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                     </button>
                   </div>
                 )}
-                {selectedEp && selectedEp.file_tracked && outcome !== 'linked' && (
+                {selectedEp && selectedEp.file_tracked && outcome?.kind !== 'linked' && (
                   <p className="text-[11px] text-amber-500">
                     This episode is already tracked — pick a different one to link this file.
                   </p>
                 )}
-                {outcome === 'failed' && (
-                  <p className="text-[11px] text-red-400">Failed to link — try again.</p>
+                {outcome?.kind === 'failed' && (
+                  <p className="text-[11px] text-red-400">{outcome.message}</p>
                 )}
               </div>
             )

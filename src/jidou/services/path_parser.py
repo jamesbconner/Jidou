@@ -10,8 +10,11 @@ prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POS
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+
+from jidou.services.file_filters import is_valid_directory, is_valid_media_file
 
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
@@ -73,6 +76,53 @@ _COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
 _MEDIA_EXTENSIONS = frozenset(
     {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
 )
+
+
+def _detect_season_from_segments(segments: Sequence[str]) -> int | None:
+    """Return the season number from the first ``Season N`` segment, or None.
+
+    Shared by :func:`parse_line` and :func:`scan_show_directory` so the two
+    features can never drift apart on how a season directory is detected.
+
+    Args:
+        segments: Path segments to search, ordered outermost to innermost —
+            the first match wins (an outer ``Season N`` folder takes priority
+            over any ``Season N`` folder nested inside it).
+
+    Returns:
+        The season number, or None if no segment matches.
+    """
+    for seg in segments:
+        season_match = _SEASON_DIR.match(seg)
+        if season_match:
+            return int(season_match.group(1))
+    return None
+
+
+def path_comparison_key(path_str: str, depth: int = 2) -> str:
+    """Build a format-agnostic, case-insensitive key for comparing two paths.
+
+    Two path strings can refer to the same physical file while having
+    completely different, unrelated roots — e.g. a Windows-style path typed
+    into a bulk-import text file (``Z:\\anime tv\\Show\\...``) versus the
+    container's own POSIX view of the same file (``/data/media/anime/Show/...``).
+    There is no invertible string transform between the two roots, so this
+    only compares the trailing *depth* segments (parent directory name(s) plus
+    filename) rather than the full path — a much weaker but achievable
+    signal for "this is probably the same file" without needing the
+    host/container path mapping.
+
+    Args:
+        path_str: A path string, Windows- or POSIX-style.
+        depth: Number of trailing path segments to include in the key.
+
+    Returns:
+        A lower-cased, forward-slash-joined key built from the trailing
+        *depth* segments (fewer if the path is shorter than *depth*).
+    """
+    path = _as_pure_path(path_str)
+    parts = path.parts[-depth:] if len(path.parts) >= depth else path.parts
+    return "/".join(p.lower() for p in parts)
 
 
 @dataclass
@@ -257,12 +307,7 @@ def parse_line(
         # A "Season N" match can appear at any depth in between.
         show_dir = rel_parts[0]
         show_root = str(path.parents[len(rel_parts) - 2])
-        dir_season = None
-        for seg in rel_parts[1:-1]:
-            season_match = _SEASON_DIR.match(seg)
-            if season_match:
-                dir_season = int(season_match.group(1))
-                break
+        dir_season = _detect_season_from_segments(rel_parts[1:-1])
     else:
         # Fallback: infer the show directory from the file's immediate
         # parent (or grandparent, if the parent looks like "Season N").
@@ -326,8 +371,12 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     used by the show-scoped "scan local files" feature, not bulk path-import)
     — so this only needs season detection from any ``Season N`` ancestor
     directory and episode extraction from the filename, both reusing
-    :func:`_parse_episode` so the two features never drift apart on parsing
-    behavior.
+    :func:`_parse_episode`/:func:`_detect_season_from_segments` so the two
+    features never drift apart on parsing behavior. File and directory
+    validity (extension allowlist, sample/screens/thumbs.db exclusion) reuses
+    :mod:`~jidou.services.file_filters`, the same rules the SFTP scan
+    pipeline already applies, so junk that's excluded there doesn't reappear
+    as a scan candidate here.
 
     Args:
         show_root: Absolute container-side path to the show's own directory.
@@ -343,16 +392,14 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
 
     entries: list[ParsedPathEntry] = []
     for file_path in sorted(root.rglob("*")):
-        if not file_path.is_file() or file_path.suffix.lower() not in _MEDIA_EXTENSIONS:
+        if not file_path.is_file() or not is_valid_media_file(file_path.name):
             continue
 
         rel_parts = file_path.relative_to(root).parts
-        dir_season: int | None = None
-        for seg in rel_parts[:-1]:
-            season_match = _SEASON_DIR.match(seg)
-            if season_match:
-                dir_season = int(season_match.group(1))
-                break
+        if any(not is_valid_directory(seg) for seg in rel_parts[:-1]):
+            continue
+
+        dir_season = _detect_season_from_segments(rel_parts[:-1])
 
         fn_season, episode, absolute_candidate = _parse_episode(
             file_path.stem, dir_season=dir_season

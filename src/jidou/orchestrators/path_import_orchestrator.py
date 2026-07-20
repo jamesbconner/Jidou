@@ -561,8 +561,9 @@ class PathImportOrchestrator:
             return show_result
 
         # In dry-run mode, a newly "created" show has no database id and no
-        # synced episodes yet, so _find_episode would query show_id=NULL and
-        # return nothing.  Estimate from the parsed entries instead.
+        # synced episodes yet, so match_entry_to_episode would query
+        # show_id=NULL and return nothing.  Estimate from the parsed entries
+        # instead.
         if self.dry_run and show.id is None:
             for entry in entries:
                 if entry.episode is not None:
@@ -624,9 +625,9 @@ class PathImportOrchestrator:
             else:
                 filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
                 # resolved_season/resolved_episode reflect any LLM adjustment made
-                # inside _find_episode — entry.season/entry.episode would only ever
-                # show the pre-LLM regex output, hiding whether an LLM fallback was
-                # even attempted or what it returned.
+                # inside match_entry_to_episode — entry.season/entry.episode would
+                # only ever show the pre-LLM regex output, hiding whether an LLM
+                # fallback was even attempted or what it returned.
                 s_label = f"S{resolved_season:02d}" if resolved_season is not None else "S?"
                 e_label = f"E{resolved_episode:02d}" if resolved_episode is not None else "E?"
                 show_result.episodes_unmatched += 1
