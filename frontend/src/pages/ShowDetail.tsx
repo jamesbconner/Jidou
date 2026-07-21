@@ -222,6 +222,26 @@ export default function ShowDetail() {
               >
                 {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
               </button>
+              <div className="flex flex-col items-end gap-1.5 w-28">
+                <button
+                  onClick={() => setRematchOpen(true)}
+                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+                >
+                  Change TMDB Match
+                </button>
+                <button
+                  onClick={() => setContentTypeOpen(true)}
+                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+                >
+                  {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
+                </button>
+                <button
+                  onClick={() => setAliasModalOpen(true)}
+                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+                >
+                  Manage Aliases
+                </button>
+              </div>
               {ensureRssStub.isError && (
                 <span className="text-xs text-red-600 text-right max-w-[10rem]">
                   {(ensureRssStub.error as Error).message}
@@ -251,35 +271,6 @@ export default function ShowDetail() {
           <p className="text-sm text-gray-400 italic">Not set</p>
         )}
         {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
-      </section>
-
-      {/* Show Info */}
-      <section className="bg-white rounded-lg shadow p-4 space-y-3">
-        <div>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Show Info
-          </h3>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button
-              onClick={() => setRematchOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-            >
-              Change TMDB Match
-            </button>
-            <button
-              onClick={() => setContentTypeOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-            >
-              {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
-            </button>
-            <button
-              onClick={() => setAliasModalOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-            >
-              Manage Aliases
-            </button>
-          </div>
-        </div>
       </section>
 
       {/* Episodes */}
