@@ -227,13 +227,13 @@ export default function ShowDetail() {
                   onClick={() => setRematchOpen(true)}
                   className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
                 >
-                  Change TMDB Match
+                  Fix Match
                 </button>
                 <button
                   onClick={() => setContentTypeOpen(true)}
                   className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
                 >
-                  {show.content_type ? `Content Type: ${show.content_type}` : 'Set Content Type'}
+                  {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
                 </button>
                 <button
                   onClick={() => setAliasModalOpen(true)}
