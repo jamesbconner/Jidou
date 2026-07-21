@@ -236,28 +236,30 @@ export default function ShowDetail() {
       <section className="bg-white rounded-lg shadow p-4">
         <h2 className="font-semibold mb-1">Local path</h2>
         {show.local_path ? (
-          <p className="font-mono text-sm text-gray-700 break-all">
-            {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <p className="font-mono text-sm text-gray-700 break-all flex-1">
+              {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
+            </p>
+            <button
+              onClick={() => setPathModalOpen(true)}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 flex-shrink-0"
+            >
+              Edit Path
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-gray-400 italic">Not set</p>
         )}
         {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
       </section>
 
-      {/* Actions */}
-      <section className="bg-white rounded-lg shadow p-4 space-y-4">
+      {/* Show Info */}
+      <section className="bg-white rounded-lg shadow p-4 space-y-3">
         <div>
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
             Show Info
           </h3>
           <div className="flex gap-2 flex-wrap items-center">
-            <button
-              onClick={() => setPathModalOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-            >
-              Edit Path
-            </button>
             <button
               onClick={() => setRematchOpen(true)}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
@@ -278,11 +280,12 @@ export default function ShowDetail() {
             </button>
           </div>
         </div>
+      </section>
 
-        <div className="border-t pt-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Episodes &amp; Files
-          </h3>
+      {/* Episodes */}
+      <section className="bg-white rounded-lg shadow p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Episodes ({episodes.length})</h2>
           <div className="flex gap-2 flex-wrap items-center">
             <button
               onClick={() => syncEpisodes.mutate(showId)}
@@ -305,11 +308,6 @@ export default function ShowDetail() {
             )}
           </div>
         </div>
-      </section>
-
-      {/* Episodes */}
-      <section>
-        <h2 className="font-semibold mb-3">Episodes ({episodes.length})</h2>
         {beginRematch.isError && (
           <p className="text-xs text-red-500 mb-2">
             {(beginRematch.error as Error).message}
