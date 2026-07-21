@@ -218,30 +218,32 @@ export default function ShowDetail() {
               <button
                 onClick={handleRssButtonClick}
                 disabled={ensureRssStub.isPending}
-                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+                  existingRssSub
+                    ? 'border-green-300 text-green-700 hover:bg-green-50'
+                    : 'hover:bg-gray-50'
+                }`}
               >
                 {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
               </button>
-              <div className="flex flex-col items-end gap-1.5 w-28">
-                <button
-                  onClick={() => setRematchOpen(true)}
-                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-                >
-                  Fix Match
-                </button>
-                <button
-                  onClick={() => setContentTypeOpen(true)}
-                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-                >
-                  {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
-                </button>
-                <button
-                  onClick={() => setAliasModalOpen(true)}
-                  className="w-full px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-                >
-                  Manage Aliases
-                </button>
-              </div>
+              <button
+                onClick={() => setRematchOpen(true)}
+                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+              >
+                Fix Match
+              </button>
+              <button
+                onClick={() => setContentTypeOpen(true)}
+                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+              >
+                {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
+              </button>
+              <button
+                onClick={() => setAliasModalOpen(true)}
+                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
+              >
+                Manage Aliases
+              </button>
               {ensureRssStub.isError && (
                 <span className="text-xs text-red-600 text-right max-w-[10rem]">
                   {(ensureRssStub.error as Error).message}
