@@ -3,6 +3,7 @@ import { useShowEpisodes } from '@/hooks/useShows'
 import { useLinkEpisodeFile } from '@/hooks/useFiles'
 import { useScanShowLocalFiles } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { buildSeasonMap } from '@/utils/episodeUtils'
 import type { ScannedFileMatch } from '@/types/api'
 
@@ -240,19 +241,12 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
             Rescan
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Close
-            </button>
-            <button
-              onClick={handleConfirmAll}
-              disabled={actionableCount === 0 || bulkPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
+            </Button>
+            <Button onClick={handleConfirmAll} disabled={actionableCount === 0 || bulkPending} variant="primary" tone="dark" size="sm">
               {bulkPending ? 'Linking…' : `Confirm All Matched (${actionableCount})`}
-            </button>
+            </Button>
           </div>
         </div>
     </Modal>

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import clsx from 'clsx'
+import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 interface Props {
   title: string
@@ -19,7 +19,6 @@ export function ConfirmDialog({
   onCancel,
   danger = false,
 }: Props) {
-  const cancelRef = useRef<HTMLButtonElement>(null)
   const [fired, setFired] = useState(false)
 
   function handleConfirm() {
@@ -46,27 +45,12 @@ export function ConfirmDialog({
           </p>
         </div>
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2">
-          <button
-            ref={cancelRef}
-            onClick={onCancel}
-            disabled={fired}
-            autoFocus
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50 transition-colors"
-          >
+          <Button onClick={onCancel} disabled={fired} autoFocus variant="secondary" tone="dark" size="sm">
             Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={fired}
-            className={clsx(
-              'px-3 py-1.5 text-xs rounded text-white transition-colors disabled:opacity-50',
-              danger
-                ? 'bg-red-600 hover:bg-red-500'
-                : 'bg-indigo-600 hover:bg-indigo-500',
-            )}
-          >
+          </Button>
+          <Button onClick={handleConfirm} disabled={fired} variant={danger ? 'danger' : 'primary'} tone="dark" size="sm">
             {confirmLabel}
-          </button>
+          </Button>
         </div>
     </Modal>
   )

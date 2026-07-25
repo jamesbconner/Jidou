@@ -5,6 +5,7 @@ import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useSearchShows } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
 
@@ -281,19 +282,18 @@ export function ResolveFileModal({ file, onClose }: Props) {
             Reset for auto re-match
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleConfirm}
               disabled={!selected || !folderName.trim() || !config || rematch.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              variant="primary"
+              tone="dark"
+              size="sm"
             >
               {rematch.isPending ? 'Matching…' : 'Confirm match'}
-            </button>
+            </Button>
           </div>
         </div>
     </Modal>

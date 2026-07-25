@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import type { EpisodeList } from '@/types/api'
 
 function pad2(n: number) {
@@ -92,20 +93,12 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
         </div>
 
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
-          <button
-            onClick={onClose}
-            disabled={assign.isPending}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-          >
+          <Button onClick={onClose} disabled={assign.isPending} variant="secondary" tone="dark" size="sm">
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!selected || assign.isPending}
-            className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={!selected || assign.isPending} variant="primary" tone="dark" size="sm">
             {assign.isPending ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
     </Modal>
   )

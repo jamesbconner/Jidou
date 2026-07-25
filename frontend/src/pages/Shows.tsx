@@ -8,6 +8,7 @@ import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '
 import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
@@ -263,12 +264,9 @@ export default function Shows() {
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold mr-auto">Shows</h1>
         {tab === 'library' && activeFilterCount > 0 && (
-          <button
-            onClick={clearFilters}
-            className="text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-100"
-          >
+          <Button onClick={clearFilters} variant="secondary" tone="light" size="sm">
             Clear filters ({activeFilterCount})
-          </button>
+          </Button>
         )}
         {tab === 'library' && (
           <select value={sort} onChange={(e) => setSort(e.target.value as ShowSortOrder)} className={selectCls}>

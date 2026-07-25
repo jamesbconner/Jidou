@@ -1,5 +1,6 @@
 import { useState, useEffect, KeyboardEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useUpdateShowAliases, useRegenerateShowAliases } from '@/hooks/useShows'
 import type { ShowRead } from '@/types/api'
 
@@ -178,19 +179,12 @@ export function AliasModal({ show, onClose }: Props) {
 
         {/* Footer */}
         <div className="flex justify-end gap-2 px-5 py-3 border-t">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-sm border rounded hover:bg-gray-50"
-          >
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={updateAliases.isPending}
-            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={updateAliases.isPending} variant="primary" tone="light" size="md">
             {updateAliases.isPending ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
     </Modal>
   )

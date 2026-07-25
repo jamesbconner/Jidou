@@ -5,6 +5,7 @@ import type { AppConfig, ConnectionTestResult, ServiceHealth, TaskRead } from '@
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
+import { Button } from '@/components/ui/Button'
 
 export default function Settings() {
   const navigate = useNavigate()
@@ -294,13 +295,9 @@ export default function Settings() {
           so Jidou will never re-download them. The operation is idempotent — safe to re-run.
         </p>
         <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => seedDryRun.mutate()}
-            disabled={seedDryRun.isPending || seedLive.isPending}
-            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
-          >
+          <Button onClick={() => seedDryRun.mutate()} disabled={seedDryRun.isPending || seedLive.isPending} variant="secondary" tone="light" size="md">
             {seedDryRun.isPending ? 'Running dry run…' : 'Dry Run'}
-          </button>
+          </Button>
           <button
             onClick={() => {
               if (window.confirm('Mark all current SFTP files as seeded? This cannot be undone without deleting seeded records from the database.')) {

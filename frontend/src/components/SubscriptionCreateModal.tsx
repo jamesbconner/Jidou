@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCreateRssSubscription } from '@/hooks/useRss'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/Field'
 import type { RssFeedRead, RssSubscriptionCreate } from '@/types/api'
 
@@ -138,7 +139,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
         </div>
 
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           <button
             onClick={handleCreate}
             disabled={create.isPending || !draft.name.trim()}

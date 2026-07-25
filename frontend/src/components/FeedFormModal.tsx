@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCreateRssFeed, usePatchRssFeed } from '@/hooks/useRss'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/Field'
 import type { RssFeedRead, RssFeedCreate, RssFeedUpdate } from '@/types/api'
 
@@ -98,7 +99,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         </div>
 
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           <button
             onClick={handleSave}
             disabled={isPending || !draft.name.trim() || !draft.url.trim()}

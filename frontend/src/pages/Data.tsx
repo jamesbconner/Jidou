@@ -3,6 +3,7 @@ import { useImportText, useExportDatabase, useImportDatabase } from '@/hooks/use
 import { useTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
+import { Button } from '@/components/ui/Button'
 import type { TaskRead } from '@/types/api'
 
 // ---------------------------------------------------------------------------
@@ -147,13 +148,9 @@ function TextImportSection() {
             Dry run
           </label>
 
-          <button
-            type="submit"
-            disabled={isPending}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={isPending} variant="primary" tone="light" size="md">
             {isPending ? 'Submitting…' : 'Import'}
-          </button>
+          </Button>
         </div>
 
         {error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
@@ -235,13 +232,9 @@ function DatabaseImportSection() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={isPending}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={isPending} variant="primary" tone="light" size="md">
             {isPending ? 'Submitting…' : 'Restore'}
-          </button>
+          </Button>
         </div>
 
         {error && <p className="text-sm text-red-600">{(error as Error).message}</p>}

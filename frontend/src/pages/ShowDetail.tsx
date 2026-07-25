@@ -31,6 +31,7 @@ import { ShowRematchModal } from '@/components/ShowRematchModal'
 import { ContentTypeModal } from '@/components/ContentTypeModal'
 import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
+import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
 import { toHostPath } from '@/utils/paths'
 import type {
@@ -311,13 +312,9 @@ export default function ShowDetail() {
 
             {/* Show-level actions — upper right */}
             <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-              <button
-                onClick={() => setDeleteConfirmOpen(true)}
-                disabled={isDeleting}
-                className="w-28 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
-              >
+              <Button onClick={() => setDeleteConfirmOpen(true)} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
                 {isDeleting ? 'Removing…' : 'Remove Show'}
-              </button>
+              </Button>
               <button
                 onClick={handleRssButtonClick}
                 disabled={ensureRssStub.isPending}
@@ -329,24 +326,15 @@ export default function ShowDetail() {
               >
                 {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
               </button>
-              <button
-                onClick={() => setRematchOpen(true)}
-                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-              >
+              <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 Fix Match
-              </button>
-              <button
-                onClick={() => setContentTypeOpen(true)}
-                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-              >
+              </Button>
+              <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
-              </button>
-              <button
-                onClick={() => setAliasModalOpen(true)}
-                className="w-28 px-3 py-1.5 text-xs border rounded hover:bg-gray-50 whitespace-nowrap"
-              >
+              </Button>
+              <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 Manage Aliases
-              </button>
+              </Button>
               {ensureRssStub.isError && (
                 <span className="text-xs text-red-600 text-right max-w-[10rem]">
                   {(ensureRssStub.error as Error).message}

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useShowEpisodes, showKeys } from '@/hooks/useShows'
 import { fileKeys } from '@/hooks/useFiles'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
 import type { FileRead } from '@/types/api'
 import { buildSeasonMap } from '@/utils/episodeUtils'
@@ -151,20 +152,12 @@ export function FixEpisodeModal({ file, onClose }: Props) {
             Clear assignment
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              disabled={patch.isPending}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <Button onClick={onClose} disabled={patch.isPending} variant="secondary" tone="dark" size="sm">
               Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!isDirty || patch.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
+            </Button>
+            <Button onClick={handleSave} disabled={!isDirty || patch.isPending} variant="primary" tone="dark" size="sm">
               {patch.isPending ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
           </div>
         </div>
     </Modal>

@@ -4,6 +4,7 @@ import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { TaskEventLog } from '@/components/TaskEventLog'
 import { Pagination } from '@/components/Pagination'
+import { Button } from '@/components/ui/Button'
 import type { TaskList, TaskType } from '@/types/api'
 
 function LiveTask({ taskId }: { taskId: number }) {
@@ -142,13 +143,9 @@ export default function Tasks() {
             />
             Dry run
           </label>
-          <button
-            onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })}
-            disabled={triggerTask.isPending}
-            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })} disabled={triggerTask.isPending} variant="primary" tone="light" size="md">
             Run
-          </button>
+          </Button>
           {triggerTask.isError && (
             <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
           )}

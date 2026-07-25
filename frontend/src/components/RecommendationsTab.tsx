@@ -8,6 +8,7 @@ import {
   useBulkPatchRssSubscriptions,
 } from '@/hooks/useRss'
 import { badge } from '@/components/Badge'
+import { Button } from '@/components/ui/Button'
 import type { RssSubscriptionRecommendation } from '@/types/api'
 
 export function RecommendationsTab() {
@@ -67,12 +68,9 @@ export function RecommendationsTab() {
           })}
         </div>
         <div className="ml-auto flex gap-2">
-          <button
-            onClick={() => refetch()}
-            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100"
-          >
+          <Button onClick={() => refetch()} variant="secondary" tone="light" size="md">
             Refresh
-          </button>
+          </Button>
           <button
             onClick={handleAcceptAll}
             disabled={visible.length === 0 || bulkPatch.isPending}

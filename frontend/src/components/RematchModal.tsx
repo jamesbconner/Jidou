@@ -5,6 +5,7 @@ import { useTriggerTask } from '@/hooks/useTasks'
 import { useShows, useSearchShows, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
 import { toHostPath, toContainerPath, sanitizeFolderName } from '@/utils/paths'
 import type {
@@ -338,19 +339,12 @@ export function RematchModal({ file, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-          >
+          <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
             Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-            className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          </Button>
+          <Button onClick={handleConfirm} disabled={!canConfirm} variant="primary" tone="dark" size="sm">
             {rematch.isPending ? 'Matching…' : 'Match & Route'}
-          </button>
+          </Button>
         </div>
     </Modal>
   )

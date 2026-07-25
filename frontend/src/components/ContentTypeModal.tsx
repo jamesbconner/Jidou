@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import type { ContentType } from '@/types/api'
 
 export function ContentTypeModal({
@@ -41,21 +42,12 @@ export function ContentTypeModal({
             <p className="text-xs text-red-600">{error.message}</p>
           )}
           <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isPending}
-              className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-            >
+            <Button type="button" onClick={onClose} disabled={isPending} variant="secondary" tone="light" size="md">
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={isPending} variant="primary" tone="light" size="md">
               {isPending ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
           </div>
         </form>
     </Modal>

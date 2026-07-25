@@ -4,6 +4,7 @@ import type { RssFeedRead, RssSubscriptionRead, RssSubscriptionUpdate } from '@/
 import { usePatchRssSubscription, useSuggestRegex } from '@/hooks/useRss'
 import { useShows } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 // Reusable modal field row
 function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
@@ -59,7 +60,7 @@ function RegexSuggestModal({
           )}
         </div>
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           {result && (
             <button
               onClick={() => { onApply(result.regex_include, result.regex_exclude); onClose() }}
@@ -335,7 +336,7 @@ export function SubscriptionEditModal({
           </div>
 
           <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-            <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+            <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
             <button
               onClick={handleSave}
               disabled={patch.isPending}

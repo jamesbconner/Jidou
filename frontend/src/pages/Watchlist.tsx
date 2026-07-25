@@ -22,6 +22,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
@@ -414,13 +415,16 @@ export default function Watchlist() {
                                 View in Library
                               </Link>
                             ) : (
-                              <button
+                              <Button
                                 onClick={() => handleAddFromLibrary(s.id)}
                                 disabled={pendingLibraryIds.has(s.id)}
-                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                variant="primary"
+                                tone="light"
+                                size="sm"
+                                className="mt-2 w-full"
                               >
                                 {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add'}
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -455,13 +459,16 @@ export default function Watchlist() {
                                 View in Library
                               </Link>
                             ) : (
-                              <button
+                              <Button
                                 onClick={() => handleAddFromTmdb(r)}
                                 disabled={isPending}
-                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                variant="primary"
+                                tone="light"
+                                size="sm"
+                                className="mt-2 w-full"
                               >
                                 {isPending ? 'Adding…' : 'Add'}
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>

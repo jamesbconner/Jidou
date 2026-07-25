@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useResolveOrphan, useDismissOrphan } from '@/hooks/useOrphans'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import type { OrphanedTrackingRecord, EpisodeList } from '@/types/api'
 
 interface Props {
@@ -158,27 +159,16 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-between items-center shrink-0">
-          <button
-            onClick={handleDismiss}
-            disabled={dismiss.isPending}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-40"
-          >
+          <Button onClick={handleDismiss} disabled={dismiss.isPending} variant="secondary" tone="dark" size="sm">
             {dismiss.isPending ? 'Dismissing…' : 'Dismiss record'}
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Cancel
-            </button>
-            <button
-              onClick={handleResolve}
-              disabled={!selectedEpisode || resolve.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
+            </Button>
+            <Button onClick={handleResolve} disabled={!selectedEpisode || resolve.isPending} variant="primary" tone="dark" size="sm">
               {resolve.isPending ? 'Saving…' : 'Confirm Match'}
-            </button>
+            </Button>
           </div>
         </div>
     </Modal>

@@ -1,6 +1,7 @@
 import type { RssSubscriptionRead } from '@/types/api'
 import { useSubscriptionPreview } from '@/hooks/useRss'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 export function SubPreviewModal({ sub, onClose }: { sub: RssSubscriptionRead; onClose: () => void }) {
   const { data: composed, isLoading, isError } = useSubscriptionPreview(sub.id)
@@ -24,7 +25,7 @@ export function SubPreviewModal({ sub, onClose }: { sub: RssSubscriptionRead; on
           )}
         </div>
         <div className="flex justify-end p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Close</button>
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">Close</Button>
         </div>
     </Modal>
   )
