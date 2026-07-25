@@ -20,63 +20,11 @@ import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDelet
 import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
+import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
+import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
-const STATUS_OPTIONS: WatchlistStatus[] = ['planned', 'watching', 'completed', 'on_hold', 'dropped']
-
-const STATUS_LABEL: Record<WatchlistStatus, string> = {
-  planned: 'Planned',
-  watching: 'Watching',
-  completed: 'Completed',
-  on_hold: 'On Hold',
-  dropped: 'Dropped',
-}
-
-const STATUS_COLOR: Record<WatchlistStatus, string> = {
-  planned: 'bg-gray-100 text-gray-700',
-  watching: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
-  on_hold: 'bg-yellow-100 text-yellow-700',
-  dropped: 'bg-red-100 text-red-700',
-}
-
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w92'
-
-function InlineStatusSelect({ id, current }: { id: number; current: WatchlistStatus }) {
-  const [editing, setEditing] = useState(false)
-  const pendingRef = useRef<WatchlistStatus>(current)
-  const patch = usePatchWatchlistEntry()
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { pendingRef.current = current; setEditing(true) }}
-        className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLOR[current]} hover:opacity-80`}
-        title="Click to change status"
-      >
-        {STATUS_LABEL[current]}
-      </button>
-    )
-  }
-
-  return (
-    <select
-      autoFocus
-      defaultValue={current}
-      onChange={(e) => {
-        const next = e.target.value as WatchlistStatus
-        pendingRef.current = next
-        if (next !== current) patch.mutate({ id, update: { status: next } })
-      }}
-      onBlur={() => setEditing(false)}
-      className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    >
-      {STATUS_OPTIONS.map((s) => (
-        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-      ))}
-    </select>
-  )
-}
 
 function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   const [editing, setEditing] = useState(false)
@@ -184,7 +132,7 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
         <span className="block text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
       </td>
       <td className="px-4 py-2">
-        <InlineStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
+        <WatchlistStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
       </td>
       <td className="px-4 py-2">
         <InlineNotes id={entry.id} notes={entry.notes} />
