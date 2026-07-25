@@ -31,6 +31,7 @@ import { ShowRematchModal } from '@/components/ShowRematchModal'
 import { ContentTypeModal } from '@/components/ContentTypeModal'
 import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { api } from '@/api/client'
@@ -91,13 +92,13 @@ function QueuePositionSelect({
 
   if (!editing) {
     return (
-      <button
+      <Badge
+        color="bg-gray-100 text-gray-700"
         onClick={() => setEditing(true)}
-        className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-700 hover:opacity-80"
         title="Click to change queue position"
       >
         Queue #{index + 1}
-      </button>
+      </Badge>
     )
   }
 

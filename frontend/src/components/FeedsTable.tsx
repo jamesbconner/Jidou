@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { usePatchRssFeed, useDeleteRssFeed } from '@/hooks/useRss'
-import { badge } from '@/components/Badge'
+import { Badge } from '@/components/ui/Badge'
 import { FeedFormModal } from '@/components/FeedFormModal'
 import type { RssFeedRead } from '@/types/api'
 
@@ -61,8 +61,8 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
                     aria-pressed={f.active}
                   >
                     {f.active
-                      ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
-                      : badge('inactive', 'bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400')}
+                      ? <Badge color="bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400">active</Badge>
+                      : <Badge color="bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
                   </button>
                 </td>
                 <td className="px-3 py-2">

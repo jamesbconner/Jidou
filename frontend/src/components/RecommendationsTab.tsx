@@ -7,7 +7,7 @@ import {
   usePatchRssSubscription,
   useBulkPatchRssSubscriptions,
 } from '@/hooks/useRss'
-import { badge } from '@/components/Badge'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import type { RssSubscriptionRecommendation } from '@/types/api'
 
@@ -120,13 +120,13 @@ export function RecommendationsTab() {
                   </td>
                   <td className="px-3 py-2">
                     {rec.active
-                      ? badge('active', 'bg-green-100 text-green-700')
-                      : badge('inactive', 'bg-gray-100 text-gray-500')}
+                      ? <Badge color="bg-green-100 text-green-700">active</Badge>
+                      : <Badge color="bg-gray-100 text-gray-500">inactive</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     {rec.recommendation === 'deactivate'
-                      ? badge('Deactivate', 'bg-amber-100 text-amber-700')
-                      : badge('Activate', 'bg-green-100 text-green-700')}
+                      ? <Badge color="bg-amber-100 text-amber-700">Deactivate</Badge>
+                      : <Badge color="bg-green-100 text-green-700">Activate</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     <button
