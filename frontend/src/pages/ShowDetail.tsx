@@ -145,6 +145,10 @@ export default function ShowDetail() {
   const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
   const { data: rssFeeds = [] } = useRssFeeds()
   const ensureRssStub = useEnsureRssStub()
+  // TODO: fetches the entire watchlist just to look up this one show (no by-show
+  // API filter exists yet). Add a `show_id` filter to GET /watchlist and use it
+  // here; keep a lazy full-list fetch (enabled only once this show is confirmed
+  // on the watchlist) for the Queue #N position/reorder dropdown.
   const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
 
   const [rematchOpen, setRematchOpen] = useState(false)

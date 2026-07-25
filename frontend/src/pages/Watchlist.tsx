@@ -185,6 +185,10 @@ export default function Watchlist() {
   const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
   // Unfiltered full list for search cross-reference — independent of the status filter and
   // the default limit=50 that powers the table, so search badges are always accurate.
+  // TODO: this is a genuine bulk lookup (status per show across search results), so a
+  // by-show filter can't replace it — but the hardcoded limit=10000 sentinel is a smell.
+  // Consider a lighter summary endpoint/field (show_id + status only, no embedded show)
+  // once the watchlist is large enough for this to matter.
   const { data: allEntries = [] } = useWatchlist(undefined, 10000)
   const { data: allShows = [] } = useShows('title_asc', 10000)
   const { data: tmdbData, isLoading: tmdbLoading } = useSearchShows(
