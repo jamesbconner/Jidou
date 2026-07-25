@@ -17,4 +17,9 @@ describe('Card', () => {
     render(<Card className="overflow-hidden">Custom</Card>)
     expect(screen.getByText('Custom')).toHaveClass('card', 'overflow-hidden')
   })
+
+  test('renders as a section when requested', () => {
+    render(<Card as="section">Landmark</Card>)
+    expect(screen.getByText('Landmark').tagName).toBe('SECTION')
+  })
 })

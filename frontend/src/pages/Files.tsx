@@ -7,6 +7,7 @@ import { Pagination } from '@/components/Pagination'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
+import { Card } from '@/components/ui/Card'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
 import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
@@ -260,7 +261,7 @@ export default function Files() {
       ) : files.length === 0 ? (
         <p className="text-gray-500 text-sm">No files found.</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <Card className="overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
@@ -348,7 +349,7 @@ export default function Files() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
 
       {!isLoading && total > 0 && (

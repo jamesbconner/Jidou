@@ -1,3 +1,4 @@
+import { Card } from '@/components/ui/Card'
 import type { RecentEpisodeItem } from '@/types/api'
 import type { RecentSort } from '@/hooks/useDashboard'
 
@@ -22,9 +23,10 @@ export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
   const date = (sort === 'tracked' ? episode.file_tracked_at : episode.air_date)?.slice(0, 10) ?? '—'
 
   return (
-    <button
+    <Card
+      as="button"
       onClick={() => onClick(episode)}
-      className="w-40 shrink-0 snap-start bg-white rounded-lg shadow overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
+      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
     >
       {image ? (
         <img
@@ -58,6 +60,6 @@ export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
         </div>
         <p className="text-xs text-gray-400">{date}</p>
       </div>
-    </button>
+    </Card>
   )
 }

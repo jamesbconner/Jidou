@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
 
@@ -34,7 +35,7 @@ export function TmdbResultCard({
   const inLibrary = inLibraryShowId != null
 
   return (
-    <div className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+    <Card className={`overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
       <div className="relative">
         {result.poster_path ? (
           <img
@@ -71,6 +72,6 @@ export function TmdbResultCard({
           </Button>
         )}
       </div>
-    </div>
+    </Card>
   )
 }

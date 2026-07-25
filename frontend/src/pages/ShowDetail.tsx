@@ -32,6 +32,7 @@ import { ContentTypeModal } from '@/components/ContentTypeModal'
 import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { api } from '@/api/client'
 import { toHostPath } from '@/utils/paths'
 import type {
@@ -346,7 +347,7 @@ export default function ShowDetail() {
       </div>
 
       {/* Local path */}
-      <section className="bg-white rounded-lg shadow p-4">
+      <Card as="section" padding="md">
         <h2 className="font-semibold mb-1">Local path</h2>
         {show.local_path ? (
           <div className="flex items-start justify-between gap-4">
@@ -364,10 +365,10 @@ export default function ShowDetail() {
           <p className="text-sm text-gray-400 italic">Not set</p>
         )}
         {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
-      </section>
+      </Card>
 
       {/* Episodes */}
-      <section className="bg-white rounded-lg shadow p-4">
+      <Card as="section" padding="md">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">Episodes ({episodes.length})</h2>
           <div className="flex gap-2 flex-wrap items-center">
@@ -474,7 +475,7 @@ export default function ShowDetail() {
               </details>
             )
           })}
-      </section>
+      </Card>
 
       {/* Modals */}
       {deleteConfirmOpen && (

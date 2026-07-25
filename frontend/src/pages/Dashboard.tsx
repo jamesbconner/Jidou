@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import clsx from 'clsx'
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
@@ -13,6 +14,7 @@ import { RecentShowsSection } from '@/components/RecentShowsSection'
 import { RecentMoviesSection } from '@/components/RecentMoviesSection'
 import { RecentEpisodesSection } from '@/components/RecentEpisodesSection'
 import { MediaDetailModal } from '@/components/MediaDetailModal'
+import { Card } from '@/components/ui/Card'
 import type { RecentSort } from '@/hooks/useDashboard'
 import type {
   AdminStats,
@@ -55,14 +57,15 @@ interface StatCardProps {
 
 function StatCard({ label, value, sub, tooltip, alert = false }: StatCardProps) {
   return (
-    <div
+    <Card
+      padding="md"
       title={tooltip}
-      className={`rounded-lg shadow p-4 cursor-default ${alert ? 'bg-red-50 border border-red-200' : 'bg-white'}`}
+      className={clsx('cursor-default', alert && 'bg-red-50 border border-red-200')}
     >
       <p className="text-sm text-gray-500">{label}</p>
       <p className={`text-2xl font-bold ${alert ? 'text-red-600' : ''}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-    </div>
+    </Card>
   )
 }
 
@@ -165,7 +168,7 @@ export default function Dashboard() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Files added — bar chart */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <Card padding="md">
           <h2 className="text-sm font-medium text-gray-700 mb-3">Episodes Tracked (past 30 days)</h2>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={timelineData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -184,10 +187,10 @@ export default function Dashboard() {
               <Bar dataKey="count" fill="#3b82f6" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
 
         {/* Pipeline status — donut */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <Card padding="md">
           <h2 className="text-sm font-medium text-gray-700 mb-3">Pipeline Status</h2>
           {pipelineStatus.length === 0 ? (
             <p className="text-sm text-gray-400 mt-12 text-center">No files in the system yet.</p>
@@ -227,7 +230,7 @@ export default function Dashboard() {
               </ul>
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* Recently added carousels */}
@@ -247,9 +250,9 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-3">
             {activeTasks.map((t) => (
-              <div key={t.id} className="bg-white rounded-lg shadow p-4">
+              <Card key={t.id} padding="md">
                 <TaskProgressBar task={t} onCancel={() => cancelTask.mutate(t.id)} />
-              </div>
+              </Card>
             ))}
           </div>
         )}

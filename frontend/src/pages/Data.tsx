@@ -4,6 +4,7 @@ import { useTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import type { TaskRead } from '@/types/api'
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ function TextImportSection() {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-4">
+    <Card as="section" padding="lg" className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Text File Import</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -156,7 +157,7 @@ function TextImportSection() {
         {error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
         {task && <LiveImportTask task={task} />}
       </form>
-    </section>
+    </Card>
   )
 }
 
@@ -168,7 +169,7 @@ function DatabaseExportSection() {
   const { mutate, isPending, error, isSuccess } = useExportDatabase()
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-4">
+    <Card as="section" padding="lg" className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Database Export</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -188,7 +189,7 @@ function DatabaseExportSection() {
         <p className="text-sm text-green-700">Download started.</p>
       )}
       {error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
-    </section>
+    </Card>
   )
 }
 
@@ -210,7 +211,7 @@ function DatabaseImportSection() {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-4">
+    <Card as="section" padding="lg" className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Database Import</h2>
         <p className="text-sm text-gray-500 mt-1">
@@ -240,7 +241,7 @@ function DatabaseImportSection() {
         {error && <p className="text-sm text-red-600">{(error as Error).message}</p>}
         {task && <LiveImportTask task={task} />}
       </form>
-    </section>
+    </Card>
   )
 }
 

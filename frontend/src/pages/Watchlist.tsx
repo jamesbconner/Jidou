@@ -23,6 +23,7 @@ import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
@@ -392,7 +393,7 @@ export default function Watchlist() {
                     libraryResults.map((s) => {
                       const wlStatus = watchlistStatusByShowId.get(s.id) ?? null
                       return (
-                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <Card key={s.id} className={`overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {s.poster_path ? (
                               <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
@@ -427,7 +428,7 @@ export default function Watchlist() {
                               </Button>
                             )}
                           </div>
-                        </div>
+                        </Card>
                       )
                     })
                   ) : (
@@ -436,7 +437,7 @@ export default function Watchlist() {
                       const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
                       const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
                       return (
-                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <Card key={`${r.id}:${r.media_type}`} className={`overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {r.poster_path ? (
                               <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
@@ -471,7 +472,7 @@ export default function Watchlist() {
                               </Button>
                             )}
                           </div>
-                        </div>
+                        </Card>
                       )
                     })
                   )}
@@ -493,7 +494,7 @@ export default function Watchlist() {
       ) : entries.length === 0 ? (
         <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <Card className="overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
@@ -523,7 +524,7 @@ export default function Watchlist() {
               </SortableContext>
             </DndContext>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   )
