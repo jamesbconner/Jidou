@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCreateRssFeed, usePatchRssFeed } from '@/hooks/useRss'
+import { Modal } from '@/components/ui/Modal'
 import { Field } from '@/components/Field'
 import type { RssFeedRead, RssFeedCreate, RssFeedUpdate } from '@/types/api'
 
@@ -66,8 +67,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
   )
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
+    <Modal onClose={onClose} tone="light" className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b">
           <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Edit Feed' : 'New Feed'}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -107,7 +107,6 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
             {isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

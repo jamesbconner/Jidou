@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import clsx from 'clsx'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
 
 interface Props {
   title: string
@@ -19,12 +19,8 @@ export function ConfirmDialog({
   onCancel,
   danger = false,
 }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onCancel)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [fired, setFired] = useState(false)
-
-  // Focus Cancel on mount (useFocusTrap handles Escape + Tab trap).
-  // Using a callback ref on the Cancel button keeps this in one place.
 
   function handleConfirm() {
     if (fired) return
@@ -33,14 +29,14 @@ export function ConfirmDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+    <Modal
+      onClose={onCancel}
+      tone="dark"
+      maxWidth="sm"
       role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-desc"
+      labelledBy="confirm-dialog-title"
+      describedBy="confirm-dialog-desc"
     >
-      <div ref={dialogRef} className="w-full max-w-sm rounded-lg bg-zinc-900 shadow-xl">
         <div className="px-5 py-4 space-y-2">
           <h2 id="confirm-dialog-title" className="text-sm font-semibold text-zinc-100">
             {title}
@@ -72,7 +68,6 @@ export function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
 import type { RecentSort } from '@/hooks/useDashboard'
 import type { RecentShowItem, RecentEpisodeItem } from '@/types/api'
 
@@ -17,8 +17,6 @@ interface Props {
 /** Detail popup for a dashboard show or episode card — renders entirely from
  * data already fetched with the carousel, no additional TMDB call needed. */
 export function MediaDetailModal({ item, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
-
   const showId = item.kind === 'show' ? item.show.id : item.episode.show.id
   const image =
     item.kind === 'show'
@@ -46,14 +44,7 @@ export function MediaDetailModal({ item, onClose }: Props) {
         : item.episode.air_date
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div
-        ref={dialogRef}
-        className="w-full max-w-lg bg-white rounded-lg shadow-xl flex flex-col max-h-[90vh]"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
+    <Modal onClose={onClose} tone="light" ariaLabel={title} className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h2 className="font-semibold text-gray-900 truncate">{title}</h2>
           <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600" aria-label="Close">
@@ -108,7 +99,6 @@ export function MediaDetailModal({ item, onClose }: Props) {
             View show →
           </Link>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUnmatchedFilesForShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
 import { showKeys } from '@/hooks/useShows'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
 import { api } from '@/api/client'
 import { parseContainerPath } from '@/utils/paths'
 import type { AppConfig, ContentType, EpisodeList, FileRead } from '@/types/api'
@@ -23,7 +23,6 @@ interface Props {
 }
 
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const qc = useQueryClient()
   const [mode, setMode] = useState<'existing' | 'path'>('existing')
   const [selectedFileId, setSelectedFileId] = useState('')
@@ -88,13 +87,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   const canSave = mode === 'existing' ? !!selectedFileId : !!fullPath
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="link-file-title"
-    >
-      <div ref={dialogRef} className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
+    <Modal onClose={onClose} tone="dark" labelledBy="link-file-title" className="flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="link-file-title" className="text-sm font-semibold text-zinc-100">
             Match file — S{pad2(episode.season_number)}E{pad2(episode.episode_number)} ·{' '}
@@ -215,7 +208,6 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
             {pending ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

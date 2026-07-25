@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRematchShow, useSearchShows } from '@/hooks/useShows'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Modal } from '@/components/ui/Modal'
 import type { TmdbResult } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
@@ -45,8 +46,7 @@ export function ShowRematchModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 space-y-4">
+    <Modal onClose={onClose} tone="light" maxWidth="2xl" className="p-6 mx-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Change TMDB Match</h3>
           <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
@@ -98,7 +98,6 @@ export function ShowRematchModal({
         {rematch.isPending && (
           <p className="text-xs text-gray-500">Re-matching… episodes are being synced.</p>
         )}
-      </div>
       {pendingPick && (
         <ConfirmDialog
           title="Change TMDB match?"
@@ -108,6 +107,6 @@ export function ShowRematchModal({
           onCancel={() => setPendingPick(null)}
         />
       )}
-    </div>
+    </Modal>
   )
 }

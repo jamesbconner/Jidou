@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { Modal } from '@/components/ui/Modal'
 import { toHostPath, toContainerPath, parseContainerPath } from '@/utils/paths'
 import type { AppConfig, ContentType } from '@/types/api'
 
@@ -46,8 +47,7 @@ export function EditPathModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
+    <Modal onClose={onClose} tone="light" className="p-6 mx-4">
         <h3 className="font-semibold mb-4">Edit Local Path</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Content type — determines which volume base is used */}
@@ -103,7 +103,6 @@ export function EditPathModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useLinkEpisodeFile } from '@/hooks/useFiles'
 import { useScanShowLocalFiles } from '@/hooks/useShows'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
 import { buildSeasonMap } from '@/utils/episodeUtils'
 import type { ScannedFileMatch } from '@/types/api'
 
@@ -22,7 +22,6 @@ interface Props {
 type RowOutcome = { kind: 'linked' } | { kind: 'failed'; message: string }
 
 export function ScanLocalFilesModal({ showId, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const scan = useScanShowLocalFiles()
   const linkFile = useLinkEpisodeFile()
   const { data: episodes = [] } = useShowEpisodes(showId)
@@ -120,16 +119,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
   ).length
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="scan-local-files-title"
-    >
-      <div
-        ref={dialogRef}
-        className="w-full max-w-3xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]"
-      >
+    <Modal onClose={onClose} tone="dark" maxWidth="3xl" labelledBy="scan-local-files-title" className="flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="scan-local-files-title" className="text-sm font-semibold text-zinc-100">
             Scan local files
@@ -265,7 +255,6 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

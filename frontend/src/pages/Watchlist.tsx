@@ -21,6 +21,7 @@ import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hook
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
+import { Modal } from '@/components/ui/Modal'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
@@ -332,14 +333,13 @@ export default function Watchlist() {
 
       {/* Search modal */}
       {searchModalOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
-          onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+        <Modal
+          onClose={() => { setSearchModalOpen(false); setSearchQuery('') }}
+          tone="light"
+          maxWidth="2xl"
+          closeOnBackdropClick
+          className="max-h-[80vh] flex flex-col"
         >
-          <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold">Add to Watchlist</h3>
               <button
@@ -471,8 +471,7 @@ export default function Watchlist() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {reorderError && (

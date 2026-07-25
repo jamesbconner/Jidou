@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useResolveOrphan, useDismissOrphan } from '@/hooks/useOrphans'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
 import type { OrphanedTrackingRecord, EpisodeList } from '@/types/api'
 
 interface Props {
@@ -14,7 +14,6 @@ function basename(path: string): string {
 }
 
 export function OrphanResolveModal({ orphan, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [search, setSearch] = useState('')
   const [selectedEpisode, setSelectedEpisode] = useState<EpisodeList | null>(null)
 
@@ -65,13 +64,7 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
             : null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="orphan-resolve-title"
-    >
-      <div ref={dialogRef} className="w-full max-w-xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[85vh]">
+    <Modal onClose={onClose} tone="dark" maxWidth="xl" labelledBy="orphan-resolve-title" className="flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="orphan-resolve-title" className="text-sm font-semibold text-zinc-100">Manual Episode Match</h2>
@@ -188,7 +181,6 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
