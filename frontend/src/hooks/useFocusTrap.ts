@@ -9,6 +9,13 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+// Stack of active trap ids, innermost (most recently mounted) last. Only the
+// topmost trap responds to Tab/Escape, so a dialog opened on top of another
+// dialog (e.g. a confirmation popup inside a modal) doesn't fight the one
+// beneath it for keyboard handling — the outer trap resumes once the inner
+// one unmounts.
+const trapStack: object[] = []
+
 /**
  * Traps keyboard focus within a dialog element and restores focus on unmount.
  *
@@ -19,6 +26,7 @@ export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
   const ref = useRef<T>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const idRef = useRef<object>({})
 
   // Capture the trigger during render — before autoFocus or any useEffect
   // fires — so we always restore to the element that opened the dialog.
@@ -34,9 +42,23 @@ export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
     }
   }, [])
 
+  // Register/unregister this trap on the shared stack.
+  useEffect(() => {
+    const id = idRef.current
+    trapStack.push(id)
+    return () => {
+      const index = trapStack.indexOf(id)
+      if (index !== -1) trapStack.splice(index, 1)
+    }
+  }, [])
+
   // Trap Tab/Shift+Tab within the dialog and handle Escape.
   useEffect(() => {
+    const id = idRef.current
+
     function onKey(e: KeyboardEvent) {
+      if (trapStack[trapStack.length - 1] !== id) return
+
       if (e.key === 'Escape') {
         onCloseRef.current?.()
         return

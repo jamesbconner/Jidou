@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useResolveOrphan, useDismissOrphan } from '@/hooks/useOrphans'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import type { OrphanedTrackingRecord, EpisodeList } from '@/types/api'
 
 interface Props {
@@ -14,7 +15,6 @@ function basename(path: string): string {
 }
 
 export function OrphanResolveModal({ orphan, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [search, setSearch] = useState('')
   const [selectedEpisode, setSelectedEpisode] = useState<EpisodeList | null>(null)
 
@@ -65,13 +65,7 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
             : null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="orphan-resolve-title"
-    >
-      <div ref={dialogRef} className="w-full max-w-xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[85vh]">
+    <Modal onClose={onClose} tone="dark" maxWidth="xl" labelledBy="orphan-resolve-title" className="flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="orphan-resolve-title" className="text-sm font-semibold text-zinc-100">Manual Episode Match</h2>
@@ -165,30 +159,18 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-between items-center shrink-0">
-          <button
-            onClick={handleDismiss}
-            disabled={dismiss.isPending}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-40"
-          >
+          <Button onClick={handleDismiss} disabled={dismiss.isPending} variant="danger" tone="dark" size="sm">
             {dismiss.isPending ? 'Dismissing…' : 'Dismiss record'}
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Cancel
-            </button>
-            <button
-              onClick={handleResolve}
-              disabled={!selectedEpisode || resolve.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
+            </Button>
+            <Button onClick={handleResolve} disabled={!selectedEpisode || resolve.isPending} variant="primary" tone="dark" size="sm">
               {resolve.isPending ? 'Saving…' : 'Confirm Match'}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

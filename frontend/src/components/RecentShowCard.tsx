@@ -1,3 +1,4 @@
+import { Card } from '@/components/ui/Card'
 import type { RecentShowItem } from '@/types/api'
 import type { RecentSort } from '@/hooks/useDashboard'
 
@@ -16,9 +17,10 @@ export function RecentShowCard({ show, sort, onClick }: Props) {
   // (already a plain date string) is.
   const date = sort === 'tracked' ? show.created_at.slice(0, 10) : show.release_date?.slice(0, 10)
   return (
-    <button
+    <Card
+      as="button"
       onClick={() => onClick(show)}
-      className="w-40 shrink-0 snap-start bg-white rounded-lg shadow overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
+      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
     >
       {show.poster_path ? (
         <img
@@ -46,6 +48,6 @@ export function RecentShowCard({ show, sort, onClick }: Props) {
         </div>
         <p className="text-xs text-gray-400">{date ?? '—'}</p>
       </div>
-    </button>
+    </Card>
   )
 }

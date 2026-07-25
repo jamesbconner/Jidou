@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePatchRssSubscription, useDeleteRssSubscription } from '@/hooks/useRss'
-import { badge } from '@/components/Badge'
+import { Badge } from '@/components/ui/Badge'
 import { SubscriptionCreateModal } from '@/components/SubscriptionCreateModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
 import { SubPreviewModal } from '@/components/SubPreviewModal'
@@ -46,7 +46,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
               return (
                 <tr key={sub.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-xs text-gray-500">
-                    {sub.remote_key ?? badge('stub', 'bg-yellow-100 text-yellow-700')}
+                    {sub.remote_key ?? <Badge color="bg-yellow-100 text-yellow-700">stub</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     <button
@@ -81,7 +81,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                         title="Stubs are always inactive until promoted to a real subscription."
                         className="cursor-default"
                       >
-                        {badge('inactive', 'bg-gray-100 text-gray-400')}
+                        <Badge color="bg-gray-100 text-gray-400">inactive</Badge>
                       </span>
                     ) : (
                       <button
@@ -93,8 +93,8 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                         aria-pressed={sub.active}
                       >
                         {sub.active
-                          ? badge('active', 'bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400')
-                          : badge('inactive', 'bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400')}
+                          ? <Badge color="bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400">active</Badge>
+                          : <Badge color="bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
                       </button>
                     )}
                   </td>

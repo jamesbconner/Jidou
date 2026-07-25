@@ -4,6 +4,8 @@ import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { TaskEventLog } from '@/components/TaskEventLog'
 import { Pagination } from '@/components/Pagination'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import type { TaskList, TaskType } from '@/types/api'
 
 function LiveTask({ taskId }: { taskId: number }) {
@@ -119,7 +121,7 @@ export default function Tasks() {
       <h1 className="text-2xl font-bold">Tasks</h1>
 
       {/* Trigger panel */}
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <div className="flex items-end gap-4 flex-wrap">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Task type</label>
@@ -142,19 +144,15 @@ export default function Tasks() {
             />
             Dry run
           </label>
-          <button
-            onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })}
-            disabled={triggerTask.isPending}
-            className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button onClick={() => triggerTask.mutate({ task_type: taskType, dry_run: dryRun })} disabled={triggerTask.isPending} variant="primary" tone="light" size="md">
             Run
-          </button>
+          </Button>
           {triggerTask.isError && (
             <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
           )}
         </div>
         <p className="text-xs text-gray-500">{TASK_DESCRIPTIONS[taskType]}</p>
-      </div>
+      </Card>
 
       {/* List controls */}
       <div className="flex items-center gap-4 flex-wrap">
@@ -213,7 +211,7 @@ export default function Tasks() {
       ) : (
         <div className="space-y-2">
           {tasks.map((t) => (
-            <div key={t.id} className="bg-white rounded-lg shadow p-4">
+            <Card key={t.id} padding="md">
               <TaskProgressBar
                 task={t}
                 onCancel={
@@ -227,7 +225,7 @@ export default function Tasks() {
                 {t.completed_at && ` · Finished ${new Date(t.completed_at).toLocaleString()}`}
               </p>
               <TaskLogPanel task={t} />
-            </div>
+            </Card>
           ))}
         </div>
       )}

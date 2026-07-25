@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useLinkEpisodeFile } from '@/hooks/useFiles'
 import { useScanShowLocalFiles } from '@/hooks/useShows'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { buildSeasonMap } from '@/utils/episodeUtils'
 import type { ScannedFileMatch } from '@/types/api'
 
@@ -22,7 +23,6 @@ interface Props {
 type RowOutcome = { kind: 'linked' } | { kind: 'failed'; message: string }
 
 export function ScanLocalFilesModal({ showId, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const scan = useScanShowLocalFiles()
   const linkFile = useLinkEpisodeFile()
   const { data: episodes = [] } = useShowEpisodes(showId)
@@ -120,16 +120,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
   ).length
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="scan-local-files-title"
-    >
-      <div
-        ref={dialogRef}
-        className="w-full max-w-3xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]"
-      >
+    <Modal onClose={onClose} tone="dark" maxWidth="3xl" labelledBy="scan-local-files-title" className="flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="scan-local-files-title" className="text-sm font-semibold text-zinc-100">
             Scan local files
@@ -250,22 +241,14 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
             Rescan
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Close
-            </button>
-            <button
-              onClick={handleConfirmAll}
-              disabled={actionableCount === 0 || bulkPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
+            </Button>
+            <Button onClick={handleConfirmAll} disabled={actionableCount === 0 || bulkPending} variant="primary" tone="dark" size="sm">
               {bulkPending ? 'Linking…' : `Confirm All Matched (${actionableCount})`}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

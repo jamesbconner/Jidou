@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
 import { useAssignImportEpisode } from '@/hooks/useShows'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import type { EpisodeList } from '@/types/api'
 
 function pad2(n: number) {
@@ -19,7 +20,6 @@ interface Props {
 }
 
 export function AssignImportModal({ showId, episode, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const { data: episodes = [] } = useShowEpisodes(showId)
   const assign = useAssignImportEpisode()
   const [selected, setSelected] = useState('')
@@ -43,13 +43,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="assign-import-title"
-    >
-      <div ref={dialogRef} className="w-full max-w-lg rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
+    <Modal onClose={onClose} tone="dark" labelledBy="assign-import-title" className="flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="assign-import-title" className="text-sm font-semibold text-zinc-100">
             Assign imported file — S{pad2(episode.season_number)}E{pad2(episode.episode_number)} ·{' '}
@@ -99,22 +93,13 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
         </div>
 
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
-          <button
-            onClick={onClose}
-            disabled={assign.isPending}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-          >
+          <Button onClick={onClose} disabled={assign.isPending} variant="secondary" tone="dark" size="sm">
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!selected || assign.isPending}
-            className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={!selected || assign.isPending} variant="primary" tone="dark" size="sm">
             {assign.isPending ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

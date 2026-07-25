@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { usePatchWatchlistEntry } from '@/hooks/useWatchlist'
+import { Badge } from '@/components/ui/Badge'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus } from '@/types/api'
 
@@ -15,16 +16,16 @@ export function WatchlistStatusSelect({ id, current }: Props) {
 
   if (!editing) {
     return (
-      <button
+      <Badge
+        color={STATUS_COLOR[current]}
         onClick={() => {
           pendingRef.current = current
           setEditing(true)
         }}
-        className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLOR[current]} hover:opacity-80`}
         title="Click to change status"
       >
         {STATUS_LABEL[current]}
-      </button>
+      </Badge>
     )
   }
 

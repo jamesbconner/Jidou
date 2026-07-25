@@ -1,5 +1,6 @@
 import { useState, useEffect, KeyboardEvent } from 'react'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useUpdateShowAliases, useRegenerateShowAliases } from '@/hooks/useShows'
 import type { ShowRead } from '@/types/api'
 
@@ -9,7 +10,6 @@ interface Props {
 }
 
 export function AliasModal({ show, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const sources = show.aliases_sources ?? { tmdb: [], llm: [], user: [] }
 
   const [userAliases, setUserAliases] = useState<string[]>(sources.user)
@@ -52,14 +52,7 @@ export function AliasModal({ show, onClose }: Props) {
   const llmAliases = show.aliases_sources?.llm ?? []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div
-        ref={dialogRef}
-        className="w-full max-w-lg bg-white rounded-lg shadow-xl flex flex-col max-h-[90vh]"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Manage aliases for ${show.title}`}
-      >
+    <Modal onClose={onClose} tone="light" ariaLabel={`Manage aliases for ${show.title}`} className="flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h2 className="font-semibold text-gray-900 truncate">
@@ -186,21 +179,13 @@ export function AliasModal({ show, onClose }: Props) {
 
         {/* Footer */}
         <div className="flex justify-end gap-2 px-5 py-3 border-t">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-sm border rounded hover:bg-gray-50"
-          >
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={updateAliases.isPending}
-            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={updateAliases.isPending} variant="primary" tone="light" size="md">
             {updateAliases.isPending ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

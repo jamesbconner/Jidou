@@ -5,6 +5,8 @@ import type { AppConfig, ConnectionTestResult, ServiceHealth, TaskRead } from '@
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 
 export default function Settings() {
   const navigate = useNavigate()
@@ -41,7 +43,7 @@ export default function Settings() {
       <h1 className="text-2xl font-bold">Settings</h1>
 
       {config && (
-        <div className="bg-white rounded-lg shadow p-4 space-y-2">
+        <Card padding="md" className="space-y-2">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">Configuration</h2>
             <a
@@ -75,11 +77,11 @@ export default function Settings() {
           <ConfigRow label="SFTP host" value={config.sftp_host ?? 'Not configured'} />
           <ConfigRow label="Redis" value={config.redis_url ?? 'Not configured'} />
           <ConfigRow label="Database" value={config.database_url ?? 'Not configured'} />
-        </div>
+        </Card>
       )}
 
       {/* Dashboard — user-editable at runtime, unlike the env-backed Configuration card above */}
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <h2 className="font-semibold">Dashboard</h2>
         <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
           <span className="text-gray-700">
@@ -154,10 +156,10 @@ export default function Settings() {
             className="h-4 w-4 shrink-0 accent-indigo-600"
           />
         </label>
-      </div>
+      </Card>
 
       {/* Services — health status + on-demand connection tests in one place */}
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="font-semibold">Services</h2>
@@ -214,9 +216,9 @@ export default function Settings() {
         {!health && (
           <p className="text-xs text-gray-400 italic">Click Refresh to check service health</p>
         )}
-      </div>
+      </Card>
 
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">TMDB Cache</h2>
           <div className="flex gap-2">
@@ -263,10 +265,10 @@ export default function Settings() {
         {flushCache.data && (
           <p className="text-xs text-gray-500">Cleared {flushCache.data.cleared} entries</p>
         )}
-      </div>
+      </Card>
 
       {config && (
-        <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <Card padding="md" className="space-y-3">
           <h2 className="font-semibold">Schedules</h2>
           <p className="text-xs text-gray-500">
             Configured via environment variables; restart required to change. All times UTC.
@@ -283,10 +285,10 @@ export default function Settings() {
               hours={config.rss_import_schedule_hours}
             />
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <h2 className="font-semibold">SFTP Baseline Files</h2>
         <p className="text-sm text-gray-600">
           Inventories all existing files on the SFTP server and marks them as{' '}
@@ -294,13 +296,9 @@ export default function Settings() {
           so Jidou will never re-download them. The operation is idempotent — safe to re-run.
         </p>
         <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => seedDryRun.mutate()}
-            disabled={seedDryRun.isPending || seedLive.isPending}
-            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50"
-          >
+          <Button onClick={() => seedDryRun.mutate()} disabled={seedDryRun.isPending || seedLive.isPending} variant="secondary" tone="light" size="md">
             {seedDryRun.isPending ? 'Running dry run…' : 'Dry Run'}
-          </button>
+          </Button>
           <button
             onClick={() => {
               if (window.confirm('Mark all current SFTP files as seeded? This cannot be undone without deleting seeded records from the database.')) {
@@ -318,7 +316,7 @@ export default function Settings() {
             {String((seedDryRun.error ?? seedLive.error) || 'Unknown error')}
           </p>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

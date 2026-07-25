@@ -4,7 +4,8 @@ import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
 import { useShows, useSearchShows, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
 import { toHostPath, toContainerPath, sanitizeFolderName } from '@/utils/paths'
 import type {
@@ -23,7 +24,6 @@ interface Props {
 }
 
 export function RematchModal({ file, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [mode, setMode] = useState<'library' | 'tmdb'>('tmdb')
   const initialQuery = file.parsed_show_name ?? ''
   const [searchQuery, setSearchQuery] = useState(initialQuery)
@@ -140,13 +140,7 @@ export function RematchModal({ file, onClose }: Props) {
   })()
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="rematch-title"
-    >
-      <div ref={dialogRef} className="w-full max-w-2xl rounded-lg bg-zinc-900 shadow-xl flex flex-col max-h-[90vh]">
+    <Modal onClose={onClose} tone="dark" maxWidth="2xl" labelledBy="rematch-title" className="flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
           <h2 id="rematch-title" className="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
@@ -345,21 +339,13 @@ export function RematchModal({ file, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition-colors"
-          >
+          <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
             Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-            className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          </Button>
+          <Button onClick={handleConfirm} disabled={!canConfirm} variant="primary" tone="dark" size="sm">
             {rematch.isPending ? 'Matching…' : 'Match & Route'}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

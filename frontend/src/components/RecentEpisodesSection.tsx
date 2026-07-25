@@ -4,6 +4,7 @@ import { useRecentEpisodes, useDashboardGenres, type RecentSort } from '@/hooks/
 import { CardCarousel } from '@/components/CardCarousel'
 import { RecentEpisodeCard } from '@/components/RecentEpisodeCard'
 import { DashboardSectionControls } from '@/components/DashboardSectionControls'
+import { Card } from '@/components/ui/Card'
 import type { RecentEpisodeItem } from '@/types/api'
 
 interface Prefs {
@@ -44,7 +45,7 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
   )
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+    <Card as="section" padding="md" className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-lg font-semibold">Recently Added Episodes</h2>
         <DashboardSectionControls
@@ -66,6 +67,6 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
         <p className="text-sm text-gray-400">No recently added episodes match these filters.</p>
       )}
       {episodes.length > 0 && <CardCarousel>{cards}</CardCarousel>}
-    </section>
+    </Card>
   )
 }

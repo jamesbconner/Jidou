@@ -4,7 +4,8 @@ import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useSearchShows } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
 
@@ -16,7 +17,6 @@ interface Props {
 }
 
 export function ResolveFileModal({ file, onClose }: Props) {
-  const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
   const [selected, setSelected] = useState<TmdbSuggestion | null>(null)
   const [contentType, setContentType] = useState<ContentType>('anime')
   const [folderName, setFolderName] = useState('')
@@ -107,13 +107,13 @@ export function ResolveFileModal({ file, onClose }: Props) {
     date ? new Date(date).getFullYear().toString() : null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="resolve-file-title"
+    <Modal
+      onClose={onClose}
+      tone="dark"
+      maxWidth="2xl"
+      labelledBy="resolve-file-title"
+      className="overflow-hidden flex flex-col max-h-[90vh]"
     >
-      <div ref={dialogRef} className="w-full max-w-2xl rounded-lg bg-zinc-900 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between">
           <h2 id="resolve-file-title" className="text-sm font-semibold text-zinc-100">Resolve unmatched file</h2>
@@ -282,22 +282,20 @@ export function ResolveFileModal({ file, onClose }: Props) {
             Reset for auto re-match
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700"
-            >
+            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleConfirm}
               disabled={!selected || !folderName.trim() || !config || rematch.isPending}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              variant="primary"
+              tone="dark"
+              size="sm"
             >
               {rematch.isPending ? 'Matching…' : 'Confirm match'}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

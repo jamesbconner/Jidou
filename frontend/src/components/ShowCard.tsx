@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { DQ_CHECKS } from '@/utils/dqChecks'
+import { Card } from '@/components/ui/Card'
 import type { ShowList } from '@/types/api'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
@@ -41,7 +42,7 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
   const inWatchlist = watchlistEntryId != null
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="relative">
         <Link to={`/shows/${show.id}`} className="block">
           {show.poster_path ? (
@@ -108,6 +109,6 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
           {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
         </p>
       </div>
-    </div>
+    </Card>
   )
 }

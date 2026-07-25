@@ -21,6 +21,9 @@ import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hook
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
@@ -332,14 +335,13 @@ export default function Watchlist() {
 
       {/* Search modal */}
       {searchModalOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
-          onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
+        <Modal
+          onClose={() => { setSearchModalOpen(false); setSearchQuery('') }}
+          tone="light"
+          maxWidth="2xl"
+          closeOnBackdropClick
+          className="max-h-[80vh] flex flex-col"
         >
-          <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold">Add to Watchlist</h3>
               <button
@@ -391,7 +393,7 @@ export default function Watchlist() {
                     libraryResults.map((s) => {
                       const wlStatus = watchlistStatusByShowId.get(s.id) ?? null
                       return (
-                        <div key={s.id} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <Card key={s.id} className={`overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {s.poster_path ? (
                               <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
@@ -414,16 +416,19 @@ export default function Watchlist() {
                                 View in Library
                               </Link>
                             ) : (
-                              <button
+                              <Button
                                 onClick={() => handleAddFromLibrary(s.id)}
                                 disabled={pendingLibraryIds.has(s.id)}
-                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                variant="primary"
+                                tone="light"
+                                size="sm"
+                                className="mt-2 w-full"
                               >
                                 {pendingLibraryIds.has(s.id) ? 'Adding…' : 'Add'}
-                              </button>
+                              </Button>
                             )}
                           </div>
-                        </div>
+                        </Card>
                       )
                     })
                   ) : (
@@ -432,7 +437,7 @@ export default function Watchlist() {
                       const wlStatus = libraryShow ? (watchlistStatusByShowId.get(libraryShow.id) ?? null) : null
                       const isPending = pendingTmdbIds.has(r.id) || (!!libraryShow && pendingLibraryIds.has(libraryShow.id))
                       return (
-                        <div key={`${r.id}:${r.media_type}`} className={`bg-white rounded-lg shadow overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
+                        <Card key={`${r.id}:${r.media_type}`} className={`overflow-hidden border flex flex-col${wlStatus ? ' ring-2 ring-green-400' : ''}`}>
                           <div className="relative">
                             {r.poster_path ? (
                               <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
@@ -455,24 +460,26 @@ export default function Watchlist() {
                                 View in Library
                               </Link>
                             ) : (
-                              <button
+                              <Button
                                 onClick={() => handleAddFromTmdb(r)}
                                 disabled={isPending}
-                                className="mt-2 w-full text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50"
+                                variant="primary"
+                                tone="light"
+                                size="sm"
+                                className="mt-2 w-full"
                               >
                                 {isPending ? 'Adding…' : 'Add'}
-                              </button>
+                              </Button>
                             )}
                           </div>
-                        </div>
+                        </Card>
                       )
                     })
                   )}
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {reorderError && (
@@ -487,7 +494,7 @@ export default function Watchlist() {
       ) : entries.length === 0 ? (
         <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <Card className="overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
@@ -517,7 +524,7 @@ export default function Watchlist() {
               </SortableContext>
             </DndContext>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   )

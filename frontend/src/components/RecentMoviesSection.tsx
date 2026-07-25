@@ -4,6 +4,7 @@ import { useRecentMovies, useDashboardGenres, type RecentSort } from '@/hooks/us
 import { CardCarousel } from '@/components/CardCarousel'
 import { RecentShowCard } from '@/components/RecentShowCard'
 import { DashboardSectionControls } from '@/components/DashboardSectionControls'
+import { Card } from '@/components/ui/Card'
 import type { RecentShowItem } from '@/types/api'
 
 interface Prefs {
@@ -44,7 +45,7 @@ export function RecentMoviesSection({ onCardClick }: Props) {
   )
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+    <Card as="section" padding="md" className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-lg font-semibold">Recently Added Movies</h2>
         <DashboardSectionControls
@@ -64,6 +65,6 @@ export function RecentMoviesSection({ onCardClick }: Props) {
         <p className="text-sm text-gray-400">No recently added movies match these filters.</p>
       )}
       {movies.length > 0 && <CardCarousel>{cards}</CardCarousel>}
-    </section>
+    </Card>
   )
 }

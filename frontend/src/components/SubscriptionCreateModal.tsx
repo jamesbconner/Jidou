@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useCreateRssSubscription } from '@/hooks/useRss'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/Field'
 import type { RssFeedRead, RssSubscriptionCreate } from '@/types/api'
 
@@ -75,8 +77,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
   )
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+    <Modal onClose={onClose} tone="light" maxWidth="2xl" className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b">
           <h2 className="text-lg font-semibold text-gray-900">New Subscription</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -138,7 +139,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
         </div>
 
         <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-100">Cancel</button>
+          <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           <button
             onClick={handleCreate}
             disabled={create.isPending || !draft.name.trim()}
@@ -147,7 +148,6 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
             {create.isPending ? 'Creating…' : 'Create'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
