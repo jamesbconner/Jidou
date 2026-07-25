@@ -1,0 +1,31 @@
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, test, expect, vi } from 'vitest'
+import { Button } from '@/components/ui/Button'
+
+describe('Button', () => {
+  test('renders children and handles click', () => {
+    const onClick = vi.fn()
+    render(<Button onClick={onClick}>Save</Button>)
+    fireEvent.click(screen.getByText('Save'))
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  test('applies primary variant classes', () => {
+    render(<Button variant="primary">Confirm</Button>)
+    expect(screen.getByText('Confirm')).toHaveClass('bg-blue-600')
+  })
+
+  test('applies dark tone danger classes', () => {
+    render(
+      <Button variant="danger" tone="dark">
+        Delete
+      </Button>,
+    )
+    expect(screen.getByText('Delete')).toHaveClass('bg-red-600')
+  })
+
+  test('respects disabled prop', () => {
+    render(<Button disabled>Busy</Button>)
+    expect(screen.getByText('Busy')).toBeDisabled()
+  })
+})

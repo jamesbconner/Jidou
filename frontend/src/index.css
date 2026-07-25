@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  /* Full-screen modal backdrop, centers its panel child. */
+  .overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4;
+  }
+
+  /* Modal panel shells — pick one per tone, current call sites split roughly
+     evenly between the light "management UI" look and the dark "file ops"
+     look, so both are first-class rather than one being a special case. */
+  .panel-light {
+    @apply bg-white rounded-lg shadow-xl;
+  }
+  .panel-dark {
+    @apply bg-zinc-900 rounded-lg shadow-xl;
+  }
+
+  /* Card/panel wrapper used throughout the dashboard, tables, and grids. */
+  .card {
+    @apply bg-white rounded-lg shadow;
+  }
+
+  /* Shape shared by every button variant; color comes from Button.tsx. */
+  .btn {
+    @apply rounded font-medium disabled:opacity-50 transition-colors whitespace-nowrap;
+  }
+
+  /* Shape shared by every badge/pill; color comes from the Badge component. */
+  .badge {
+    @apply inline-flex items-center text-xs px-2 py-0.5 rounded font-medium;
+  }
+}
