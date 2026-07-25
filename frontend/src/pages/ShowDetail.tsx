@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { arrayMove } from '@dnd-kit/sortable'
 import {
   useShow,
   useShowEpisodes,
@@ -11,6 +12,13 @@ import {
 } from '@/hooks/useShows'
 import { useBeginEpisodeRematch } from '@/hooks/useFiles'
 import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useRss'
+import {
+  useWatchlist,
+  useCreateWatchlistEntry,
+  useDeleteWatchlistEntry,
+  useReorderWatchlist,
+} from '@/hooks/useWatchlist'
+import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
@@ -30,9 +38,88 @@ import type {
   FileRead,
   AppConfig,
   RssSubscriptionRead,
+  WatchlistRead,
 } from '@/types/api'
 
 const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
+
+// ---------------------------------------------------------------------------
+// Watchlist controls
+// ---------------------------------------------------------------------------
+
+function WatchlistToggleButton({
+  showId,
+  entryId,
+}: {
+  showId: number
+  entryId: number | null
+}) {
+  const create = useCreateWatchlistEntry()
+  const del = useDeleteWatchlistEntry()
+  const pending = create.isPending || del.isPending
+  const inWatchlist = entryId != null
+
+  return (
+    <button
+      onClick={() => (inWatchlist ? del.mutate(entryId) : create.mutate({ show_id: showId }))}
+      disabled={pending}
+      className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+        inWatchlist
+          ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
+          : 'text-gray-600 hover:bg-gray-50'
+      }`}
+    >
+      {pending ? '…' : inWatchlist ? 'Remove From Watchlist' : 'Add To Watchlist'}
+    </button>
+  )
+}
+
+function QueuePositionSelect({
+  entries,
+  entryId,
+}: {
+  entries: WatchlistRead[]
+  entryId: number
+}) {
+  const [editing, setEditing] = useState(false)
+  const reorder = useReorderWatchlist()
+  const index = entries.findIndex((e) => e.id === entryId)
+
+  if (index === -1) return null
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="text-xs px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-700 hover:opacity-80"
+        title="Click to change queue position"
+      >
+        Queue #{index + 1}
+      </button>
+    )
+  }
+
+  return (
+    <select
+      autoFocus
+      defaultValue={index}
+      onChange={(e) => {
+        const newIndex = Number(e.target.value)
+        setEditing(false)
+        if (newIndex === index) return
+        reorder.mutate(arrayMove(entries, index, newIndex))
+      }}
+      onBlur={() => setEditing(false)}
+      className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+    >
+      {entries.map((_, i) => (
+        <option key={i} value={i}>
+          #{i + 1}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -58,6 +145,11 @@ export default function ShowDetail() {
   const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
   const { data: rssFeeds = [] } = useRssFeeds()
   const ensureRssStub = useEnsureRssStub()
+  // TODO: fetches the entire watchlist just to look up this one show (no by-show
+  // API filter exists yet). Add a `show_id` filter to GET /watchlist and use it
+  // here; keep a lazy full-list fetch (enabled only once this show is confirmed
+  // on the watchlist) for the Queue #N position/reorder dropdown.
+  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
 
   const [rematchOpen, setRematchOpen] = useState(false)
   const [pathModalOpen, setPathModalOpen] = useState(false)
@@ -116,6 +208,7 @@ export default function ShowDetail() {
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
+  const watchlistEntry = watchlistEntries.find((e) => e.show_id === showId) ?? null
 
   function handleDelete() {
     setIsDeleting(true)
@@ -184,20 +277,30 @@ export default function ShowDetail() {
                 {show.release_date && ' · '}
                 {show.media_type}
                 {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
+                {' · '}
+                <a
+                  href={tmdbUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-500 hover:underline"
+                >
+                  TMDB #{show.tmdb_id}
+                </a>
                 {show.content_type && (
                   <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded">
                     {show.content_type}
                   </span>
                 )}
               </p>
-              <a
-                href={tmdbUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-blue-500 hover:underline mt-0.5 inline-block"
-              >
-                TMDB #{show.tmdb_id}
-              </a>
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <WatchlistToggleButton showId={showId} entryId={watchlistEntry?.id ?? null} />
+                {watchlistEntry && (
+                  <>
+                    <QueuePositionSelect entries={watchlistEntries} entryId={watchlistEntry.id} />
+                    <WatchlistStatusSelect id={watchlistEntry.id} current={watchlistEntry.status} />
+                  </>
+                )}
+              </div>
               {show.overview && (
                 <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>
               )}

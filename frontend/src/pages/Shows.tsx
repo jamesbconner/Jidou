@@ -143,6 +143,10 @@ export default function Shows() {
   const createShow = useCreateShow()
 
   // High limit mirrors allShows — covers the full library without pagination gaps.
+  // TODO: this is a genuine bulk lookup (watchlist state per visible show), so a
+  // by-show filter can't replace it — but the hardcoded limit=10000 sentinel is a smell.
+  // Consider a lighter summary endpoint/field (show_id + status only, no embedded show)
+  // once the watchlist is large enough for this to matter.
   const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
   const createWatchlistEntry = useCreateWatchlistEntry()
   const deleteWatchlistEntry = useDeleteWatchlistEntry()
