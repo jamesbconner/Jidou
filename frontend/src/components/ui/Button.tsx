@@ -1,12 +1,15 @@
 import clsx from 'clsx'
+import { useContext } from 'react'
 import type { ButtonHTMLAttributes } from 'react'
+import { ModalToneContext } from '@/components/ui/Modal'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
+export type ButtonVariant = 'primary' | 'secondary' | 'danger'
 export type ButtonTone = 'light' | 'dark'
 export type ButtonSize = 'sm' | 'md'
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
+  /** Defaults to the enclosing Modal's tone, then falls back to 'light'. */
   tone?: ButtonTone
   size?: ButtonSize
 }
@@ -23,16 +26,16 @@ const VARIANT: Record<ButtonTone, Record<ButtonVariant, string>> = {
     primary: 'bg-blue-600 text-white hover:bg-blue-700',
     secondary: 'border border-gray-300 text-gray-700 hover:bg-gray-50',
     danger: 'border border-red-300 text-red-600 hover:bg-red-50',
-    ghost: 'text-gray-600 hover:bg-gray-50',
   },
   dark: {
     primary: 'bg-indigo-600 text-white hover:bg-indigo-500',
     secondary: 'border border-zinc-600 text-zinc-300 hover:bg-zinc-700',
     danger: 'bg-red-600 text-white hover:bg-red-500',
-    ghost: 'text-zinc-400 hover:text-zinc-200',
   },
 }
 
-export function Button({ variant = 'secondary', tone = 'light', size = 'md', className, ...props }: Props) {
-  return <button className={clsx('btn', SIZE[size], VARIANT[tone][variant], className)} {...props} />
+export function Button({ variant = 'secondary', tone, size = 'md', className, ...props }: Props) {
+  const modalTone = useContext(ModalToneContext)
+  const resolvedTone = tone ?? modalTone ?? 'light'
+  return <button className={clsx('btn', SIZE[size], VARIANT[resolvedTone][variant], className)} {...props} />
 }

@@ -3,6 +3,11 @@ import type { ReactNode } from 'react'
 
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg'
 
+// Note: onClick/title are hand-declared here rather than spread from
+// React.HTMLAttributes because only these two native attributes have callers
+// today. If a third one-off attribute need shows up (onMouseEnter, aria-label,
+// data-testid, etc.), switch to `...rest: React.HTMLAttributes<HTMLElement>`
+// instead of adding a fourth bespoke field.
 interface Props {
   as?: 'div' | 'section' | 'button'
   padding?: CardPadding

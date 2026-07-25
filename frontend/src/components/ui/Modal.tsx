@@ -1,9 +1,14 @@
 import clsx from 'clsx'
+import { createContext } from 'react'
 import type { ReactNode } from 'react'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 export type ModalTone = 'light' | 'dark'
 export type ModalWidth = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl'
+
+// Lets Button (and any other tone-aware child) default to the enclosing
+// Modal's tone instead of every call site having to repeat it.
+export const ModalToneContext = createContext<ModalTone | undefined>(undefined)
 
 interface Props {
   onClose: () => void
@@ -58,22 +63,24 @@ export function Modal({
   const dialogRef = useFocusTrap<HTMLDivElement>(onClose)
 
   return (
-    <div
-      className={clsx('overlay', overlayClassName)}
-      role={role}
-      aria-modal="true"
-      aria-label={ariaLabel}
-      aria-labelledby={labelledBy}
-      aria-describedby={describedBy}
-      onClick={closeOnBackdropClick ? onClose : undefined}
-    >
+    <ModalToneContext.Provider value={tone}>
       <div
-        ref={dialogRef}
-        className={clsx('w-full', MAX_WIDTH[maxWidth], PANEL_TONE[tone], className)}
-        onClick={(e) => e.stopPropagation()}
+        className={clsx('overlay', overlayClassName)}
+        role={role}
+        aria-modal="true"
+        aria-label={ariaLabel}
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
+        onClick={closeOnBackdropClick ? onClose : undefined}
       >
-        {children}
+        <div
+          ref={dialogRef}
+          className={clsx('w-full', MAX_WIDTH[maxWidth], PANEL_TONE[tone], className)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
       </div>
-    </div>
+    </ModalToneContext.Provider>
   )
 }

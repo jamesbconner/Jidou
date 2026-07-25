@@ -46,7 +46,7 @@ export function ShowRematchModal({
   }
 
   return (
-    <Modal onClose={onClose} tone="light" maxWidth="2xl" className="p-6 mx-4 space-y-4">
+    <Modal onClose={onClose} tone="light" maxWidth="2xl" className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Change TMDB Match</h3>
           <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">

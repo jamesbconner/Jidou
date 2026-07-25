@@ -1,6 +1,11 @@
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 
+// Note: onClick/title are hand-declared (same pattern as Card.tsx) rather
+// than spread from React.HTMLAttributes, since the underlying tag (button vs
+// span) already varies with onClick's presence. If more one-off native
+// attributes accumulate here, reconsider a rest-spread instead of adding
+// another bespoke field.
 interface Props {
   /** Tailwind background/text (and optional hover) classes for this badge's color. */
   color: string

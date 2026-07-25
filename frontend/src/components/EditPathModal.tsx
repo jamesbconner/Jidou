@@ -48,7 +48,7 @@ export function EditPathModal({
   }
 
   return (
-    <Modal onClose={onClose} tone="light" className="p-6 mx-4">
+    <Modal onClose={onClose} tone="light" className="p-6">
         <h3 className="font-semibold mb-4">Edit Local Path</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Content type — determines which volume base is used */}

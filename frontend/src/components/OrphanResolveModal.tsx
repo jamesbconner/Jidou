@@ -159,7 +159,7 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-700 flex justify-between items-center shrink-0">
-          <Button onClick={handleDismiss} disabled={dismiss.isPending} variant="secondary" tone="dark" size="sm">
+          <Button onClick={handleDismiss} disabled={dismiss.isPending} variant="danger" tone="dark" size="sm">
             {dismiss.isPending ? 'Dismissing…' : 'Dismiss record'}
           </Button>
           <div className="flex gap-2">

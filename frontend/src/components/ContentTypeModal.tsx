@@ -24,7 +24,7 @@ export function ContentTypeModal({
   }
 
   return (
-    <Modal onClose={onClose} tone="light" maxWidth="sm" className="p-6 mx-4">
+    <Modal onClose={onClose} tone="light" maxWidth="sm" className="p-6">
         <h3 className="font-semibold mb-4">Set Content Type</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <select
