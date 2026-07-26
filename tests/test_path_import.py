@@ -678,8 +678,16 @@ class TestScanShowDirectory:
         assert [Path(e.raw_path).name for e in entries] == ["Show.S01E01.mkv"]
 
     @pytest.mark.skipif(
-        sys.platform == "win32",
-        reason="NTFS filenames are UTF-16; the raw-byte surrogateescape scenario is POSIX-only",
+        sys.platform != "linux",
+        reason=(
+            "Reproducing the bug requires creating a file with a raw non-UTF-8 byte in its "
+            "name. NTFS (Windows) stores filenames as UTF-16, so this scenario doesn't apply "
+            "there; APFS (macOS) validates filenames as UTF-8 at the filesystem level and "
+            "rejects the write outright (OSError: Illegal byte sequence). Linux (and the "
+            "production Docker containers, which are always Linux) treats filenames as "
+            "opaque bytes, which is exactly what triggers the surrogateescape decode this "
+            "test guards against."
+        ),
     )
     def test_non_utf8_filename_does_not_crash(self, tmp_path: Path) -> None:
         """A filename with a raw non-UTF-8 byte (e.g. a legacy Latin-1 name from
