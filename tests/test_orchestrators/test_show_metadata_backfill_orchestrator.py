@@ -72,8 +72,14 @@ async def test_skips_shows_that_already_have_genres() -> None:
 
 
 @pytest.mark.asyncio
-async def test_treats_empty_list_and_null_genres_both_as_candidates() -> None:
-    """Both an empty genres array and a null value count as missing."""
+async def test_skips_shows_with_a_legitimately_empty_genre_list() -> None:
+    """A show TMDB genuinely has no genres for (genres == []) is not re-selected.
+
+    Regression test: an earlier version of the filter matched any falsy
+    genres value, including []. Since a successful backfill sets genres to
+    [] for a show TMDB reports zero genres for, that show would have been
+    re-selected as a candidate forever, never converging.
+    """
     empty_list = _make_show(show_id=1, genres=[])
     null_genres = _make_show(show_id=2, genres=None)
     session = _session_with_shows([empty_list, null_genres])
@@ -81,12 +87,31 @@ async def test_treats_empty_list_and_null_genres_both_as_candidates() -> None:
 
     result = await ShowMetadataBackfillOrchestrator(session, tmdb).run()
 
-    assert result.shows_checked == 2
+    assert result.shows_checked == 1
+    tmdb.get_details.assert_awaited_once_with(100, media_type="tv")
 
 
 # ---------------------------------------------------------------------------
 # Applying fields
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_backfilling_a_zero_genre_show_makes_it_converge_on_a_second_run() -> None:
+    """A show TMDB has zero genres for is not a candidate again after one run."""
+    show = _make_show(genres=None)
+    session = _session_with_shows([show])
+    tmdb = _make_tmdb({"genres": []})
+
+    first = await ShowMetadataBackfillOrchestrator(session, tmdb).run()
+    assert first.shows_checked == 1
+    assert show.genres == []
+
+    tmdb.get_details.reset_mock()
+    second = await ShowMetadataBackfillOrchestrator(session, tmdb).run()
+
+    assert second.shows_checked == 0
+    tmdb.get_details.assert_not_awaited()
 
 
 @pytest.mark.asyncio

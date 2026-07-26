@@ -69,11 +69,14 @@ class ShowMetadataBackfillOrchestrator:
             Aggregated MetadataBackfillResult.
         """
         all_shows = list((await self.session.execute(select(Show))).scalars().all())
-        # `genres` can be stored as SQL NULL, a JSON null literal, or an
-        # empty array depending on which code path created the row --
-        # checking truthiness in Python after load sidesteps needing to
-        # match all three shapes in a WHERE clause.
-        candidates = [s for s in all_shows if not s.genres]
+        # Only `None` means "never backfilled" -- SQL NULL and a JSON null
+        # literal both deserialize to Python None, so checking identity in
+        # Python after load sidesteps needing to match both shapes in a
+        # WHERE clause. An empty list is a legitimate, already-correct
+        # "TMDB has no genres for this show" result and must NOT be
+        # treated as a candidate again, or a genuinely genre-less show
+        # would be re-selected and re-fetched on every future run forever.
+        candidates = [s for s in all_shows if s.genres is None]
 
         total = len(candidates)
         result = MetadataBackfillResult(shows_checked=total, shows_updated=0, shows_failed=0)
