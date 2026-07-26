@@ -7,6 +7,8 @@ without touching callers — see :func:`create_image_cache_backend`.
 
 import asyncio
 import logging
+import os
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -27,15 +29,18 @@ class ImageCacheBackend(Protocol):
         """Store *data* under *size*/*filename*."""
         ...
 
-    async def purge_older_than(self, cutoff: datetime) -> int:
+    async def purge_older_than(self, cutoff: datetime, *, dry_run: bool = False) -> int:
         """Delete cached files last modified before *cutoff*.
 
         Args:
             cutoff: Timezone-aware cutoff; files with an mtime before this
                 are deleted.
+            dry_run: When True, log what would be deleted without deleting
+                anything.
 
         Returns:
-            The number of files deleted.
+            The number of files deleted (or that would be deleted, in
+            ``dry_run`` mode).
         """
         ...
 
@@ -86,49 +91,90 @@ class DiskImageCacheBackend:
 
     @staticmethod
     def _write(path: Path, data: bytes) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
+        """Write *data* to *path* atomically via a temp file + rename.
 
-    async def purge_older_than(self, cutoff: datetime) -> int:
+        A crash, OOM-kill, or full disk mid-write must never leave a
+        partial file at *path* -- ``get()`` has no way to distinguish a
+        truncated file from a valid one, so a non-atomic write would let a
+        corrupt image get served (and browser-cached) indefinitely.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp_path.write_bytes(data)
+            os.replace(tmp_path, path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+    async def purge_older_than(self, cutoff: datetime, *, dry_run: bool = False) -> int:
         """Delete cached files last modified before *cutoff*.
 
-        Returns:
-            The number of files deleted.
-        """
-        return await asyncio.to_thread(self._purge_older_than, cutoff)
+        Args:
+            cutoff: Timezone-aware cutoff; files with an mtime before this
+                are deleted.
+            dry_run: When True, log what would be deleted without deleting
+                anything.
 
-    def _purge_older_than(self, cutoff: datetime) -> int:
+        Returns:
+            The number of files deleted (or that would be deleted, in
+            ``dry_run`` mode).
+        """
+        return await asyncio.to_thread(self._purge_older_than, cutoff, dry_run)
+
+    def _purge_older_than(self, cutoff: datetime, dry_run: bool = False) -> int:
         if not self._base_path.exists():
             return 0
         deleted = 0
         for path in self._base_path.rglob("*"):
-            if not path.is_file():
+            try:
+                if not path.is_file():
+                    continue
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            except FileNotFoundError:
+                # Removed by a concurrent purge (or manual cleanup) between
+                # this walk listing it and stat-ing it -- not this run's job.
                 continue
-            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
-            if mtime < cutoff:
-                path.unlink()
-                deleted += 1
+            if mtime >= cutoff:
+                continue
+            if dry_run:
+                logger.info("Image cache purge (dry run): would delete %s (mtime=%s)", path, mtime)
+            else:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    # Same race as above, just later in the same iteration.
+                    continue
+            deleted += 1
         return deleted
 
 
-def create_image_cache_backend(config: Settings) -> ImageCacheBackend:
+def create_image_cache_backend(config: Settings) -> ImageCacheBackend | None:
     """Instantiate the configured :class:`ImageCacheBackend`.
+
+    Image caching is a non-critical convenience, not core functionality (see
+    module docstring) -- an unsupported ``image_cache_backend`` value is
+    logged as a warning rather than raised, so a config typo doesn't take
+    down the whole API/worker/beat process at import time.
 
     Args:
         config: Application settings; reads ``image_cache_backend`` and
             ``image_cache_path``.
 
     Returns:
-        A backend instance for the configured type.
-
-    Raises:
-        ValueError: If ``image_cache_backend`` names an unsupported type.
+        A backend instance for the configured type, or None if
+        ``image_cache_backend`` names an unsupported type.
     """
     backend_type = config.image_cache_backend
     if backend_type == "disk":
         return DiskImageCacheBackend(base_path=config.image_cache_path)
-    raise ValueError(f"Unsupported image_cache_backend: {backend_type!r}")
+    logger.warning(
+        "Unsupported image_cache_backend %r; image caching is disabled for this process",
+        backend_type,
+    )
+    return None
 
 
 # Module-level singleton shared by the images route and the purge task.
-image_cache_backend: ImageCacheBackend = create_image_cache_backend(settings)
+# Callers must handle None -- see create_image_cache_backend's docstring.
+image_cache_backend: ImageCacheBackend | None = create_image_cache_backend(settings)

@@ -1,11 +1,13 @@
 """Tests for the /api/images route."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2 as httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import jidou.api.routes.images as images_module
@@ -105,7 +107,7 @@ class TestCacheMiss:
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
             patch.object(images_module.image_cache_backend, "put", mock_put),
-            patch.object(images_module._image_rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -119,7 +121,7 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module._image_rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -131,7 +133,7 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module._image_rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -146,12 +148,88 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module._image_rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
 
         assert response.status_code == 502
+
+
+def test_backend_not_configured_returns_503(client: TestClient) -> None:
+    """An unconfigured image cache backend (see image_cache.py's graceful-init
+    fallback) surfaces as 503, not an unhandled AttributeError."""
+    with patch.object(images_module, "image_cache_backend", None):
+        response = client.get("/api/images/w300/abc123.jpg")
+
+    assert response.status_code == 503
+
+
+class TestInFlightDedup:
+    """Unit tests against _fetch_and_cache directly -- TestClient's synchronous
+    request handling can't model true concurrency, so these exercise the
+    dedup mechanism at the function level instead of through HTTP.
+    """
+
+    async def _fake_backend(self) -> MagicMock:
+        backend = MagicMock()
+        stored: dict[str, bytes] = {}
+
+        async def fake_get(size: str, filename: str) -> bytes | None:
+            return stored.get(f"{size}/{filename}")
+
+        async def fake_put(size: str, filename: str, data: bytes) -> None:
+            stored[f"{size}/{filename}"] = data
+
+        backend.get = AsyncMock(side_effect=fake_get)
+        backend.put = AsyncMock(side_effect=fake_put)
+        return backend
+
+    async def test_concurrent_callers_share_one_upstream_fetch(self) -> None:
+        backend = await self._fake_backend()
+        fetch_started = asyncio.Event()
+        release_fetch = asyncio.Event()
+        fetch_call_count = 0
+
+        async def fake_fetch_from_tmdb(size: str, filename: str) -> bytes:
+            nonlocal fetch_call_count
+            fetch_call_count += 1
+            fetch_started.set()
+            await release_fetch.wait()
+            return b"fetched-bytes"
+
+        with patch.object(images_module, "_fetch_from_tmdb", fake_fetch_from_tmdb):
+            task1 = asyncio.create_task(images_module._fetch_and_cache(backend, "w300", "abc.jpg"))
+            await fetch_started.wait()
+            task2 = asyncio.create_task(images_module._fetch_and_cache(backend, "w300", "abc.jpg"))
+            await asyncio.sleep(0)  # let task2 register itself as a waiter
+            release_fetch.set()
+            result1, result2 = await asyncio.gather(task1, task2)
+
+        assert fetch_call_count == 1
+        assert result1 == b"fetched-bytes"
+        assert result2 == b"fetched-bytes"
+
+    async def test_owner_failure_does_not_poison_later_callers(self) -> None:
+        """A failed owner fetch must not leave the key permanently stuck --
+        the next caller gets its own fresh attempt."""
+        backend = await self._fake_backend()
+        call_count = 0
+
+        async def fake_fetch_from_tmdb(size: str, filename: str) -> bytes:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise HTTPException(status_code=502, detail="upstream error")
+            return b"second-attempt-bytes"
+
+        with patch.object(images_module, "_fetch_from_tmdb", fake_fetch_from_tmdb):
+            with pytest.raises(HTTPException):
+                await images_module._fetch_and_cache(backend, "w300", "abc.jpg")
+            result = await images_module._fetch_and_cache(backend, "w300", "abc.jpg")
+
+        assert result == b"second-attempt-bytes"
+        assert call_count == 2
 
 
 def test_images_route_ignores_a_configured_api_key(client: TestClient) -> None:

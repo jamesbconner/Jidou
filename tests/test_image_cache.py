@@ -90,9 +90,89 @@ def test_create_image_cache_backend_defaults_to_disk() -> None:
     assert result._base_path == Path("/tmp/images")
 
 
-def test_create_image_cache_backend_rejects_unsupported_type() -> None:
-    """The factory raises ValueError for an unimplemented backend type."""
+def test_create_image_cache_backend_returns_none_for_unsupported_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unsupported backend type logs a warning and returns None rather than
+    raising -- image caching is non-critical, so a config typo must not crash
+    the whole API/worker/beat process at import time.
+    """
     config = Settings(image_cache_backend="garage")
 
-    with pytest.raises(ValueError, match="Unsupported image_cache_backend"):
-        create_image_cache_backend(config)
+    with caplog.at_level("WARNING"):
+        result = create_image_cache_backend(config)
+
+    assert result is None
+    assert "garage" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_put_write_is_atomic_no_partial_file_left_on_failure(
+    backend: DiskImageCacheBackend, tmp_path: Path
+) -> None:
+    """A failure during the write must not leave a partial/temp file behind
+    at the final path or in the target directory.
+    """
+    from unittest.mock import patch
+
+    with (
+        patch("pathlib.Path.write_bytes", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        await backend.put("w300", "abc123.jpg", b"data")
+
+    assert not (tmp_path / "w300" / "abc123.jpg").exists()
+    assert list((tmp_path / "w300").glob("*.tmp")) == []
+
+
+@pytest.mark.asyncio
+async def test_purge_older_than_dry_run_does_not_delete(
+    backend: DiskImageCacheBackend, tmp_path: Path
+) -> None:
+    """dry_run=True reports what would be deleted without deleting it."""
+    now = datetime.now(UTC)
+    old_file = tmp_path / "w92" / "old.jpg"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_bytes(b"old")
+    old_timestamp = (now - timedelta(days=200)).timestamp()
+    os.utime(old_file, (old_timestamp, old_timestamp))
+
+    cutoff = now - timedelta(days=180)
+    deleted = await backend.purge_older_than(cutoff, dry_run=True)
+
+    assert deleted == 1
+    assert old_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_purge_older_than_survives_concurrent_removal(
+    backend: DiskImageCacheBackend, tmp_path: Path
+) -> None:
+    """A file removed between the directory walk and the unlink call (e.g. by
+    an overlapping purge run) must not crash the whole purge -- it's just
+    skipped.
+    """
+    now = datetime.now(UTC)
+    old_file = tmp_path / "w92" / "old.jpg"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_bytes(b"old")
+    old_timestamp = (now - timedelta(days=200)).timestamp()
+    os.utime(old_file, (old_timestamp, old_timestamp))
+
+    real_unlink = Path.unlink
+
+    def _unlink_then_raise(self: Path, *args: object, **kwargs: object) -> None:
+        real_unlink(self)
+        raise FileNotFoundError("already gone")
+
+    from unittest.mock import patch
+
+    with patch("pathlib.Path.unlink", _unlink_then_raise):
+        # Must not raise -- that's the actual regression under test.
+        deleted = await backend.purge_older_than(now - timedelta(days=180))
+
+    # Not counted in this run's tally (the race means it's ambiguous whether
+    # this run or a concurrent one "did" the deleting) -- what matters is the
+    # file is genuinely gone and the FileNotFoundError didn't propagate.
+    assert deleted == 0
+    assert not old_file.exists()
