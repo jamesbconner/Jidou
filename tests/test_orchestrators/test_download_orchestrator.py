@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jidou.models.downloaded_file import FileStatus
+from jidou.models.downloaded_file import FileStatus, IgnoredReason
 from jidou.orchestrators.download_orchestrator import (
     DownloadOrchestrator,
     _staging_path_for,
@@ -38,6 +38,7 @@ def _make_file(
     file.status = FileStatus.DISCOVERED
     file.local_path = None
     file.file_size = 0
+    file.ignored_reason = None
     return file
 
 
@@ -131,6 +132,25 @@ async def test_run_downloads_discovered_files():
     assert sftp.download_file.call_count == 2
     # 1 commit to release locks (DOWNLOADING) + 1 commit to persist results
     assert session.commit.call_count == 2
+
+
+async def test_run_routes_noscan_file_to_ignored():
+    """A file tagged ignored_reason at discovery goes to IGNORED, not DOWNLOADED."""
+    file1 = _make_file(file_id=1, filename="doc.mkv", remote_path="/remote/doc/doc.mkv")
+    file1.ignored_reason = IgnoredReason.NOSCAN_PATH
+    file2 = _make_file(file_id=2, filename="ep1.mkv", remote_path="/remote/ep1.mkv")
+
+    session = _make_session(files=[file1, file2])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result(size=500))
+
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+    result = await orch.run()
+
+    assert result.files_downloaded == 2
+    assert file1.status == FileStatus.IGNORED
+    assert file1.local_path is not None  # still downloaded to staging
+    assert file2.status == FileStatus.DOWNLOADED
 
 
 async def test_run_sets_staging_local_path():

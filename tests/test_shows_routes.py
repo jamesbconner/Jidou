@@ -2150,6 +2150,7 @@ def test_begin_episode_rematch_resets_backing_file() -> None:
     backing.hash_sha256 = None
     backing.status = FileStatus.ROUTED
     backing.matched_by = None
+    backing.ignored_reason = None
     backing.error_message = None
     backing.parsed_show_name = None
     backing.parsed_season = 1
@@ -2604,6 +2605,7 @@ def _make_linked_file(
     f.hash_sha256 = None
     f.status = FileStatus.ROUTED
     f.matched_by = None
+    f.ignored_reason = None
     f.error_message = None
     f.parsed_show_name = None
     f.parsed_season = None

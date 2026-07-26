@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service
 from jidou.database import get_session
-from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
 from jidou.models.episode import Episode
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
@@ -300,6 +300,59 @@ async def patch_file(
         )
     ).scalar_one()
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
+    return refreshed
+
+
+@router.post("/{file_id}/ignore", response_model=FileRead)
+async def ignore_file(
+    file_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> DownloadedFile:
+    """Manually exclude a stray non-media file from matching forever.
+
+    Escape hatch for files that will never be matched (documentaries,
+    theatre recordings, etc.) but weren't caught by a configured noscan SFTP
+    path — e.g. a one-off file mixed into an otherwise normal TV/movie
+    folder. The row is kept (not deleted) so ``remote_path`` uniqueness
+    still prevents the file from being re-downloaded.
+
+    Args:
+        file_id: Database primary key.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`DownloadedFile` record.
+
+    Raises:
+        HTTPException: 404 if the file is not found.
+        HTTPException: 409 if the file is in a non-ignorable status.
+    """
+    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
+    file = (await db_session.execute(stmt)).scalar_one_or_none()
+    if file is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ignorable = {FileStatus.UNMATCHED, FileStatus.ERROR}
+    if file.status not in ignorable:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot ignore a file with status '{file.status.value}'; "
+            f"only {', '.join(s.value for s in ignorable)} files can be ignored",
+        )
+
+    file.status = FileStatus.IGNORED
+    file.ignored_reason = IgnoredReason.MANUAL
+    file.error_message = None
+
+    await db_session.flush()
+    refreshed = (
+        await db_session.execute(
+            select(DownloadedFile)
+            .where(DownloadedFile.id == file_id)
+            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        )
+    ).scalar_one()
+    logger.info("Manually ignored file id=%d", file_id)
     return refreshed
 
 

@@ -7,7 +7,9 @@ validation pass.
 """
 
 import os
+from collections.abc import Iterable
 from datetime import datetime
+from pathlib import PurePosixPath
 
 # Allowlist, not a denylist: an SFTP source is commonly mixed-use (archives,
 # subtitles, images, docs alongside the media itself), so excluding known-junk
@@ -99,3 +101,53 @@ def is_recently_modified(mtime: datetime, grace_seconds: int = _UPLOAD_GRACE_SEC
     # Negative elapsed means the SFTP host clock is ahead of ours. Treat that
     # as "not recently modified" so clock skew never blocks all downloads.
     return 0 <= elapsed < grace_seconds
+
+
+def is_under_any_path(path: str, roots: Iterable[str]) -> bool:
+    """Return True if *path* is equal to, or nested under, any of *roots*.
+
+    Comparison is segment-aware, not a raw string prefix: root
+    ``/downloads/doc`` matches ``/downloads/doc/movie.mkv`` but not
+    ``/downloads/documentary/x.mkv`` (a naive ``str.startswith`` would
+    wrongly match the latter).
+
+    Args:
+        path: Full remote path to test (typically a file path).
+        roots: Candidate root paths.
+
+    Returns:
+        True if *path* falls under any root in *roots*.
+    """
+    segments = PurePosixPath(path).parts
+    for root in roots:
+        root_segments = PurePosixPath(root).parts
+        if segments[: len(root_segments)] == root_segments:
+            return True
+    return False
+
+
+def find_noscan_scan_overlaps(
+    scan_paths: Iterable[str], noscan_paths: Iterable[str]
+) -> list[tuple[str, str]]:
+    """Find scan paths that are swallowed by a noscan path.
+
+    A noscan path that is an ancestor of (or identical to) a configured scan
+    path is almost certainly a misconfiguration: every file under that scan
+    path — including real TV/movie content — would be silently excluded
+    from matching. This does *not* flag the (intended, common) opposite
+    case of a noscan path nested inside a scan path.
+
+    Args:
+        scan_paths: Configured SFTP paths that are scanned and matched.
+        noscan_paths: Configured SFTP paths excluded from matching.
+
+    Returns:
+        ``(scan_path, noscan_path)`` pairs where *noscan_path* would swallow
+        *scan_path*.
+    """
+    return [
+        (scan_path, noscan_path)
+        for scan_path in scan_paths
+        for noscan_path in noscan_paths
+        if is_under_any_path(scan_path, [noscan_path])
+    ]

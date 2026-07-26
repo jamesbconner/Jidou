@@ -8,7 +8,9 @@ import pytest
 from jidou.services.file_filters import (
     EXCLUDED_KEYWORDS,
     MEDIA_EXTENSIONS,
+    find_noscan_scan_overlaps,
     is_recently_modified,
+    is_under_any_path,
     is_valid_directory,
     is_valid_media_file,
 )
@@ -111,3 +113,47 @@ class TestIsRecentlyModified:
         # SFTP host clock is ahead of scanner: negative elapsed must not block files.
         future = datetime.now(tz=dt.UTC) + timedelta(minutes=5)
         assert is_recently_modified(future) is False
+
+
+class TestIsUnderAnyPath:
+    def test_file_directly_under_root_matches(self) -> None:
+        assert is_under_any_path("/downloads/doc/movie.mkv", ["/downloads/doc"]) is True
+
+    def test_nested_file_under_root_matches(self) -> None:
+        assert is_under_any_path("/downloads/doc/sub/movie.mkv", ["/downloads/doc"]) is True
+
+    def test_path_identical_to_root_matches(self) -> None:
+        assert is_under_any_path("/downloads/doc", ["/downloads/doc"]) is True
+
+    def test_sibling_with_shared_prefix_does_not_match(self) -> None:
+        # A naive str.startswith would wrongly match this.
+        assert is_under_any_path("/downloads/documentary-club/x.mkv", ["/downloads/doc"]) is False
+
+    def test_unrelated_path_does_not_match(self) -> None:
+        assert is_under_any_path("/downloads/tv/show.mkv", ["/downloads/doc"]) is False
+
+    def test_matches_any_of_multiple_roots(self) -> None:
+        roots = ["/downloads/doc", "/completed/misc"]
+        assert is_under_any_path("/completed/misc/workout.mkv", roots) is True
+
+    def test_empty_roots_never_matches(self) -> None:
+        assert is_under_any_path("/downloads/doc/movie.mkv", []) is False
+
+
+class TestFindNoscanScanOverlaps:
+    def test_no_overlap_when_noscan_nested_inside_scan_path(self) -> None:
+        # The intended, common case: noscan is a subdirectory of a scan root.
+        overlaps = find_noscan_scan_overlaps(["/downloads"], ["/downloads/documentaries"])
+        assert overlaps == []
+
+    def test_flags_noscan_as_ancestor_of_scan_path(self) -> None:
+        overlaps = find_noscan_scan_overlaps(["/downloads/tv"], ["/downloads"])
+        assert overlaps == [("/downloads/tv", "/downloads")]
+
+    def test_flags_identical_scan_and_noscan_paths(self) -> None:
+        overlaps = find_noscan_scan_overlaps(["/downloads"], ["/downloads"])
+        assert overlaps == [("/downloads", "/downloads")]
+
+    def test_unrelated_paths_produce_no_overlap(self) -> None:
+        overlaps = find_noscan_scan_overlaps(["/downloads/tv"], ["/completed/misc"])
+        assert overlaps == []

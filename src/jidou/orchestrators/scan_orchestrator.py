@@ -15,9 +15,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
 from jidou.models.scanned_directory import ScannedDirectory
 from jidou.orchestrators._bulk_existence import chunked_existing_paths, insert_or_skip_duplicate
+from jidou.services.file_filters import find_noscan_scan_overlaps, is_under_any_path
 from jidou.services.sftp_service import RecursiveListResult, RemoteFile, SFTPService
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,9 @@ class ScanOrchestrator:
         session: Active async SQLAlchemy session.
         sftp: Configured SFTPService instance.
         remote_paths: List of remote directory paths to scan.
+        noscan_paths: Remote paths (or subdirectories of a scanned path)
+            whose files are still discovered and downloaded but never
+            parsed, matched, or routed — see ``IgnoredReason.NOSCAN_PATH``.
     """
 
     def __init__(
@@ -67,10 +71,23 @@ class ScanOrchestrator:
         session: AsyncSession,
         sftp: SFTPService,
         remote_paths: list[str],
+        noscan_paths: list[str] | None = None,
     ) -> None:
         self.session = session
         self.sftp = sftp
         self.remote_paths = remote_paths
+        self.noscan_paths = noscan_paths or []
+
+        overlaps = find_noscan_scan_overlaps(self.remote_paths, self.noscan_paths)
+        for scan_path, noscan_path in overlaps:
+            logger.warning(
+                "Noscan path %r is an ancestor of (or identical to) scan path %r — "
+                "every file under %r will be excluded from matching, likely "
+                "unintentionally. Check SFTP_NOSCAN_PATHS.",
+                noscan_path,
+                scan_path,
+                scan_path,
+            )
 
     async def run(
         self,
@@ -277,8 +294,15 @@ class ScanOrchestrator:
         if dry_run:
             logger.info("[DRY RUN] Would create DownloadedFile for %s", rf.path)
             return True
+        ignored_reason = (
+            IgnoredReason.NOSCAN_PATH if is_under_any_path(rf.path, self.noscan_paths) else None
+        )
         row = DownloadedFile.new_from_remote(
-            name=rf.name, remote_path=rf.path, size=rf.size, status=FileStatus.DISCOVERED
+            name=rf.name,
+            remote_path=rf.path,
+            size=rf.size,
+            status=FileStatus.DISCOVERED,
+            ignored_reason=ignored_reason,
         )
         return await insert_or_skip_duplicate(self.session, row)
 

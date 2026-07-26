@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     sftp_key_path: str | None = None
     # Comma-separated remote paths to scan, e.g. "/downloads,/completed"
     sftp_remote_paths: str = "/"
+    # Comma-separated remote paths (or subdirectories of a scanned path) whose
+    # files are still discovered and downloaded — so they're never re-fetched —
+    # but are never parsed, matched, or routed, e.g. documentaries, theatre
+    # recordings, or workout videos mixed in with TV/movie downloads.
+    sftp_noscan_paths: str = ""
     # Full remote path to the YaRSS2 config file managed by Jidou
     rss_config_remote_path: str | None = None
     # Shell commands run over SSH (exec, not SFTP) to bookend the RSS config
@@ -72,6 +77,11 @@ class Settings(BaseSettings):
     def sftp_remote_paths_list(self) -> list[str]:
         """Return SFTP_REMOTE_PATHS as a list, split on commas."""
         return [p.strip() for p in self.sftp_remote_paths.split(",") if p.strip()]
+
+    @property
+    def sftp_noscan_paths_list(self) -> list[str]:
+        """Return SFTP_NOSCAN_PATHS as a list, split on commas."""
+        return [p.strip() for p in self.sftp_noscan_paths.split(",") if p.strip()]
 
     # Local staging area for downloaded files awaiting parse/match/route
     local_staging_path: str = "/data/staging"

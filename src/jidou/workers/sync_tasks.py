@@ -77,6 +77,7 @@ async def _sync_all(
             tmdb_svc,
             llm,
             remote_paths=settings.sftp_remote_paths_list,
+            noscan_paths=settings.sftp_noscan_paths_list,
             local_staging_path=settings.local_staging_path,
             local_tv_path=settings.local_tv_path,
             local_anime_path=settings.local_anime_path,

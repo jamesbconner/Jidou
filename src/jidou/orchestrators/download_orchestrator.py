@@ -44,6 +44,23 @@ def _staging_path_for(remote_path: str, staging_root: str) -> Path:
     return destination
 
 
+def _post_download_status(file: DownloadedFile) -> FileStatus:
+    """Return the status a file transitions to once its transfer completes.
+
+    Files tagged with ``ignored_reason`` at discovery time (noscan-path
+    files) go straight to ``IGNORED`` instead of ``DOWNLOADED`` so they
+    never enter the parse/match pipeline.
+
+    Args:
+        file: The file whose transfer just completed.
+
+    Returns:
+        ``FileStatus.IGNORED`` if ``file.ignored_reason`` is set, else
+        ``FileStatus.DOWNLOADED``.
+    """
+    return FileStatus.IGNORED if file.ignored_reason else FileStatus.DOWNLOADED
+
+
 @dataclass
 class DownloadResult:
     """Result of a batch SFTP download operation."""
@@ -205,15 +222,18 @@ class DownloadOrchestrator:
                     for (file, local_path), task in zip(pending, tasks, strict=True):
                         if task.done() and not task.cancelled() and task.exception() is None:
                             r = task.result()
-                            file.status = FileStatus.DOWNLOADED
+                            file.status = _post_download_status(file)
                             file.local_path = str(local_path)
                             file.file_size = r.size
                             file.error_message = None
                             files_downloaded += 1
                             bytes_downloaded += r.size
+                            suffix = (
+                                " (noscan — excluded from matching)" if file.ignored_reason else ""
+                            )
                             await _emit(
                                 "info",
-                                f"Downloaded {file.original_filename!r}",
+                                f"Downloaded {file.original_filename!r}{suffix}",
                                 {"file_id": file.id, "bytes": r.size},
                             )
                         elif file.status == FileStatus.DOWNLOADING:
@@ -254,15 +274,16 @@ class DownloadOrchestrator:
                             {"file_id": file.id, "error": error_msg},
                         )
                     else:
-                        file.status = FileStatus.DOWNLOADED
+                        file.status = _post_download_status(file)
                         file.local_path = str(local_path)
                         file.file_size = result.size
                         file.error_message = None
                         files_downloaded += 1
                         bytes_downloaded += result.size
+                        suffix = " (noscan — excluded from matching)" if file.ignored_reason else ""
                         await _emit(
                             "info",
-                            f"Downloaded {file.original_filename!r}",
+                            f"Downloaded {file.original_filename!r}{suffix}",
                             {"file_id": file.id, "bytes": result.size},
                         )
 
@@ -275,7 +296,7 @@ class DownloadOrchestrator:
                         progress_idx += 1
                         msg = (
                             f"Downloaded {file.original_filename}"
-                            if file.status == FileStatus.DOWNLOADED
+                            if file.status in (FileStatus.DOWNLOADED, FileStatus.IGNORED)
                             else f"Failed {file.original_filename}"
                         )
                         await on_progress(progress_idx, total, msg)
