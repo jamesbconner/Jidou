@@ -16,7 +16,7 @@ import type {
   AppConfig,
 } from '@/types/api'
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w300'
+const TMDB_IMAGE_BASE = '/api/images/w300'
 
 interface Props {
   file: FileRead

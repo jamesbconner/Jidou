@@ -44,7 +44,7 @@ import type {
   WatchlistRead,
 } from '@/types/api'
 
-const TMDB_BACKDROP = 'https://image.tmdb.org/t/p/w500'
+const TMDB_BACKDROP = '/api/images/w500'
 
 // ---------------------------------------------------------------------------
 // Watchlist controls

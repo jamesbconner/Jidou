@@ -72,6 +72,11 @@ services:
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
       - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
       - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
+      # Image cache (disk-backed proxy for TMDB poster/backdrop images)
+      - IMAGE_CACHE_BACKEND=${IMAGE_CACHE_BACKEND:-disk}
+      - IMAGE_CACHE_PATH=${IMAGE_CACHE_PATH:-/data/image-cache}
+      - IMAGE_CACHE_EXPIRATION_ENABLED=${IMAGE_CACHE_EXPIRATION_ENABLED:-true}
+      - IMAGE_CACHE_RETENTION_DAYS=${IMAGE_CACHE_RETENTION_DAYS:-180}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -137,6 +142,8 @@ services:
       - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
       - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
       - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      # Image cache — bind mount for cached TMDB poster/backdrop bytes.
+      - ${IMAGE_CACHE_HOST_PATH:-${IMAGE_CACHE_PATH:-/data/image-cache}}:${IMAGE_CACHE_PATH:-/data/image-cache}
     command: >
       uvicorn jidou.main:app
       --host 0.0.0.0
@@ -177,6 +184,11 @@ services:
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
       - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
       - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
+      # Image cache (disk-backed proxy for TMDB poster/backdrop images)
+      - IMAGE_CACHE_BACKEND=${IMAGE_CACHE_BACKEND:-disk}
+      - IMAGE_CACHE_PATH=${IMAGE_CACHE_PATH:-/data/image-cache}
+      - IMAGE_CACHE_EXPIRATION_ENABLED=${IMAGE_CACHE_EXPIRATION_ENABLED:-true}
+      - IMAGE_CACHE_RETENTION_DAYS=${IMAGE_CACHE_RETENTION_DAYS:-180}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_API_KEY=${LLM_API_KEY:-}
@@ -223,6 +235,8 @@ services:
       - ${LOCAL_TV_HOST_PATH:-${LOCAL_TV_PATH:-/data/media/tv}}:${LOCAL_TV_PATH:-/data/media/tv}
       - ${LOCAL_ANIME_HOST_PATH:-${LOCAL_ANIME_PATH:-/data/media/anime}}:${LOCAL_ANIME_PATH:-/data/media/anime}
       - ${LOCAL_MOVIE_HOST_PATH:-${LOCAL_MOVIE_PATH:-/data/media/movies}}:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      # Image cache — bind mount so the purge task can delete stale files.
+      - ${IMAGE_CACHE_HOST_PATH:-${IMAGE_CACHE_PATH:-/data/image-cache}}:${IMAGE_CACHE_PATH:-/data/image-cache}
     depends_on:
       postgres:
         condition: service_healthy
@@ -255,6 +269,11 @@ services:
       # TMDB API
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
+      # Image cache — only the enable flag and retention are needed here;
+      # jidou-beat only decides whether/when to schedule the purge task, it
+      # never touches image files itself (no path/backend vars, no volume).
+      - IMAGE_CACHE_EXPIRATION_ENABLED=${IMAGE_CACHE_EXPIRATION_ENABLED:-true}
+      - IMAGE_CACHE_RETENTION_DAYS=${IMAGE_CACHE_RETENTION_DAYS:-180}
       # LLM (optional)
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - LLM_MODEL=${LLM_MODEL:-}

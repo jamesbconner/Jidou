@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
 
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
+const TMDB_IMAGE_BASE = '/api/images/w185'
 
 interface Props {
   file: FileRead

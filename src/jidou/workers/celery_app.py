@@ -56,6 +56,7 @@ celery_app.conf.update(
         "jidou.workers.seed_tasks",
         "jidou.workers.scheduled_tasks",
         "jidou.workers.backfill_tasks",
+        "jidou.workers.image_cache_tasks",
     ],
 )
 
@@ -86,6 +87,17 @@ if settings.rss_import_schedule_enabled:
     logger.info(
         "RSS import beat schedule enabled: daily at hour(s) %s UTC",
         settings.rss_import_schedule_hours,
+    )
+
+if settings.image_cache_expiration_enabled:
+    _beat_schedule["purge-stale-images"] = {
+        "task": "jidou.workers.image_cache_tasks.purge_stale_images_task",
+        "schedule": crontab(hour="3", minute="30"),
+        "options": {"queue": "jidou"},
+    }
+    logger.info(
+        "Image cache purge beat schedule enabled: daily at 03:30 UTC (retention %d days)",
+        settings.image_cache_retention_days,
     )
 
 celery_app.conf.beat_schedule = _beat_schedule
