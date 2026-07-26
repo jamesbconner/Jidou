@@ -43,7 +43,12 @@ server {
     }
 
     # API proxy - forward /api requests to FastAPI backend
-    location /api/ {
+    # ^~ is required: without it, the regex location below for static asset
+    # extensions (.jpg/.png/etc) would win for /api/images/* requests since
+    # nginx always prefers a regex location match over a plain prefix match,
+    # regardless of file order -- and /api/images/w300/xyz.jpg would 404
+    # against the SPA's own html root instead of reaching FastAPI.
+    location ^~ /api/ {
         proxy_pass http://jidou-api:8192/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
