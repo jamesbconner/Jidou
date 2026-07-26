@@ -13,6 +13,21 @@ from jidou.orchestrators.show_metadata_backfill_orchestrator import (
 # ---------------------------------------------------------------------------
 
 
+class _FakeNestedTransaction:
+    """Mimics AsyncSession.begin_nested()'s async context manager.
+
+    Real SAVEPOINT rollback only expires objects modified since the
+    savepoint began -- unlike a full session.rollback() -- so unlike that
+    method, entering/exiting this never touches unrelated mock objects.
+    """
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False  # never swallow -- exceptions propagate to the caller
+
+
 def _make_show(
     *,
     show_id: int = 1,
@@ -40,6 +55,7 @@ def _session_with_shows(shows: list[MagicMock]) -> AsyncMock:
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(return_value=_FakeNestedTransaction())
     return session
 
 
@@ -191,8 +207,12 @@ async def test_fetch_failure_for_one_show_does_not_abort_the_batch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_failure_rolls_back_and_continues() -> None:
-    """A DB failure while saving one show is rolled back without aborting the batch."""
+async def test_flush_failure_is_contained_by_savepoint_without_a_session_rollback() -> None:
+    """A flush() failure while saving one show is undone by its own SAVEPOINT,
+    not a full session.rollback() -- see the begin_nested() comment in the
+    orchestrator for why a blanket rollback() would corrupt every other
+    already-loaded Show still pending in the batch.
+    """
     show = _make_show(genres=None)
     session = _session_with_shows([show])
     session.flush = AsyncMock(side_effect=RuntimeError("db down"))
@@ -202,7 +222,82 @@ async def test_save_failure_rolls_back_and_continues() -> None:
 
     assert result.shows_failed == 1
     assert result.shows_updated == 0
+    session.begin_nested.assert_called_once()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_commit_failure_rolls_back_and_continues() -> None:
+    """Unlike a flush() failure (contained by the SAVEPOINT), a commit()
+    failure needs its own explicit rollback() -- otherwise the session is
+    left unusable for every subsequent show in the batch.
+    """
+    show = _make_show(genres=None)
+    session = _session_with_shows([show])
+    session.commit = AsyncMock(side_effect=RuntimeError("db down"))
+    tmdb = _make_tmdb({"genres": [{"id": 16, "name": "Animation"}]})
+
+    result = await ShowMetadataBackfillOrchestrator(session, tmdb).run()
+
+    assert result.shows_failed == 1
+    assert result.shows_updated == 0
     session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_save_failure_after_mutation_does_not_crash_on_expired_show() -> None:
+    """Regression test for a MissingGreenlet-shaped bug: if `show` is mutated
+    (setattr'd) inside the SAVEPOINT before flush() fails, a real SAVEPOINT
+    rollback expires `show`'s attributes -- so the except block must not do
+    a bare `show.id`/`show.title` access afterward, only the values captured
+    before the SAVEPOINT began.
+    """
+
+    class _ExpiringShow:
+        """Stand-in for a Show ORM object whose attributes become
+        inaccessible after `expire()` is called -- simulates SQLAlchemy's
+        post-SAVEPOINT-rollback attribute expiry, to prove the orchestrator
+        never touches show.id/show.title after a mid-savepoint failure.
+        """
+
+        def __init__(self, show_id: int, tmdb_id: int, title: str) -> None:
+            self._id = show_id
+            self.tmdb_id = tmdb_id
+            self._title = title
+            self.media_type = "tv"
+            self.genres = None
+            self.sys_name = title
+            self._expired = False
+
+        def expire(self) -> None:
+            self._expired = True
+
+        @property
+        def id(self) -> int:
+            if self._expired:
+                raise AssertionError("show.id accessed after simulated expiry")
+            return self._id
+
+        @property
+        def title(self) -> str:
+            if self._expired:
+                raise AssertionError("show.title accessed after simulated expiry")
+            return self._title
+
+    show = _ExpiringShow(show_id=1, tmdb_id=100, title="Test Show")
+    session = _session_with_shows([show])  # type: ignore[list-item]
+
+    async def _flush_then_expire() -> None:
+        show.expire()
+        raise RuntimeError("db down")
+
+    session.flush = AsyncMock(side_effect=_flush_then_expire)
+    tmdb = _make_tmdb({"genres": [{"id": 16, "name": "Animation"}]})
+
+    result = await ShowMetadataBackfillOrchestrator(session, tmdb).run()
+
+    assert result.shows_failed == 1
+    assert result.failed_titles == ["Test Show"]
 
 
 # ---------------------------------------------------------------------------
