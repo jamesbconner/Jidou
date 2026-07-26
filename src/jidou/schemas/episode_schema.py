@@ -2,7 +2,9 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
+
+from jidou.services.path_transport import decode_path_bytes_for_display
 
 
 class EpisodeRead(BaseModel):
@@ -51,3 +53,22 @@ class EpisodeList(BaseModel):
     tracked_filename: str | None = None
     tracked_source: str | None = None
     backing_files: list[BackingFile] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def tracked_filename_display(self) -> str | None:
+        """Human-readable ``tracked_filename``, for display only.
+
+        ``tracked_filename`` itself must stay exactly as stored — it may be
+        percent-encoded (see :mod:`~jidou.services.path_transport`) when the
+        underlying filename has non-UTF-8 bytes, and the frontend echoes it
+        back verbatim to ``assign-import`` for an exact database match (see
+        ``AssignImportModal.tsx``). Decoding it in place there would break
+        that lookup. This lossy (U+FFFD on undecodable bytes), readable form
+        is only for showing to a user.
+        """
+        return (
+            decode_path_bytes_for_display(self.tracked_filename)
+            if self.tracked_filename is not None
+            else None
+        )

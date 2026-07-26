@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.services.path_transport import decode_path_bytes_for_display
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,10 @@ async def create_synthetic_import_file(
     if existing is not None:
         return existing
 
-    filename = raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+    # original_filename is display-only (never echoed back for a lookup, unlike
+    # local_path/remote_path below), so store the human-readable decoded form
+    # directly rather than leaking raw_path's percent-encoding into the UI.
+    filename = decode_path_bytes_for_display(raw_path).replace("\\", "/").rsplit("/", 1)[-1]
     record = DownloadedFile(
         show_id=show_id,
         episode_id=episode_id,

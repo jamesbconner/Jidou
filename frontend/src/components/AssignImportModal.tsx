@@ -28,7 +28,10 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
     return episodes
       .filter((ep) => ep.tracked_filename && ep.tracked_source === 'import')
       .map((ep) => ({
+        // filename is the byte-exact value sent back to assign-import for its
+        // exact-match lookup — never display it directly, use displayName.
         filename: ep.tracked_filename!,
+        displayName: ep.tracked_filename_display ?? ep.tracked_filename!,
         epId: ep.id,
         label: `S${pad2(ep.season_number)}E${pad2(ep.episode_number)} · ${ep.name}`,
       }))
@@ -36,6 +39,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
   }, [episodes])
 
   const currentFilename = episode.tracked_filename
+  const currentFilenameDisplay = episode.tracked_filename_display ?? episode.tracked_filename
 
   function handleSave() {
     if (!selected) return
@@ -55,10 +59,12 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-          {currentFilename && (
+          {currentFilename && currentFilenameDisplay && (
             <div className="bg-zinc-800 rounded p-3 space-y-1">
               <div className="text-xs text-zinc-400">Currently assigned</div>
-              <div className="font-mono text-xs text-zinc-200 truncate">{basename(currentFilename)}</div>
+              <div className="font-mono text-xs text-zinc-200 truncate">
+                {basename(currentFilenameDisplay)}
+              </div>
             </div>
           )}
 
@@ -75,7 +81,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
               <option value="">— pick a file —</option>
               {filePool.map((f) => (
                 <option key={f.filename} value={f.filename}>
-                  {basename(f.filename)}
+                  {basename(f.displayName)}
                   {f.epId !== episode.id ? ` (currently: ${f.label})` : ' (current)'}
                 </option>
               ))}

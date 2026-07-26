@@ -51,7 +51,9 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
     }
   }
 
-  const filename = orphan.tracked_filename ? basename(orphan.tracked_filename) : null
+  const filename = orphan.tracked_filename_display
+    ? basename(orphan.tracked_filename_display)
+    : null
   const seLabel = `S${String(orphan.old_season_number).padStart(2, '0')}E${String(orphan.old_episode_number).padStart(2, '0')}`
   const errorMsg =
     resolve.error instanceof Error

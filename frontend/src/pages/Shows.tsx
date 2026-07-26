@@ -600,8 +600,9 @@ export default function Shows() {
                 <tbody>
                   {orphans.map((o) => {
                     const se = `S${String(o.old_season_number).padStart(2, '0')}E${String(o.old_episode_number).padStart(2, '0')}`
-                    const filename = o.tracked_filename
-                      ? o.tracked_filename.replace(/\\/g, '/').split('/').pop() ?? o.tracked_filename
+                    const filename = o.tracked_filename_display
+                      ? o.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
+                        o.tracked_filename_display
                       : '—'
                     return (
                       <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50">

@@ -141,6 +141,29 @@ def test_list_orphans_returns_200() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_orphans_tracked_filename_display_is_decoded() -> None:
+    """tracked_filename_display shows a readable name for a percent-encoded filename.
+
+    tracked_filename itself must stay byte-exact — resolving/dismissing an
+    orphan doesn't echo it back here, but EpisodeList's identical field does
+    (see AssignImportModal.tsx), so both schemas share the same convention.
+    """
+    from jidou.database import get_session
+    from jidou.services.path_transport import encode_path_bytes
+
+    encoded = encode_path_bytes("/media/The Fianc\udce9.S01E01.mkv")
+    orphan = _make_orphan(tracked_filename=encoded)
+    app.dependency_overrides[get_session] = _list_session([orphan])
+    try:
+        response = TestClient(app).get("/api/orphans")
+        assert response.status_code == 200
+        body = response.json()[0]
+        assert body["tracked_filename"] == encoded
+        assert body["tracked_filename_display"] == "/media/The Fianc�.S01E01.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_orphans_empty_returns_empty_list() -> None:
     """GET /api/orphans with no records returns []."""
     from jidou.database import get_session
