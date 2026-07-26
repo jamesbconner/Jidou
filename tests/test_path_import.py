@@ -1,5 +1,7 @@
 """Tests for path-file batch import — parser and orchestrator."""
 
+import os
+import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -674,6 +676,38 @@ class TestScanShowDirectory:
 
         entries = scan_show_directory(str(tmp_path))
         assert [Path(e.raw_path).name for e in entries] == ["Show.S01E01.mkv"]
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="NTFS filenames are UTF-16; the raw-byte surrogateescape scenario is POSIX-only",
+    )
+    def test_non_utf8_filename_does_not_crash(self, tmp_path: Path) -> None:
+        """A filename with a raw non-UTF-8 byte (e.g. a legacy Latin-1 name from
+        an older NAS/Windows share) must not crash the scan — regression test
+        for UnicodeEncodeError: 'utf-8' codec can't encode character '\\udce9'.
+        """
+        from jidou.services.path_parser import scan_show_directory
+
+        # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8;
+        # Python surrogateescape-decodes it to '\udce9' when reading it back
+        # via pathlib, reproducing the bug through a real filesystem read.
+        bad_name = b"Show.S01E01.Am\xe9lie.mkv"
+        full_path = os.path.join(os.fsencode(str(tmp_path)), bad_name)
+        with open(full_path, "wb") as f:
+            f.write(b"x")
+
+        entries = scan_show_directory(str(tmp_path))
+
+        assert len(entries) == 1
+        # Must survive UTF-8 JSON encoding — this is exactly what a FastAPI
+        # response does and what previously raised UnicodeEncodeError.
+        entries[0].raw_path.encode("utf-8")
+        assert entries[0].raw_path.encode("utf-8").decode("utf-8") == entries[0].raw_path
+        # The unrecoverable byte becomes the Unicode replacement character;
+        # everything else in the filename is preserved untouched.
+        assert Path(entries[0].raw_path).name == "Show.S01E01.Am�lie.mkv"
+        assert entries[0].season == 1
+        assert entries[0].episode == 1
 
 
 class TestPathComparisonKey:

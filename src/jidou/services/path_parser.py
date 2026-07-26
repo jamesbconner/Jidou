@@ -409,9 +409,9 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
 
         entries.append(
             ParsedPathEntry(
-                raw_path=str(file_path),
-                show_dir=root.name,
-                show_root=str(root),
+                raw_path=_json_safe(str(file_path)),
+                show_dir=_json_safe(root.name),
+                show_root=_json_safe(str(root)),
                 season=season,
                 episode=episode,
                 is_absolute=is_absolute,
@@ -419,6 +419,29 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
             )
         )
     return entries
+
+
+def _json_safe(s: str) -> str:
+    """Return *s* guaranteed to survive UTF-8 JSON encoding.
+
+    On POSIX, filenames aren't guaranteed to be valid UTF-8 — a share
+    populated from an older Windows/NAS source can contain names encoded in
+    Latin-1/cp1252 or similar. Python decodes such bytes with the
+    ``surrogateescape`` error handler, producing lone surrogate codepoints
+    that round-trip fine internally but raise ``UnicodeEncodeError`` the
+    moment a JSON response tries to encode them as UTF-8. Re-encoding with
+    ``surrogateescape`` recovers the exact original bytes, then decoding
+    with ``replace`` swaps only the genuinely undecodable bytes for U+FFFD —
+    every valid character survives untouched.
+
+    Args:
+        s: String to sanitize — typically built from a live filesystem path.
+
+    Returns:
+        A str guaranteed to encode cleanly as UTF-8.
+    """
+    raw = s.encode("utf-8", errors="surrogateescape")
+    return raw.decode("utf-8", errors="replace")
 
 
 def group_by_show(
