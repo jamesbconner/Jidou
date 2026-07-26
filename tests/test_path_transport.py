@@ -1,6 +1,10 @@
 """Tests for jidou.services.path_transport."""
 
-from jidou.services.path_transport import decode_path_bytes, encode_path_bytes
+from jidou.services.path_transport import (
+    decode_path_bytes,
+    decode_path_bytes_for_display,
+    encode_path_bytes,
+)
 
 
 class TestEncodePathBytes:
@@ -70,3 +74,25 @@ class TestRoundTrip:
         original = original_bytes.decode("utf-8", errors="surrogateescape")
         round_tripped = decode_path_bytes(encode_path_bytes(original))
         assert round_tripped.encode("utf-8", errors="surrogateescape") == original_bytes
+
+
+class TestDecodePathBytesForDisplay:
+    def test_plain_ascii_path_is_unchanged(self) -> None:
+        assert decode_path_bytes_for_display("/media/show/ep01.mkv") == "/media/show/ep01.mkv"
+
+    def test_valid_unicode_is_unchanged(self) -> None:
+        path = "/media/Amélie/第一話 🎬.mkv"
+        assert decode_path_bytes_for_display(path) == path
+
+    def test_escaped_literal_percent_is_restored(self) -> None:
+        assert decode_path_bytes_for_display("100%25 Complete.mkv") == "100% Complete.mkv"
+
+    def test_non_utf8_byte_becomes_replacement_character_not_surrogate(self) -> None:
+        encoded = encode_path_bytes("Show.S01E01.Am\udce9lie.mkv")
+        result = decode_path_bytes_for_display(encoded)
+        assert result == "Show.S01E01.Am�lie.mkv"
+        result.encode("utf-8")  # must not raise, unlike decode_path_bytes's output
+
+    def test_output_always_encodes_as_utf8(self) -> None:
+        encoded = encode_path_bytes("Am\udce9lie 100% \udcff done.mkv")
+        decode_path_bytes_for_display(encoded).encode("utf-8")  # must not raise

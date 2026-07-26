@@ -131,8 +131,18 @@ class ParsedPathEntry:
     """A single episode file parsed from a path list line.
 
     Attributes:
-        raw_path: The original unmodified line.
-        show_dir: Directory name used as the primary show identifier.
+        raw_path: The source line/path, run through
+            :func:`~jidou.services.path_transport.encode_path_bytes`. Always
+            the *encoded* form — decode with ``decode_path_bytes`` before any
+            real filesystem access. Encoding both here and in
+            :func:`scan_show_directory` keeps ``path_comparison_key`` matches
+            consistent regardless of which feature a file was first tracked
+            through (a filename with a literal ``%`` would otherwise compare
+            unequal between an unencoded bulk-import record and a later scan).
+        show_dir: Directory name used as the primary show identifier. Not
+            encoded — unlike ``raw_path``, this can become ``show.local_path``
+            (see ``PathImportOrchestrator``), which must stay a real,
+            directly-usable filesystem path.
         show_root: Full path to the show's root directory (no season or filename).
         season: Season number inferred from the directory name or filename.
         episode: Episode number (may be absolute when ``is_absolute`` is True).
@@ -235,7 +245,7 @@ def _parse_directory_line(path: PurePath, root: str | None) -> ParsedPathEntry |
         show_root = str(path)
 
     return ParsedPathEntry(
-        raw_path=str(path),
+        raw_path=encode_path_bytes(str(path)),
         show_dir=show_dir,
         show_root=show_root,
         season=None,
@@ -331,7 +341,7 @@ def parse_line(
     is_absolute = season is None and episode is not None
 
     return ParsedPathEntry(
-        raw_path=line,
+        raw_path=encode_path_bytes(line),
         show_dir=show_dir,
         show_root=show_root,
         season=season,
@@ -399,6 +409,11 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     if not root.is_dir():
         return []
 
+    # root is invariant for the whole walk — encode its derived strings once
+    # rather than redoing identical work for every matched file below.
+    encoded_show_dir = encode_path_bytes(root.name)
+    encoded_show_root = encode_path_bytes(str(root))
+
     entries: list[ParsedPathEntry] = []
     for file_path in sorted(root.rglob("*")):
         if not file_path.is_file() or not is_valid_media_file(file_path.name):
@@ -419,8 +434,8 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
         entries.append(
             ParsedPathEntry(
                 raw_path=encode_path_bytes(str(file_path)),
-                show_dir=encode_path_bytes(root.name),
-                show_root=encode_path_bytes(str(root)),
+                show_dir=encoded_show_dir,
+                show_root=encoded_show_root,
                 season=season,
                 episode=episode,
                 is_absolute=is_absolute,

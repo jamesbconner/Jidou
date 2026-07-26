@@ -18,9 +18,11 @@ Unicode like accented letters or CJK/emoji, which *are* valid UTF-8 — passes
 through unchanged.
 """
 
+import string
+
 _SURROGATE_LOW = 0xDC80
 _SURROGATE_HIGH = 0xDCFF
-_HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
+_HEX_DIGITS = frozenset(string.hexdigits)
 
 
 def encode_path_bytes(path: str) -> str:
@@ -72,3 +74,23 @@ def decode_path_bytes(path: str) -> str:
             out.append(ch)
             i += 1
     return "".join(out)
+
+
+def decode_path_bytes_for_display(path: str) -> str:
+    """Reverse :func:`encode_path_bytes` for human display — lossy, not for filesystem use.
+
+    Unlike :func:`decode_path_bytes`, any byte that still isn't valid UTF-8
+    after decoding (a genuinely non-UTF-8 filename, as opposed to an escaped
+    literal ``%``) is replaced with U+FFFD rather than preserved as a
+    surrogate. The result reads naturally in an error message or a filename
+    column, but is no longer guaranteed to resolve back to the real file —
+    use :func:`decode_path_bytes` for anything that touches the filesystem.
+
+    Args:
+        path: A string previously produced by :func:`encode_path_bytes`.
+
+    Returns:
+        A human-readable approximation, safe to print or display anywhere.
+    """
+    raw = decode_path_bytes(path).encode("utf-8", errors="surrogateescape")
+    return raw.decode("utf-8", errors="replace")

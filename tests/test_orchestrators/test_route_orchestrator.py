@@ -328,6 +328,40 @@ async def test_run_successful_route_moves_file_and_marks_routed(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
+async def test_run_decodes_percent_encoded_local_path_before_move(tmp_path: Path) -> None:
+    """local_path may be percent-encoded (path_transport); the real file is still found.
+
+    Regression test / defense-in-depth: nothing currently writes an encoded
+    local_path onto a MATCHED file, but this orchestrator shouldn't silently
+    fail to locate the real staging file if one ever does.
+    """
+    from jidou.services.path_transport import encode_path_bytes
+
+    staging = tmp_path / "staging" / "100% Complete.S01E01.mkv"
+    staging.parent.mkdir()
+    staging.write_bytes(b"video")
+
+    dest_dir = tmp_path / "media" / "tv" / "Show"
+
+    file = _make_file(
+        filename="100% Complete.S01E01.mkv", local_path=encode_path_bytes(str(staging))
+    )
+    show = _make_show(local_path=str(dest_dir))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    orch = RouteOrchestrator(session)
+    result = await orch.run()
+
+    assert result.files_routed == 1
+    assert result.files_failed == 0
+    assert file.status == FileStatus.ROUTED
+    assert not staging.exists()
+    expected = dest_dir / "Season 01" / "100% Complete.S01E01.mkv"
+    assert expected.exists()
+
+
+@pytest.mark.asyncio
 async def test_run_movie_routes_to_show_root(tmp_path: Path) -> None:
     """Movie files land directly under show root (no Season NN subdirectory)."""
     staging = tmp_path / "staging" / "Film.mkv"

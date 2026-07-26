@@ -3457,6 +3457,106 @@ def test_scan_show_local_files_skips_already_imported_path_across_styles(
         app.dependency_overrides.clear()
 
 
+def test_scan_show_local_files_skips_already_imported_path_with_literal_percent(
+    tmp_path: Path,
+) -> None:
+    """A literal '%' in a filename doesn't break the already-imported dedup check.
+
+    Regression test: encode_path_bytes (path_transport) always escapes a
+    literal '%' to '%25' so decode_path_bytes stays unambiguous. Bulk
+    path-import must apply the same encoding to its own raw_path, or a file
+    already tracked via bulk import (stored unencoded) would compare unequal
+    against this scan's freshly-encoded raw_path and be reported as a fresh,
+    untracked candidate instead of being skipped.
+    """
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+    from jidou.services.path_transport import encode_path_bytes
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    real_file = tmp_path / "100% Complete.S01E01.mkv"
+    real_file.write_text("data")
+
+    # Simulates a row created by bulk path-import: parse_line now also runs
+    # its raw_path through encode_path_bytes, so this is what's actually
+    # stored — a literal '%' bulk-imported filename comes out escaped too.
+    existing_local_path = encode_path_bytes(str(real_file))
+    assert "%25" in existing_local_path  # sanity: the literal '%' really is escaped
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = [(existing_local_path,)]
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(side_effect=AssertionError("should not be reached")),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        assert response.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_filename_is_human_readable_display_form(
+    tmp_path: Path,
+) -> None:
+    """The response's `filename` is display-decoded even though `path` stays encoded.
+
+    `path` must stay byte-exact (encode_path_bytes output) so a subsequent
+    link-file call resolves to the real file; `filename` is for display and
+    should read naturally instead of showing raw %-escapes to the user.
+    """
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+    (tmp_path / "100% Complete.S01E01.mkv").write_text("data")
+
+    ep = _make_episode(id=10, show_id=1)
+    ep.file_tracked = False
+    ep.season_number = 1
+    ep.episode_number = 1
+    ep.name = "Pilot"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        with patch(
+            "jidou.api.routes.shows.match_entry_to_episode",
+            AsyncMock(return_value=(ep, 1, 1)),
+        ):
+            response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        # Display form reads naturally...
+        assert body[0]["filename"] == "100% Complete.S01E01.mkv"
+        # ...while the transport form stays escaped, byte-exact for link-file.
+        assert "%25" in body[0]["path"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_scan_show_local_files_runs_directory_walk_off_the_event_loop(tmp_path: Path) -> None:
     """scan_show_directory is offloaded via asyncio.to_thread, not called inline."""
     from jidou.api.dependencies import get_llm_service
