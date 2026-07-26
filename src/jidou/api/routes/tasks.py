@@ -112,9 +112,18 @@ async def trigger_task(
 ) -> BackgroundTask:
     """Trigger a new background task.
 
-    Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``, ``seed``.
+    Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,
+    ``seed``, ``backfill_show_metadata``.
     """
-    if payload.task_type not in {"download", "scan", "match", "route", "sync", "seed"}:
+    if payload.task_type not in {
+        "download",
+        "scan",
+        "match",
+        "route",
+        "sync",
+        "seed",
+        "backfill_show_metadata",
+    }:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown task type: {payload.task_type}",
@@ -122,6 +131,7 @@ async def trigger_task(
 
     # Delayed import to avoid circular reference with Celery
     from jidou.services.progress import TaskDispatchError, enqueue_task, get_active_task
+    from jidou.workers.backfill_tasks import backfill_show_metadata_task
     from jidou.workers.download_tasks import download_files_task
     from jidou.workers.match_tasks import match_files_task
     from jidou.workers.route_tasks import route_files_task
@@ -162,6 +172,8 @@ async def trigger_task(
             sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
         elif payload.task_type == "seed":
             seed_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
+        elif payload.task_type == "backfill_show_metadata":
+            backfill_show_metadata_task.apply_async(args=[payload.dry_run], task_id=task_id)
 
     # Dispatch with the pre-generated ID — eliminates the race condition.
     # If the broker is unreachable, enqueue_task marks the row FAILED so it

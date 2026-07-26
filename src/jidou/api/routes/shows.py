@@ -478,10 +478,17 @@ async def create_show(
     """Add a show to the database (upsert by TMDB ID).
 
     If the show already exists it is returned unchanged.  ``sys_name`` is
-    auto-derived from the title if not provided.  For newly created shows a
-    TMDB episode sync is attempted inline so the show detail page shows
-    episodes immediately.  TMDB failures are logged but do not abort the
-    response — the show is still returned.
+    auto-derived from the title if not provided.  The payload is typically a
+    TMDB search/trending card, which only carries a sparse field set
+    (``genre_ids`` rather than full ``genres`` objects, no
+    ``external_ids``/``episode_groups``/etc.) — a full TMDB details fetch is
+    attempted so the created show gets complete metadata, matching what the
+    manual-match and path-import show-creation paths already do.  A TMDB
+    episode sync is then attempted inline so the show detail page shows
+    episodes immediately.  Both TMDB steps are best-effort: failures are
+    logged but do not abort the response — the show is still returned,
+    falling back to the sparse search-card fields if the details fetch
+    itself fails.
 
     Args:
         payload: Show data from a TMDB search/trending result.
@@ -492,6 +499,7 @@ async def create_show(
         The created or existing :class:`Show` record.
     """
     from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+    from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
     stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
     existing = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -501,16 +509,40 @@ async def create_show(
         return existing
 
     data = payload.model_dump()
-    if not data.get("sys_name"):
-        data["sys_name"] = sanitize_sys_name(payload.title)
-    if not data.get("content_type"):
-        data["content_type"] = _infer_content_type(payload)
-    if not data.get("local_path"):
-        data["local_path"] = _auto_local_path(data["content_type"], data["sys_name"])
-    # genre_ids is a ShowCreate-only field (search card shape); Show has no such column.
-    data.pop("genre_ids", None)
+    sys_name = data.get("sys_name") or sanitize_sys_name(payload.title)
+    content_type = data.get("content_type") or _infer_content_type(payload)
+    local_path = data.get("local_path") or _auto_local_path(content_type, sys_name)
+    # genre_ids only feeds _infer_content_type above; Show has no such column.
+    # sys_name/content_type/local_path are applied explicitly below instead,
+    # so drop all four here to keep `data` a plain TMDB-field fallback dict.
+    for key in ("genre_ids", "sys_name", "content_type", "local_path"):
+        data.pop(key, None)
 
-    show = Show(**data, cached=False)
+    try:
+        tmdb_data = await fetch_show_metadata(tmdb, payload.tmdb_id, payload.media_type)
+        fields = build_show_fields(
+            tmdb_data, payload.tmdb_id, payload.media_type, title_fallback=payload.title
+        )
+    except Exception:
+        logger.warning(
+            "TMDB details fetch failed for tmdb_id=%d; creating show from search-card "
+            "fields only (genres/external_ids/etc. will be incomplete)",
+            payload.tmdb_id,
+            exc_info=True,
+        )
+        fields = data
+    # build_show_fields derives its own sys_name from the fetched title;
+    # the caller-computed one (payload-provided, or derived above) is the
+    # one actually used, so it doesn't fight the explicit kwarg below.
+    fields.pop("sys_name", None)
+
+    show = Show(
+        **fields,
+        content_type=content_type,
+        local_path=local_path,
+        sys_name=sys_name,
+        cached=False,
+    )
     db_session.add(show)
     try:
         await db_session.flush()
