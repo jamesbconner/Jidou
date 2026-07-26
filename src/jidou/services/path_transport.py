@@ -77,20 +77,36 @@ def decode_path_bytes(path: str) -> str:
 
 
 def decode_path_bytes_for_display(path: str) -> str:
-    """Reverse :func:`encode_path_bytes` for human display — lossy, not for filesystem use.
+    """Reverse :func:`encode_path_bytes` for human display — best-effort, not for filesystem use.
 
-    Unlike :func:`decode_path_bytes`, any byte that still isn't valid UTF-8
-    after decoding (a genuinely non-UTF-8 filename, as opposed to an escaped
-    literal ``%``) is replaced with U+FFFD rather than preserved as a
-    surrogate. The result reads naturally in an error message or a filename
-    column, but is no longer guaranteed to resolve back to the real file —
-    use :func:`decode_path_bytes` for anything that touches the filesystem.
+    Unlike :func:`decode_path_bytes`, this never returns a surrogate — the
+    result is always plain, printable Unicode. If the raw bytes aren't valid
+    UTF-8, cp1252 (a superset of Latin-1) is tried next: it's by far the most
+    common single-byte encoding for legacy Western-European filenames from an
+    older Windows/NAS-authored library, so this recovers the correct
+    character (e.g. 'é') in the overwhelming majority of real cases rather
+    than showing a placeholder. Only bytes that are undefined in cp1252 too
+    (rare) fall back to U+FFFD.
+
+    This is a display heuristic, not a general encoding detector — it
+    doesn't attempt any other codepage, and a filename genuinely mixing
+    multiple encodings in one string isn't handled specially. The result is
+    no longer guaranteed to resolve back to the real file; use
+    :func:`decode_path_bytes` for anything that touches the filesystem.
 
     Args:
         path: A string previously produced by :func:`encode_path_bytes`.
 
     Returns:
-        A human-readable approximation, safe to print or display anywhere.
+        A human-readable, best-effort approximation, safe to print or
+        display anywhere.
     """
     raw = decode_path_bytes(path).encode("utf-8", errors="surrogateescape")
-    return raw.decode("utf-8", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode("utf-8", errors="replace")

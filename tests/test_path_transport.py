@@ -87,11 +87,22 @@ class TestDecodePathBytesForDisplay:
     def test_escaped_literal_percent_is_restored(self) -> None:
         assert decode_path_bytes_for_display("100%25 Complete.mkv") == "100% Complete.mkv"
 
-    def test_non_utf8_byte_becomes_replacement_character_not_surrogate(self) -> None:
+    def test_non_utf8_byte_recovers_via_cp1252_fallback(self) -> None:
+        """Byte 0xE9 is 'é' in cp1252/Latin-1 — by far the most common cause of a
+        stray non-UTF-8 byte in a legacy Western-European filename, so this
+        should recover the real character rather than showing a placeholder."""
         encoded = encode_path_bytes("Show.S01E01.Am\udce9lie.mkv")
         result = decode_path_bytes_for_display(encoded)
-        assert result == "Show.S01E01.Am�lie.mkv"
+        assert result == "Show.S01E01.Amélie.mkv"
         result.encode("utf-8")  # must not raise, unlike decode_path_bytes's output
+
+    def test_byte_undefined_in_cp1252_falls_back_to_replacement_character(self) -> None:
+        """A handful of bytes (0x81, 0x8D, 0x8F, 0x90, 0x9D) are undefined even in
+        cp1252 — those still fall back to U+FFFD rather than raising."""
+        encoded = encode_path_bytes("Show.S01E01.Am\udc81lie.mkv")
+        result = decode_path_bytes_for_display(encoded)
+        assert result == "Show.S01E01.Am�lie.mkv"
+        result.encode("utf-8")  # must not raise
 
     def test_output_always_encodes_as_utf8(self) -> None:
         encoded = encode_path_bytes("Am\udce9lie 100% \udcff done.mkv")
