@@ -82,51 +82,75 @@ class ShowMetadataBackfillOrchestrator:
         result = MetadataBackfillResult(shows_checked=total, shows_updated=0, shows_failed=0)
 
         for idx, show in enumerate(candidates, 1):
+            # Captured before any mutation/rollback below could expire them --
+            # see the begin_nested() comment for why bare attribute access on
+            # `show` inside an except block is otherwise unsafe. A plain
+            # session.rollback() here would expire every already-loaded Show
+            # still pending in `candidates`, and the next iteration's bare
+            # `show.title` access (evaluated before any await) would then
+            # trigger an implicit lazy-reload outside the async greenlet
+            # bridge, raising sqlalchemy.exc.MissingGreenlet instead of the
+            # original error.
+            show_id = show.id
+            show_title = show.title
             if on_progress:
-                await on_progress(idx, total, f"Backfilling {show.title}")
+                await on_progress(idx, total, f"Backfilling {show_title}")
 
             try:
                 data = await fetch_show_metadata(self.tmdb, show.tmdb_id, show.media_type)
                 fields = build_show_fields(
-                    data, show.tmdb_id, show.media_type, existing=show, title_fallback=show.title
+                    data, show.tmdb_id, show.media_type, existing=show, title_fallback=show_title
                 )
             except Exception:
                 logger.exception(
                     "Metadata backfill fetch failed for show id=%d tmdb_id=%d",
-                    show.id,
+                    show_id,
                     show.tmdb_id,
                 )
                 result.shows_failed += 1
-                result.failed_titles.append(show.title)
+                result.failed_titles.append(show_title)
                 continue
 
             if dry_run:
                 logger.info(
                     "[dry-run] Would backfill show id=%d (%s): %d genre(s)",
-                    show.id,
-                    show.title,
+                    show_id,
+                    show_title,
                     len(fields.get("genres") or []),
                 )
                 result.shows_updated += 1
-                result.updated_titles.append(show.title)
+                result.updated_titles.append(show_title)
                 continue
 
-            for key, value in fields.items():
-                if key in _SKIP_FIELDS:
-                    continue
-                setattr(show, key, value)
+            try:
+                # SAVEPOINT, not a full session.rollback() on failure -- see
+                # the comment on show_id/show_title above for why a blanket
+                # rollback() here would be unsafe for the rest of this loop.
+                async with self.session.begin_nested():
+                    for key, value in fields.items():
+                        if key in _SKIP_FIELDS:
+                            continue
+                        setattr(show, key, value)
+                    await self.session.flush()
+            except Exception:
+                logger.exception("Failed to save backfilled metadata for show id=%d", show_id)
+                result.shows_failed += 1
+                result.failed_titles.append(show_title)
+                continue
 
             try:
-                await self.session.flush()
+                # Needs its own rollback on failure -- unlike the SAVEPOINT
+                # above, an uncaught commit() failure leaves the session
+                # unusable for every subsequent show in this loop.
                 await self.session.commit()
             except Exception:
-                logger.exception("Failed to save backfilled metadata for show id=%d", show.id)
+                logger.exception("Failed to commit backfilled metadata for show id=%d", show_id)
                 await self.session.rollback()
                 result.shows_failed += 1
-                result.failed_titles.append(show.title)
+                result.failed_titles.append(show_title)
                 continue
 
             result.shows_updated += 1
-            result.updated_titles.append(show.title)
+            result.updated_titles.append(show_title)
 
         return result

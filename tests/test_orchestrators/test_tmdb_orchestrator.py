@@ -2,7 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from tests._fake_orchestrator_session import FakeNested
 
 
 def _make_session(existing_episode=None):
@@ -11,6 +14,7 @@ def _make_session(existing_episode=None):
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(return_value=FakeNested())
     session.add = MagicMock()
 
     ep_result = MagicMock()
@@ -25,6 +29,7 @@ def _make_session_with_shows(shows, existing_episode=None):
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(return_value=FakeNested())
     session.add = MagicMock()
 
     show_result = MagicMock()
@@ -35,6 +40,27 @@ def _make_session_with_shows(shows, existing_episode=None):
 
     session.execute = AsyncMock(side_effect=[show_result] + [ep_result] * 20)
     return session
+
+
+def _two_shows_first_fails_second_succeeds():
+    """Shared fixture for the "show1's TMDB fetch raises, show2 succeeds"
+    scenario exercised by several sync_all_shows tests below.
+    """
+    show1 = _make_show(tmdb_id=111, show_id=1)
+    show2 = _make_show(tmdb_id=222, show_id=2)
+    session = _make_session_with_shows(shows=[show1, show2], existing_episode=None)
+
+    tmdb = AsyncMock()
+    tmdb.get_show_seasons = AsyncMock(
+        side_effect=[
+            Exception("TMDB error"),
+            {"seasons": [{"season_number": 1}]},
+        ]
+    )
+    tmdb.get_season_details = AsyncMock(
+        return_value={"episodes": [{"id": 201, "episode_number": 1, "name": "Ep1"}]}
+    )
+    return session, tmdb, show1, show2
 
 
 def _make_show(tmdb_id=12345, title="Test Show", cached=False, show_id=1):
@@ -116,6 +142,23 @@ async def test_sync_show_episodes_skips_season_zero():
 
     # get_season_details should only be called for season 1, not season 0
     tmdb.get_season_details.assert_called_once_with(show.tmdb_id, 1)
+
+
+async def test_sync_show_episodes_raises_for_a_movie():
+    """Movies have no TMDB /tv/{id}/season structure -- sync_show_episodes
+    must reject them with a clear error rather than let the caller 404
+    against an endpoint that was never going to work.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show()
+    show.media_type = "movie"
+    tmdb = _make_tmdb()
+
+    orch = TMDBOrchestrator(session, tmdb)
+    with pytest.raises(ValueError, match="movie"):
+        await orch.sync_show_episodes(show)
+
+    tmdb.get_show_seasons.assert_not_called()
 
 
 # Shaped after Frieren: Beyond Journey's End's real TMDB episode_groups (a
@@ -432,6 +475,138 @@ class TestSyncEpisodeGroupMap:
         assert show.episode_group_map == {"6": {"1": {"1": [1, 1]}}}
 
 
+async def test_sync_all_shows_excludes_movies_from_the_query():
+    """Movies have no TMDB /tv/{id} season structure -- the query sync_all_shows
+    issues must filter them out rather than 404ing sync_show_episodes on every one.
+    """
+    session = _make_session_with_shows(shows=[], existing_episode=None)
+    tmdb = _make_tmdb()
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_all_shows()
+
+    show_stmt = session.execute.call_args_list[0].args[0]
+    compiled = str(show_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "media_type != 'movie'" in compiled
+
+
+async def test_sync_all_shows_uses_savepoint_instead_of_session_rollback():
+    """Regression test for a production MissingGreenlet crash -- see the
+    begin_nested() comment in sync_all_shows for the full mechanism. This
+    asserts the fix stays in place: begin_nested per show, and
+    session.rollback() never called directly for a failure inside it.
+    """
+    session, tmdb, _show1, _show2 = _two_shows_first_fails_second_succeeds()
+
+    orch = TMDBOrchestrator(session, tmdb)
+    result = await orch.sync_all_shows()
+
+    assert result.shows_synced == 1  # show2 still processed after show1's failure
+    assert session.begin_nested.call_count == 2
+    session.rollback.assert_not_awaited()
+
+
+async def test_sync_all_shows_show_id_survives_savepoint_rollback_for_logging():
+    """Regression test for a MissingGreenlet-shaped bug in the fix itself:
+    begin_nested()'s SAVEPOINT rollback expires *this* show too if it was
+    mutated before the failure (e.g. show.cached = True in
+    sync_show_episodes, which runs before its terminal flush()). The except
+    block must log the show_id captured before entering the SAVEPOINT, not
+    show.id, or the log call itself can crash with MissingGreenlet -- this
+    time uncaught, aborting the whole batch instead of just this show.
+
+    Empirically verified against a live async SQLAlchemy session
+    (sqlite+aiosqlite) outside this test suite: mutating an object inside
+    begin_nested(), then raising, then accessing an unrelated column on that
+    same object in the except block does raise sqlalchemy.exc.MissingGreenlet.
+    This test proves the orchestrator no longer does that bare access at all
+    by using a show double whose .id/.tmdb_id raise if touched after the
+    failure point, standing in for that real expiry.
+    """
+
+    class _ExpiringAfterMutationShow:
+        """Raises if .id/.tmdb_id/.title are accessed after `poison()` is
+        called -- simulates SQLAlchemy expiring a mutated object's
+        attributes on SAVEPOINT rollback, without needing a real session.
+        """
+
+        def __init__(self, show_id: int, tmdb_id: int, title: str) -> None:
+            self._id = show_id
+            self._tmdb_id = tmdb_id
+            self._title = title
+            self.cached = False
+            self.episode_groups = []
+            self.episode_group_map = None
+            self._poisoned = False
+
+        def poison(self) -> None:
+            self._poisoned = True
+
+        @property
+        def id(self) -> int:
+            if self._poisoned:
+                raise AssertionError("show.id accessed after simulated SAVEPOINT expiry")
+            return self._id
+
+        @property
+        def tmdb_id(self) -> int:
+            if self._poisoned:
+                raise AssertionError("show.tmdb_id accessed after simulated SAVEPOINT expiry")
+            return self._tmdb_id
+
+        @property
+        def title(self) -> str:
+            if self._poisoned:
+                raise AssertionError("show.title accessed after simulated SAVEPOINT expiry")
+            return self._title
+
+    show = _ExpiringAfterMutationShow(show_id=1, tmdb_id=111, title="Poisoned Show")
+    session = _make_session_with_shows(shows=[show], existing_episode=None)  # type: ignore[list-item]
+
+    tmdb = _make_tmdb()
+
+    async def _flush_then_poison() -> None:
+        show.poison()
+        raise RuntimeError("simulated flush() failure after show.cached = True")
+
+    session.flush = AsyncMock(side_effect=_flush_then_poison)
+
+    orch = TMDBOrchestrator(session, tmdb)
+    # Must not raise -- that's the regression under test. Before the fix,
+    # this crashed with AssertionError from the poisoned .id property
+    # (standing in for the real MissingGreenlet).
+    result = await orch.sync_all_shows()
+
+    assert result.shows_synced == 0
+
+
+async def test_sync_all_shows_commit_failure_rolls_back_and_continues():
+    """Regression test: unlike a failure inside the SAVEPOINT (contained by
+    begin_nested), a session.commit() failure after a successful SAVEPOINT
+    needs its own explicit rollback() -- otherwise the session is left
+    unusable for every subsequent show in the batch.
+    """
+    show1 = _make_show(tmdb_id=111, show_id=1)
+    show2 = _make_show(tmdb_id=222, show_id=2)
+    session = _make_session_with_shows(shows=[show1, show2], existing_episode=None)
+    session.commit = AsyncMock(side_effect=[RuntimeError("commit failed"), None])
+
+    tmdb = _make_tmdb()
+
+    orch = TMDBOrchestrator(session, tmdb)
+    result = await orch.sync_all_shows()
+
+    # Counts are tallied before commit() is attempted (same as the
+    # pre-fix behavior -- a Python variable increment doesn't undo itself
+    # when a later statement in the same try block raises), so both shows
+    # are counted; what this test actually guards is that show1's commit
+    # failure doesn't prevent show2 from being processed, and that the
+    # session is rolled back rather than left unusable.
+    assert result.shows_synced == 2
+    assert tmdb.get_show_seasons.call_count == 2
+    session.rollback.assert_awaited_once()
+
+
 async def test_sync_all_shows_skips_cached():
     """Shows with cached=True are excluded from the query, only uncached are synced."""
     uncached = _make_show(cached=False, show_id=1)
@@ -452,22 +627,7 @@ async def test_sync_all_shows_skips_cached():
 
 async def test_sync_all_shows_continues_on_error():
     """If the first show fails, the second show is still processed."""
-    show1 = _make_show(tmdb_id=111, show_id=1)
-    show2 = _make_show(tmdb_id=222, show_id=2)
-
-    session = _make_session_with_shows(shows=[show1, show2], existing_episode=None)
-
-    tmdb = AsyncMock()
-    # First show raises, second succeeds
-    tmdb.get_show_seasons = AsyncMock(
-        side_effect=[
-            Exception("TMDB error"),
-            {"seasons": [{"season_number": 1}]},
-        ]
-    )
-    tmdb.get_season_details = AsyncMock(
-        return_value={"episodes": [{"id": 201, "episode_number": 1, "name": "Ep1"}]}
-    )
+    session, tmdb, _show1, _show2 = _two_shows_first_fails_second_succeeds()
 
     orch = TMDBOrchestrator(session, tmdb)
     result = await orch.sync_all_shows()
@@ -508,9 +668,13 @@ async def test_sync_all_shows_commits_after_each_successful_show():
     result = await orch.sync_all_shows()
 
     assert result.shows_synced == 2  # shows 1 and 3
-    # One commit per successful show (1 and 3); one rollback for show 2.
+    # One commit per successful show (1 and 3). Show 2's failure is undone by
+    # its own SAVEPOINT (begin_nested), not a session-wide rollback() -- see
+    # test_sync_all_shows_uses_savepoint_instead_of_session_rollback above for
+    # why that distinction matters.
     assert session.commit.await_count == 2
-    session.rollback.assert_awaited_once()
+    assert session.begin_nested.call_count == 3
+    session.rollback.assert_not_awaited()
 
 
 async def test_on_progress_called_per_season():

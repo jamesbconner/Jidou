@@ -63,7 +63,17 @@ class TMDBOrchestrator:
 
         Returns:
             TMDBSyncResult with counts.
+
+        Raises:
+            ValueError: If *show* is a movie -- TMDB has no
+                ``/tv/{id}/season`` structure for movies, so this would
+                otherwise just 404 against the endpoint below.
         """
+        if show.media_type == "movie":
+            raise ValueError(
+                f"sync_show_episodes called on a movie (show id={show.id}): "
+                "movies have no TMDB /tv/{id}/season structure"
+            )
         show_data = await self.tmdb.get_show_seasons(show.tmdb_id)
         seasons = [s for s in show_data.get("seasons", []) if s.get("season_number", 0) > 0]
 
@@ -258,6 +268,8 @@ class TMDBOrchestrator:
 
         Ensures shows without episode data get synced even if cached flag was set by
         other code (e.g., trending task) that doesn't populate episodes.
+        Movies are excluded — TMDB has no ``/tv/{id}/season`` structure for
+        them, so they would just 404 against the endpoint this method calls.
 
         Args:
             on_progress: Optional async callback(current, total, message).
@@ -266,26 +278,54 @@ class TMDBOrchestrator:
             Aggregated TMDBSyncResult across all shows.
         """
         no_episodes = ~exists(select(Episode).where(Episode.show_id == Show.id))
-        stmt = select(Show).where((Show.cached == False) | no_episodes)  # noqa: E712
+        stmt = select(Show).where(
+            Show.media_type != "movie",
+            (Show.cached == False) | no_episodes,  # noqa: E712
+        )
         shows = list((await self.session.execute(stmt)).scalars().all())
 
         total = len(shows)
         combined = TMDBSyncResult(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
 
         for idx, show in enumerate(shows, 1):
+            # Captured before any mutation/rollback below could expire it --
+            # see the begin_nested() comment for why bare attribute access
+            # on `show` inside an except block is otherwise unsafe.
+            show_id = show.id
             if on_progress:
                 await on_progress(idx, total, f"Syncing {show.title}")
             try:
-                result = await self.sync_show_episodes(show)
-                combined.shows_synced += result.shows_synced
-                combined.episodes_upserted += result.episodes_upserted
-                combined.episodes_skipped += result.episodes_skipped
+                # Run each show's work in a SAVEPOINT: a failure inside only
+                # rolls back to it, leaving the rest of the session's identity
+                # map intact. A plain self.session.rollback() here would
+                # expire every already-loaded Show in `shows`, and the next
+                # iteration's bare attribute access (e.g. show.tmdb_id,
+                # evaluated before any surrounding await) would then trigger
+                # an implicit lazy-reload outside the async greenlet bridge —
+                # raising sqlalchemy.exc.MissingGreenlet instead of the
+                # original error. The SAVEPOINT rollback also expires *this*
+                # show if it was mutated before the failure (e.g.
+                # show.cached = True in sync_show_episodes), which is why
+                # this except block logs show_id, not show.id.
+                async with self.session.begin_nested():
+                    result = await self.sync_show_episodes(show)
+            except Exception:
+                logger.exception("Failed to sync TMDB data for show id=%d", show_id)
+                continue
+
+            combined.shows_synced += result.shows_synced
+            combined.episodes_upserted += result.episodes_upserted
+            combined.episodes_skipped += result.episodes_skipped
+            try:
                 # Commit per show so a later show's failure only rolls back
                 # its own partial work, not every show already synced in
-                # this batch (sync_show_episodes itself only flushes).
+                # this batch (sync_show_episodes itself only flushes). This
+                # needs its own rollback on failure -- unlike the SAVEPOINT
+                # above, an uncaught commit() failure leaves the session
+                # unusable for every subsequent show in this loop.
                 await self.session.commit()
             except Exception:
-                logger.exception("Failed to sync TMDB data for show id=%d", show.id)
+                logger.exception("Failed to commit synced TMDB data for show id=%d", show_id)
                 await self.session.rollback()
 
         return combined
