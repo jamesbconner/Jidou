@@ -55,6 +55,7 @@ celery_app.conf.update(
         "jidou.workers.rss_tasks",
         "jidou.workers.seed_tasks",
         "jidou.workers.scheduled_tasks",
+        "jidou.workers.backfill_tasks",
     ],
 )
 

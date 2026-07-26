@@ -20,9 +20,12 @@ def _make_tmdb_mock() -> AsyncMock:
     Pydantic response validation when a route serializes the mocked field.
     """
     mock = AsyncMock()
+    mock.get_details = AsyncMock(return_value={})
     mock.get_alternative_titles = AsyncMock(return_value={"results": []})
     mock.get_external_ids = AsyncMock(return_value={})
     mock.get_episode_groups = AsyncMock(return_value={"results": []})
+    mock.get_show_seasons = AsyncMock(return_value={"seasons": []})
+    mock.get_season_details = AsyncMock(return_value={"episodes": []})
     return mock
 
 
@@ -200,6 +203,7 @@ def test_list_shows_defaults_active_rss_subscription_to_false() -> None:
 
 def test_create_show_returns_201_on_new() -> None:
     """POST /api/shows with a new TMDB ID must return 201."""
+    from jidou.api.routes.shows import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(tmdb_id=999)
@@ -225,6 +229,7 @@ def test_create_show_returns_201_on_new() -> None:
         yield session
 
     app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
     try:
         response = TestClient(app).post(
             "/api/shows",
@@ -236,7 +241,13 @@ def test_create_show_returns_201_on_new() -> None:
 
 
 def test_create_show_stores_adult_flag() -> None:
-    """POST /api/shows with adult=true constructs the Show with adult=True."""
+    """POST /api/shows with adult=true constructs the Show with adult=True.
+
+    The adult flag now comes from the full TMDB details fetch (like every
+    other TMDB-sourced field) rather than the search-card payload, so the
+    mocked details response — not the request body — is what carries it.
+    """
+    from jidou.api.routes.shows import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -257,7 +268,11 @@ def test_create_show_stores_adult_flag() -> None:
         session.add = MagicMock()
         yield session
 
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_details = AsyncMock(return_value={"adult": True})
+
     app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
         response = TestClient(app).post(
             "/api/shows",
@@ -352,8 +367,8 @@ def test_create_show_race_return_still_backfills_episode_group_map() -> None:
         session.rollback = AsyncMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     app.dependency_overrides[get_session] = _race_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
@@ -1585,6 +1600,7 @@ def test_infer_content_type(
 
 def test_create_show_infers_anime_content_type() -> None:
     """POST /api/shows without content_type infers 'anime' for Japanese animation."""
+    from jidou.api.routes.shows import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -1606,6 +1622,7 @@ def test_create_show_infers_anime_content_type() -> None:
         yield session
 
     app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
     try:
         response = TestClient(app).post(
             "/api/shows",
@@ -1647,8 +1664,8 @@ def test_create_show_syncs_episodes_for_new_show() -> None:
         session.add = MagicMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
@@ -1691,8 +1708,8 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
         session.add = MagicMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
@@ -1750,8 +1767,8 @@ def test_create_show_commits_after_sync_before_alias_generation() -> None:
         session.add = MagicMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     async def _sync_show_episodes(*_args: object, **_kwargs: object) -> None:
         call_order.append("sync")
@@ -1809,8 +1826,8 @@ def test_create_show_skips_episode_sync_for_movies() -> None:
         session.add = MagicMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
@@ -1855,8 +1872,8 @@ def test_create_show_db_error_during_sync_propagates() -> None:
         session.add = MagicMock()
         yield session
 
-    async def _fake_tmdb() -> MagicMock:
-        return MagicMock()
+    async def _fake_tmdb() -> AsyncMock:
+        return _make_tmdb_mock()
 
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
@@ -1879,6 +1896,7 @@ def test_create_show_db_error_during_sync_propagates() -> None:
 
 def test_create_show_respects_explicit_content_type() -> None:
     """POST /api/shows with an explicit content_type does not overwrite it."""
+    from jidou.api.routes.shows import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -1900,6 +1918,7 @@ def test_create_show_respects_explicit_content_type() -> None:
         yield session
 
     app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
     try:
         response = TestClient(app).post(
             "/api/shows",
@@ -1915,6 +1934,113 @@ def test_create_show_respects_explicit_content_type() -> None:
         )
         assert response.status_code == 201
         assert response.json()["content_type"] == "tv"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_backfills_full_tmdb_metadata_from_search_card() -> None:
+    """POST /api/shows fetches full TMDB details, not just the search-card payload.
+
+    Regression test: the search/trending card shape only carries genre_ids
+    (a flat int list), never the full genres objects, and creating a show
+    directly from that payload used to leave genres/external_ids/etc.
+    permanently null. The route must now fetch full details and use them.
+    """
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 3001
+            from datetime import UTC, datetime
+
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_details = AsyncMock(
+        return_value={
+            **_TMDB_DETAIL,
+            "genres": [{"id": 16, "name": "Animation"}, {"id": 35, "name": "Comedy"}],
+        }
+    )
+    tmdb_mock.get_external_ids = AsyncMock(return_value={"imdb_id": "tt1234567"})
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        # A real search card: genre_ids only, no genres objects.
+        response = TestClient(app).post(
+            "/api/shows",
+            json={
+                "tmdb_id": 3001,
+                "title": "Search Card Show",
+                "media_type": "tv",
+                "genre_ids": [16, 35],
+            },
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["genres"] == [
+            {"id": 16, "name": "Animation"},
+            {"id": 35, "name": "Comedy"},
+        ]
+        assert body["external_ids"] == {"imdb_id": "tt1234567"}
+        tmdb_mock.get_details.assert_awaited_once_with(3001, media_type="tv")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_show_falls_back_to_search_card_on_tmdb_fetch_failure() -> None:
+    """POST /api/shows still creates the show if the details fetch fails.
+
+    The full-details fetch is best-effort -- a transient TMDB failure must
+    not block show creation, falling back to the sparse search-card payload
+    (title, media_type, etc.) instead of aborting with an error.
+    """
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    async def _new_session() -> AsyncMock:
+        session = AsyncMock()
+        result_no_hit = MagicMock()
+        result_no_hit.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=result_no_hit)
+
+        async def _flush() -> None:
+            obj = session.add.call_args[0][0]
+            obj.id = 3002
+            from datetime import UTC, datetime
+
+            obj.created_at = datetime.now(UTC)
+            obj.updated_at = datetime.now(UTC)
+
+        session.flush = AsyncMock(side_effect=_flush)
+        session.add = MagicMock()
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_details = AsyncMock(side_effect=Exception("TMDB unavailable"))
+
+    app.dependency_overrides[get_session] = _new_session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows",
+            json={"tmdb_id": 3002, "title": "Fallback Show", "media_type": "tv"},
+        )
+        assert response.status_code == 201
+        assert response.json()["title"] == "Fallback Show"
     finally:
         app.dependency_overrides.clear()
 

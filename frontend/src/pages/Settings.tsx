@@ -36,6 +36,17 @@ export default function Settings() {
     onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
   })
 
+  const backfillDryRun = useMutation({
+    mutationFn: () =>
+      api.post<TaskRead>('/tasks/trigger', { task_type: 'backfill_show_metadata', dry_run: true }),
+    onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
+  })
+  const backfillLive = useMutation({
+    mutationFn: () =>
+      api.post<TaskRead>('/tasks/trigger', { task_type: 'backfill_show_metadata', dry_run: false }),
+    onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
+  })
+
   const showLlm = Boolean(config?.llm_provider && config.llm_provider.toLowerCase() !== 'none')
 
   return (
@@ -314,6 +325,37 @@ export default function Settings() {
         {(seedDryRun.isError || seedLive.isError) && (
           <p className="text-xs text-red-600">
             {String((seedDryRun.error ?? seedLive.error) || 'Unknown error')}
+          </p>
+        )}
+      </Card>
+
+      <Card padding="md" className="space-y-3">
+        <h2 className="font-semibold">Show Metadata Backfill</h2>
+        <p className="text-sm text-gray-600">
+          Refetches full TMDB details for shows with no genre data (e.g. added by searching TMDB
+          directly rather than resolving a matched file) and reapplies genres, external IDs, and
+          other TMDB fields. Local path, content type, aliases, and folder naming are never
+          touched. Safe to re-run.
+        </p>
+        <div className="flex gap-3 flex-wrap">
+          <Button onClick={() => backfillDryRun.mutate()} disabled={backfillDryRun.isPending || backfillLive.isPending} variant="secondary" tone="light" size="md">
+            {backfillDryRun.isPending ? 'Running dry run…' : 'Dry Run'}
+          </Button>
+          <button
+            onClick={() => {
+              if (window.confirm('Backfill missing TMDB metadata for all affected shows?')) {
+                backfillLive.mutate()
+              }
+            }}
+            disabled={backfillDryRun.isPending || backfillLive.isPending}
+            className="px-3 py-1.5 text-sm rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+          >
+            {backfillLive.isPending ? 'Running…' : 'Run Backfill'}
+          </button>
+        </div>
+        {(backfillDryRun.isError || backfillLive.isError) && (
+          <p className="text-xs text-red-600">
+            {String((backfillDryRun.error ?? backfillLive.error) || 'Unknown error')}
           </p>
         )}
       </Card>

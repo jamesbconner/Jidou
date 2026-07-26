@@ -175,10 +175,17 @@ export interface paths {
          * @description Add a show to the database (upsert by TMDB ID).
          *
          *     If the show already exists it is returned unchanged.  ``sys_name`` is
-         *     auto-derived from the title if not provided.  For newly created shows a
-         *     TMDB episode sync is attempted inline so the show detail page shows
-         *     episodes immediately.  TMDB failures are logged but do not abort the
-         *     response — the show is still returned.
+         *     auto-derived from the title if not provided.  The payload is typically a
+         *     TMDB search/trending card, which only carries a sparse field set
+         *     (``genre_ids`` rather than full ``genres`` objects, no
+         *     ``external_ids``/``episode_groups``/etc.) — a full TMDB details fetch is
+         *     attempted so the created show gets complete metadata, matching what the
+         *     manual-match and path-import show-creation paths already do.  A TMDB
+         *     episode sync is then attempted inline so the show detail page shows
+         *     episodes immediately.  Both TMDB steps are best-effort: failures are
+         *     logged but do not abort the response — the show is still returned,
+         *     falling back to the sparse search-card fields if the details fetch
+         *     itself fails.
          *
          *     Args:
          *         payload: Show data from a TMDB search/trending result.
@@ -687,16 +694,21 @@ export interface paths {
          *     :func:`~jidou.services.episode_file_matching.match_entry_to_episode`)
          *     resolves each file to a proposed episode.
          *
-         *     Files whose exact path is already recorded on a ``DownloadedFile`` for
-         *     this show (a prior import or download) are skipped entirely — they're
-         *     already accounted for. Everything else is returned with a status:
+         *     Files whose path matches an already-recorded ``DownloadedFile`` for this
+         *     show (a prior import or download — compared via
+         *     :func:`~jidou.services.path_parser.path_comparison_key`, since a prior
+         *     bulk-import path string and this scan's live-filesystem path string can
+         *     differ in format while referring to the same file) are skipped entirely.
+         *     Everything else is returned with a status:
          *
-         *     - ``matched``: proposed episode is untracked; ready to confirm via
+         *     - ``matched``: proposed episode is untracked and not claimed by an
+         *       earlier row in this same scan; ready to confirm via
          *       ``POST /shows/{show_id}/episodes/{episode_id}/link-file``.
          *     - ``unmatched``: no episode could be resolved.
          *     - ``conflict``: the proposed episode is already tracked by a different
-         *       file — confirming would need ``link-file``'s existing 422 guard
-         *       overridden by picking a different episode first.
+         *       file, or was already claimed by an earlier row in this scan (e.g. a
+         *       duplicate file) — confirming would need ``link-file``'s existing 422
+         *       guard overridden by picking a different episode first.
          *
          *     Args:
          *         show_id: Database primary key of the show.
@@ -1119,7 +1131,8 @@ export interface paths {
          * Trigger Task
          * @description Trigger a new background task.
          *
-         *     Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``, ``seed``.
+         *     Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,
+         *     ``seed``, ``backfill_show_metadata``.
          */
         post: operations["trigger_task_api_tasks_trigger_post"];
         delete?: never;
@@ -3644,7 +3657,7 @@ export interface components {
              * Task Type
              * @enum {string}
              */
-            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish";
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;
@@ -3677,7 +3690,7 @@ export interface components {
              * Task Type
              * @enum {string}
              */
-            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish";
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;

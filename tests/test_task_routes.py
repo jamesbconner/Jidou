@@ -324,6 +324,29 @@ def test_trigger_task_sync_dispatches() -> None:
     assert dispatched == ["create", "dispatch"]
 
 
+def test_trigger_task_backfill_show_metadata_dispatches() -> None:
+    """POST /api/tasks/trigger with task_type=backfill_show_metadata dispatches the task."""
+    mock_task = _make_task(celery_task_id="backfill-id", task_type="backfill_show_metadata")
+    dispatched: list[str] = []
+
+    async def fake_create(session, task_id, task_type, **kwargs):  # type: ignore[no-untyped-def]
+        dispatched.append("create")
+        return mock_task
+
+    mock_backfill = MagicMock()
+    mock_backfill.apply_async.side_effect = lambda *a, **kw: dispatched.append("dispatch")
+
+    with (
+        patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+        patch("jidou.workers.backfill_tasks.backfill_show_metadata_task", mock_backfill),
+    ):
+        client = TestClient(app)
+        response = client.post("/api/tasks/trigger", json={"task_type": "backfill_show_metadata"})
+
+    assert response.status_code == 200
+    assert dispatched == ["create", "dispatch"]
+
+
 @pytest.mark.asyncio
 async def test_trigger_task_match_no_show_id_accepted() -> None:
     """match is a global operation — schema must accept it without show_id."""
