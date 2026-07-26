@@ -16,6 +16,7 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file, mark_episode_tracked
+from jidou.services.path_transport import decode_path_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +279,12 @@ class RouteOrchestrator:
                 if file.local_path is None:
                     raise FileNotFoundError(f"File id={file.id} has no local_path in staging")
 
-                source = Path(file.local_path)
+                # local_path may be percent-encoded (see path_transport) if it
+                # was ever written by a code path that stores the JSON/DB-safe
+                # encoded form — decode back to the real bytes before touching
+                # the filesystem. A no-op for the plain paths this orchestrator
+                # normally sees.
+                source = Path(decode_path_bytes(file.local_path))
 
                 # Handle ROUTING retry: if the source is already gone but the
                 # dest exists, the move completed but the commit didn't — just

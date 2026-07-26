@@ -43,6 +43,7 @@ from jidou.services.episode_tracking import clear_episode_tracking, mark_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_resolution import resolve_show_local_path
+from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
 from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
@@ -1215,7 +1216,10 @@ async def link_episode_file(
     Args:
         show_id: Database primary key of the show.
         episode_id: Database primary key of the episode.
-        payload: Contains ``path`` — the absolute on-disk path of the file.
+        payload: Contains ``path`` — the absolute on-disk path of the file,
+            as returned verbatim by ``scan-local-files`` (may be
+            percent-encoded via :mod:`~jidou.services.path_transport` if the
+            filename contains non-UTF-8 bytes).
         db_session: DB session (injected).
 
     Returns:
@@ -1253,10 +1257,15 @@ async def link_episode_file(
             ),
         )
 
-    if not Path(payload.path).is_file():
+    # payload.path is the (possibly percent-encoded, see path_transport)
+    # value echoed back verbatim from a scan-local-files response; decode it
+    # back to the exact on-disk bytes before touching the filesystem. Every
+    # other use of the path below (DB storage, logging) keeps the encoded
+    # form, since that's what's always safe to store/return as JSON.
+    if not Path(decode_path_bytes(payload.path)).is_file():
         raise HTTPException(
             status_code=422,
-            detail=f"No file exists at path: {payload.path}",
+            detail=f"No file exists at path: {decode_path_bytes_for_display(payload.path)}",
         )
 
     mark_episode_tracked(ep, payload.path, "import")
@@ -1367,7 +1376,11 @@ async def scan_show_local_files(
         results.append(
             ScannedFileMatch(
                 path=entry.raw_path,
-                filename=Path(entry.raw_path).name,
+                # Display-only: decode_path_bytes_for_display is lossy (any
+                # non-UTF-8 byte becomes U+FFFD) so it reads naturally, unlike
+                # `path` above which stays byte-exact for the confirm/link
+                # round trip — see path_transport.py.
+                filename=Path(decode_path_bytes_for_display(entry.raw_path)).name,
                 season=season,
                 episode_number=episode_number,
                 episode=EpisodeBrief.model_validate(ep) if ep is not None else None,

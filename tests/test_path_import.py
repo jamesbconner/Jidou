@@ -64,6 +64,22 @@ class TestParseLine:
         assert entry.season == 2
         assert entry.episode == 6
 
+    def test_raw_path_is_encoded_for_literal_percent(self) -> None:
+        """raw_path is run through encode_path_bytes, matching scan_show_directory.
+
+        Regression test: without this, a bulk-imported file with a literal
+        '%' in its name would store an unencoded local_path, which no longer
+        compares equal to a later scan-local-files result for the same file
+        (scan_show_directory always escapes '%' — see path_transport.py).
+        show_root/show_dir must NOT be encoded — show_root can become
+        show.local_path, a real filesystem path.
+        """
+        line = r"Z:\anime tv\Show\Season 01\100% Complete.S01E01.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.raw_path == r"Z:\anime tv\Show\Season 01\100%25 Complete.S01E01.mkv"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\Show"))
+
     def test_predash_episode_with_season_dir(self) -> None:
         # "Show NN - Episode Title [hash]" — episode number before the dash
         line = (
@@ -453,6 +469,14 @@ class TestParseLineDirectoriesOnly:
         assert entry.show_dir == "KILL BLUE"
         assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\KILL BLUE"))
 
+    def test_directory_line_raw_path_is_encoded_for_literal_percent(self) -> None:
+        """raw_path is encoded here too, for the same reason as the file-line case —
+        show_root stays unencoded since it can become show.local_path."""
+        entry = parse_line("Z:\\anime tv\\100% Anime\\", root=r"Z:\anime tv", directories_only=True)
+        assert entry is not None
+        assert entry.raw_path == r"Z:\anime tv\100%25 Anime"
+        assert entry.show_root == str(PureWindowsPath(r"Z:\anime tv\100% Anime"))
+
     def test_directory_line_rejected_when_directories_only_false(self) -> None:
         """Backward compatible: without the mode flag, a non-media line is
         still just skipped, exactly as before this feature existed."""
@@ -693,8 +717,12 @@ class TestScanShowDirectory:
         """A filename with a raw non-UTF-8 byte (e.g. a legacy Latin-1 name from
         an older NAS/Windows share) must not crash the scan — regression test
         for UnicodeEncodeError: 'utf-8' codec can't encode character '\\udce9'.
+        raw_path must also decode back to the exact original bytes, so the
+        file can still be located on disk when confirming a match (see
+        path_transport.decode_path_bytes and link_episode_file).
         """
         from jidou.services.path_parser import scan_show_directory
+        from jidou.services.path_transport import decode_path_bytes
 
         # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8;
         # Python surrogateescape-decodes it to '\udce9' when reading it back
@@ -711,9 +739,11 @@ class TestScanShowDirectory:
         # response does and what previously raised UnicodeEncodeError.
         entries[0].raw_path.encode("utf-8")
         assert entries[0].raw_path.encode("utf-8").decode("utf-8") == entries[0].raw_path
-        # The unrecoverable byte becomes the Unicode replacement character;
-        # everything else in the filename is preserved untouched.
-        assert Path(entries[0].raw_path).name == "Show.S01E01.Am�lie.mkv"
+        # The unrecoverable byte is percent-encoded; everything else in the
+        # filename is preserved untouched (readable, not replaced/lossy).
+        assert Path(entries[0].raw_path).name == "Show.S01E01.Am%E9lie.mkv"
+        # Decoding it back resolves to the exact real file on disk.
+        assert Path(decode_path_bytes(entries[0].raw_path)).is_file()
         assert entries[0].season == 1
         assert entries[0].episode == 1
 

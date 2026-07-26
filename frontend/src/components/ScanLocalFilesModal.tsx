@@ -11,10 +11,6 @@ function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
 
-function basename(path: string) {
-  return path.replace(/\\/g, '/').split('/').pop() ?? path
-}
-
 interface Props {
   showId: number
   onClose: () => void
@@ -162,7 +158,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-mono text-xs text-zinc-200 truncate">
-                      {basename(row.path)}
+                      {row.filename}
                     </p>
                     <p className="text-[11px] text-zinc-500">
                       {row.season != null ? `S${pad2(row.season)}` : 'S?'}
