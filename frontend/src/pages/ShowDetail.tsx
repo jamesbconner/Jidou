@@ -85,6 +85,7 @@ function QueuePositionSelect({
   entryId: number
 }) {
   const [editing, setEditing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const reorder = useReorderWatchlist()
   const index = entries.findIndex((e) => e.id === entryId)
 
@@ -92,13 +93,23 @@ function QueuePositionSelect({
 
   if (!editing) {
     return (
-      <Badge
-        color="bg-gray-100 text-gray-700"
-        onClick={() => setEditing(true)}
-        title="Click to change queue position"
-      >
-        Queue #{index + 1}
-      </Badge>
+      <>
+        <Badge
+          color="bg-gray-100 text-gray-700"
+          onClick={() => {
+            setError(null)
+            setEditing(true)
+          }}
+          title="Click to change queue position"
+        >
+          Queue #{index + 1}
+        </Badge>
+        {error && (
+          <span className="text-xs text-red-600" title={error}>
+            Reorder failed
+          </span>
+        )}
+      </>
     )
   }
 
@@ -110,7 +121,11 @@ function QueuePositionSelect({
         const newIndex = Number(e.target.value)
         setEditing(false)
         if (newIndex === index) return
-        reorder.mutate(arrayMove(entries, index, newIndex))
+        reorder.mutate(arrayMove(entries, index, newIndex), {
+          onError: (err) => {
+            setError(err instanceof Error ? err.message : 'Failed to reorder')
+          },
+        })
       }}
       onBlur={() => setEditing(false)}
       className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"

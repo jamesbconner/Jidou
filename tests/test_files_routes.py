@@ -28,6 +28,7 @@ def _make_file(
     f.hash_sha256 = None
     f.status = status
     f.matched_by = None
+    f.ignored_reason = None
     f.error_message = None
     f.parsed_show_name = None
     f.parsed_season = None
@@ -288,6 +289,67 @@ def test_match_file_happy_path_calls_through_to_orchestrator() -> None:
 # ---------------------------------------------------------------------------
 # PATCH /api/files/{file_id}
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# POST /api/files/{id}/ignore
+# ---------------------------------------------------------------------------
+
+
+def test_ignore_file_from_unmatched() -> None:
+    """POST /api/files/{id}/ignore transitions an UNMATCHED file to IGNORED."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post("/api/files/1/ignore")
+        assert response.status_code == 200
+        assert f.status == FileStatus.IGNORED
+        assert f.ignored_reason == "manual"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_ignore_file_from_error() -> None:
+    """POST /api/files/{id}/ignore transitions an ERROR file to IGNORED."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR)
+    f.error_message = "permanent failure"
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post("/api/files/1/ignore")
+        assert response.status_code == 200
+        assert f.status == FileStatus.IGNORED
+        assert f.error_message is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_ignore_file_not_found_returns_404() -> None:
+    """POST /api/files/{id}/ignore returns 404 for an unknown file ID."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).post("/api/files/9999/ignore")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_ignore_file_non_ignorable_status_returns_409() -> None:
+    """POST /api/files/{id}/ignore rejects files in a status that can't be ignored."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.MATCHED)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post("/api/files/1/ignore")
+        assert response.status_code == 409
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_patch_file_show_id() -> None:

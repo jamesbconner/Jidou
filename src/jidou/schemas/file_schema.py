@@ -42,6 +42,7 @@ class FileRead(BaseModel):
     hash_sha256: str | None = None
     status: FileStatus
     matched_by: str | None = None
+    ignored_reason: str | None = None
     error_message: str | None = None
     parsed_show_name: str | None = None
     parsed_season: int | None = None

@@ -22,9 +22,11 @@ class FileStatus(StrEnum):
     State machine::
 
         discovered ──► downloading ──► downloaded ──► matched ──► routing ──► routed
-                                            │                         │
-                                            └──► unmatched            └──► error
-                                                     │
+                                            │    │                    │
+                                            │    └──► ignored         └──► error
+                                            └──► unmatched
+                                                     │    │
+                                                     │    └──► ignored  (manual)
                                                      └──► matched  (manual/re-match)
 
         routed ──► matched  (Fix Eps reassignment; triggers re-routing)
@@ -35,7 +37,11 @@ class FileStatus(StrEnum):
         downloading → downloaded    Transfer complete; file is in staging.
         downloaded  → matched       Parse/match phase succeeds.
         downloaded  → unmatched     Parse/match phase finds no episode; needs manual review.
+        downloaded  → ignored       Remote path fell under a configured noscan path;
+                                     set immediately post-download, never enters parse/match.
         unmatched   → matched       User resolves via UI, or match task re-runs successfully.
+        unmatched   → ignored       User manually excludes a stray non-media file from review.
+        error       → ignored       User manually excludes a permanently broken row.
         matched     → routing       Route task starts moving the file.
         routing     → routed        File moved to its final library path.
         routing     → error         File move fails (permissions, path missing, etc.).
@@ -44,6 +50,7 @@ class FileStatus(StrEnum):
 
     Note:
         ``pending`` is a legacy value; new records use ``discovered`` instead.
+        ``ignored`` is terminal — no outbound transitions.
     """
 
     DISCOVERED = "discovered"
@@ -59,6 +66,9 @@ class FileStatus(StrEnum):
     # transitions; excluded from every pipeline orchestrator's status whitelist
     # and from the manual re-match allowlist in the files API.
     SEEDED = "seeded"
+    # Terminal state for files that are downloaded (so they're never re-fetched)
+    # but deliberately excluded from parse/match/route — see IgnoredReason.
+    IGNORED = "ignored"
 
 
 class MatchedBy(StrEnum):
@@ -66,6 +76,18 @@ class MatchedBy(StrEnum):
 
     LLM = "llm"
     HEURISTIC = "heuristic"
+    MANUAL = "manual"
+
+
+class IgnoredReason(StrEnum):
+    """Why a file was excluded from parse/match/route.
+
+    Set at discovery time (``NOSCAN_PATH``) or via manual operator action
+    (``MANUAL``); read by the download orchestrator to route the file
+    straight to ``FileStatus.IGNORED`` instead of ``DOWNLOADED``.
+    """
+
+    NOSCAN_PATH = "noscan_path"
     MANUAL = "manual"
 
 
@@ -104,6 +126,13 @@ class DownloadedFile(TimestampMixin, Base):
         SAEnum(MatchedBy, values_callable=lambda e: [x.value for x in e]),
         nullable=True,
     )
+    # Set at discovery time for noscan-path files (before status even reaches
+    # DOWNLOADED) so DownloadOrchestrator knows to route to IGNORED instead;
+    # set directly to MANUAL by the manual-ignore API action.
+    ignored_reason: Mapped[IgnoredReason | None] = mapped_column(
+        SAEnum(IgnoredReason, values_callable=lambda e: [x.value for x in e]),
+        nullable=True,
+    )
     error_message: Mapped[str | None] = mapped_column(Text)
     # Parsed metadata populated by the parse orchestrator
     parsed_show_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -135,6 +164,7 @@ class DownloadedFile(TimestampMixin, Base):
         remote_path: str,
         size: int,
         status: FileStatus,
+        ignored_reason: IgnoredReason | None = None,
     ) -> DownloadedFile:
         """Build a not-yet-persisted row for a freshly discovered remote file.
 
@@ -147,6 +177,11 @@ class DownloadedFile(TimestampMixin, Base):
             remote_path: Full remote path (unique key).
             size: File size in bytes.
             status: Initial lifecycle status.
+            ignored_reason: Set by ``ScanOrchestrator`` when ``remote_path``
+                falls under a configured noscan path, even though ``status``
+                is still ``DISCOVERED`` — ``DownloadOrchestrator`` reads it
+                after the transfer completes to route the file to
+                ``IGNORED`` instead of ``DOWNLOADED``.
 
         Returns:
             A ``DownloadedFile`` instance, not yet added to any session.
@@ -157,4 +192,5 @@ class DownloadedFile(TimestampMixin, Base):
             remote_path=remote_path,
             file_size=size,
             status=status,
+            ignored_reason=ignored_reason,
         )

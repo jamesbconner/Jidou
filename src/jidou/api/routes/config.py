@@ -39,6 +39,7 @@ async def get_config() -> dict[str, Any]:
         "sftp_port": settings.sftp_port,
         "sftp_username": settings.sftp_username,
         "sftp_remote_paths": settings.sftp_remote_paths,
+        "sftp_noscan_paths": settings.sftp_noscan_paths,
         "llm_provider": settings.llm_provider,
         "llm_model": settings.llm_model,
         "llm_base_url": settings.llm_base_url or None,

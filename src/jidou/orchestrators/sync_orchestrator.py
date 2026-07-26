@@ -46,6 +46,8 @@ class SyncOrchestrator:
         tmdb: Configured TMDBService instance.
         llm: Optional LLMService for parse/match.
         remote_paths: SFTP remote paths to scan.
+        noscan_paths: SFTP paths excluded from parse/match/route — see
+            ``ScanOrchestrator``.
         local_staging_path: Local directory for staging downloaded files.
         local_tv_path: Base directory for live-action TV series.
         local_anime_path: Base directory for anime series.
@@ -59,6 +61,7 @@ class SyncOrchestrator:
         tmdb: TMDBService,
         llm: LLMService | None = None,
         remote_paths: list[str] | None = None,
+        noscan_paths: list[str] | None = None,
         local_staging_path: str = "/data/staging",
         local_tv_path: str = "/data/media/tv",
         local_anime_path: str = "/data/media/anime",
@@ -69,6 +72,7 @@ class SyncOrchestrator:
         self.tmdb = tmdb
         self.llm = llm
         self.remote_paths = remote_paths or ["/"]
+        self.noscan_paths = noscan_paths or []
         self.local_staging_path = local_staging_path
         self.local_tv_path = local_tv_path
         self.local_anime_path = local_anime_path
@@ -226,9 +230,9 @@ class SyncOrchestrator:
         # Phase 2: Scan all remote paths
         if on_phase:
             await on_phase(2, _TOTAL_PHASES, "Scanning remote files")
-        scan_result = await ScanOrchestrator(self.session, self.sftp, self.remote_paths).run(
-            dry_run=dry_run
-        )
+        scan_result = await ScanOrchestrator(
+            self.session, self.sftp, self.remote_paths, self.noscan_paths
+        ).run(dry_run=dry_run)
         if on_event:
             await on_event(
                 "info",

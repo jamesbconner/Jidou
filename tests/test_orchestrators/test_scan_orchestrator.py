@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from jidou.models.downloaded_file import DownloadedFile
+from jidou.models.downloaded_file import DownloadedFile, IgnoredReason
 from jidou.models.scanned_directory import ScannedDirectory
 from jidou.orchestrators.scan_orchestrator import ScanOrchestrator
 from jidou.services.sftp_service import RecursiveListResult, RemoteFile
@@ -710,3 +710,106 @@ async def test_on_event_called_for_directory_walk_exception(
     error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
     assert len(error_calls) == 1
     assert "Show Bad" in error_calls[0][0][1]
+
+
+# ---------------------------------------------------------------------------
+# Noscan paths
+# ---------------------------------------------------------------------------
+
+
+async def test_top_level_file_under_noscan_path_is_tagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A top-level file under a configured noscan path gets ignored_reason set."""
+    rf = _make_file("movie.mkv", "/remote/documentaries/movie.mkv")
+    added_files: list[DownloadedFile] = []
+    session = _make_session()
+    session.add = MagicMock(side_effect=lambda f: added_files.append(f))
+    sftp = _make_sftp(children_by_path={"/remote": [rf]})
+    _patch_existing(monkeypatch)
+
+    orch = ScanOrchestrator(session, sftp, ["/remote"], ["/remote/documentaries"])
+    await orch.run()
+
+    assert len(added_files) == 1
+    assert added_files[0].ignored_reason == IgnoredReason.NOSCAN_PATH
+
+
+async def test_top_level_file_outside_noscan_path_is_not_tagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A file outside any configured noscan path is unaffected."""
+    rf = _make_file("show.s01e01.mkv", "/remote/tv/show.s01e01.mkv")
+    added_files: list[DownloadedFile] = []
+    session = _make_session()
+    session.add = MagicMock(side_effect=lambda f: added_files.append(f))
+    sftp = _make_sftp(children_by_path={"/remote": [rf]})
+    _patch_existing(monkeypatch)
+
+    orch = ScanOrchestrator(session, sftp, ["/remote"], ["/remote/documentaries"])
+    await orch.run()
+
+    assert len(added_files) == 1
+    assert added_files[0].ignored_reason is None
+
+
+async def test_deep_walked_file_under_noscan_path_is_tagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A file discovered via a recursive walk of a new directory is also tagged."""
+    new_dir = _make_dir("Documentaries", "/remote/Documentaries")
+    inner = _make_file("doc.mkv", "/remote/Documentaries/doc.mkv")
+    added_files: list[DownloadedFile] = []
+    session = _make_session()
+    session.add = MagicMock(side_effect=lambda f: added_files.append(f))
+    sftp = _make_sftp(
+        children_by_path={"/remote": [new_dir]},
+        walk_by_path={"/remote/Documentaries": _walk_result([inner])},
+    )
+    _patch_existing(monkeypatch)
+
+    orch = ScanOrchestrator(session, sftp, ["/remote"], ["/remote/Documentaries"])
+    await orch.run()
+
+    downloaded_files = [f for f in added_files if isinstance(f, DownloadedFile)]
+    assert len(downloaded_files) == 1
+    assert downloaded_files[0].ignored_reason == IgnoredReason.NOSCAN_PATH
+
+
+async def test_no_noscan_paths_configured_never_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When noscan_paths is omitted entirely, nothing is ever tagged."""
+    rf = _make_file("movie.mkv", "/remote/documentaries/movie.mkv")
+    added_files: list[DownloadedFile] = []
+    session = _make_session()
+    session.add = MagicMock(side_effect=lambda f: added_files.append(f))
+    sftp = _make_sftp(children_by_path={"/remote": [rf]})
+    _patch_existing(monkeypatch)
+
+    orch = ScanOrchestrator(session, sftp, ["/remote"])
+    await orch.run()
+
+    assert added_files[0].ignored_reason is None
+
+
+def test_noscan_ancestor_of_scan_path_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """A noscan path that would swallow an entire scan root logs a warning at init."""
+    session = _make_session()
+    sftp = MagicMock()
+
+    with caplog.at_level("WARNING"):
+        ScanOrchestrator(session, sftp, ["/downloads/tv"], ["/downloads"])
+
+    assert any("ancestor" in record.message for record in caplog.records)
+
+
+def test_noscan_nested_inside_scan_path_logs_no_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The intended case — noscan nested inside a scan root — logs nothing."""
+    session = _make_session()
+    sftp = MagicMock()
+
+    with caplog.at_level("WARNING"):
+        ScanOrchestrator(session, sftp, ["/downloads"], ["/downloads/documentaries"])
+
+    assert caplog.records == []
