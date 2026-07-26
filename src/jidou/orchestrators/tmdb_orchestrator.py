@@ -258,6 +258,8 @@ class TMDBOrchestrator:
 
         Ensures shows without episode data get synced even if cached flag was set by
         other code (e.g., trending task) that doesn't populate episodes.
+        Movies are excluded — TMDB has no ``/tv/{id}/season`` structure for
+        them, so they would just 404 against the endpoint this method calls.
 
         Args:
             on_progress: Optional async callback(current, total, message).
@@ -266,7 +268,10 @@ class TMDBOrchestrator:
             Aggregated TMDBSyncResult across all shows.
         """
         no_episodes = ~exists(select(Episode).where(Episode.show_id == Show.id))
-        stmt = select(Show).where((Show.cached == False) | no_episodes)  # noqa: E712
+        stmt = select(Show).where(
+            Show.media_type != "movie",
+            (Show.cached == False) | no_episodes,  # noqa: E712
+        )
         shows = list((await self.session.execute(stmt)).scalars().all())
 
         total = len(shows)
@@ -276,7 +281,17 @@ class TMDBOrchestrator:
             if on_progress:
                 await on_progress(idx, total, f"Syncing {show.title}")
             try:
-                result = await self.sync_show_episodes(show)
+                # Run each show's work in a SAVEPOINT: a failure inside only
+                # rolls back to it, leaving the rest of the session's identity
+                # map intact. A plain self.session.rollback() here would
+                # expire every already-loaded Show in `shows`, and the next
+                # iteration's bare attribute access (e.g. show.tmdb_id,
+                # evaluated before any surrounding await) would then trigger
+                # an implicit lazy-reload outside the async greenlet bridge —
+                # raising sqlalchemy.exc.MissingGreenlet instead of the
+                # original error.
+                async with self.session.begin_nested():
+                    result = await self.sync_show_episodes(show)
                 combined.shows_synced += result.shows_synced
                 combined.episodes_upserted += result.episodes_upserted
                 combined.episodes_skipped += result.episodes_skipped
@@ -286,6 +301,5 @@ class TMDBOrchestrator:
                 await self.session.commit()
             except Exception:
                 logger.exception("Failed to sync TMDB data for show id=%d", show.id)
-                await self.session.rollback()
 
         return combined
