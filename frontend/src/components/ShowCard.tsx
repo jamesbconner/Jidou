@@ -3,7 +3,7 @@ import { DQ_CHECKS } from '@/utils/dqChecks'
 import { Card } from '@/components/ui/Card'
 import type { ShowList } from '@/types/api'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
+const TMDB_IMG = '/api/images/w300'
 
 interface Props {
   show: ShowList

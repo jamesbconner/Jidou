@@ -2,7 +2,7 @@ import { Card } from '@/components/ui/Card'
 import type { RecentEpisodeItem } from '@/types/api'
 import type { RecentSort } from '@/hooks/useDashboard'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
+const TMDB_IMG = '/api/images/w300'
 
 interface Props {
   episode: RecentEpisodeItem

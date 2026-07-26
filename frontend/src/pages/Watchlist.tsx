@@ -27,7 +27,7 @@ import { Card } from '@/components/ui/Card'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w92'
+const TMDB_IMG = '/api/images/w92'
 
 function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   const [editing, setEditing] = useState(false)

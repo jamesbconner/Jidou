@@ -29,3 +29,12 @@ def test_settings_creation() -> None:
     """Test that Settings can be instantiated without error."""
     new_settings = Settings()
     assert new_settings.app_name is not None
+
+
+def test_settings_image_cache_defaults() -> None:
+    """Image cache settings default to a disk backend with 180-day retention."""
+    default = Settings(_env_file=None)
+    assert default.image_cache_backend == "disk"
+    assert default.image_cache_path == "/data/image-cache"
+    assert default.image_cache_expiration_enabled is True
+    assert default.image_cache_retention_days == 180

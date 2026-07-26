@@ -244,14 +244,20 @@ class TestScheduledRssImportTask:
 
 
 class TestBeatScheduleWiring:
-    def test_beat_schedule_empty_when_both_disabled(self) -> None:
-        """No beat schedule entries when both schedules are disabled (default)."""
-        # Default settings have both schedules disabled
+    def test_beat_schedule_only_contains_enabled_schedules(self) -> None:
+        """Beat schedule keys reflect exactly which schedules are enabled."""
         from jidou.config import settings
         from jidou.workers.celery_app import celery_app
 
-        if not settings.sync_schedule_enabled and not settings.rss_import_schedule_enabled:
-            assert celery_app.conf.beat_schedule == {}
+        expected_keys = set()
+        if settings.sync_schedule_enabled:
+            expected_keys.add("scheduled-sync")
+        if settings.rss_import_schedule_enabled:
+            expected_keys.add("scheduled-rss-import")
+        if settings.image_cache_expiration_enabled:
+            expected_keys.add("purge-stale-images")
+
+        assert set(celery_app.conf.beat_schedule.keys()) == expected_keys
 
     def test_scheduled_tasks_registered_in_celery(self) -> None:
         """Both scheduled wrapper tasks must be discoverable in the Celery registry."""

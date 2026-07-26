@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useCalendarWeek } from '@/hooks/useCalendar'
 import type { CalendarEpisode } from '@/types/api'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w92'
+const TMDB_IMG = '/api/images/w92'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 

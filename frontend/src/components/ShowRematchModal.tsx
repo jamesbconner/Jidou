@@ -4,7 +4,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
 import type { TmdbResult } from '@/types/api'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
+const TMDB_IMG = '/api/images/w185'
 
 export function ShowRematchModal({
   showId,

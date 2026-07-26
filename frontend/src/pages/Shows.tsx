@@ -35,7 +35,7 @@ const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
   filterMinRating: '',
 }
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
+const TMDB_IMG = '/api/images/w185'
 
 type Tab = 'library' | 'data'
 

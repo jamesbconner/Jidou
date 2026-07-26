@@ -16,6 +16,7 @@ from jidou.api.routes import (
     dashboard,
     export_routes,
     files,
+    images,
     import_routes,
     orphans,
     rss,
@@ -98,8 +99,11 @@ def create_app() -> FastAPI:
 
     _auth = [Depends(verify_api_key)]
 
-    # Register routers — health and WebSocket are intentionally unauthenticated.
+    # Register routers — health, WebSocket, and images are intentionally
+    # unauthenticated: plain <img src> tags can't send an X-API-Key header,
+    # and TMDB poster/backdrop images aren't sensitive data.
     app.include_router(health.router, prefix="/api")
+    app.include_router(images.router, prefix="/api")
     app.include_router(shows.router, prefix="/api", dependencies=_auth)
     app.include_router(files.router, prefix="/api", dependencies=_auth)
     app.include_router(orphans.router, prefix="/api", dependencies=_auth)

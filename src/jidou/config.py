@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     tmdb_cache_ttl: int = Field(default=604_800, ge=3600)  # 7 days in seconds
     tmdb_cache_maxsize: int = Field(default=25_000, ge=1)
 
+    # Image cache — disk-backed proxy for TMDB poster/backdrop images so the
+    # frontend never hotlinks image.tmdb.org directly (see api/routes/images.py).
+    image_cache_backend: str = "disk"  # future: "garage" (self-hosted S3-compatible)
+    image_cache_path: str = "/data/image-cache"
+    image_cache_host_path: str = "/data/image-cache"
+    # Whether the daily Celery beat purge task runs at all. When false, cached
+    # images are kept indefinitely (image_cache_retention_days is ignored).
+    image_cache_expiration_enabled: bool = True
+    image_cache_retention_days: int = Field(default=180, ge=1)
+
     # CORS — stored as a plain string so pydantic-settings never attempts
     # JSON-parsing. Use the cors_origins property for the parsed list.
     allowed_origins: str = "http://localhost:3100"

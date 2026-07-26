@@ -3,7 +3,7 @@ import { Modal } from '@/components/ui/Modal'
 import type { RecentSort } from '@/hooks/useDashboard'
 import type { RecentShowItem, RecentEpisodeItem } from '@/types/api'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w300'
+const TMDB_IMG = '/api/images/w300'
 
 type MediaItem =
   | { kind: 'show'; show: RecentShowItem; sort: RecentSort }

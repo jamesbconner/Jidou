@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 
-const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
+const TMDB_IMG = '/api/images/w185'
 
 // Only the fields this card actually renders — kept narrower than the full
 // TmdbResult/DiscoverResult shape so both (which differ in how strictly they
