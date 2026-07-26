@@ -655,7 +655,10 @@ export interface paths {
          *     Args:
          *         show_id: Database primary key of the show.
          *         episode_id: Database primary key of the episode.
-         *         payload: Contains ``path`` — the absolute on-disk path of the file.
+         *         payload: Contains ``path`` — the absolute on-disk path of the file,
+         *             as returned verbatim by ``scan-local-files`` (may be
+         *             percent-encoded via :mod:`~jidou.services.path_transport` if the
+         *             filename contains non-UTF-8 bytes).
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -873,6 +876,43 @@ export interface paths {
         get: operations["tmdb_suggestions_api_files__file_id__tmdb_suggestions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{file_id}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore File
+         * @description Manually exclude a stray non-media file from matching forever.
+         *
+         *     Escape hatch for files that will never be matched (documentaries,
+         *     theatre recordings, etc.) but weren't caught by a configured noscan SFTP
+         *     path — e.g. a one-off file mixed into an otherwise normal TV/movie
+         *     folder. The row is kept (not deleted) so ``remote_path`` uniqueness
+         *     still prevents the file from being re-downloaded.
+         *
+         *     Args:
+         *         file_id: Database primary key.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated :class:`DownloadedFile` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the file is not found.
+         *         HTTPException: 409 if the file is in a non-ignorable status.
+         */
+        post: operations["ignore_file_api_files__file_id__ignore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2605,6 +2645,19 @@ export interface components {
              * @default []
              */
             backing_files: components["schemas"]["BackingFile"][];
+            /**
+             * Tracked Filename Display
+             * @description Human-readable ``tracked_filename``, for display only.
+             *
+             *     ``tracked_filename`` itself must stay exactly as stored — it may be
+             *     percent-encoded (see :mod:`~jidou.services.path_transport`) when the
+             *     underlying filename has non-UTF-8 bytes, and the frontend echoes it
+             *     back verbatim to ``assign-import`` for an exact database match (see
+             *     ``AssignImportModal.tsx``). Decoding it in place there would break
+             *     that lookup. This lossy (U+FFFD on undecodable bytes), readable form
+             *     is only for showing to a user.
+             */
+            readonly tracked_filename_display: string | null;
         };
         /**
          * FileMatchRequest
@@ -2680,6 +2733,8 @@ export interface components {
             status: components["schemas"]["FileStatus"];
             /** Matched By */
             matched_by?: string | null;
+            /** Ignored Reason */
+            ignored_reason?: string | null;
             /** Error Message */
             error_message?: string | null;
             /** Parsed Show Name */
@@ -2712,9 +2767,11 @@ export interface components {
          *     State machine::
          *
          *         discovered ──► downloading ──► downloaded ──► matched ──► routing ──► routed
-         *                                             │                         │
-         *                                             └──► unmatched            └──► error
-         *                                                      │
+         *                                             │    │                    │
+         *                                             │    └──► ignored         └──► error
+         *                                             └──► unmatched
+         *                                                      │    │
+         *                                                      │    └──► ignored  (manual)
          *                                                      └──► matched  (manual/re-match)
          *
          *         routed ──► matched  (Fix Eps reassignment; triggers re-routing)
@@ -2725,7 +2782,11 @@ export interface components {
          *         downloading → downloaded    Transfer complete; file is in staging.
          *         downloaded  → matched       Parse/match phase succeeds.
          *         downloaded  → unmatched     Parse/match phase finds no episode; needs manual review.
+         *         downloaded  → ignored       Remote path fell under a configured noscan path;
+         *                                      set immediately post-download, never enters parse/match.
          *         unmatched   → matched       User resolves via UI, or match task re-runs successfully.
+         *         unmatched   → ignored       User manually excludes a stray non-media file from review.
+         *         error       → ignored       User manually excludes a permanently broken row.
          *         matched     → routing       Route task starts moving the file.
          *         routing     → routed        File moved to its final library path.
          *         routing     → error         File move fails (permissions, path missing, etc.).
@@ -2734,9 +2795,10 @@ export interface components {
          *
          *     Note:
          *         ``pending`` is a legacy value; new records use ``discovered`` instead.
+         *         ``ignored`` is terminal — no outbound transitions.
          * @enum {string}
          */
-        FileStatus: "discovered" | "downloading" | "downloaded" | "unmatched" | "matched" | "routing" | "routed" | "error" | "pending" | "seeded";
+        FileStatus: "discovered" | "downloading" | "downloaded" | "unmatched" | "matched" | "routing" | "routed" | "error" | "pending" | "seeded" | "ignored";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2776,6 +2838,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Tracked Filename Display
+             * @description Human-readable ``tracked_filename``, for display only.
+             *
+             *     Snapshotted verbatim from ``Episode.tracked_filename`` (see
+             *     ShowRematchOrchestrator), which may be percent-encoded — see
+             *     :mod:`~jidou.services.path_transport`. Resolving/dismissing an
+             *     orphan never echoes this value back, so unlike EpisodeList's
+             *     equivalent field this exists purely for readability, not to avoid
+             *     breaking a round trip.
+             */
+            readonly tracked_filename_display: string | null;
         };
         /**
          * OrphanResolveRequest
@@ -4804,6 +4878,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_file_api_files__file_id__ignore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
                 };
             };
             /** @description Validation Error */

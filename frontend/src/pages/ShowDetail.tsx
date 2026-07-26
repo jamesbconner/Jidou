@@ -453,10 +453,10 @@ export default function ShowDetail() {
                                       bf.filename}
                                   </div>
                                 ))
-                              : ep.tracked_filename && (
+                              : ep.tracked_filename_display && (
                                   <div className="text-xs text-gray-400 font-mono mt-0.5">
-                                    {ep.tracked_filename.replace(/\\/g, '/').split('/').pop() ??
-                                      ep.tracked_filename}
+                                    {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
+                                      ep.tracked_filename_display}
                                   </div>
                                 ))}
                         </div>

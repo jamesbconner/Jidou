@@ -596,6 +596,45 @@ def test_list_episodes_returns_episode_list() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_episodes_tracked_filename_display_is_decoded() -> None:
+    """tracked_filename_display shows a readable name; tracked_filename stays byte-exact.
+
+    Regression test: AssignImportModal.tsx echoes tracked_filename back to
+    assign-import verbatim for an exact DB match, so that field must never be
+    decoded in place — only the separate _display field is safe to show.
+    """
+    from jidou.database import get_session
+    from jidou.services.path_transport import encode_path_bytes
+
+    show = _make_show(id=1)
+    episode = _make_episode(id=10, show_id=1)
+    episode.tracked_filename = encode_path_bytes("The Fianc\udce9.S01E01.mkv")
+    episode.tracked_source = "import"
+    episode.file_tracked = True
+
+    async def _two_query_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = [episode]
+        files_result = MagicMock()
+        files_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, files_result])
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _two_query_session
+    try:
+        response = TestClient(app).get("/api/shows/1/episodes")
+        assert response.status_code == 200
+        body = response.json()[0]
+        assert body["tracked_filename"] == "The Fianc%E9.S01E01.mkv"
+        assert body["tracked_filename_display"] == "The Fianc�.S01E01.mkv"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_episodes_returns_404_for_missing_show() -> None:
     """GET /api/shows/{id}/episodes returns 404 when the show doesn't exist."""
     from jidou.database import get_session
