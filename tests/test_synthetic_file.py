@@ -39,7 +39,7 @@ async def test_original_filename_is_decoded_for_display() -> None:
     )
 
     assert record is not None
-    assert record.original_filename == "The Fianc�.S01E01.mkv"
+    assert record.original_filename == "The Fiancé.S01E01.mkv"
     # local_path stays byte-exact — it's what a future real filesystem
     # access would need to decode back to the exact original bytes.
     assert record.local_path == raw_path

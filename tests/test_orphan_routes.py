@@ -159,7 +159,7 @@ def test_list_orphans_tracked_filename_display_is_decoded() -> None:
         assert response.status_code == 200
         body = response.json()[0]
         assert body["tracked_filename"] == encoded
-        assert body["tracked_filename_display"] == "/media/The Fianc�.S01E01.mkv"
+        assert body["tracked_filename_display"] == "/media/The Fiancé.S01E01.mkv"
     finally:
         app.dependency_overrides.clear()
 

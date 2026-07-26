@@ -630,7 +630,7 @@ def test_list_episodes_tracked_filename_display_is_decoded() -> None:
         assert response.status_code == 200
         body = response.json()[0]
         assert body["tracked_filename"] == "The Fianc%E9.S01E01.mkv"
-        assert body["tracked_filename_display"] == "The Fianc�.S01E01.mkv"
+        assert body["tracked_filename_display"] == "The Fiancé.S01E01.mkv"
     finally:
         app.dependency_overrides.clear()
 
