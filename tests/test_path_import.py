@@ -693,8 +693,12 @@ class TestScanShowDirectory:
         """A filename with a raw non-UTF-8 byte (e.g. a legacy Latin-1 name from
         an older NAS/Windows share) must not crash the scan — regression test
         for UnicodeEncodeError: 'utf-8' codec can't encode character '\\udce9'.
+        raw_path must also decode back to the exact original bytes, so the
+        file can still be located on disk when confirming a match (see
+        path_transport.decode_path_bytes and link_episode_file).
         """
         from jidou.services.path_parser import scan_show_directory
+        from jidou.services.path_transport import decode_path_bytes
 
         # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8;
         # Python surrogateescape-decodes it to '\udce9' when reading it back
@@ -711,9 +715,11 @@ class TestScanShowDirectory:
         # response does and what previously raised UnicodeEncodeError.
         entries[0].raw_path.encode("utf-8")
         assert entries[0].raw_path.encode("utf-8").decode("utf-8") == entries[0].raw_path
-        # The unrecoverable byte becomes the Unicode replacement character;
-        # everything else in the filename is preserved untouched.
-        assert Path(entries[0].raw_path).name == "Show.S01E01.Am�lie.mkv"
+        # The unrecoverable byte is percent-encoded; everything else in the
+        # filename is preserved untouched (readable, not replaced/lossy).
+        assert Path(entries[0].raw_path).name == "Show.S01E01.Am%E9lie.mkv"
+        # Decoding it back resolves to the exact real file on disk.
+        assert Path(decode_path_bytes(entries[0].raw_path)).is_file()
         assert entries[0].season == 1
         assert entries[0].episode == 1
 

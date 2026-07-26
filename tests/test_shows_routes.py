@@ -1,5 +1,6 @@
 """Tests for the /shows API routes."""
 
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -2768,6 +2769,78 @@ def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> 
         assert ep.tracked_source == "import"
         assert ep.tracked_filename == raw_path
         assert response.json()["id"] == linked.id
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason=(
+        "Reproducing this requires creating a file with a raw non-UTF-8 byte in its name. "
+        "NTFS (Windows) stores filenames as UTF-16; APFS (macOS) rejects the write outright "
+        "(OSError: Illegal byte sequence). Linux — and the production Docker containers, "
+        "which are always Linux — treats filenames as opaque bytes."
+    ),
+)
+def test_link_file_with_percent_encoded_non_utf8_path(tmp_path: Path) -> None:
+    """A path percent-encoded by path_transport (non-UTF-8 filename) still links correctly.
+
+    Regression test: scan-local-files must encode raw_path so it survives JSON
+    (see path_transport.encode_path_bytes); link-file must decode it back to
+    the exact on-disk bytes before checking Path.is_file(), or every file
+    whose name needed encoding would 422 as "not found" despite existing.
+    """
+    import os
+
+    from jidou.database import get_session
+    from jidou.services.path_transport import encode_path_bytes
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+
+    # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8.
+    bad_name = b"Am\xe9lie.mkv"
+    full_path_bytes = os.path.join(os.fsencode(str(tmp_path)), bad_name)
+    with open(full_path_bytes, "wb") as f:
+        f.write(b"x")
+    raw_path = os.fsdecode(full_path_bytes)
+    encoded_path = encode_path_bytes(raw_path)
+    assert encoded_path != raw_path  # sanity: the bad byte really did get escaped
+
+    linked = _make_linked_file(show_id=1, episode_id=10, raw_path=encoded_path)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        dedup_result = MagicMock()
+        dedup_result.scalar_one_or_none.return_value = None
+        refetch_result = MagicMock()
+        refetch_result.scalar_one.return_value = linked
+        session.execute = AsyncMock(
+            side_effect=[show_result, ep_result, dedup_result, refetch_result]
+        )
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": encoded_path},
+        )
+        assert response.status_code == 200
+        assert ep.file_tracked is True
+        # Stored form stays encoded — always JSON/DB-safe, and deterministic
+        # so a later scan's dedup check compares like-for-like.
+        assert ep.tracked_filename == encoded_path
     finally:
         app.dependency_overrides.clear()
 

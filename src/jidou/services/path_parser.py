@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from jidou.services.file_filters import is_valid_directory, is_valid_media_file
+from jidou.services.path_transport import encode_path_bytes
 
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
@@ -378,6 +379,14 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     pipeline already applies, so junk that's excluded there doesn't reappear
     as a scan candidate here.
 
+    ``raw_path``/``show_dir``/``show_root`` are run through
+    :func:`~jidou.services.path_transport.encode_path_bytes` — filenames on a
+    POSIX filesystem aren't guaranteed to be valid UTF-8 (e.g. a legacy
+    Latin-1/cp1252 name from an older Windows/NAS-authored library), and an
+    unencoded surrogate would crash the API response. The encoding is
+    lossless and reversible via ``decode_path_bytes``, so a confirmed match
+    still resolves back to the exact file on disk.
+
     Args:
         show_root: Absolute container-side path to the show's own directory.
 
@@ -409,9 +418,9 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
 
         entries.append(
             ParsedPathEntry(
-                raw_path=_json_safe(str(file_path)),
-                show_dir=_json_safe(root.name),
-                show_root=_json_safe(str(root)),
+                raw_path=encode_path_bytes(str(file_path)),
+                show_dir=encode_path_bytes(root.name),
+                show_root=encode_path_bytes(str(root)),
                 season=season,
                 episode=episode,
                 is_absolute=is_absolute,
@@ -419,29 +428,6 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
             )
         )
     return entries
-
-
-def _json_safe(s: str) -> str:
-    """Return *s* guaranteed to survive UTF-8 JSON encoding.
-
-    On POSIX, filenames aren't guaranteed to be valid UTF-8 — a share
-    populated from an older Windows/NAS source can contain names encoded in
-    Latin-1/cp1252 or similar. Python decodes such bytes with the
-    ``surrogateescape`` error handler, producing lone surrogate codepoints
-    that round-trip fine internally but raise ``UnicodeEncodeError`` the
-    moment a JSON response tries to encode them as UTF-8. Re-encoding with
-    ``surrogateescape`` recovers the exact original bytes, then decoding
-    with ``replace`` swaps only the genuinely undecodable bytes for U+FFFD —
-    every valid character survives untouched.
-
-    Args:
-        s: String to sanitize — typically built from a live filesystem path.
-
-    Returns:
-        A str guaranteed to encode cleanly as UTF-8.
-    """
-    raw = s.encode("utf-8", errors="surrogateescape")
-    return raw.decode("utf-8", errors="replace")
 
 
 def group_by_show(
