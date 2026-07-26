@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { usePatchWatchlistEntry } from '@/hooks/useWatchlist'
 import { Badge } from '@/components/ui/Badge'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
@@ -11,21 +11,28 @@ interface Props {
 
 export function WatchlistStatusSelect({ id, current }: Props) {
   const [editing, setEditing] = useState(false)
-  const pendingRef = useRef<WatchlistStatus>(current)
+  const [error, setError] = useState<string | null>(null)
   const patch = usePatchWatchlistEntry()
 
   if (!editing) {
     return (
-      <Badge
-        color={STATUS_COLOR[current]}
-        onClick={() => {
-          pendingRef.current = current
-          setEditing(true)
-        }}
-        title="Click to change status"
-      >
-        {STATUS_LABEL[current]}
-      </Badge>
+      <>
+        <Badge
+          color={STATUS_COLOR[current]}
+          onClick={() => {
+            setError(null)
+            setEditing(true)
+          }}
+          title="Click to change status"
+        >
+          {STATUS_LABEL[current]}
+        </Badge>
+        {error && (
+          <span className="text-xs text-red-600" title={error}>
+            Update failed
+          </span>
+        )}
+      </>
     )
   }
 
@@ -35,8 +42,16 @@ export function WatchlistStatusSelect({ id, current }: Props) {
       defaultValue={current}
       onChange={(e) => {
         const next = e.target.value as WatchlistStatus
-        pendingRef.current = next
-        if (next !== current) patch.mutate({ id, update: { status: next } })
+        if (next !== current) {
+          patch.mutate(
+            { id, update: { status: next } },
+            {
+              onError: (err) => {
+                setError(err instanceof Error ? err.message : 'Failed to update status')
+              },
+            },
+          )
+        }
       }}
       onBlur={() => setEditing(false)}
       className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
