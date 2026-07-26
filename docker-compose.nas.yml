@@ -35,6 +35,7 @@ services:
       - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
       - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
       - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      - ${IMAGE_CACHE_HOST_PATH:-${IMAGE_CACHE_PATH:-/data/image-cache}}:${IMAGE_CACHE_PATH:-/data/image-cache}
 
   jidou-worker:
     volumes: !override
@@ -44,6 +45,7 @@ services:
       - nas_tv:${LOCAL_TV_PATH:-/data/media/tv}
       - nas_anime:${LOCAL_ANIME_PATH:-/data/media/anime}
       - nas_movies:${LOCAL_MOVIE_PATH:-/data/media/movies}
+      - ${IMAGE_CACHE_HOST_PATH:-${IMAGE_CACHE_PATH:-/data/image-cache}}:${IMAGE_CACHE_PATH:-/data/image-cache}
 
 volumes:
   # uid=1000/gid=1000 matches appuser (see Dockerfile.worker/Dockerfile.api)
