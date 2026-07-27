@@ -374,6 +374,49 @@ def parse_file(
     return entries
 
 
+def _resolve_show_root(show_root: str) -> Path | None:
+    """Resolve *show_root* to an actual on-disk directory.
+
+    ``show_root`` (from ``Show.local_path``) is a clean UTF-8 string, but a
+    directory that predates Jidou -- created by some other tool, e.g. an
+    archive extractor or an older Windows/NAS workflow -- can have a name
+    that's raw Latin-1/cp1252 bytes instead of UTF-8 for an accented
+    character (cp1252 'é' is the single byte 0xE9; UTF-8 'é' is the two
+    bytes 0xC3 0xA9). A plain ``Path(show_root).is_dir()`` then fails even
+    though the directory is right there, because the byte sequences don't
+    literally match. If the exact path isn't found, this falls back to
+    scanning the parent directory for an entry whose raw on-disk bytes
+    decode as cp1252 to the expected name.
+
+    Args:
+        show_root: Absolute container-side path to the show's own directory,
+            as stored in the database.
+
+    Returns:
+        The resolved :class:`Path` (exact or cp1252-recovered), or ``None``
+        if no matching directory exists.
+    """
+    exact = Path(show_root)
+    if exact.is_dir():
+        return exact
+
+    parent = exact.parent
+    if not parent.is_dir():
+        return None
+
+    target_name = exact.name
+    for entry in parent.iterdir():
+        if not entry.is_dir():
+            continue
+        raw = entry.name.encode("utf-8", errors="surrogateescape")
+        try:
+            if raw.decode("cp1252") == target_name:
+                return entry
+        except UnicodeDecodeError:
+            continue
+    return None
+
+
 def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     """Walk an already-known show's own local directory and parse every media file.
 
@@ -397,6 +440,10 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     lossless and reversible via ``decode_path_bytes``, so a confirmed match
     still resolves back to the exact file on disk.
 
+    A directory that predates Jidou can also have a legacy Latin-1/cp1252-
+    encoded name that doesn't literally byte-match ``show_root`` -- see
+    :func:`_resolve_show_root`, which recovers it.
+
     Args:
         show_root: Absolute container-side path to the show's own directory.
 
@@ -405,8 +452,8 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
         any depth), sorted by path. Empty if *show_root* doesn't exist or
         isn't a directory.
     """
-    root = Path(show_root)
-    if not root.is_dir():
+    root = _resolve_show_root(show_root)
+    if root is None:
         return []
 
     # root is invariant for the whole walk — encode its derived strings once

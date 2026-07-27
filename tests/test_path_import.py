@@ -747,6 +747,49 @@ class TestScanShowDirectory:
         assert entries[0].season == 1
         assert entries[0].episode == 1
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason=(
+            "Reproducing the bug requires creating a directory with a raw non-UTF-8 byte in "
+            "its name. NTFS (Windows) stores filenames as UTF-16, so this scenario doesn't "
+            "apply there; APFS (macOS) validates filenames as UTF-8 at the filesystem level "
+            "and rejects the write outright. Linux (and the production Docker containers, "
+            "which are always Linux) treats filenames as opaque bytes."
+        ),
+    )
+    def test_recovers_legacy_cp1252_show_directory_name(self, tmp_path: Path) -> None:
+        """Regression test: a show directory that predates Jidou (created by some
+        other tool, e.g. an archive extractor) can have a raw cp1252-encoded byte
+        for an accented character instead of UTF-8 -- cp1252 'é' is the single
+        byte 0xE9; UTF-8 'é' is the two bytes 0xC3 0xA9. Show.local_path in the
+        database is the clean UTF-8 string, so a literal Path(local_path).is_dir()
+        fails even though the directory is right there, and scan_show_directory
+        previously returned [] unconditionally -- exactly the "No new media files
+        found" symptom reported for a show with 'é' in its title."""
+        from jidou.services.path_parser import scan_show_directory
+
+        # Byte 0xE9 stands in for the UTF-8 "é" (0xC3 0xA9) the database expects.
+        bad_dir_bytes = os.path.join(os.fsencode(str(tmp_path)), b"Am\xe9lie")
+        os.mkdir(bad_dir_bytes)
+        with open(os.path.join(bad_dir_bytes, b"Show.S01E01.mkv"), "wb") as f:
+            f.write(b"x")
+
+        clean_local_path = str(tmp_path / "Amélie")
+        entries = scan_show_directory(clean_local_path)
+
+        assert len(entries) == 1
+        assert entries[0].season == 1
+        assert entries[0].episode == 1
+
+    def test_no_matching_directory_returns_empty_list(self, tmp_path: Path) -> None:
+        """A show_root with no cp1252-recoverable match in the parent directory
+        still returns [] rather than raising."""
+        from jidou.services.path_parser import scan_show_directory
+
+        (tmp_path / "Some Other Show").mkdir()
+
+        assert scan_show_directory(str(tmp_path / "Amélie")) == []
+
 
 class TestPathComparisonKey:
     def test_same_posix_path_matches_itself(self) -> None:
