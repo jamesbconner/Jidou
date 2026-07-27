@@ -63,6 +63,8 @@ _SHOW_HANDLED_COLUMNS = frozenset(
         "tagline",
         "local_path",
         "adult",
+        "list_poster_path",
+        "detail_poster_path",
     }
 )
 
@@ -358,6 +360,8 @@ def _build_show(row: dict[str, Any]) -> Show:
         tagline=row.get("tagline"),
         local_path=row.get("local_path"),
         adult=row.get("adult"),
+        list_poster_path=row.get("list_poster_path"),
+        detail_poster_path=row.get("detail_poster_path"),
     )
 
 
@@ -394,6 +398,8 @@ def _update_show(show: Show, row: dict[str, Any]) -> None:
     show.runtime = row.get("runtime", show.runtime)
     show.tagline = row.get("tagline", show.tagline)
     show.adult = row.get("adult", show.adult)
+    show.list_poster_path = row.get("list_poster_path", show.list_poster_path)
+    show.detail_poster_path = row.get("detail_poster_path", show.detail_poster_path)
     # Preserve live local_path if backup value is absent.
     backup_local_path = row.get("local_path")
     if backup_local_path is not None:

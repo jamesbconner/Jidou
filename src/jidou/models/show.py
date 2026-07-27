@@ -86,6 +86,12 @@ class Show(TimestampMixin, Base):
     tagline: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Local filesystem path to this show's root directory
     local_path: Mapped[str | None] = mapped_column(String(1000))
+    # Manual poster overrides (TMDB file_path values) that survive metadata
+    # resyncs -- tmdb_mapping.py always overwrites poster_path/backdrop_path
+    # from the raw TMDB response, so a user's picked poster would otherwise
+    # be silently reverted on the next sync. NULL falls back to poster_path.
+    list_poster_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    detail_poster_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the Show."""

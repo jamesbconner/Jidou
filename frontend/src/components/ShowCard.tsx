@@ -40,14 +40,15 @@ function RssIcon() {
 export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistPending = false }: Props) {
   const dqIssues = DQ_CHECKS.filter((c) => c.test(show))
   const inWatchlist = watchlistEntryId != null
+  const posterPath = show.list_poster_path ?? show.poster_path
 
   return (
     <Card className="overflow-hidden">
       <div className="relative">
         <Link to={`/shows/${show.id}`} className="block">
-          {show.poster_path ? (
+          {posterPath ? (
             <img
-              src={`${TMDB_IMG}${show.poster_path}`}
+              src={`${TMDB_IMG}${posterPath}`}
               alt={show.title}
               className="w-full aspect-[2/3] object-cover"
               loading="lazy"

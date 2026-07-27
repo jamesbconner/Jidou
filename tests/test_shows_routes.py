@@ -76,6 +76,8 @@ def _make_show(
     s.runtime = None
     s.tagline = None
     s.local_path = local_path
+    s.list_poster_path = None
+    s.detail_poster_path = None
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
     return s
@@ -421,6 +423,93 @@ def test_get_show_returns_404_when_not_found() -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/shows/{show_id}/images/posters
+# ---------------------------------------------------------------------------
+
+
+def test_list_show_posters_filters_to_english_and_textless() -> None:
+    """Only iso_639_1 None/"en" posters are returned, most-voted first."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_images = AsyncMock(
+        return_value={
+            "posters": [
+                {
+                    "file_path": "/low-en.jpg",
+                    "width": 500,
+                    "height": 750,
+                    "vote_average": 1.0,
+                    "iso_639_1": "en",
+                },
+                {
+                    "file_path": "/ja.jpg",
+                    "width": 500,
+                    "height": 750,
+                    "vote_average": 9.0,
+                    "iso_639_1": "ja",
+                },
+                {
+                    "file_path": "/textless.jpg",
+                    "width": 500,
+                    "height": 750,
+                    "vote_average": 5.0,
+                    "iso_639_1": None,
+                },
+            ]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/images/posters")
+        assert response.status_code == 200
+        body = response.json()
+        assert [p["file_path"] for p in body] == ["/textless.jpg", "/low-en.jpg"]
+        tmdb_mock.get_images.assert_awaited_once_with(100, media_type="tv")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_show_posters_returns_404_when_show_not_found() -> None:
+    """GET /api/shows/{id}/images/posters returns 404 for an unknown show."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
+    try:
+        response = TestClient(app).get("/api/shows/9999/images/posters")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_show_posters_empty_when_no_matches() -> None:
+    """No English/textless posters available returns an empty list, not an error."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_images = AsyncMock(
+        return_value={"posters": [{"file_path": "/ja.jpg", "iso_639_1": "ja", "vote_average": 1.0}]}
+    )
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/images/posters")
+        assert response.status_code == 200
+        assert response.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # PUT /api/shows/{show_id}/paths
 # ---------------------------------------------------------------------------
 
@@ -476,6 +565,24 @@ def test_patch_show_rejects_invalid_content_type() -> None:
     """PATCH /api/shows/{id} returns 422 for an invalid content_type value."""
     response = TestClient(app).patch("/api/shows/1", json={"content_type": "cartoon"})
     assert response.status_code == 422
+
+
+def test_patch_show_sets_list_and_detail_poster_overrides() -> None:
+    """PATCH /api/shows/{id} independently persists list_poster_path/detail_poster_path."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch(
+            "/api/shows/1",
+            json={"list_poster_path": "/list.jpg", "detail_poster_path": "/detail.jpg"},
+        )
+        assert response.status_code == 200
+        assert show.list_poster_path == "/list.jpg"
+        assert show.detail_poster_path == "/detail.jpg"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_update_paths_returns_updated_show() -> None:

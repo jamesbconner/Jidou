@@ -61,6 +61,8 @@ export type ShowPaths = components['schemas']['ShowPaths']
 
 export type ShowPatch = components['schemas']['ShowPatch']
 
+export type PosterOption = components['schemas']['PosterOption']
+
 // ─── Episodes ─────────────────────────────────────────────────────────────
 
 export type BackingFile = components['schemas']['BackingFile']

@@ -40,4 +40,14 @@ describe('ShowCard', () => {
     renderCard(makeShow({ has_active_rss_subscription: false }))
     expect(screen.queryByTitle('Has an active RSS subscription')).not.toBeInTheDocument()
   })
+
+  test('uses list_poster_path over poster_path when both are set', () => {
+    renderCard(makeShow({ poster_path: '/default.jpg', list_poster_path: '/override.jpg' }))
+    expect(screen.getByRole('img')).toHaveAttribute('src', '/api/images/w300/override.jpg')
+  })
+
+  test('falls back to poster_path when list_poster_path is unset', () => {
+    renderCard(makeShow({ poster_path: '/default.jpg' }))
+    expect(screen.getByRole('img')).toHaveAttribute('src', '/api/images/w300/default.jpg')
+  })
 })

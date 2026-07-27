@@ -3439,6 +3439,8 @@ export interface components {
             media_type: string;
             /** Poster Path */
             poster_path?: string | null;
+            /** List Poster Path */
+            list_poster_path?: string | null;
             /** Vote Average */
             vote_average?: number | null;
             /** Release Date */
@@ -3531,6 +3533,26 @@ export interface components {
         ShowPatch: {
             /** @description Routing category */
             content_type?: components["schemas"]["ContentType"] | null;
+            /** @description Manual poster override (TMDB file_path) for the Shows-page card */
+            list_poster_path?: string | null;
+            /** @description Manual poster override (TMDB file_path) for the Show Details header */
+            detail_poster_path?: string | null;
+        };
+        /**
+         * PosterOption
+         * @description One candidate poster from TMDB's ``/images`` endpoint.
+         */
+        PosterOption: {
+            /** File Path */
+            file_path: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Vote Average */
+            vote_average: number;
+            /** @description Language code, or null for textless */
+            iso_639_1?: string | null;
         };
         /**
          * ShowPaths
@@ -3630,6 +3652,10 @@ export interface components {
             local_path?: string | null;
             /** Adult */
             adult?: boolean | null;
+            /** List Poster Path */
+            list_poster_path?: string | null;
+            /** Detail Poster Path */
+            detail_poster_path?: string | null;
             /**
              * Created At
              * Format: date-time
