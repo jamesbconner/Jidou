@@ -3,6 +3,7 @@ import { useDiscoverShows, useLibraryIndex, useCreateShow } from '@/hooks/useSho
 import { useCreateWatchlistEntry } from '@/hooks/useWatchlist'
 import { useEnsureRssStub } from '@/hooks/useRss'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
+import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import type { DiscoverResult } from '@/types/api'
 
@@ -20,6 +21,7 @@ export default function Discover() {
   const ensureRssStub = useEnsureRssStub()
 
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set())
+  const [detailResult, setDetailResult] = useState<DiscoverResult | null>(null)
   // 'failed' — show creation itself failed, nothing was added.
   // 'partial' — the show was created, but the watchlist entry and/or RSS
   // stub afterward didn't (Promise.allSettled never rejects, so this can
@@ -111,6 +113,7 @@ export default function Discover() {
                   addPending={pendingKeys.has(key)}
                   addLabel="Add + Watchlist"
                   subtitle={subtitleFor(r)}
+                  onCardClick={() => setDetailResult(r)}
                 />
                 {issue?.kind === 'failed' && (
                   <p className="text-[11px] text-red-500 mt-1">Failed to add — try again.</p>
@@ -122,6 +125,16 @@ export default function Discover() {
             )
           })}
         </div>
+      )}
+
+      {detailResult && (
+        <DiscoverDetailModal
+          result={detailResult}
+          inLibraryShowId={
+            libraryIndex.get(`${detailResult.id}:${detailResult.media_type}`)?.id ?? null
+          }
+          onClose={() => setDetailResult(null)}
+        />
       )}
     </div>
   )

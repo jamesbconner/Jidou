@@ -70,6 +70,7 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
+      - IMAGE_RATE_LIMIT_PER_SECOND=${IMAGE_RATE_LIMIT_PER_SECOND:-5.0}
       - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
       - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
       # Image cache (disk-backed proxy for TMDB poster/backdrop images)
@@ -182,6 +183,7 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=${TMDB_BASE_URL:-https://api.themoviedb.org/3}
       - TMDB_RATE_LIMIT_PER_SECOND=${TMDB_RATE_LIMIT_PER_SECOND:-0.5}
+      - IMAGE_RATE_LIMIT_PER_SECOND=${IMAGE_RATE_LIMIT_PER_SECOND:-5.0}
       - TMDB_CACHE_TTL=${TMDB_CACHE_TTL:-604800}
       - TMDB_CACHE_MAXSIZE=${TMDB_CACHE_MAXSIZE:-25000}
       # Image cache (disk-backed proxy for TMDB poster/backdrop images)

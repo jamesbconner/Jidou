@@ -153,7 +153,7 @@ class RateLimiter:
             await asyncio.sleep(wait_s)
 
 
-# Module-level singleton shared by all TMDB callers in this process.
+# Module-level singleton shared by all TMDB metadata callers in this process.
 # Workers have their own copy that coordinates with peers via Redis.
 rate_limiter = RateLimiter(
     rate=settings.tmdb_rate_limit_per_second,
@@ -162,4 +162,13 @@ rate_limiter = RateLimiter(
     # the in-memory path would never be reachable.
     redis_url=settings.redis_url or None,
     key="tmdb",
+)
+
+# Separate singleton for image.tmdb.org poster/backdrop fetches (see
+# api/routes/images.py) -- a distinct CDN host from api.themoviedb.org, so it
+# gets its own budget/Redis key instead of queuing behind metadata calls.
+image_rate_limiter = RateLimiter(
+    rate=settings.image_rate_limit_per_second,
+    redis_url=settings.redis_url or None,
+    key="tmdb_image",
 )

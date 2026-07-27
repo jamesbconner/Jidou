@@ -107,7 +107,7 @@ class TestCacheMiss:
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
             patch.object(images_module.image_cache_backend, "put", mock_put),
-            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -121,7 +121,7 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -133,7 +133,7 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
@@ -148,7 +148,7 @@ class TestCacheMiss:
 
         with (
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
-            patch.object(images_module.rate_limiter, "acquire", _noop_acquire),
+            patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
