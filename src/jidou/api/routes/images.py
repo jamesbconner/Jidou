@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/images", tags=["images"])
 
-_VALID_SIZES = frozenset({"w92", "w185", "w300", "w500"})
+_VALID_SIZES = frozenset({"w92", "w185", "w300", "w500", "w780", "w1280"})
 _FILENAME_RE = re.compile(r"^[A-Za-z0-9]+\.(jpg|png)$")
 _TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 
@@ -142,7 +142,7 @@ async def get_image(size: str, filename: str) -> Response:
     """Serve a TMDB poster/backdrop image, caching it to disk on first request.
 
     Args:
-        size: One of ``w92``, ``w185``, ``w300``, ``w500``.
+        size: One of ``w92``, ``w185``, ``w300``, ``w500``, ``w780``, ``w1280``.
         filename: TMDB image filename (e.g. ``abc123.jpg``).
 
     Returns:

@@ -32,6 +32,13 @@ class TestValidation:
 
         assert response.status_code == 400
 
+    @pytest.mark.parametrize("size", ["w92", "w185", "w300", "w500", "w780", "w1280"])
+    def test_valid_size_passes_validation(self, client: TestClient, size: str) -> None:
+        with patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=b"x")):
+            response = client.get(f"/api/images/{size}/abc123.jpg")
+
+        assert response.status_code == 200
+
     @pytest.mark.parametrize(
         "filename",
         [
