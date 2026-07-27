@@ -28,6 +28,7 @@ from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
     LinkFileRequest,
+    PosterOption,
     RematchRequest,
     ScannedFileMatch,
     ShowAliasesUpdate,
@@ -629,6 +630,42 @@ async def get_show(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
     return show
+
+
+@router.get("/{show_id}/images/posters", response_model=list[PosterOption])
+async def list_show_posters(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """List candidate posters for a show, for the poster-picker modal.
+
+    Filtered to English-language and textless (``iso_639_1: null``) posters
+    -- TMDB's poster gallery is dominated by other-language variants that
+    aren't useful choices for this app's English UI.
+
+    Args:
+        show_id: Database primary key.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Available posters, most-voted first.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    images = await tmdb.get_images(show.tmdb_id, media_type=show.media_type)
+    posters: list[dict[str, Any]] = [
+        p for p in images.get("posters", []) if p.get("iso_639_1") in (None, "en")
+    ]
+    posters.sort(key=lambda p: p.get("vote_average") or 0, reverse=True)
+    return posters
 
 
 @router.put("/{show_id}/paths", response_model=ShowRead)

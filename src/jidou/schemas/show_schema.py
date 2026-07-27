@@ -86,8 +86,26 @@ class ShowPatch(BaseModel):
     """
 
     content_type: ContentType | None = Field(default=None, description="Routing category")
+    list_poster_path: str | None = Field(
+        default=None,
+        description="Manual poster override (TMDB file_path) for the Shows-page card",
+    )
+    detail_poster_path: str | None = Field(
+        default=None,
+        description="Manual poster override (TMDB file_path) for the Show Details header",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class PosterOption(BaseModel):
+    """One candidate poster from TMDB's ``/images`` endpoint."""
+
+    file_path: str
+    width: int
+    height: int
+    vote_average: float
+    iso_639_1: str | None = Field(default=None, description="Language code, or null for textless")
 
 
 class ShowPaths(BaseModel):
@@ -146,6 +164,8 @@ class ShowRead(BaseModel):
     tagline: str | None = None
     local_path: str | None = None
     adult: bool | None = None
+    list_poster_path: str | None = None
+    detail_poster_path: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -212,6 +232,7 @@ class ShowList(BaseModel):
     title: str
     media_type: str
     poster_path: str | None = None
+    list_poster_path: str | None = None
     vote_average: float | None = None
     release_date: str | None = None
     original_language: str | None = None

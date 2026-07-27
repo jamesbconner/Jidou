@@ -12,6 +12,7 @@ import type {
   TmdbSearchResponse,
   DiscoverResult,
   ScannedFileMatch,
+  PosterOption,
 } from '@/types/api'
 
 export type ShowSortOrder =
@@ -43,6 +44,7 @@ export const showKeys = {
     [...showKeys.all, 'list', sort ?? 'title_asc', limit ?? 500] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
+  posters: (id: number) => [...showKeys.all, 'posters', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
   discover: () => ['tmdb', 'discover'] as const,
@@ -66,6 +68,13 @@ export function useShowEpisodes(showId: number) {
   return useQuery({
     queryKey: showKeys.episodes(showId),
     queryFn: () => api.get<EpisodeList[]>(`/shows/${showId}/episodes`),
+  })
+}
+
+export function useShowPosters(showId: number) {
+  return useQuery({
+    queryKey: showKeys.posters(showId),
+    queryFn: () => api.get<PosterOption[]>(`/shows/${showId}/images/posters`),
   })
 }
 

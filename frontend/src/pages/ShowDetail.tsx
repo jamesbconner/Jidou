@@ -26,6 +26,7 @@ import { LinkFileModal } from '@/components/LinkFileModal'
 import { ScanLocalFilesModal } from '@/components/ScanLocalFilesModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
+import { PosterPickerModal } from '@/components/PosterPickerModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
 import { ShowRematchModal } from '@/components/ShowRematchModal'
 import { ContentTypeModal } from '@/components/ContentTypeModal'
@@ -44,7 +45,7 @@ import type {
   WatchlistRead,
 } from '@/types/api'
 
-const TMDB_BACKDROP = '/api/images/w500'
+const TMDB_POSTER = '/api/images/w500'
 
 // ---------------------------------------------------------------------------
 // Watchlist controls
@@ -173,6 +174,7 @@ export default function ShowDetail() {
   const [pathModalOpen, setPathModalOpen] = useState(false)
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
   const [aliasModalOpen, setAliasModalOpen] = useState(false)
+  const [posterModalOpen, setPosterModalOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
@@ -187,6 +189,7 @@ export default function ShowDetail() {
     setPathModalOpen(false)
     setContentTypeOpen(false)
     setAliasModalOpen(false)
+    setPosterModalOpen(false)
     setDeleteConfirmOpen(false)
     setFileForRematch(null)
     setFileForFixEps(null)
@@ -279,11 +282,11 @@ export default function ShowDetail() {
 
       {/* Header */}
       <div className="flex gap-6">
-        {show.backdrop_path && (
+        {(show.detail_poster_path ?? show.poster_path) && (
           <img
-            src={`${TMDB_BACKDROP}${show.backdrop_path}`}
+            src={`${TMDB_POSTER}${show.detail_poster_path ?? show.poster_path}`}
             alt={show.title}
-            className="w-48 rounded-lg object-cover hidden md:block"
+            className="w-48 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
           />
         )}
         <div className="flex-1 min-w-0">
@@ -351,6 +354,9 @@ export default function ShowDetail() {
               </Button>
               <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 Manage Aliases
+              </Button>
+              <Button onClick={() => setPosterModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+                Change Poster
               </Button>
               {ensureRssStub.isError && (
                 <span className="text-xs text-red-600 text-right max-w-[10rem]">
@@ -551,6 +557,12 @@ export default function ShowDetail() {
         <AliasModal
           show={show}
           onClose={() => setAliasModalOpen(false)}
+        />
+      )}
+      {posterModalOpen && (
+        <PosterPickerModal
+          show={show}
+          onClose={() => setPosterModalOpen(false)}
         />
       )}
       {fileForRematch && (
