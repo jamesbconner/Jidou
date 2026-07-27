@@ -204,3 +204,30 @@ async def test_rate_limiter_redis_client_closed_on_exception() -> None:
             raise RuntimeError("test error")
 
     mock_redis.aclose.assert_called_once()
+
+
+class TestModuleSingletons:
+    """Metadata calls (TMDBService) and image fetches (api/routes/images.py)
+    must not share a rate-limit budget -- image.tmdb.org is a separate CDN
+    host from the rate-limit-sensitive api.themoviedb.org metadata API.
+    """
+
+    def test_tmdb_and_image_limiters_are_distinct_instances(self) -> None:
+        from jidou.services.rate_limiter import image_rate_limiter, rate_limiter
+
+        assert rate_limiter is not image_rate_limiter
+        assert rate_limiter._lock is not image_rate_limiter._lock
+
+    def test_tmdb_and_image_limiters_use_different_redis_keys(self) -> None:
+        from jidou.services.rate_limiter import image_rate_limiter, rate_limiter
+
+        assert rate_limiter._redis_key != image_rate_limiter._redis_key
+        assert image_rate_limiter._redis_key == "rate_limit:tmdb_image"
+
+    def test_image_limiter_configured_from_image_rate_limit_setting(self) -> None:
+        from jidou.config import settings
+        from jidou.services.rate_limiter import image_rate_limiter
+
+        assert image_rate_limiter._window == pytest.approx(
+            1.0 / settings.image_rate_limit_per_second
+        )

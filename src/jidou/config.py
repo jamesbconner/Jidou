@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     tmdb_rate_limit_per_second: float = Field(default=0.5, ge=0.1, le=2.0)
     tmdb_cache_ttl: int = Field(default=604_800, ge=3600)  # 7 days in seconds
     tmdb_cache_maxsize: int = Field(default=25_000, ge=1)
+    # image.tmdb.org is a CDN, not the rate-limit-sensitive api.themoviedb.org
+    # metadata API, so poster/backdrop fetches get their own, much looser
+    # budget instead of competing with metadata calls for the same 1-per-2s
+    # slot (see services/rate_limiter.py's image_rate_limiter).
+    image_rate_limit_per_second: float = Field(default=5.0, ge=0.1, le=20.0)
 
     # Image cache — disk-backed proxy for TMDB poster/backdrop images so the
     # frontend never hotlinks image.tmdb.org directly (see api/routes/images.py).

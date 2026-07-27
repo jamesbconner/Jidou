@@ -21,6 +21,8 @@ interface Props {
   addLabel?: string
   subtitle?: string
   onNavigate?: () => void
+  /** When set, the whole card opens a detail view (e.g. a metadata modal). */
+  onCardClick?: () => void
 }
 
 export function TmdbResultCard({
@@ -31,11 +33,15 @@ export function TmdbResultCard({
   addLabel = 'Add',
   subtitle,
   onNavigate,
+  onCardClick,
 }: Props) {
   const inLibrary = inLibraryShowId != null
 
   return (
-    <Card className={`overflow-hidden border flex flex-col${inLibrary ? ' ring-2 ring-green-400' : ''}`}>
+    <Card
+      onClick={onCardClick}
+      className={`h-full flex flex-col overflow-hidden border${inLibrary ? ' ring-2 ring-green-400' : ''}${onCardClick ? ' cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow' : ''}`}
+    >
       <div className="relative">
         {result.poster_path ? (
           <img
@@ -61,13 +67,26 @@ export function TmdbResultCard({
         {inLibrary && inLibraryShowId ? (
           <Link
             to={`/shows/${inLibraryShowId}`}
-            onClick={onNavigate}
+            onClick={(e) => {
+              e.stopPropagation()
+              onNavigate?.()
+            }}
             className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
           >
             View in Library
           </Link>
         ) : (
-          <Button onClick={onAdd} disabled={addPending} variant="primary" tone="light" size="sm" className="mt-2 w-full">
+          <Button
+            onClick={(e) => {
+              e.stopPropagation()
+              onAdd()
+            }}
+            disabled={addPending}
+            variant="primary"
+            tone="light"
+            size="sm"
+            className="mt-2 w-full"
+          >
             {addPending ? 'Adding…' : addLabel}
           </Button>
         )}

@@ -14,7 +14,7 @@ import httpx2 as httpx
 from fastapi import APIRouter, HTTPException, Response
 
 from jidou.services.image_cache import ImageCacheBackend, image_cache_backend
-from jidou.services.rate_limiter import rate_limiter
+from jidou.services.rate_limiter import image_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +65,11 @@ def _cache_headers() -> dict[str, str]:
 async def _fetch_from_tmdb(size: str, filename: str) -> bytes:
     """Rate-limited fetch of one image's bytes from TMDB.
 
-    Uses the shared TMDB rate limiter (services.rate_limiter.rate_limiter) --
-    the same one TMDBService uses for metadata calls -- so total outbound
-    TMDB traffic stays under one global cap rather than each endpoint
-    enforcing its own independent budget.
+    Uses its own rate limiter (services.rate_limiter.image_rate_limiter),
+    separate from the one TMDBService uses for metadata calls -- image.tmdb.org
+    is a CDN, not the rate-limit-sensitive api.themoviedb.org metadata API, so
+    poster/backdrop fetches don't queue behind (or steal budget from) TMDB
+    metadata sync traffic.
 
     Raises:
         HTTPException: 404 if TMDB has no such image, 502 for other
@@ -76,7 +77,7 @@ async def _fetch_from_tmdb(size: str, filename: str) -> bytes:
     """
     url = f"{_TMDB_IMAGE_BASE}/{size}/{filename}"
     try:
-        async with rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
+        async with image_rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url)
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
