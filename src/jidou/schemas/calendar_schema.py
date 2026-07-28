@@ -3,7 +3,9 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from jidou.models.show import ContentType
 
 
 class CalendarEpisode(BaseModel):
@@ -22,3 +24,8 @@ class CalendarEpisode(BaseModel):
     name: str
     air_date: date
     status: Literal["tracked", "missing", "upcoming"]
+    content_type: ContentType | None = None
+    genres: list[dict[str, object]] | None = Field(
+        default=None,
+        description='TMDB genre objects: [{"id": 16, "name": "Animation"}]',
+    )

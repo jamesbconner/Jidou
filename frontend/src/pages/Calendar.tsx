@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCalendarWeek } from '@/hooks/useCalendar'
+import { useDebounce } from '@/hooks/useDebounce'
+import { useLocalStorageState } from '@/hooks/useLocalStorage'
+import { Button } from '@/components/ui/Button'
 import type { CalendarEpisode } from '@/types/api'
 
 const TMDB_IMG = '/api/images/w92'
@@ -11,6 +14,33 @@ const STATUS_STYLE: Record<CalendarEpisode['status'], { dot: string; label: stri
   tracked: { dot: 'bg-green-500', label: 'Aired — file tracked' },
   missing: { dot: 'bg-red-500', label: 'Aired — no file tracked' },
   upcoming: { dot: 'bg-gray-400', label: 'Upcoming' },
+}
+
+interface CalendarFilterState {
+  filterContentType: string
+  filterGenre: string
+  query: string
+}
+
+const DEFAULT_CALENDAR_FILTERS: CalendarFilterState = {
+  filterContentType: '',
+  filterGenre: '',
+  query: '',
+}
+
+function applyFilters(
+  episodes: CalendarEpisode[],
+  contentType: string,
+  genre: string,
+  query: string,
+): CalendarEpisode[] {
+  const q = query.trim().toLowerCase()
+  return episodes.filter((ep) => {
+    if (contentType && ep.content_type !== contentType) return false
+    if (genre && !ep.genres?.some((g) => g.name === genre)) return false
+    if (q && !ep.show_title.toLowerCase().includes(q)) return false
+    return true
+  })
 }
 
 function toISODate(d: Date): string {
@@ -67,6 +97,18 @@ function EpisodeCell({ episode }: { episode: CalendarEpisode }) {
 export default function Calendar() {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
 
+  // Persisted so filter choices survive navigating away and back, not just
+  // page reloads — matches the Shows page's filter-persistence behavior.
+  const [filters, setFilters] = useLocalStorageState<CalendarFilterState>(
+    'jidou:calendar-filters',
+    DEFAULT_CALENDAR_FILTERS,
+  )
+  const { filterContentType, filterGenre, query } = filters
+  const setFilterContentType = (v: string) => setFilters({ ...filters, filterContentType: v })
+  const setFilterGenre = (v: string) => setFilters({ ...filters, filterGenre: v })
+  const setQuery = (v: string) => setFilters({ ...filters, query: v })
+  const debouncedQuery = useDebounce(query, 300)
+
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart],
@@ -77,15 +119,34 @@ export default function Calendar() {
 
   const { data: episodes = [], isLoading, isError, error } = useCalendarWeek(start, end, today)
 
+  const genreOptions = useMemo(() => {
+    const names = new Set<string>()
+    episodes.forEach((ep) => ep.genres?.forEach((g) => { if (g.name) names.add(g.name) }))
+    return Array.from(names).sort()
+  }, [episodes])
+
+  const filtered = useMemo(
+    () => applyFilters(episodes, filterContentType, filterGenre, debouncedQuery),
+    [episodes, filterContentType, filterGenre, debouncedQuery],
+  )
+
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEpisode[]>()
-    for (const ep of episodes) {
+    for (const ep of filtered) {
       const list = map.get(ep.air_date) ?? []
       list.push(ep)
       map.set(ep.air_date, list)
     }
     return map
-  }, [episodes])
+  }, [filtered])
+
+  const activeFilterCount = [filterContentType, filterGenre, query].filter(Boolean).length
+
+  function clearFilters() {
+    setFilters(DEFAULT_CALENDAR_FILTERS)
+  }
+
+  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
   return (
     <div className="space-y-6">
@@ -111,8 +172,41 @@ export default function Calendar() {
         </button>
       </div>
 
+      <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
+        <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+
+        <input
+          type="search"
+          placeholder="Search shows…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="border rounded px-2 py-1 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+
+        <select value={filterContentType} onChange={(e) => setFilterContentType(e.target.value)} className={selectCls}>
+          <option value="">All types</option>
+          <option value="anime">Anime</option>
+          <option value="tv">TV</option>
+          <option value="movie">Movie</option>
+        </select>
+
+        {genreOptions.length > 0 && (
+          <select value={filterGenre} onChange={(e) => setFilterGenre(e.target.value)} className={selectCls}>
+            <option value="">All genres</option>
+            {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
+
+        {activeFilterCount > 0 && (
+          <Button onClick={clearFilters} variant="secondary" tone="light" size="sm">
+            Clear filters ({activeFilterCount})
+          </Button>
+        )}
+      </div>
+
       <p className="text-sm text-gray-500">
         {start} – {end}
+        {activeFilterCount > 0 && ` · ${filtered.length} of ${episodes.length} episodes`}
       </p>
 
       {isError ? (
@@ -121,6 +215,8 @@ export default function Calendar() {
         </p>
       ) : isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
+      ) : activeFilterCount > 0 && filtered.length === 0 ? (
+        <p className="text-sm text-gray-500">No episodes this week match the current filters.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
           {days.map((day, i) => {

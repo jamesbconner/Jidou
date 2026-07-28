@@ -28,6 +28,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/images/{size}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image
+         * @description Serve a TMDB poster/backdrop image, caching it to disk on first request.
+         *
+         *     Args:
+         *         size: One of ``w92``, ``w185``, ``w300``, ``w500``, ``w780``, ``w1280``.
+         *         filename: TMDB image filename (e.g. ``abc123.jpg``).
+         *
+         *     Returns:
+         *         Raw image bytes with a Content-Type and browser Cache-Control header.
+         *
+         *     Raises:
+         *         HTTPException: 400 for an unsupported size or malformed filename,
+         *             404 if TMDB has no such image, 502 for other upstream failures,
+         *             503 if the image cache backend failed to initialise.
+         */
+        get: operations["get_image_api_images__size___filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/trending": {
         parameters: {
             query?: never;
@@ -298,6 +330,41 @@ export interface paths {
          *         HTTPException: 404 if the show is not found.
          */
         patch: operations["patch_show_api_shows__show_id__patch"];
+        trace?: never;
+    };
+    "/api/shows/{show_id}/images/posters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Show Posters
+         * @description List candidate posters for a show, for the poster-picker modal.
+         *
+         *     Filtered to English-language and textless (``iso_639_1: null``) posters
+         *     -- TMDB's poster gallery is dominated by other-language variants that
+         *     aren't useful choices for this app's English UI.
+         *
+         *     Args:
+         *         show_id: Database primary key.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         Available posters, most-voted first.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        get: operations["list_show_posters_api_shows__show_id__images_posters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/shows/{show_id}/paths": {
@@ -2525,6 +2592,14 @@ export interface components {
              * @enum {string}
              */
             status: "tracked" | "missing" | "upcoming";
+            content_type?: components["schemas"]["ContentType"] | null;
+            /**
+             * Genres
+             * @description TMDB genre objects: [{"id": 16, "name": "Animation"}]
+             */
+            genres?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * ContentType
@@ -2858,6 +2933,25 @@ export interface components {
         OrphanResolveRequest: {
             /** Episode Id */
             episode_id: number;
+        };
+        /**
+         * PosterOption
+         * @description One candidate poster from TMDB's ``/images`` endpoint.
+         */
+        PosterOption: {
+            /** File Path */
+            file_path: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Vote Average */
+            vote_average: number;
+            /**
+             * Iso 639 1
+             * @description Language code, or null for textless
+             */
+            iso_639_1?: string | null;
         };
         /**
          * RecentEpisodeItem
@@ -3533,26 +3627,16 @@ export interface components {
         ShowPatch: {
             /** @description Routing category */
             content_type?: components["schemas"]["ContentType"] | null;
-            /** @description Manual poster override (TMDB file_path) for the Shows-page card */
+            /**
+             * List Poster Path
+             * @description Manual poster override (TMDB file_path) for the Shows-page card
+             */
             list_poster_path?: string | null;
-            /** @description Manual poster override (TMDB file_path) for the Show Details header */
+            /**
+             * Detail Poster Path
+             * @description Manual poster override (TMDB file_path) for the Show Details header
+             */
             detail_poster_path?: string | null;
-        };
-        /**
-         * PosterOption
-         * @description One candidate poster from TMDB's ``/images`` endpoint.
-         */
-        PosterOption: {
-            /** File Path */
-            file_path: string;
-            /** Width */
-            width: number;
-            /** Height */
-            height: number;
-            /** Vote Average */
-            vote_average: number;
-            /** @description Language code, or null for textless */
-            iso_639_1?: string | null;
         };
         /**
          * ShowPaths
@@ -4001,6 +4085,38 @@ export interface operations {
             };
         };
     };
+    get_image_api_images__size___filename__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                size: string;
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_trending_api_shows_trending_get: {
         parameters: {
             query?: {
@@ -4336,6 +4452,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_show_posters_api_shows__show_id__images_posters_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosterOption"][];
                 };
             };
             /** @description Validation Error */

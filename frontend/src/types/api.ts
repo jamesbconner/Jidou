@@ -480,4 +480,6 @@ export interface PathImportResult {
 
 // ─── Calendar ─────────────────────────────────────────────────────────────
 
-export type CalendarEpisode = components['schemas']['CalendarEpisode']
+export type CalendarEpisode = Omit<components['schemas']['CalendarEpisode'], 'genres'> & {
+  genres: TmdbGenre[] | null
+}

@@ -14,12 +14,19 @@ _TODAY = date.today()
 
 
 def _make_show(
-    *, id: int = 1, title: str = "Test Show", poster_path: str | None = None
+    *,
+    id: int = 1,
+    title: str = "Test Show",
+    poster_path: str | None = None,
+    content_type: str | None = None,
+    genres: list[dict[str, object]] | None = None,
 ) -> MagicMock:
     s = MagicMock(spec=Show)
     s.id = id
     s.title = title
     s.poster_path = poster_path
+    s.content_type = content_type
+    s.genres = genres
     return s
 
 
@@ -138,7 +145,13 @@ class TestCalendarStatus:
 
 class TestCalendarResponseShape:
     def test_response_includes_show_and_episode_fields(self) -> None:
-        show = _make_show(id=7, title="Attack on Titan", poster_path="/poster.jpg")
+        show = _make_show(
+            id=7,
+            title="Attack on Titan",
+            poster_path="/poster.jpg",
+            content_type="anime",
+            genres=[{"id": 16, "name": "Animation"}],
+        )
         episode = _make_episode(
             id=42,
             show_id=7,
@@ -161,6 +174,19 @@ class TestCalendarResponseShape:
         assert entry["episode_number"] == 5
         assert entry["name"] == "A New World"
         assert entry["air_date"] == (_TODAY - timedelta(days=1)).isoformat()
+        assert entry["content_type"] == "anime"
+        assert entry["genres"] == [{"id": 16, "name": "Animation"}]
+
+    def test_response_allows_null_content_type_and_genres(self) -> None:
+        show = _make_show(id=8, title="No Metadata")
+        episode = _make_episode(id=43, show_id=8, air_date=_TODAY - timedelta(days=1))
+
+        response = _get_calendar([(episode, show)], "2026-07-01", "2026-07-14")
+
+        assert response.status_code == 200
+        entry = response.json()[0]
+        assert entry["content_type"] is None
+        assert entry["genres"] is None
 
     def test_multiple_shows_same_day_all_appear(self) -> None:
         show_a = _make_show(id=1, title="Show A")
