@@ -26,6 +26,23 @@ Common operational failures with diagnosis steps and resolutions.
 
 **Prevention:** Keep show aliases up to date. The more aliases a show has, the broader the heuristic net.
 
+**A file will never legitimately match (not a TV/movie file):** Instead of leaving it `unmatched` forever, click **Ignore** on the Files page (or `POST /api/files/{id}/ignore`) — it's kept as a record so it's never re-downloaded, but never re-attempted by matching. If this is a recurring pattern (a whole remote directory of non-media content), configure `SFTP_NOSCAN_PATHS` instead so those files are excluded automatically at discovery time — see [Excluding non-media files from matching](features.md#excluding-non-media-files-from-matching).
+
+---
+
+## Filenames or directory names show garbled characters, or "Scan Local Files" can't find/link a file
+
+**Symptoms:** The Episode list, Orphans, or Files page shows a filename with a `�` character or a `%E9`-style escape sequence instead of the expected accented letter. Or: **Scan Local Files** reports "No new media files found under this show's local path" even though the directory clearly exists and has files in it.
+
+**Root cause:** A filename — or occasionally the show's own directory name — on disk has a raw Latin-1/cp1252 byte instead of proper UTF-8 for an accented character (cp1252 `é` is a single byte; UTF-8 `é` is two bytes). This is common in libraries whose directories were created by older Windows tooling, a NAS, or an archive extractor rather than by Jidou itself. See [Matching Pipeline — Filenames and directory names with non-UTF-8 bytes](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes) for the full mechanism.
+
+**Resolution:**
+1. This class of bug is fixed as of the current version — the display should show the recovered accented character (e.g. `Fiancée`), and `link-file` should succeed with a byte-exact round trip, without any user action needed.
+2. If you're still seeing a `�` placeholder instead of the correct character, the byte in question is one of a handful genuinely undefined in cp1252 (`0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D`) — this is expected; there's no way to recover the original character without knowing the source encoding, which Jidou doesn't track. Rename the file on disk to fix it permanently.
+3. If **Scan Local Files** still reports zero files for a directory you know has content, confirm `Show.local_path` (Show Detail → **Edit Path**) matches the real on-disk parent directory — the cp1252 fallback only recovers a mismatched *name*, not a wrong *path*.
+
+**Prevention:** None needed going forward — this is handled automatically. For a library you're about to onboard, renaming stray non-UTF-8 filenames to clean UTF-8 first avoids relying on the fallback at all, but is not required.
+
 ---
 
 ## Parse cycle not detecting new SFTP files

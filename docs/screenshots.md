@@ -30,6 +30,9 @@ General capture guidance:
 | 11 | `calendar-page.png` | Airing calendar with a mix of tracked/missing/upcoming episodes visible in the same week | `features.md` → Airing calendar |
 | 12 | `dashboard-carousels.png` | Close crop on just the two Recently Added carousels (shows + episodes) | `features.md` → Dashboard |
 | 13 | `settings-page.png` | Settings page, Services card showing connection-test results (green checks) plus the feature-toggle group | `features.md` → Settings, and `setup.md` → Verifying the installation |
+| 17 | `discover-page.png` | Discover page, a mix of seeded (with "Because you watch X" tags) and trending fill cards | `features.md` → Discover |
+| 18 | `poster-picker-modal.png` | Show Detail → Change Poster, modal open showing the candidate poster grid | `features.md` → Show library (poster selection) |
+| 19 | `scan-local-files-modal.png` | Show Detail → Scan Local Files, review list with a mix of matched/unmatched/conflict rows | `features.md` → Episode matching (Scanning a show's own directory) |
 
 ## Priority 3 — Setup and Troubleshooting (state-dependent, capture last)
 

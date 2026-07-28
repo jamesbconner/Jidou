@@ -10,8 +10,10 @@ Jidou maintains a local library of TV shows and anime linked to [TMDB](https://w
 
 **Adding a show:**
 - Go to **Shows → Add Show** and search by title.
-- Or browse **Trending** for currently popular titles.
-- Episodes are synced from TMDB automatically on creation.
+- Or browse **Trending** for currently popular titles, or add directly from [Discover](#discover).
+- Full TMDB details (genres, external IDs, episode groups) are fetched on creation — not just the sparse fields shown in a search result card — and episodes are synced automatically.
+
+The Shows page remembers your sort order and filter selections (content type, status, genre, language, upcoming, minimum rating) across navigation, not just page reloads.
 
 **Content type inference:**
 New shows are classified as `tv`, `anime`, or `movie` using TMDB genre and language metadata. The inferred type controls which local path the routed files land in. You can override it from the Show Detail page.
@@ -21,6 +23,10 @@ Use **Sync Episodes** on the Show Detail page (or `POST /api/shows/{id}/sync-epi
 
 **Show rematch:**
 If a show was linked to the wrong TMDB entry, use **Rematch Show** to re-link it. All episode data is replaced; existing file tracking is preserved where episode numbers align, and orphaned records are created for episodes that no longer exist.
+
+**Poster selection:** Use **Change Poster** on the Show Detail page to pick, independently, which TMDB poster (English or textless) is used on the Shows-page grid card versus the Show Details header. The choice is stored separately from TMDB's own `poster_path` so a later metadata resync never silently overwrites it. All poster and backdrop images load through Jidou's own image cache (see [Image caching](#image-caching)) rather than hotlinking `image.tmdb.org`.
+
+<!-- screenshot: poster-picker-modal -->
 
 <!-- screenshot: shows-library-grid -->
 
@@ -71,6 +77,12 @@ If both fail, the file is marked `unmatched` for manual review.
 
 <!-- screenshot: show-detail-fix-eps -->
 
+**Linking a file directly to an episode:** On an untracked episode row in the Show Detail episode list, use **Match File** instead of routing through bulk text-file import. Two modes: pick an existing unmatched file already scoped to the show, or type a path Jidou hasn't seen yet — a content-type picker (mirroring **Edit Path**) builds the full container path from the show/season/filename portion you type, previews it, and validates the file exists on disk before linking (`POST /shows/{show_id}/episodes/{episode_id}/link-file`). Manually linked files are tracked with `tracked_source="import"`, the same as bulk path-import, so they participate in the same reassignment flow.
+
+**Scanning a show's own directory:** **Scan Local Files** on the Show Detail page walks the show's own local path on disk and runs every file it finds through the same matching pipeline bulk path-import uses — useful for picking up stragglers a prior import missed, or an existing library that predates Jidou. It's read-only: results are shown as `matched` (untracked episode, ready to confirm), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file), with an editable per-row episode picker and a bulk **Confirm All Matched** action. Files already recorded against the show (a prior import or download) are skipped automatically. If a filename or the show's own directory name contains a legacy Latin-1/cp1252 byte instead of proper UTF-8 — common in libraries authored by older Windows/NAS tooling — Jidou recovers the actual accented character for display and still links the file correctly; see [Matching Pipeline](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes).
+
+<!-- screenshot: scan-local-files-modal -->
+
 **Re-running the match:**
 - Tasks page → **Match**, or
 - `POST /api/tasks/trigger` with `{"task_type": "match"}`
@@ -94,6 +106,15 @@ LOCAL_MOVIE_PATH/Movie Name/filename.mkv
 - `POST /api/tasks/trigger` with `{"task_type": "route"}`
 
 All `matched` files are processed. After routing, the file status becomes `routed` and the episode's `file_tracked` flag is set.
+
+---
+
+## Excluding non-media files from matching
+
+Some SFTP sources mix genuinely non-TV/movie files into otherwise normal downloads — documentaries, theatre recordings, workout videos. These still need to be discovered and downloaded (so they're never mistaken for new content and re-fetched), but should never enter parse/match/route.
+
+- **Configured noscan paths** — set `SFTP_NOSCAN_PATHS` in `.env` to one or more remote paths (parallel to `SFTP_REMOTE_PATHS`). Files under a noscan path are tagged at discovery time and routed straight to a terminal `ignored` status once downloaded, instead of `downloaded`.
+- **Manual ignore** — for a stray file a noscan path didn't catch, use the **Ignore** action on the Files page (or `POST /api/files/{id}/ignore`) on any `unmatched` or `error` file. The record is kept, not deleted, so the file is never re-downloaded.
 
 ---
 
@@ -143,9 +164,21 @@ Track your viewing status for each show independently of the file library.
 | `on_hold` | Paused |
 | `dropped` | Abandoned |
 
-Shows can be added to the watchlist from the Show Detail page. The Watchlist page supports drag-to-reorder for prioritising your queue.
+Shows can be added to the watchlist from the Show Detail page — a color-coded Add/Remove toggle sits inline in the metadata line, alongside a "Queue #N" pill and a status pill (each opens a dropdown to change position/status without leaving the page). The Watchlist page supports drag-to-reorder for prioritising your queue.
 
 <!-- screenshot: watchlist-drag-reorder -->
+
+---
+
+## Discover
+
+The **Discover** page (nav bar, between Shows and Files) surfaces shows and movies not yet in your library: `GET /api/shows/discover` seeds recommendations from your most recently updated `watching`/`completed` watchlist shows, dedupes them, and fills out the feed with trending TV/movies when seeded results are thin — or falls back to plain trending if your watchlist has no watching/completed entries at all. Each card shows which watchlist shows it was recommended because of (`seeded_from`), and clicking a card opens a detail modal with the overview, rating, and a "View on TMDB" link.
+
+**Add + Watchlist:** one click on a Discover card creates the show and adds it to your watchlist (plus an RSS stub, if RSS is configured) in one step.
+
+The feed is cached 24h and keyed to your current watchlist seed set, so adding/removing a watching show invalidates the cache immediately rather than waiting out the TTL.
+
+<!-- screenshot: discover-page -->
 
 ---
 
@@ -167,7 +200,7 @@ Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_
 
 ## Dashboard
 
-The Dashboard is the landing page: a pipeline-status donut, a file-ingestion chart for the last 30 days, and two "Recently Added" carousels — shows and episodes — each independently sortable (`tracked` vs. `release` date) and filterable by content type or genre, and independently toggleable off from Settings if you don't want them.
+The Dashboard is the landing page: a pipeline-status donut, a file-ingestion chart for the last 30 days, and three "Recently Added" carousels — shows, movies, and episodes — each independently sortable (`tracked` vs. `release` date) and filterable by content type or genre (the Shows carousel excludes movies; the Movies carousel has its own dedicated `GET /api/dashboard/recent-movies` endpoint), and independently toggleable off from Settings if you don't want them.
 
 <!-- screenshot: dashboard-carousels -->
 
@@ -185,7 +218,8 @@ An optional calendar page (toggle in Settings) showing episodes airing in a date
 
 The **Settings** page has three groups:
 - **Services** — connection tests and status for TMDB, SFTP, Redis, and the LLM provider, plus the API docs link and API key status.
-- **Feature toggles** — enable/disable the Dashboard's Recently Added Episodes carousel, the airing calendar page, and whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI).
+- **Feature toggles** — enable/disable the Dashboard's Recently Added Episodes and Recently Added Movies carousels, the airing calendar page, and whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI).
+- **Show Metadata Backfill** — one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
 - Config values are read-only here (edit `.env` and restart to change them); the toggles above are the only settings persisted to the database (`app_settings` table) and changeable at runtime.
 
 <!-- screenshot: settings-page -->
@@ -245,11 +279,19 @@ Resolve them from the Data Quality tab by linking each orphan to the correct epi
 
 ## Real-time progress
 
-Every background task streams progress to the browser via WebSocket. The Tasks page shows live progress bars, current file being processed, and a full per-item event log — every file or directory processed emits an event, success or failure, for every task type (scan, download, match, route, sync, import).
+Every background task streams progress to the browser via WebSocket. The Tasks page shows live progress bars, current file being processed, and a full per-item event log — every file or directory processed emits an event, success or failure, for every task type (scan, download, match, route, sync, import, backfill_show_metadata).
 
 The Tasks page list has two independent size controls: **Per page** controls how many task cards are fetched per page; **Max records** caps the total number of tasks reachable across all pages combined (useful for keeping a long-running instance's task history browsable without paging through everything ever run).
 
 The WebSocket endpoint is `ws://host/ws` — the frontend connects automatically and reconnects with exponential backoff on disconnection.
+
+---
+
+## Image caching
+
+Every poster and backdrop the UI shows loads through `GET /api/images/{size}/{filename}` — Jidou's own backend — rather than the frontend linking to `image.tmdb.org` directly. On a cache miss the backend fetches from TMDB, writes the bytes to disk, and serves from there on every subsequent request. This route is intentionally unauthenticated (a plain `<img src>` tag can't send `X-API-Key`, and the images themselves aren't sensitive).
+
+Image fetches use their own rate limit (`IMAGE_RATE_LIMIT_PER_SECOND`, default 5/s), separate from the stricter TMDB metadata rate limit — `image.tmdb.org` is a different host, so poster loading no longer queues up behind an in-progress sync. A daily background task purges cached files past `IMAGE_CACHE_RETENTION_DAYS` (default 180); set `IMAGE_CACHE_EXPIRATION_ENABLED=false` to keep cached images indefinitely.
 
 ---
 

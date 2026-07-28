@@ -4,6 +4,8 @@ How Jidou decides what a media file *is* — show, season, episode, content type
 
 There are **two independent pipelines** that both end up creating/updating `Show`, `Episode`, and `DownloadedFile` rows. They decide *what triggers a match attempt* completely differently (filename-driven vs. directory-driven), but as of a later refactor they now share the core show/episode-resolution primitives — `find_show_by_name` and `resolve_episode` — rather than each having its own copy. Mixing the two pipelines up when debugging a specific file is still the most common source of confusion, since the fallback logic *layered on top* of those shared primitives (see each pipeline's episode-resolution section below) still differs a lot.
 
+There's also a third, narrower entry point — [show-scoped scanning](#show-scoped-scan-scan-local-files--episode-matching-without-a-full-pipeline) — which reuses Pipeline B's episode-matching logic directly but skips show *resolution* entirely, since it always operates on an already-known show. It's not a third full pipeline for that reason.
+
 | | SFTP pipeline | Path-list import |
 |---|---|---|
 | Entry point | Scan → Download → Match → Route tasks | Single `import` task |
@@ -12,7 +14,7 @@ There are **two independent pipelines** that both end up creating/updating `Show
 | Files table role | Full lifecycle (`discovered` → ... → `routed`) | Display-only synthetic row, already `routed` |
 | Orchestrators | `ScanOrchestrator`, `ParseOrchestrator`, `RouteOrchestrator` | `PathImportOrchestrator` |
 | Code | `src/jidou/orchestrators/{scan,parse,route}_orchestrator.py` | `src/jidou/orchestrators/path_import_orchestrator.py`, `src/jidou/services/path_parser.py` |
-| Shared code | `services/filename_parser.py` (regex heuristics + LLM filename parsing), `services/show_lookup.py` (`find_show_by_name`), `services/episode_lookup.py` (`resolve_episode`) — all used by both pipelines | (same) |
+| Shared code | `services/filename_parser.py` (regex heuristics + LLM filename parsing), `services/show_lookup.py` (`find_show_by_name`), `services/episode_lookup.py` (`resolve_episode`), `services/episode_file_matching.py` (`match_entry_to_episode`, extracted from Pipeline B's episode resolution and also used by show-scoped scanning) — all used by both pipelines | (same) |
 
 ---
 
@@ -141,6 +143,26 @@ The old positional `ROW_NUMBER()`-over-episodes fallback this doc used to descri
 **Side effects on a match:** `mark_episode_tracked` sets `file_tracked=True`, `tracked_filename`, `tracked_source="import"`. A synthetic `DownloadedFile` row is created (`remote_path="synthetic-import://<raw_path>"`, `status=ROUTED`) purely so the file shows up correctly on the Files page — it never enters the match/route pipeline; reassigning it later goes through the dedicated `assign-import` endpoint, which also keeps this row's `episode_id` in sync.
 
 Every LLM call site in this pipeline (`services/episode_match_llm.llm_parse_episode`, `llm_match_episode`, `llm_pick_candidate`) emits a structured event via `on_event` on both success and failure — attempted, resolved values, or the specific failure reason — visible on the Tasks page's event log. The final "No match" event reflects whatever the LLM actually resolved, not the pre-LLM regex output.
+
+---
+
+## Show-scoped scan (Scan Local Files) — episode matching without a full pipeline
+
+`POST /shows/{show_id}/scan-local-files` (`services/path_parser.scan_show_directory`) is a read-only, third way to discover files, for a single already-known show. It doesn't resolve *which* show a file belongs to — the show is a request parameter, not something extracted from the file — so it only needs the *episode*-matching half of Pipeline B, not show resolution.
+
+- **Directory walk.** Walks `show.local_path` recursively (`Path.rglob`), reusing `services/file_filters.py`'s extension allowlist and sample/screens/thumbs.db exclusion — the same rules the SFTP scan pipeline applies, not `path_parser.py`'s separately-drifted list (see [Known gaps](#path_parserpys-extension-allowlist-has-drifted-from-file_filterspys) below). Season is detected from any `Season N` ancestor directory, and episode number from the filename, both reusing the same `_parse_episode`/`_detect_season_from_segments` helpers `parse_line` uses for bulk import, so the two features can't drift apart on parsing behavior.
+- **Episode matching.** Each candidate file is resolved via `services/episode_file_matching.match_entry_to_episode` — extracted out of Pipeline B's `_find_episode` so both features share one implementation (regex heuristics → `episode_group_map` remap → absolute-number lookup → LLM fallback) instead of two copies. Files that match an already-recorded `DownloadedFile` for the show (a prior import or download) are skipped, compared via `path_comparison_key` since a stored path string and a live-filesystem path string can differ in format while referring to the same file.
+- **Result, not a write.** Nothing is persisted by the scan itself. Each file comes back with a proposed episode and a `status`: `matched` (untracked, ready to confirm), `unmatched` (nothing resolved), or `conflict` (the proposed episode is already tracked by a different file, or was already claimed by an earlier row in the same scan — e.g. a duplicate). Confirming a `matched` row calls `POST /shows/{show_id}/episodes/{episode_id}/link-file`, the same endpoint the manual **Match File** action uses — it creates a display-only, already-`ROUTED` synthetic `DownloadedFile` via `services/synthetic_file.py` (the same helper bulk path-import's `_create_synthetic_import_file` uses) and marks the episode tracked with `tracked_source="import"`, keeping it in the same `assign-import` reassignment pool as bulk-imported episodes.
+
+---
+
+## Filenames and directory names with non-UTF-8 bytes
+
+`scan_show_directory` reads live filesystem paths via `Path.rglob()`, unlike the rest of the app, which mostly deals in already-clean, DB-stored strings. A filename — or a show's own directory name — that isn't valid UTF-8 (typically a legacy Latin-1/cp1252 name from an older Windows/NAS-authored library) decodes via Python's `surrogateescape` handler into a lone surrogate codepoint, which crashes the instant anything tries to JSON-encode or DB-write it. See [Architecture — Filesystem paths with non-UTF-8 bytes](architecture.md#filesystem-paths-with-non-utf-8-bytes) for the full design; summarized here as it affects this pipeline specifically:
+
+- **`services/path_transport.encode_path_bytes`/`decode_path_bytes`** percent-encode only the genuinely non-UTF-8 byte(s) (plus literal `%`) so a `ScannedFileMatch.path` survives the JSON round trip from scan response to `link-file` confirm request byte-exactly. `link_episode_file` decodes back to the original bytes right before the `Path.is_file()` check; everything else (DB storage, dedup comparison) keeps using the encoded form, so it stays deterministic.
+- **Display uses a separate, lossier path.** `decode_path_bytes_for_display` tries `cp1252` before falling back to `U+FFFD`, so the Episode list, Orphans, and Files pages show the recovered accented character (`Fiancée`) rather than the percent-encoded form (`Fianc%E9`) or a placeholder glyph. `Episode.tracked_filename` (echoed back verbatim by `assign-import` for an exact-match lookup) stays byte-exact; `EpisodeList.tracked_filename_display` / `OrphanRead.tracked_filename_display` are the display-only computed fields.
+- **A show's own directory can hit this too.** `_resolve_show_root` falls back to scanning the parent directory for an entry whose raw bytes decode as cp1252 to the expected name, when a literal `Path(show.local_path).is_dir()` check fails — otherwise the scan silently returns zero files with no indication why.
 
 ---
 

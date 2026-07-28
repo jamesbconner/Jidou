@@ -133,6 +133,8 @@ jidou/
 - **CLI commands are thin** — parse args, build context, delegate to orchestrators.
 - **No global state** — configuration and services flow through a context object or FastAPI dependency injection.
 - **Async everywhere** — all I/O uses `async/await`; SQLAlchemy 2 async sessions throughout.
+- **Extract shared logic instead of duplicating it across similar entry points** — e.g. `services/episode_file_matching.py` (episode matching shared between bulk path-import and the show-scoped "Scan Local Files" feature) and `services/synthetic_file.py` (shared between bulk import and manual file-linking). When a second feature needs logic a first one already has, pull it into `services/` rather than copying it.
+- **Frontend UI primitives live in `components/ui/`** — `Modal`, `Button`, `Card`, `Badge`, backed by `@layer components` recipes in `index.css`. New modals, cards, and badge-style pills should build on these instead of hand-typing Tailwind utility strings, which drifts visibly across call sites over time (see [Architecture — Shared UI primitives](architecture.md#shared-ui-primitives)).
 
 ---
 
