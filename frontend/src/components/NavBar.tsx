@@ -13,7 +13,6 @@ const BASE_LINKS = [
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/tasks', label: 'Tasks' },
-  { to: '/data', label: 'Data' },
   { to: '/settings', label: 'Settings' },
 ]
 
