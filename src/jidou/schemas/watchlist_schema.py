@@ -15,6 +15,7 @@ class ShowBrief(BaseModel):
     title: str
     tmdb_id: int
     poster_path: str | None = None
+    backdrop_path: str | None = None
 
 
 class WatchlistCreate(BaseModel):

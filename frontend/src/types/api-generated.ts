@@ -4055,6 +4055,8 @@ export interface components {
             tmdb_id: number;
             /** Poster Path */
             poster_path?: string | null;
+            /** Backdrop Path */
+            backdrop_path?: string | null;
         };
     };
     responses: never;
