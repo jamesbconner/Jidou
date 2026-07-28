@@ -94,7 +94,7 @@ Instead, each scan run:
 
 **Why marking is conditional, not automatic:** a deep walk that hit an I/O failure partway through, or skipped files still inside the 60-second upload grace window, must not be marked as a fully-known directory — doing so would permanently lose those files. `list_remote_files_recursive` reports `fully_walked` alongside the file list; the `ScannedDirectory` row is only inserted when that's `True`. A partial walk is simply retried on the next scan.
 
-**Why this is safe for Jidou's domain:** SFTP sources here (seedbox/torrent-client `downloads`/`completed` directories) are wide, flat, and single-use — each remote directory is populated once and never appended to afterward. A directory known once can be treated as permanently immutable. `SeedOrchestrator` (the one-time baseline task) backfills `ScannedDirectory` rows for pre-existing directories, including ones with zero eligible media files, so the first real scan after seeding starts fast rather than re-walking the whole library once more.
+**Why this is safe for Jidou's domain:** SFTP sources in this context are wide, flat, and single-use — each remote directory is populated once and never appended to afterward. A directory known once can be treated as permanently immutable. `SeedOrchestrator` (the one-time baseline task) backfills `ScannedDirectory` rows for pre-existing directories, including ones with zero eligible media files, so the first real scan after seeding starts fast rather than re-walking the whole library once more.
 
 This is a scan-layer-only optimization — it has no relationship to show/episode matching, and doesn't change what a file's `DownloadedFile` record looks like once discovered.
 
