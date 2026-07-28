@@ -12,7 +12,6 @@ import Files from '@/pages/Files'
 import Watchlist from '@/pages/Watchlist'
 import Tasks from '@/pages/Tasks'
 import Settings from '@/pages/Settings'
-import Data from '@/pages/Data'
 import RSS from '@/pages/RSS'
 import Calendar from '@/pages/Calendar'
 
@@ -42,7 +41,6 @@ export default function App() {
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/data" element={<Data />} />
                 <Route path="/rss" element={<RSS />} />
               </Route>
             </Routes>
