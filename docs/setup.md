@@ -26,6 +26,8 @@ docker compose exec jidou-api alembic upgrade head
 
 The `default` profile starts all five services: `postgres`, `redis`, `jidou-api`, `jidou-worker`, `jidou-frontend`.
 
+<!-- screenshot: docker-compose-up-output -->
+
 ### Profiles
 
 | Profile | Services started |
@@ -144,6 +146,7 @@ When using Docker Compose, the nginx frontend injects this header automatically 
 | `SFTP_KEY_FILE` | — | Host path to SSH private key (Docker mounts it read-only) |
 | `SFTP_KEY_PATH` | — | Container path where the key is mounted |
 | `SFTP_REMOTE_PATHS` | `/` | Comma-separated remote directories to scan |
+| `SFTP_NOSCAN_PATHS` | (empty) | Comma-separated remote paths (or subdirectories of a scanned path) whose files are discovered/downloaded but never parsed, matched, or routed — see [Excluding non-media files](features.md#excluding-non-media-files-from-matching) |
 | `SFTP_MAX_WORKERS` | `8` | Parallel download threads |
 
 ### LLM (optional)
@@ -176,7 +179,21 @@ LLM_PROVIDER=none
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TMDB_RATE_LIMIT_PER_SECOND` | `0.5` | Max TMDB calls per second (do not exceed 1.0) |
-| `TMDB_CACHE_TTL` | `86400` | Response cache TTL in seconds (24 hours) |
+| `TMDB_CACHE_TTL` | `604800` | TMDB metadata response cache TTL in seconds (7 days — show/episode data changes rarely) |
+| `TMDB_CACHE_MAXSIZE` | `25000` | Max entries in the Redis-backed TMDB response cache |
+
+### Images
+
+Poster/backdrop images are proxied and cached to disk rather than the frontend hotlinking `image.tmdb.org` — see [Image caching](features.md#image-caching).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_RATE_LIMIT_PER_SECOND` | `5.0` | Max image fetches per second — separate from `TMDB_RATE_LIMIT_PER_SECOND`, since `image.tmdb.org` is a different host from the metadata API |
+| `IMAGE_CACHE_BACKEND` | `disk` | Cache storage backend |
+| `IMAGE_CACHE_HOST_PATH` | `/data/image-cache` | Where cached image bytes land (host side) |
+| `IMAGE_CACHE_PATH` | `/data/image-cache` | Same path inside the container |
+| `IMAGE_CACHE_EXPIRATION_ENABLED` | `true` | Whether the daily purge task runs at all; `false` keeps cached images indefinitely |
+| `IMAGE_CACHE_RETENTION_DAYS` | `180` | How long a cached image is kept before the purge task deletes it (ignored if expiration is disabled) |
 
 ### Celery worker
 
@@ -207,12 +224,15 @@ uv run alembic revision --autogenerate -m "add index on files.status"
 
 ### Migration history
 
+All migrations up to and including the original `0002`–`0004` set were squashed into a single `0001_initial` baseline once the schema stabilized — there is no upgrade path from a pre-squash database; wipe and re-migrate (see [Wiping and reinitializing the database](troubleshooting.md#wiping-and-reinitializing-the-database)) or restore from an export.
+
 | Revision | Description |
 |----------|-------------|
-| `0001` | Initial schema: `shows`, `episodes`, `downloaded_files`, `background_tasks`, `watchlist` |
-| `0002` | Add `file_tracked_at` to `episodes` |
-| `0003` | Add `tracked_filename` and `tracked_source` to `episodes` |
-| `0004` | Add `orphaned_tracking_records` table |
+| `0001_initial` | Full baseline schema: `shows`, `episodes` (incl. `file_tracked`/`file_tracked_at`/`tracked_filename`/`tracked_source`), `downloaded_files`, `background_tasks`, `watchlist`, `orphaned_tracking_records`, `rss_feeds`, `rss_subscriptions`, `rss_config_snapshots`, `app_settings` |
+| `f437cd782b1b` | Add index on `episodes.air_date` (calendar page query) |
+| `287c0908e5d1` | Add `scanned_directories` table (shallow-scan redesign, issue #355) |
+| `a563ec7cddae` | Add `ignored` to the `filestatus` enum plus `downloaded_files.ignored_reason` (noscan paths / manual ignore) |
+| `6d2f4a9c7e13` | Add `shows.list_poster_path` / `shows.detail_poster_path` (manual poster overrides) |
 
 ---
 
@@ -235,5 +255,8 @@ A healthy response looks like:
   "llm": "disabled"
 }
 ```
+
+<!-- screenshot: admin-health-response -->
+<!-- screenshot: settings-page -->
 
 See [Troubleshooting](troubleshooting.md) if any service reports an error.

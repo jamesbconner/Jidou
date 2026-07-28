@@ -52,7 +52,15 @@ uv run python make.py migrate
 2. Search for a title (e.g. `Breaking Bad`).
 3. Click the result to add it to your library.
 
+<!-- screenshot: add-show-search -->
+
 Episodes are synced from TMDB automatically on creation.
+
+## What a running task looks like
+
+Trigger a **Scan** from the Tasks page and watch it stream live — a progress bar, the current file being processed, and an expandable event log entry for every file it touches.
+
+<!-- screenshot: tasks-live-progress -->
 
 ## Next steps
 

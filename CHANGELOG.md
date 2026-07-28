@@ -6,8 +6,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
-- Initial project skeleton with Python 3.13, hatchling, ruff, mypy, pytest, and uv tooling.
+Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
+
+### Discover page
+- `GET /api/shows/discover` — a personalized feed seeded from TMDB recommendations for the user's most recently updated `watching`/`completed` watchlist shows, deduped, with shows already in the library excluded and trending TV/movies filling out thin results (cold start falls back to plain trending). Cached 24h, keyed by the current seed show set. Closes #229.
+- New Discover page and nav entry, with one-click "Add + Watchlist" per result and a detail modal (poster, overview, rating, "View show"/"View on TMDB" links).
+- `seeded_from` on each result names the watchlist shows a recommendation came from — no LLM call involved.
+
+### Dashboard: movies split out
+- `GET /api/dashboard/recent-movies` — movies get their own dashboard carousel instead of being mixed into (or filtered out of) "Recently Added Shows"; `recent-shows` now always excludes `content_type="movie"` rows server-side. Closes #255.
+- New `dashboard.recent_movies_enabled` setting (default `true`), toggleable from Settings, mirroring the existing `recent_episodes_enabled` pattern.
+
+### Manual episode-to-file linking
+- **Match File** action on untracked Show Detail episode rows (issue-driven UX gap): pick an existing unmatched `DownloadedFile` scoped to the show, or type a path Jidou hasn't seen yet — validated on disk, then linked via the new `POST /shows/{show_id}/episodes/{episode_id}/link-file` endpoint. The "type a path" mode uses a content-type picker (mirroring `EditPathModal`) instead of a raw container path.
+- **Scan Local Files** — `POST /shows/{show_id}/scan-local-files` walks a show's own `local_path`, runs each file through the shared matching pipeline, and returns `matched`/`unmatched`/`conflict` proposals for review before confirming via `link-file`. Reuses the same regex/episode-group/LLM matching path-import uses, extracted into `services/episode_file_matching.py` so the two features can't drift apart.
+
+### Non-UTF-8 / legacy-encoded filenames
+- Scanning a show's local directory (or the show's own directory name) no longer crashes or silently returns nothing when a filename or directory name has a raw Latin-1/cp1252 byte instead of proper UTF-8 (a common signature of libraries authored by older Windows/NAS tooling). Fixed across several passes: stopped the JSON-encoding crash, made the byte-exact path round-trip through `link-file` instead of just being displayable, recovered the actual accented character for display (cp1252 fallback) instead of a `�` placeholder everywhere a tracked/original filename is shown, and finally recovered a show's own on-disk directory even when its raw bytes don't literally match the clean UTF-8 string stored in `Show.local_path`.
+- New `services/path_transport.py` (`encode_path_bytes`/`decode_path_bytes`) is the shared mechanism behind the fix — see [Architecture](docs/architecture.md#filesystem-paths-with-non-utf-8-bytes).
+
+### Excluding non-media files from matching
+- New `SFTP_NOSCAN_PATHS` config — files under a configured remote path are still discovered/downloaded (never re-fetched) but routed straight to a new terminal `ignored` status instead of entering parse/match/route. For documentaries, theatre recordings, workout videos, etc. mixed into otherwise normal TV/movie downloads.
+- `POST /files/{id}/ignore` — manual escape hatch for a stray `unmatched`/`error` file a noscan path didn't catch.
+
+### Poster overrides and image caching
+- Manual poster picker (Show Detail → **Change Poster**): pick independently which TMDB poster (English or textless) is used on the Shows-page grid card vs. the Show Details header. Stored on `list_poster_path`/`detail_poster_path` so a TMDB metadata resync never silently overwrites the choice.
+- Show Details header switched from a 16:9 backdrop crop to a proper 2:3 poster.
+- All poster/backdrop images now proxy through `GET /api/images/{size}/{filename}`, which caches bytes to disk on first request instead of the frontend hotlinking `image.tmdb.org` directly. Registered unauthenticated (plain `<img src>` can't send `X-API-Key`, and the images aren't sensitive). A daily Celery beat task purges cached files past a configurable retention window.
+- Image fetches now use their own rate limiter (`IMAGE_RATE_LIMIT_PER_SECOND`, default 5/s) instead of sharing the 1-per-2s TMDB metadata limiter — `image.tmdb.org` is a separate CDN host, so poster loading no longer queues behind sync traffic.
+
+### Show metadata backfill
+- Fixed a gap where adding a show via TMDB search/trending ("Add Show", Discover, Watchlist) only ever stored the sparse search-card fields — no genres, external IDs, episode groups. `POST /shows` now fetches full TMDB details the same way path-import and manual-match already do, with a fallback to the sparse fields if the fetch itself fails.
+- New `backfill_show_metadata` task (Settings page trigger, dry-run supported) re-fetches and repairs already-affected shows without touching `sys_name` or local file organization.
+
+### Show Detail and Shows page UX
+- Watchlist status/queue-position controls and an inline TMDB link moved onto the Show Detail metadata line, instead of a separate flow — shared `WatchlistStatusSelect`/`watchlistStatus.ts` extracted so Show Detail and the Watchlist page use the same vocabulary.
+- Actions on Show Detail split into labeled **Show Info** / **Episodes & Files** groups; the RSS control moved from a passive header badge into the header's actual Add/Edit RSS button.
+- Shows page sort order and all filter selections now persist across navigation (`localStorage`), not just reloads.
+- Shared UI style primitives (`components/ui/Modal`, `Button`, `Card`, `Badge`) replace hand-typed Tailwind strings across all 19 modals, cards, and badges — fixes visible drift in overlay opacity/z-index and gives every modal focus-trap + Escape-to-close consistently (previously only 10 of 19 had it).
+
+### Bug fixes
+- `sync_all_task` (scan → download → match → route) now gets the same extended 6h soft / 7h hard time budget `path_import_task` already had — the default 50-minute soft limit was sized for a single phase and routinely killed real backlogs mid-run.
+- Fixed a production crash (`MissingGreenlet`) when a show's TMDB sync failed mid-loop: `TMDBOrchestrator.sync_all_shows()` now rolls back per-show via a `SAVEPOINT` instead of a session-wide `rollback()`, which was expiring every other already-loaded show and triggering an out-of-greenlet lazy reload on the next iteration. Also excludes movies from that sync loop — they have no TMDB `/tv/{id}` season structure to sync.
+
+### RSS / YaRSS2 integration
+- New `RssFeed` and `RssSubscription` models; full CRUD API (`/api/rss/feeds`, `/api/rss/subscriptions`), each subscription linkable to a show with optional include/exclude regex filters.
+- `rss_import` task — downloads the remote YaRSS2 config and reconciles it into the DB (fuzzy show linking, stub promotion, feed-link resolution via `rssfeed_key`).
+- `rss_publish` task — composes the DB state back into a YaRSS2 config and uploads it; optionally stops/restarts Deluge over SSH around the publish with configurable delays so the client doesn't read a half-written file.
+- Config snapshots (`GET /api/rss/snapshots`) retained on every publish for diffing/audit.
+- LLM-assisted regex suggestions (`POST /api/rss/subscriptions/{id}/suggest-regex`), hardened against prompt injection.
+- Subscription health-check Recommendations tab; RSS page with feed/subscription tabs, bulk active-flag patching, and a preview/download of the composed config.
+- Active RSS subscription badge on show cards; one-click RSS stub creation from a show or the watchlist.
+
+### Path import overhaul
+- Per-file show-name confirmation (issue #282) — each file's own LLM-extracted show name is cross-checked against the directory-resolved show; a confirmed disagreement splits that file off and resolves it independently instead of silently mismatching it.
+- `shows-only` and `episodes-only` import modes for partial re-imports.
+- Absolute-episode-number fallback for season > 1 misses and ambiguous compact season/episode codes (e.g. `One Piece 212`), tried before falling back to the LLM.
+- `assign-import` endpoint to reassign an already-imported episode's tracked filename to a different episode without re-creating file records.
+- Ten-pattern episode-number regex (`path_parser.py`), including bare `Title NN` filenames with bonus-content-marker guarding (`NCED`/`OP`/`SP`/etc.).
+
+### SFTP scan redesign (issue #355)
+- Scanning no longer recursively walks the entire remote library on every run. A shallow listing finds top-level directories; each directory is deep-walked and marked `ScannedDirectory` **once**, then skipped on every later scan. Cut scan time from ~14 minutes to seconds on a populated library.
+- Directory-marking is gated on walk completeness — a partial walk (I/O failure, or files still mid-upload) is retried on the next scan rather than being permanently (and wrongly) marked known.
+- `seed` task/SEEDED file status — one-time baseline that marks all pre-existing SFTP files as seeded so they're never mistaken for new downloads; also backfills `ScannedDirectory` rows so the first real scan after seeding doesn't re-walk everything.
+- Bulk chunked existence checks replace an N+1 per-file query during scanning.
+
+### Task observability
+- Structured, append-only per-item event log (`on_event`) now emitted by every task — Scan, Download, and Match (issue #361) join Route and path-import, which already had it. Every file/directory processed produces an event, not just failures.
+- Task list exposes `result_summary` and `dry_run`; Tasks page shows a live/replayable event log per task and a working **Max records** cap on the task list (previously the control updated the label but not the actual fetch).
+- Scheduled auto-sync via Celery beat, with overlap guarding so a scheduled run never races a manually-triggered one.
+
+### Dashboard, calendar, and library UX
+- Dashboard "Recently Added" carousels for shows and episodes (sort by tracked-date or release date, filter by content type/genre), each independently toggleable from Settings.
+- Airing calendar page (issue #220), toggleable from Settings.
+- Adult-content visibility is a server-enforced setting, not a client filter — hidden rows never leave the API.
+- Manual episode matching UI on the Files page (issue #46): **Fix Show** / **Fix Eps** actions, an inline episode picker, and a rematch flow (`begin-rematch`) for already-matched files.
+- Files page pagination, filename search, and a raised list cap (1000) to support show-scoped file lookups.
+- Show alias auto-generation from TMDB alternative titles plus optional LLM normalization, preserving user-added aliases (`POST /api/shows/{id}/aliases/regenerate`).
+- Absolute/cour season-numbering mismatches resolved via TMDB `episode_groups` (#332).
+
+### Infrastructure and security
+- Static `X-API-Key` authentication, enforced at the router level, injected automatically by the nginx proxy for browser traffic.
+- TMDB response cache centralized in Redis (shared across API and worker processes) with per-endpoint TTL overrides.
+- Routed media can mount via a Docker CIFS volume driver instead of a Windows bind mount, as an opt-in override — not a hard dependency.
+- Route-task duplicate-dispatch race fixed — concurrent route triggers no longer double-move the same file.
+- LLM prompt-injection hygiene sweep across all LLM call sites (#329).
+- All Alembic migrations squashed into a single `0001_initial` baseline; subsequent migrations (index on `episodes.air_date`, `scanned_directories` table) build on top of it.
+
+### Internal refactors
+- Celery worker harness eliminating per-task boilerplate; shared episode-resolution, LLM-JSON-parsing, and show-lookup services extracted out of the orchestrators that used to duplicate them; dead `MatchOrchestrator` removed; backend status/type enums surfaced in the OpenAPI schema so frontend types no longer need hand-widening.
 
 ## [0.1.0] — 2026-06-27
 

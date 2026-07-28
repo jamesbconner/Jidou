@@ -14,7 +14,9 @@ When `JIDOU_API_KEY` is set in `.env`, all `/api` endpoints require the header:
 X-API-Key: your_key
 ```
 
-When the key is unset or empty, authentication is disabled. The Docker Compose nginx proxy injects the header automatically for browser traffic — only direct API consumers (curl, scripts, CI) need to add it manually.
+**Exceptions:** `/api/health` and `/api/images/*` are always unauthenticated — health checks need to work before any key is configured, and TMDB poster/backdrop images are loaded via plain `<img src>` tags, which can't send custom headers.
+
+When the key is unset or empty, authentication is disabled entirely. The Docker Compose nginx proxy injects the header automatically for browser traffic — only direct API consumers (curl, scripts, CI) need to add it manually.
 
 ---
 
@@ -28,7 +30,27 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | GET | `/api/admin/stats/files-timeline` | Files added per day (last 30 days) |
 | GET | `/api/admin/stats/pipeline-status` | File counts by status |
 | GET | `/api/admin/cache` | Inspect TMDB response cache entries |
-| POST | `/api/admin/cache/flush` | Clear in-memory TMDB cache |
+| POST | `/api/admin/cache/flush` | Clear the TMDB response cache (Redis-backed, shared across API and worker processes) |
+
+---
+
+## Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard/recent-shows` | Recently added shows for the dashboard carousel; filter by `content_type`/`genre`, sort by `tracked` or `release`. Always excludes `content_type="movie"` rows |
+| GET | `/api/dashboard/recent-movies` | Recently added movies for their own dashboard carousel; same filters/sort |
+| GET | `/api/dashboard/recent-episodes` | Recently tracked episodes for the dashboard carousel; same filters/sort |
+| GET | `/api/dashboard/genres` | Distinct TMDB genre names across the library, for the genre filter dropdown |
+
+Adult-flagged shows/episodes are excluded from all three carousels unless the `show_adult_content` setting is enabled — this is enforced server-side in SQL, not a client-side filter.
+
+## Settings
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`) |
+| PATCH | `/api/settings` | Update one or more settings |
 
 ---
 
@@ -49,9 +71,11 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/shows` | List tracked shows |
-| POST | `/api/shows` | Add a show from TMDB; auto-infers content type and syncs episodes |
+| POST | `/api/shows` | Add a show from TMDB; fetches full details, auto-infers content type, and syncs episodes |
+| GET | `/api/shows/discover` | Personalized discovery feed — TMDB recommendations seeded from the watchlist, trending fallback, library-exclusion applied, cached 24h |
 | GET | `/api/shows/{id}` | Get show detail |
-| PATCH | `/api/shows/{id}` | Update user-managed fields (`content_type`, `local_path`, etc.) |
+| GET | `/api/shows/{id}/images/posters` | Candidate posters from TMDB (English + textless) for the poster-picker modal |
+| PATCH | `/api/shows/{id}` | Update user-managed fields (`content_type`, `local_path`, `list_poster_path`, `detail_poster_path`, etc.) |
 | PUT | `/api/shows/{id}/paths` | Set local filesystem path |
 | PUT | `/api/shows/{id}/aliases` | Replace show aliases list |
 | DELETE | `/api/shows/{id}` | Remove show and all its data |
@@ -60,7 +84,36 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | GET | `/api/shows/tmdb/{tmdb_id}` | Fetch TMDB detail for a specific ID |
 | POST | `/api/shows/{id}/rematch` | Re-link show to a different TMDB entry |
 | POST | `/api/shows/{id}/sync-episodes` | Sync episode metadata from TMDB |
+| POST | `/api/shows/{id}/aliases/regenerate` | Rebuild TMDB + LLM alias sources; preserves user-added aliases |
+| POST | `/api/shows/{id}/rss-stub` | Link (or create) an RSS subscription for this show |
+| GET | `/api/shows/calendar` | Episodes airing in a date range, across all shows, with computed `tracked`/`missing`/`upcoming` status |
 | GET | `/api/shows/{id}/episodes` | List episodes for a show |
+| POST | `/api/shows/{show_id}/scan-local-files` | Read-only: scan the show's own local directory and propose episode matches for files found there |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an untracked episode |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/begin-rematch` | Prepare a tracked episode's backing file for re-matching (download-backed episodes only) |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/assign-import` | Reassign a path-imported episode's tracked filename to a different episode, atomically |
+
+**`GET /api/shows/discover` query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | int | Max results (1–100, default 40) |
+
+**`POST /shows/{show_id}/episodes/{episode_id}/link-file` request body:**
+```json
+{ "path": "/data/media/tv/Breaking Bad/Season 01/episode.mkv" }
+```
+`path` may be percent-encoded (see [non-UTF-8 filenames](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes)) if it came verbatim from a `scan-local-files` response.
+
+**`POST /shows/{show_id}/scan-local-files` response — one entry per file found:**
+```json
+{
+  "path": "...", "filename": "...", "season": 1, "episode_number": 3,
+  "episode": { "id": 117, "episode_number": 3, "name": "..." },
+  "status": "matched"
+}
+```
+`status` is `matched` (untracked episode, ready to confirm via `link-file`), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file).
 
 **Query parameters for `GET /api/shows`:**
 
@@ -77,7 +130,11 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/files` | List files with optional filters |
+| GET | `/api/files/unmatched` | List `unmatched` files awaiting manual review |
+| GET | `/api/files/{id}` | Get a single file record |
+| GET | `/api/files/{id}/tmdb-suggestions` | TMDB search results seeded from the file's `parsed_show_name`, for the Resolve modal |
 | PATCH | `/api/files/{id}` | Correct `show_id`, `episode_id`, `status`, or `error_message` |
+| POST | `/api/files/{id}/ignore` | Manually exclude an `unmatched`/`error` file from matching forever (kept, not deleted, so it's never re-downloaded) |
 | POST | `/api/files/{id}/match` | Manually assign a show; runs heuristic S/E detection |
 
 **Query parameters for `GET /api/files`:**
@@ -144,9 +201,13 @@ When the key is unset or empty, authentication is disabled. The Docker Compose n
 }
 ```
 
-**Task types:** `scan`, `download`, `match`, `route`, `sync`
+**Task types:** `scan`, `download`, `match`, `route`, `sync`, `seed`, `backfill_show_metadata`, `import`, `db_import`, `rss_import`, `rss_publish`
 
-All task types support `dry_run: true` — validation and planning runs but no files are moved and no tracking data is written.
+`POST /api/tasks/trigger` accepts `scan`, `download`, `match`, `route`, `sync`, `seed`, and `backfill_show_metadata` directly. `import`/`db_import`/`rss_import`/`rss_publish` are launched from their own endpoints (`POST /api/import/text`, `POST /api/import/database`, `POST /api/rss/import`, `POST /api/rss/publish`) but still create the same `BackgroundTask` records, tracked and streamed identically.
+
+All task types support `dry_run: true` — validation and planning runs but no files are moved and no tracking data is written. `seed` is triggered from the Settings page, not the Tasks trigger panel.
+
+Every task type streams a structured, append-only `event_log` — one entry per file/directory processed, not just failures or a final summary — viewable live on the Tasks page and replayed from `GET /api/tasks/{id}` after the fact.
 
 ---
 
@@ -176,14 +237,38 @@ curl http://localhost:8192/api/export/database -o backup.yaml
 
 ## RSS
 
+Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tracker feed) and **subscriptions** (a filtered link between a feed and a show). Both are separate resources with independent CRUD.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/rss/subscriptions` | List RSS subscriptions |
-| POST | `/api/rss/subscriptions` | Create a subscription |
+| GET | `/api/rss/feeds` | List RSS feeds |
+| POST | `/api/rss/feeds` | Create a feed |
+| PATCH | `/api/rss/feeds/{id}` | Update a feed |
+| DELETE | `/api/rss/feeds/{id}` | Delete a feed |
+| GET | `/api/rss/subscriptions` | List subscriptions, with optional filters |
+| POST | `/api/rss/subscriptions` | Create a subscription (feed + show + optional include/exclude regex) |
+| GET | `/api/rss/subscriptions/{id}` | Get a single subscription |
 | PATCH | `/api/rss/subscriptions/{id}` | Update a subscription |
+| PATCH | `/api/rss/subscriptions/bulk` | Apply active-flag changes to multiple subscriptions in one transaction |
 | DELETE | `/api/rss/subscriptions/{id}` | Delete a subscription |
-| POST | `/api/rss/sync` | Push current subscriptions to the remote RSS config file |
-| POST | `/api/rss/suggest-regex` | LLM-assisted regex suggestion for a show name |
+| GET | `/api/rss/subscriptions/recommendations` | Health-check recommendations (e.g. stale/unlinked subscriptions) |
+| POST | `/api/rss/subscriptions/{id}/suggest-regex` | LLM-assisted include/exclude regex suggestion |
+| GET | `/api/rss/subscriptions/{id}/preview` | Preview the YaRSS2 dict Jidou would publish for one subscription |
+| GET | `/api/rss/download` | Compose and download the current DB state as a YaRSS2 config file |
+| GET | `/api/rss/snapshots` | List recent published config snapshots, most recent first |
+| GET | `/api/rss/snapshots/{id}` | Get one snapshot including its full raw content |
+| POST | `/api/rss/import` | Background task: download the remote YaRSS2 config and reconcile it into the DB |
+| POST | `/api/rss/publish` | Background task: compose the DB state and upload it to the remote YaRSS2 config (optionally stopping/restarting Deluge around the upload) |
+
+---
+
+## Images
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/images/{size}/{filename}` | Serve a cached TMDB poster/backdrop, fetching and caching to disk on first request |
+
+`size` is one of `w92`, `w185`, `w300`, `w500`, `w780`, `w1280`. This route is registered **without** `X-API-Key` — plain `<img src>` tags can't send custom headers, and the images aren't sensitive data. Rate-limited independently from TMDB metadata calls via `IMAGE_RATE_LIMIT_PER_SECOND`.
 
 ---
 
