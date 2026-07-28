@@ -465,6 +465,8 @@ async def get_calendar(
                 name=episode.name,
                 air_date=episode.air_date,
                 status=status,
+                content_type=show.content_type,
+                genres=show.genres,
             )
         )
     return results
