@@ -28,6 +28,7 @@ import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistSta
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
 const TMDB_IMG = '/api/images/w92'
+const TMDB_BACKDROP_IMG = '/api/images/w500'
 
 function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   const [editing, setEditing] = useState(false)
@@ -125,6 +126,20 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
         <GripIcon />
       </td>
       <td className="px-4 py-2 text-gray-400 text-xs">{index + 1}</td>
+      <td className="px-2 py-2 w-48">
+        {entry.show.backdrop_path ? (
+          <img
+            src={`${TMDB_BACKDROP_IMG}${entry.show.backdrop_path}`}
+            alt=""
+            className="w-48 aspect-video object-cover rounded-lg"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-48 aspect-video bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-[10px]">
+            No image
+          </div>
+        )}
+      </td>
       <td className="px-4 py-2">
         <Link
           to={`/shows/${entry.show_id}`}
@@ -500,6 +515,7 @@ export default function Watchlist() {
               <tr>
                 <th className="px-2 py-2 w-6" />
                 <th className="px-4 py-2 text-left w-8">#</th>
+                <th className="px-2 py-2 w-48" />
                 <th className="px-4 py-2 text-left">Show</th>
                 <th className="px-4 py-2 text-left">Status</th>
                 <th className="px-4 py-2 text-left">Notes</th>
