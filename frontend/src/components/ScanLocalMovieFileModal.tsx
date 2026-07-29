@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useScanShowLocalMovieFile } from '@/hooks/useShows'
 import { useLinkMovieFile } from '@/hooks/useFiles'
 import { Modal } from '@/components/ui/Modal'
@@ -18,6 +18,11 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
 
   const [pendingPaths, setPendingPaths] = useState<Set<string>>(new Set())
   const [outcomes, setOutcomes] = useState<Record<string, RowOutcome>>({})
+  // Mirrors pendingPaths but updated synchronously — setState is batched, so
+  // a fast double-click on the same row can invoke linkRow again before the
+  // re-render that would disable its button lands. Checking this ref first
+  // closes that window without waiting on React.
+  const inFlightRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     scan.mutate(showId)
@@ -25,6 +30,8 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   }, [showId])
 
   async function linkRow(row: ScannedFileMatch) {
+    if (inFlightRef.current.has(row.path)) return
+    inFlightRef.current.add(row.path)
     setPendingPaths((prev) => new Set(prev).add(row.path))
     try {
       await linkFile.mutateAsync({ showId, path: row.path })
@@ -33,6 +40,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
       const message = err instanceof Error ? err.message : 'Failed to link'
       setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'failed', message } }))
     } finally {
+      inFlightRef.current.delete(row.path)
       setPendingPaths((prev) => {
         const next = new Set(prev)
         next.delete(row.path)
