@@ -21,14 +21,16 @@ New shows are classified as `tv`, `anime`, or `movie` using TMDB genre and langu
 **Syncing episodes:**
 Use **Sync Episodes** on the Show Detail page (or `POST /api/shows/{id}/sync-episodes`) to pull the latest episode data from TMDB. Useful when a show has aired new episodes since you added it.
 
+![Show Detail page](screenshots/show-details-page.png)
+
 **Show rematch:**
 If a show was linked to the wrong TMDB entry, use **Rematch Show** to re-link it. All episode data is replaced; existing file tracking is preserved where episode numbers align, and orphaned records are created for episodes that no longer exist.
 
 **Poster selection:** Use **Change Poster** on the Show Detail page to pick, independently, which TMDB poster (English or textless) is used on the Shows-page grid card versus the Show Details header. The choice is stored separately from TMDB's own `poster_path` so a later metadata resync never silently overwrites it. All poster and backdrop images load through Jidou's own image cache (see [Image caching](#image-caching)) rather than hotlinking `image.tmdb.org`.
 
-<!-- screenshot: poster-picker-modal -->
+![Poster picker modal](screenshots/poster-picker-modal.png)
 
-<!-- screenshot: shows-library-grid -->
+![Shows library grid](screenshots/shows-library-grid.png)
 
 ---
 
@@ -71,17 +73,17 @@ If both fail, the file is marked `unmatched` for manual review.
 
 **Manual match:** Use the **Resolve** button on the Files page to search TMDB and pick the correct show/episode manually.
 
-<!-- screenshot: files-resolve-modal -->
+![Files page Resolve modal](screenshots/files-resolve-modal.png)
 
 **Fixing an already-matched file:** On the Show Detail episode list, **Fix Show**/**Fix Eps** and the per-episode rematch flow let you re-open matching for a file that landed on the wrong show or episode without waiting for a full re-scan — this covers both download-backed files (`begin-rematch`) and path-imported episodes with no backing file (`assign-import`).
 
-<!-- screenshot: show-detail-fix-eps -->
+![Show Detail Fix Show / Fix Eps actions](screenshots/show-detail-fix-eps.png)
 
 **Linking a file directly to an episode:** On an untracked episode row in the Show Detail episode list, use **Match File** instead of routing through bulk text-file import. Two modes: pick an existing unmatched file already scoped to the show, or type a path Jidou hasn't seen yet — a content-type picker (mirroring **Edit Path**) builds the full container path from the show/season/filename portion you type, previews it, and validates the file exists on disk before linking (`POST /shows/{show_id}/episodes/{episode_id}/link-file`). Manually linked files are tracked with `tracked_source="import"`, the same as bulk path-import, so they participate in the same reassignment flow.
 
 **Scanning a show's own directory:** **Scan Local Files** on the Show Detail page walks the show's own local path on disk and runs every file it finds through the same matching pipeline bulk path-import uses — useful for picking up stragglers a prior import missed, or an existing library that predates Jidou. It's read-only: results are shown as `matched` (untracked episode, ready to confirm), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file), with an editable per-row episode picker and a bulk **Confirm All Matched** action. Files already recorded against the show (a prior import or download) are skipped automatically. If a filename or the show's own directory name contains a legacy Latin-1/cp1252 byte instead of proper UTF-8 — common in libraries authored by older Windows/NAS tooling — Jidou recovers the actual accented character for display and still links the file correctly; see [Matching Pipeline](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes).
 
-<!-- screenshot: scan-local-files-modal -->
+![Scan Local Files modal](screenshots/scan-local-files-modal.png)
 
 **Re-running the match:**
 - Tasks page → **Match**, or
@@ -164,9 +166,11 @@ Track your viewing status for each show independently of the file library.
 | `on_hold` | Paused |
 | `dropped` | Abandoned |
 
+![Watchlist page](screenshots/watchlist-page.png)
+
 Shows can be added to the watchlist from the Show Detail page — a color-coded Add/Remove toggle sits inline in the metadata line, alongside a "Queue #N" pill and a status pill (each opens a dropdown to change position/status without leaving the page). The Watchlist page supports drag-to-reorder for prioritising your queue.
 
-<!-- screenshot: watchlist-drag-reorder -->
+![Watchlist drag-to-reorder](screenshots/watchlist-drag-reorder.png)
 
 ---
 
@@ -178,7 +182,7 @@ The **Discover** page (nav bar, between Shows and Files) surfaces shows and movi
 
 The feed is cached 24h and keyed to your current watchlist seed set, so adding/removing a watching show invalidates the cache immediately rather than waiting out the TTL.
 
-<!-- screenshot: discover-page -->
+![Discover page](screenshots/discover-page.png)
 
 ---
 
@@ -193,8 +197,9 @@ Jidou can two-way sync with a Deluge-compatible RSS feed config (YaRSS2 format):
 
 Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_PATH` env var controls where the generated config is written on the SFTP server.
 
-<!-- screenshot: rss-subscriptions-tab -->
-<!-- screenshot: rss-recommendations-tab -->
+![RSS Subscriptions tab](screenshots/rss-subscriptions-tab.png)
+![RSS Recommendations tab](screenshots/rss-recommendations-tab.png)
+![Suggest regex](screenshots/rss-regex-suggest.png)
 
 ---
 
@@ -202,7 +207,7 @@ Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_
 
 The Dashboard is the landing page: a pipeline-status donut, a file-ingestion chart for the last 30 days, and three "Recently Added" carousels — shows, movies, and episodes — each independently sortable (`tracked` vs. `release` date) and filterable by content type or genre (the Shows carousel excludes movies; the Movies carousel has its own dedicated `GET /api/dashboard/recent-movies` endpoint), and independently toggleable off from Settings if you don't want them.
 
-<!-- screenshot: dashboard-carousels -->
+![Dashboard Recently Added carousels](screenshots/dashboard-carousels.png)
 
 ---
 
@@ -210,7 +215,7 @@ The Dashboard is the landing page: a pipeline-status donut, a file-ingestion cha
 
 An optional calendar page (toggle in Settings) showing episodes airing in a date range across your whole library, each marked `tracked`, `missing`, or `upcoming` relative to today.
 
-<!-- screenshot: calendar-page -->
+![Airing calendar page](screenshots/calendar-page.png)
 
 ---
 
@@ -222,7 +227,7 @@ The **Settings** page has three groups:
 - **Show Metadata Backfill** — one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
 - Config values are read-only here (edit `.env` and restart to change them); the toggles above are the only settings persisted to the database (`app_settings` table) and changeable at runtime.
 
-<!-- screenshot: settings-page -->
+![Settings page](screenshots/settings-page.png)
 
 ---
 
@@ -250,6 +255,8 @@ file=@jidou-backup.yaml
 
 The export captures shows, episodes, file records, tracking state, watchlist entries, and RSS subscriptions.
 
+![Settings Data tab](screenshots/settings-data-page.png)
+
 ---
 
 ## Data Quality
@@ -273,7 +280,7 @@ When a show is rematched to a new TMDB entry, episodes from the old entry that h
 
 Resolve them from the Data Quality tab by linking each orphan to the correct episode in the new episode list, or dismiss them if the old tracking data is no longer relevant.
 
-<!-- screenshot: data-quality-tab -->
+![Data Quality tab](screenshots/data-quality-tab.png)
 
 ---
 
