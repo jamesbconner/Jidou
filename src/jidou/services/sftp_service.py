@@ -37,11 +37,18 @@ _T = TypeVar("_T")
 # Exceptions that represent transient network/connection failures worth retrying.
 # Explicit SFTP protocol errors (permission denied, file not found) are NOT
 # included — they are permanent and retrying would just repeat the failure.
+# asyncssh's own exception hierarchy (SFTPError, DisconnectError, etc.) does
+# not subclass OSError, so catching OSError here is safe: it only reaches
+# genuine OS/network-level failures — connection refused/reset, timeouts, and
+# DNS resolution blips (socket.gaierror, e.g. a transient "No address
+# associated with hostname" from a container's DNS resolver under load) —
+# never a permanent SFTP protocol error. Without this, a single DNS hiccup
+# during asyncssh.connect() propagates unretried and drops the whole remote
+# path for that scan cycle.
 _TRANSIENT_SFTP_ERRORS: tuple[type[BaseException], ...] = (
     asyncssh.DisconnectError,
     asyncssh.ChannelOpenError,
-    ConnectionError,
-    TimeoutError,
+    OSError,
 )
 
 

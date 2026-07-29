@@ -1,6 +1,7 @@
 """Tests for the SFTPService."""
 
 import asyncio
+import socket
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -203,6 +204,30 @@ class TestExecuteWithRetry:
             await sftp_service._execute_with_retry("test op", factory)
 
         assert delays == [1.0, 2.0, 4.0]
+
+    @pytest.mark.asyncio
+    async def test_dns_resolution_failure_is_retried(self, sftp_service: SFTPService) -> None:
+        """A transient DNS blip during connect (socket.gaierror) is retried, not fatal.
+
+        Regression test: asyncssh.connect() propagates socket.gaierror
+        unwrapped on DNS resolution failure (e.g. "No address associated
+        with hostname"); this must be treated as transient like any other
+        connection failure rather than immediately killing the caller.
+        """
+        attempts = 0
+
+        async def factory() -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 2:
+                raise socket.gaierror(-5, "No address associated with hostname")
+            return "ok"
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await sftp_service._execute_with_retry("test op", factory)
+
+        assert result == "ok"
+        assert attempts == 2
 
     @pytest.mark.asyncio
     async def test_zero_max_retries_fails_after_single_attempt(
