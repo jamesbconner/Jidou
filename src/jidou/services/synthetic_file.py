@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 async def create_synthetic_import_file(
     session: AsyncSession,
     show_id: int,
-    episode_id: int,
+    episode_id: int | None,
     raw_path: str,
 ) -> DownloadedFile | None:
     """Create a display-only, already-ROUTED DownloadedFile for a file at its final path.
@@ -42,7 +42,9 @@ async def create_synthetic_import_file(
     Args:
         session: Active async DB session.
         show_id: Database ID of the parent show.
-        episode_id: Database ID of the matched episode.
+        episode_id: Database ID of the matched episode, or ``None`` for a
+            movie — movies have no ``Episode`` rows, so the file is linked
+            to the show alone (see ``POST /shows/{show_id}/link-movie-file``).
         raw_path: The file's existing absolute path (already at its final
             on-disk location).
 

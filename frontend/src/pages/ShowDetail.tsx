@@ -10,7 +10,7 @@ import {
   useDeleteShow,
   usePatchShow,
 } from '@/hooks/useShows'
-import { useBeginEpisodeRematch } from '@/hooks/useFiles'
+import { useBeginEpisodeRematch, useFilesByShow } from '@/hooks/useFiles'
 import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useRss'
 import {
   useWatchlist,
@@ -24,6 +24,7 @@ import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { AssignImportModal } from '@/components/AssignImportModal'
 import { LinkFileModal } from '@/components/LinkFileModal'
 import { ScanLocalFilesModal } from '@/components/ScanLocalFilesModal'
+import { ScanLocalMovieFileModal } from '@/components/ScanLocalMovieFileModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
 import { PosterPickerModal } from '@/components/PosterPickerModal'
@@ -156,6 +157,8 @@ export default function ShowDetail() {
     staleTime: 60_000,
   })
   const { data: episodes = [] } = useShowEpisodes(showId)
+  const isMovie = (show?.content_type ?? show?.media_type) === 'movie'
+  const { data: movieFiles = [] } = useFilesByShow(showId, isMovie)
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
   const deleteShow = useDeleteShow()
@@ -182,6 +185,7 @@ export default function ShowDetail() {
   const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
   const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
   const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
+  const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
 
   useEffect(() => {
@@ -196,6 +200,7 @@ export default function ShowDetail() {
     setAssignImportEp(null)
     setLinkFileEp(null)
     setScanLocalFilesOpen(false)
+    setScanLocalMovieFileOpen(false)
     setRssModalSub(null)
     syncEpisodes.reset()
     updatePaths.reset()
@@ -325,9 +330,15 @@ export default function ShowDetail() {
               {show.overview && (
                 <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>
               )}
-              <p className="text-sm text-gray-500 mt-2">
-                {trackedCount} / {episodes.length} episodes tracked
-              </p>
+              {isMovie ? (
+                <p className="text-sm text-gray-500 mt-2">
+                  {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mt-2">
+                  {trackedCount} / {episodes.length} episodes tracked
+                </p>
+              )}
             </div>
 
             {/* Show-level actions — upper right */}
@@ -389,115 +400,149 @@ export default function ShowDetail() {
         {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
       </Card>
 
-      {/* Episodes */}
-      <Card as="section" padding="md">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Episodes ({episodes.length})</h2>
-          <div className="flex gap-2 flex-wrap items-center">
+      {/* Movie file / Episodes */}
+      {isMovie ? (
+        <Card as="section" padding="md">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Movie file</h2>
             <button
-              onClick={() => syncEpisodes.mutate(showId)}
-              disabled={syncEpisodes.isPending}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-            >
-              {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
-            </button>
-            <button
-              onClick={() => setScanLocalFilesOpen(true)}
+              onClick={() => setScanLocalMovieFileOpen(true)}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
             >
               Scan Local Files
             </button>
-            {syncEpisodes.isSuccess && (
-              <span className="text-xs text-green-600">Episodes synced</span>
-            )}
-            {syncEpisodes.isError && (
-              <span className="text-xs text-red-600">{(syncEpisodes.error as Error).message}</span>
-            )}
           </div>
-        </div>
-        {beginRematch.isError && (
-          <p className="text-xs text-red-500 mb-2">
-            {(beginRematch.error as Error).message}
-          </p>
-        )}
-        {Object.entries(bySeason)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([season, eps]) => {
-            const seasonTracked = eps.filter((e) => e.file_tracked).length
-            return (
-              <details key={season} className="mb-2">
-                <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
-                  <span>
-                    Season {season} ({eps.length} episodes)
+          {movieFiles.length > 0 ? (
+            <div className="divide-y border rounded-lg">
+              {movieFiles.map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between px-3 py-2 text-sm gap-3"
+                >
+                  <span className="font-mono text-xs text-gray-600 truncate">
+                    {f.original_filename}
                   </span>
-                  {seasonTracked > 0 && (
-                    <span className="text-xs text-green-600">{seasonTracked} tracked</span>
-                  )}
-                </summary>
-                <div className="mt-2 divide-y border rounded-lg">
-                  {eps
-                    .sort((a, b) => a.episode_number - b.episode_number)
-                    .map((ep) => (
-                      <div
-                        key={ep.id}
-                        className="flex items-start justify-between px-3 py-2 text-sm gap-3"
-                      >
-                        <div className="min-w-0">
-                          <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
-                          {ep.name}
-                          {ep.air_date && (
-                            <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
-                          )}
-                          {ep.file_tracked &&
-                            (ep.backing_files.length > 0
-                              ? ep.backing_files.map((bf) => (
-                                  <div
-                                    key={bf.id}
-                                    className="text-xs text-gray-400 font-mono mt-0.5"
-                                  >
-                                    {bf.filename.replace(/\\/g, '/').split('/').pop() ??
-                                      bf.filename}
-                                  </div>
-                                ))
-                              : ep.tracked_filename_display && (
-                                  <div className="text-xs text-gray-400 font-mono mt-0.5">
-                                    {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
-                                      ep.tracked_filename_display}
-                                  </div>
-                                ))}
-                        </div>
-                        {ep.file_tracked ? (
-                          <TrackedBadges
-                            ep={ep}
-                            onFix={(fileId) => handleEpisodeFix(ep, fileId)}
-                            onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
-                            fixMatchDisabled={beginRematch.isPending}
-                          />
-                        ) : (
-                          <div className="shrink-0 flex items-center gap-2">
-                            <button
-                              onClick={() => setLinkFileEp(ep)}
-                              className="text-xs text-blue-600 hover:underline"
-                            >
-                              Match File
-                            </button>
-                            {hasImportEps && (
+                  <span className="text-xs text-gray-400 shrink-0">{f.status}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">
+              No file linked yet. Use Scan Local Files to link one from this movie&apos;s local
+              path.
+            </p>
+          )}
+        </Card>
+      ) : (
+        <Card as="section" padding="md">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Episodes ({episodes.length})</h2>
+            <div className="flex gap-2 flex-wrap items-center">
+              <button
+                onClick={() => syncEpisodes.mutate(showId)}
+                disabled={syncEpisodes.isPending}
+                className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
+              </button>
+              <button
+                onClick={() => setScanLocalFilesOpen(true)}
+                className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+              >
+                Scan Local Files
+              </button>
+              {syncEpisodes.isSuccess && (
+                <span className="text-xs text-green-600">Episodes synced</span>
+              )}
+              {syncEpisodes.isError && (
+                <span className="text-xs text-red-600">
+                  {(syncEpisodes.error as Error).message}
+                </span>
+              )}
+            </div>
+          </div>
+          {beginRematch.isError && (
+            <p className="text-xs text-red-500 mb-2">{(beginRematch.error as Error).message}</p>
+          )}
+          {Object.entries(bySeason)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([season, eps]) => {
+              const seasonTracked = eps.filter((e) => e.file_tracked).length
+              return (
+                <details key={season} className="mb-2">
+                  <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
+                    <span>
+                      Season {season} ({eps.length} episodes)
+                    </span>
+                    {seasonTracked > 0 && (
+                      <span className="text-xs text-green-600">{seasonTracked} tracked</span>
+                    )}
+                  </summary>
+                  <div className="mt-2 divide-y border rounded-lg">
+                    {eps
+                      .sort((a, b) => a.episode_number - b.episode_number)
+                      .map((ep) => (
+                        <div
+                          key={ep.id}
+                          className="flex items-start justify-between px-3 py-2 text-sm gap-3"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
+                            {ep.name}
+                            {ep.air_date && (
+                              <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                            )}
+                            {ep.file_tracked &&
+                              (ep.backing_files.length > 0
+                                ? ep.backing_files.map((bf) => (
+                                    <div
+                                      key={bf.id}
+                                      className="text-xs text-gray-400 font-mono mt-0.5"
+                                    >
+                                      {bf.filename.replace(/\\/g, '/').split('/').pop() ??
+                                        bf.filename}
+                                    </div>
+                                  ))
+                                : ep.tracked_filename_display && (
+                                    <div className="text-xs text-gray-400 font-mono mt-0.5">
+                                      {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
+                                        ep.tracked_filename_display}
+                                    </div>
+                                  ))}
+                          </div>
+                          {ep.file_tracked ? (
+                            <TrackedBadges
+                              ep={ep}
+                              onFix={(fileId) => handleEpisodeFix(ep, fileId)}
+                              onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
+                              fixMatchDisabled={beginRematch.isPending}
+                            />
+                          ) : (
+                            <div className="shrink-0 flex items-center gap-2">
                               <button
-                                onClick={() => handleEpisodeFixEps(ep)}
+                                onClick={() => setLinkFileEp(ep)}
                                 className="text-xs text-blue-600 hover:underline"
                               >
-                                Fix Eps
+                                Match File
                               </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              </details>
-            )
-          })}
-      </Card>
+                              {hasImportEps && (
+                                <button
+                                  onClick={() => handleEpisodeFixEps(ep)}
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  Fix Eps
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </details>
+              )
+            })}
+        </Card>
+      )}
 
       {/* Modals */}
       {deleteConfirmOpen && (
@@ -594,6 +639,12 @@ export default function ShowDetail() {
       )}
       {scanLocalFilesOpen && (
         <ScanLocalFilesModal showId={showId} onClose={() => setScanLocalFilesOpen(false)} />
+      )}
+      {scanLocalMovieFileOpen && (
+        <ScanLocalMovieFileModal
+          showId={showId}
+          onClose={() => setScanLocalMovieFileOpen(false)}
+        />
       )}
     </div>
   )

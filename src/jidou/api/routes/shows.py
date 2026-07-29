@@ -1430,6 +1430,160 @@ async def scan_show_local_files(
     return results
 
 
+@router.post(
+    "/{show_id}/scan-local-movie-file",
+    response_model=list[ScannedFileMatch],
+)
+async def scan_show_local_movie_file(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[ScannedFileMatch]:
+    """List media files found under a movie's own local directory.
+
+    Movie counterpart to ``scan-local-files``: a movie has no ``Episode``
+    rows to resolve a file against, so there is nothing to match — every
+    file found under ``show.local_path`` is either ready to link
+    (``matched``) or blocked because the movie already has a linked file,
+    either from a prior link or an earlier row in this same scan
+    (``conflict``). ``unmatched`` never occurs here, and ``season``/
+    ``episode_number``/``episode`` are always null. Read-only: nothing is
+    written. Confirm a proposed match via
+    ``POST /shows/{show_id}/link-movie-file``.
+
+    Args:
+        show_id: Database primary key of the show.
+        db_session: DB session (injected).
+
+    Returns:
+        One :class:`ScannedFileMatch` per file found, sorted by path.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+        HTTPException: 422 if the show is not a movie, or has no local path
+            configured.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if (show.content_type or show.media_type) != "movie":
+        raise HTTPException(
+            status_code=422,
+            detail="This endpoint is for movies only; use scan-local-files instead",
+        )
+    if not show.local_path:
+        raise HTTPException(status_code=422, detail="Show has no local path configured")
+
+    # Filesystem I/O is synchronous — run it off the event loop so a large or
+    # slow-mounted show directory doesn't stall every other concurrent request.
+    entries = await asyncio.to_thread(scan_show_directory, show.local_path)
+
+    existing_paths_stmt = select(DownloadedFile.local_path).where(DownloadedFile.show_id == show_id)
+    existing_keys = {
+        path_comparison_key(p)
+        for (p,) in (await db_session.execute(existing_paths_stmt)).all()
+        if p
+    }
+    # Any already-linked file at all means this movie is already tracked —
+    # unlike episodes, there's no per-file slot to disambiguate against.
+    already_linked = bool(existing_keys)
+
+    results: list[ScannedFileMatch] = []
+    claimed = False
+    for entry in entries:
+        if path_comparison_key(entry.raw_path) in existing_keys:
+            continue
+
+        status: Literal["matched", "unmatched", "conflict"] = (
+            "conflict" if already_linked or claimed else "matched"
+        )
+        if status == "matched":
+            claimed = True
+
+        results.append(
+            ScannedFileMatch(
+                path=entry.raw_path,
+                filename=Path(decode_path_bytes_for_display(entry.raw_path)).name,
+                season=None,
+                episode_number=None,
+                episode=None,
+                status=status,
+            )
+        )
+
+    return results
+
+
+@router.post(
+    "/{show_id}/link-movie-file",
+    response_model=FileRead,
+)
+async def link_movie_file(
+    show_id: int,
+    payload: LinkFileRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> DownloadedFile:
+    """Manually link an on-disk file path to an untracked movie.
+
+    Movie counterpart to ``episodes/{episode_id}/link-file``: a movie has no
+    ``Episode`` row to attach tracking state to, so "already tracked" here
+    means the show already has any linked ``DownloadedFile`` row, and the
+    resulting synthetic record's ``episode_id`` is left ``NULL``.
+
+    Args:
+        show_id: Database primary key of the show.
+        payload: Contains ``path`` — the absolute on-disk path of the file,
+            as returned verbatim by ``scan-local-movie-file``.
+        db_session: DB session (injected).
+
+    Returns:
+        The created (or pre-existing) ``DownloadedFile`` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+        HTTPException: 422 if the show is not a movie, has no local path
+            configured, already has a linked file, or *path* does not point
+            to an existing file.
+    """
+    # Locked so two concurrent link-movie-file calls targeting the same show
+    # can't both read "no linked file yet" before either commit lands.
+    show_stmt = select(Show).where(Show.id == show_id).with_for_update()
+    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if (show.content_type or show.media_type) != "movie":
+        raise HTTPException(status_code=422, detail="This endpoint is for movies only")
+    if not show.local_path:
+        raise HTTPException(status_code=422, detail="Show has no local path configured")
+
+    existing_count_stmt = select(func.count()).where(DownloadedFile.show_id == show_id)
+    if (await db_session.execute(existing_count_stmt)).scalar_one() > 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Movie already has a linked file. Unlink it before linking a new one.",
+        )
+
+    if not Path(decode_path_bytes(payload.path)).is_file():
+        raise HTTPException(
+            status_code=422,
+            detail=f"No file exists at path: {decode_path_bytes_for_display(payload.path)}",
+        )
+
+    await create_synthetic_import_file(db_session, show_id, None, payload.path)
+    await db_session.commit()
+
+    synthetic_remote_path = f"synthetic-import://{payload.path}"
+    refreshed = (
+        await db_session.execute(
+            select(DownloadedFile)
+            .where(DownloadedFile.remote_path == synthetic_remote_path)
+            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        )
+    ).scalar_one()
+    logger.info("Linked file path=%r to movie show id=%d", payload.path, show_id)
+    return refreshed
+
+
 async def _resync_synthetic_file_episode(
     db_session: AsyncSession,
     filename: str,

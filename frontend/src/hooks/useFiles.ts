@@ -37,10 +37,11 @@ export function useFiles({
   })
 }
 
-export function useFilesByShow(showId: number) {
+export function useFilesByShow(showId: number, enabled = true) {
   return useQuery({
     queryKey: [...fileKeys.all, 'show', showId] as const,
     queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}&limit=1000`),
+    enabled,
   })
 }
 
@@ -109,6 +110,18 @@ export function useLinkEpisodeFile() {
     }) => api.post<FileRead>(`/shows/${showId}/episodes/${episodeId}/link-file`, { path }),
     onSuccess: (_data, { showId }) => {
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+      qc.invalidateQueries({ queryKey: fileKeys.all })
+    },
+  })
+}
+
+export function useLinkMovieFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ showId, path }: { showId: number; path: string }) =>
+      api.post<FileRead>(`/shows/${showId}/link-movie-file`, { path }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.all })
       qc.invalidateQueries({ queryKey: fileKeys.all })
     },
   })
