@@ -71,7 +71,7 @@ curl -X POST http://localhost:8192/api/config/test/sftp
 
 **Prevention:** Run the SFTP connectivity test from the Settings page after any credential or network change.
 
-<!-- screenshot: settings-connectivity-fail -->
+![Settings page showing a failed connectivity test](screenshots/settings-connectivity-fail.png)
 
 ---
 

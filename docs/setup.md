@@ -26,7 +26,7 @@ docker compose exec jidou-api alembic upgrade head
 
 The `default` profile starts all five services: `postgres`, `redis`, `jidou-api`, `jidou-worker`, `jidou-frontend`.
 
-<!-- screenshot: docker-compose-up-output -->
+![docker compose up output](screenshots/docker-compose-up-output.png)
 
 ### Profiles
 
@@ -256,7 +256,7 @@ A healthy response looks like:
 }
 ```
 
-<!-- screenshot: admin-health-response -->
-<!-- screenshot: settings-page -->
+![Admin health check response](screenshots/admin-health-response.png)
+![Settings page](screenshots/settings-page.png)
 
 See [Troubleshooting](troubleshooting.md) if any service reports an error.

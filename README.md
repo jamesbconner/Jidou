@@ -4,7 +4,7 @@
 
 Jidou ("自動", *automatic*) is a self-hosted TV show and anime management system. It tracks shows via [TMDB](https://www.themoviedb.org/), scans remote SFTP servers for downloaded files, matches files to episodes using an LLM or heuristic fallback, and routes them to your local library — with real-time progress streaming to the browser.
 
-<!-- screenshot: dashboard-overview -->
+![Dashboard overview](docs/screenshots/dashboard-overview.png)
 
 ---
 
