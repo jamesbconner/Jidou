@@ -60,6 +60,20 @@ async def test_original_filename_normal_path_unaffected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_episode_id_none_for_movie_file() -> None:
+    """A movie file is linked to the show alone, with no episode_id."""
+    session = _make_session()
+
+    record = await create_synthetic_import_file(
+        session, show_id=1, episode_id=None, raw_path="/media/Movies/Movie/Movie.mkv"
+    )
+
+    assert record is not None
+    assert record.show_id == 1
+    assert record.episode_id is None
+
+
+@pytest.mark.asyncio
 async def test_returns_existing_record_without_creating_duplicate() -> None:
     """An existing synthetic row for the same path is returned as-is."""
     existing = MagicMock()

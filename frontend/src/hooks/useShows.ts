@@ -229,6 +229,13 @@ export function useScanShowLocalFiles() {
   })
 }
 
+export function useScanShowLocalMovieFile() {
+  return useMutation({
+    mutationFn: (showId: number) =>
+      api.post<ScannedFileMatch[]>(`/shows/${showId}/scan-local-movie-file`),
+  })
+}
+
 export function useAssignImportEpisode() {
   const qc = useQueryClient()
   return useMutation({
