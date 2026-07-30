@@ -65,7 +65,7 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish']
 
 export default function Tasks() {
-  const [taskType, setTaskType] = useState<TaskType>('scan')
+  const [taskType, setTaskType] = useState<TaskType>('sync')
   const [dryRun, setDryRun] = useState(false)
 
   const [filterType, setFilterType] = useState<TaskType | ''>('')
