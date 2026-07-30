@@ -30,6 +30,12 @@ class RssFeed(TimestampMixin, Base):
     default_download_location: Mapped[str | None] = mapped_column(String(1024))
     default_move_completed: Mapped[str | None] = mapped_column(String(1024))
     active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    # Style guide for the LLM regex suggester (suggest-regex endpoint): a
+    # representative regex_include/regex_exclude shape observed on this feed's
+    # own subscriptions. NULL means no guidance is available; "" (exclude only)
+    # means this feed's releases typically don't need an exclude filter at all.
+    regex_include_hint: Mapped[str | None] = mapped_column(Text)
+    regex_exclude_hint: Mapped[str | None] = mapped_column(Text)
     # Round-trips all other remote feed fields unchanged
     extra_config: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 

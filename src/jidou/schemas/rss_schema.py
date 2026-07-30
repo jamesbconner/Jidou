@@ -37,7 +37,15 @@ class RssFeedCreate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool = True
+    regex_include_hint: str | None = None
+    regex_exclude_hint: str | None = None
     extra_config: dict[str, object] | None = None
+
+    @field_validator("regex_include_hint", "regex_exclude_hint")
+    @classmethod
+    def validate_regex_hint(cls, v: str | None) -> str | None:
+        """Reject hints that fail to compile as Python regexes."""
+        return _validate_regex(v)
 
 
 class RssFeedUpdate(BaseModel):
@@ -49,7 +57,15 @@ class RssFeedUpdate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool | None = None
+    regex_include_hint: str | None = None
+    regex_exclude_hint: str | None = None
     extra_config: dict[str, object] | None = None
+
+    @field_validator("regex_include_hint", "regex_exclude_hint")
+    @classmethod
+    def validate_regex_hint(cls, v: str | None) -> str | None:
+        """Reject hints that fail to compile as Python regexes."""
+        return _validate_regex(v)
 
 
 class RssFeedRead(BaseModel):
@@ -64,6 +80,8 @@ class RssFeedRead(BaseModel):
     default_download_location: str | None
     default_move_completed: str | None
     active: bool
+    regex_include_hint: str | None
+    regex_exclude_hint: str | None
     extra_config: dict[str, object] | None
     created_at: datetime
     updated_at: datetime

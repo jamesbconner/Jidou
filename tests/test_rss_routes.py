@@ -40,6 +40,8 @@ def _make_feed(
     name: str = "ShowRSS",
     url: str = "https://showrss.info/feed",
     active: bool = True,
+    regex_include_hint: str | None = None,
+    regex_exclude_hint: str | None = None,
 ) -> MagicMock:
     f = MagicMock(spec=RssFeed)
     f.id = id
@@ -49,6 +51,8 @@ def _make_feed(
     f.active = active
     f.default_download_location = None
     f.default_move_completed = None
+    f.regex_include_hint = regex_include_hint
+    f.regex_exclude_hint = regex_exclude_hint
     f.extra_config = None
     f.created_at = _now()
     f.updated_at = _now()
@@ -1111,6 +1115,80 @@ def test_suggest_regex_503_for_invalid_regex_output() -> None:
         assert "invalid regex" in r.json()["detail"].lower()
     finally:
         app.dependency_overrides.clear()
+
+
+def _suggest_regex_with_feed(feed: MagicMock) -> str:
+    """POST suggest-regex for a subscription linked to *feed* and return the built prompt."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="My Show")
+    sub.show = None
+    sub.feed = feed
+
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(
+        return_value=LLMResponse(
+            content='{"regex_include": "My.Show", "regex_exclude": ""}',
+            model="test-model",
+            provider=LLMProvider.OPENAI,
+            cached=False,
+        )
+    )
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 200
+        return str(mock_llm.complete.call_args.kwargs["prompt"])
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_suggest_regex_prompt_unaugmented_when_feed_has_no_hints() -> None:
+    """POST suggest-regex leaves the prompt unchanged when the feed has no regex hints."""
+    feed = _make_feed(regex_include_hint=None, regex_exclude_hint=None)
+    prompt = _suggest_regex_with_feed(feed)
+    assert prompt == 'Suggest RSS filter regexes for the subscription named "My Show".'
+
+
+def test_suggest_regex_prompt_includes_include_hint() -> None:
+    """POST suggest-regex adds the feed's regex_include_hint as a style example."""
+    feed = _make_feed(
+        regex_include_hint=r"^ShowName.*s\d{2}e\d{2}.*1080p.*", regex_exclude_hint=None
+    )
+    prompt = _suggest_regex_with_feed(feed)
+    assert r"^ShowName.*s\d{2}e\d{2}.*1080p.*" in prompt
+    assert "shaped like" in prompt
+
+
+def test_suggest_regex_prompt_notes_no_exclude_needed_for_empty_hint() -> None:
+    """POST suggest-regex tells the LLM to skip regex_exclude when the feed's hint is ''."""
+    feed = _make_feed(regex_include_hint=None, regex_exclude_hint="")
+    prompt = _suggest_regex_with_feed(feed)
+    assert "don't need a regex_exclude filter" in prompt
+
+
+def test_suggest_regex_prompt_reuses_nonempty_exclude_hint() -> None:
+    """POST suggest-regex tells the LLM to reuse a feed's non-empty regex_exclude_hint."""
+    feed = _make_feed(
+        regex_include_hint=None,
+        regex_exclude_hint=".*(720p|iNTERNAL|spanish|french|german).*",
+    )
+    prompt = _suggest_regex_with_feed(feed)
+    assert ".*(720p|iNTERNAL|spanish|french|german).*" in prompt
+    assert "reuse it" in prompt
+
+
+def test_suggest_regex_prompt_unaugmented_when_sub_has_no_feed() -> None:
+    """POST suggest-regex does not crash or augment the prompt when the subscription has no feed."""
+    prompt = _suggest_regex_with_feed(None)  # type: ignore[arg-type]
+    assert prompt == 'Suggest RSS filter regexes for the subscription named "My Show".'
 
 
 # ---------------------------------------------------------------------------
