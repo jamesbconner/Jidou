@@ -11,6 +11,9 @@ interface FeedDraft {
   remote_key: string
   default_download_location: string
   default_move_completed: string
+  regex_include_hint: string
+  regex_exclude_hint: string
+  no_exclude_needed: boolean
   active: boolean
 }
 
@@ -25,6 +28,9 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
     remote_key: feed?.remote_key ?? '',
     default_download_location: feed?.default_download_location ?? '',
     default_move_completed: feed?.default_move_completed ?? '',
+    regex_include_hint: feed?.regex_include_hint ?? '',
+    regex_exclude_hint: feed?.regex_exclude_hint ?? '',
+    no_exclude_needed: feed?.regex_exclude_hint === '',
     active: feed?.active ?? true,
   })
 
@@ -33,6 +39,9 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
 
   const handleSave = () => {
     if (!draft.name.trim() || !draft.url.trim()) return
+    // regex_exclude_hint distinguishes "" (feed explicitly needs no exclude
+    // filter) from null (no guidance set) -- see suggest-regex prompt logic.
+    const regexExcludeHint = draft.no_exclude_needed ? '' : draft.regex_exclude_hint.trim() || null
     if (isEdit) {
       const update: RssFeedUpdate = {
         name: draft.name.trim(),
@@ -40,6 +49,8 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         remote_key: draft.remote_key.trim() || null,
         default_download_location: draft.default_download_location.trim() || null,
         default_move_completed: draft.default_move_completed.trim() || null,
+        regex_include_hint: draft.regex_include_hint.trim() || null,
+        regex_exclude_hint: regexExcludeHint,
         active: draft.active,
       }
       patch.mutate({ id: feed.id, update }, { onSuccess: onClose })
@@ -50,6 +61,8 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         remote_key: draft.remote_key.trim() || null,
         default_download_location: draft.default_download_location.trim() || null,
         default_move_completed: draft.default_move_completed.trim() || null,
+        regex_include_hint: draft.regex_include_hint.trim() || null,
+        regex_exclude_hint: regexExcludeHint,
         active: draft.active,
       }
       create.mutate(body, { onSuccess: onClose })
@@ -84,6 +97,33 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
             <Field label="Default Download Location" note="Used by subscriptions that don't override it.">{textInput('default_download_location')}</Field>
             <Field label="Default Move Completed" note="Used by subscriptions that don't override it.">{textInput('default_move_completed')}</Field>
           </div>
+          <Field
+            label="Regex Include Hint"
+            note="Example regex_include shape typical of this feed's releases (e.g. ^ShowName.*s\d{2}e\d{2}.*1080p.*). Shown to the LLM suggester as a style guide."
+          >
+            {textInput('regex_include_hint', 'e.g. ^ShowName.*MKV.*h26[4-5].*1080p.*Freeleech$')}
+          </Field>
+          <Field
+            label="Regex Exclude Hint"
+            note="Example regex_exclude pattern typical of this feed's releases. Shown to the LLM suggester as a style guide."
+          >
+            <input
+              value={draft.regex_exclude_hint}
+              onChange={(e) => set('regex_exclude_hint', e.target.value)}
+              disabled={draft.no_exclude_needed}
+              placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*"
+              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 disabled:text-gray-400"
+            />
+            <label className="flex items-center gap-2 text-xs text-gray-600 mt-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.no_exclude_needed}
+                onChange={(e) => set('no_exclude_needed', e.target.checked)}
+                className="rounded"
+              />
+              This feed&apos;s releases typically don&apos;t need an exclude filter
+            </label>
+          </Field>
           <label
             className="flex items-center gap-2 text-sm cursor-pointer"
             title="Inactive feeds are excluded from the published YaRSS2 config."

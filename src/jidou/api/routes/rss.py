@@ -493,6 +493,44 @@ _REGEX_SYSTEM_PROMPT = (
 )
 
 
+def _feed_hint_prompt_suffix(feed: RssFeed | None) -> str:
+    """Build a user-prompt suffix steering the LLM toward a feed's known regex shape.
+
+    Args:
+        feed: The subscription's linked feed, if any.
+
+    Returns:
+        Extra prompt text (possibly empty) describing the feed's
+        ``regex_include_hint``/``regex_exclude_hint``, sanitized against
+        prompt injection the same way show titles are.
+    """
+    from jidou.services.llm_json import sanitize_for_prompt
+
+    if feed is None:
+        return ""
+
+    suffix = ""
+    if feed.regex_include_hint:
+        hint = sanitize_for_prompt(feed.regex_include_hint)
+        suffix += (
+            f" This feed's other subscriptions use regex_include patterns shaped like "
+            f'"{hint}" — adapt that shape for this show rather than inventing a new one.'
+        )
+    if feed.regex_exclude_hint is not None:
+        if feed.regex_exclude_hint == "":
+            suffix += (
+                " This feed's releases typically don't need a regex_exclude filter; "
+                "return an empty string for regex_exclude unless there is a clear reason not to."
+            )
+        else:
+            hint = sanitize_for_prompt(feed.regex_exclude_hint)
+            suffix += (
+                f" This feed's subscriptions typically reuse this regex_exclude pattern: "
+                f'"{hint}" — reuse it unless this show needs something different.'
+            )
+    return suffix
+
+
 @router.post("/subscriptions/{sub_id}/suggest-regex", response_model=RssRegexSuggestion)
 async def suggest_regex(
     sub_id: int,
@@ -538,6 +576,7 @@ async def suggest_regex(
         if show_title
         else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
+    user_prompt += _feed_hint_prompt_suffix(sub.feed)
 
     response = await llm.complete(
         prompt=user_prompt,

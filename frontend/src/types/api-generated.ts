@@ -800,6 +800,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/scan-local-movie-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Show Local Movie File
+         * @description List media files found under a movie's own local directory.
+         *
+         *     Movie counterpart to ``scan-local-files``: a movie has no ``Episode``
+         *     rows to resolve a file against, so there is nothing to match — every
+         *     file found under ``show.local_path`` is either ready to link
+         *     (``matched``) or blocked because the movie already has a linked file,
+         *     either from a prior link or an earlier row in this same scan
+         *     (``conflict``). ``unmatched`` never occurs here, and ``season``/
+         *     ``episode_number``/``episode`` are always null. Read-only: nothing is
+         *     written. Confirm a proposed match via
+         *     ``POST /shows/{show_id}/link-movie-file``.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         One :class:`ScannedFileMatch` per file found, sorted by path.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         *         HTTPException: 422 if the show is not a movie, or has no local path
+         *             configured.
+         */
+        post: operations["scan_show_local_movie_file_api_shows__show_id__scan_local_movie_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shows/{show_id}/link-movie-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Movie File
+         * @description Manually link an on-disk file path to an untracked movie.
+         *
+         *     Movie counterpart to ``episodes/{episode_id}/link-file``: a movie has no
+         *     ``Episode`` row to attach tracking state to, so "already tracked" here
+         *     means the show already has any linked ``DownloadedFile`` row, and the
+         *     resulting synthetic record's ``episode_id`` is left ``NULL``.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         payload: Contains ``path`` — the absolute on-disk path of the file,
+         *             as returned verbatim by ``scan-local-movie-file``.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The created (or pre-existing) ``DownloadedFile`` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         *         HTTPException: 422 if the show is not a movie, has no local path
+         *             configured, already has a linked file, or *path* does not point
+         *             to an existing file.
+         */
+        post: operations["link_movie_file_api_shows__show_id__link_movie_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files": {
         parameters: {
             query?: never;
@@ -3066,6 +3148,10 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /** Regex Include Hint */
+            regex_include_hint?: string | null;
+            /** Regex Exclude Hint */
+            regex_exclude_hint?: string | null;
             /** Extra Config */
             extra_config?: {
                 [key: string]: unknown;
@@ -3090,6 +3176,10 @@ export interface components {
             default_move_completed: string | null;
             /** Active */
             active: boolean;
+            /** Regex Include Hint */
+            regex_include_hint: string | null;
+            /** Regex Exclude Hint */
+            regex_exclude_hint: string | null;
             /** Extra Config */
             extra_config: {
                 [key: string]: unknown;
@@ -3122,6 +3212,10 @@ export interface components {
             default_move_completed?: string | null;
             /** Active */
             active?: boolean | null;
+            /** Regex Include Hint */
+            regex_include_hint?: string | null;
+            /** Regex Exclude Hint */
+            regex_exclude_hint?: string | null;
             /** Extra Config */
             extra_config?: {
                 [key: string]: unknown;
@@ -4879,6 +4973,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScannedFileMatch"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_show_local_movie_file_api_shows__show_id__scan_local_movie_file_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScannedFileMatch"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_movie_file_api_shows__show_id__link_movie_file_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
                 };
             };
             /** @description Validation Error */
