@@ -1,5 +1,6 @@
 """Tests for RouteOrchestrator (MATCHED → ROUTED file routing)."""
 
+import shutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -499,6 +500,48 @@ async def test_run_shutil_failure_marks_error(tmp_path: Path) -> None:
     assert "permission denied" in (file.error_message or "")
     # local_path must be reset to staging so a retry can find the file
     assert file.local_path == original_staging_path
+
+
+@pytest.mark.asyncio
+async def test_run_copy_succeeds_but_delete_fails_marks_routed_with_warning(
+    tmp_path: Path,
+) -> None:
+    """If the copy half of shutil.move succeeds but deleting the original fails
+    (e.g. a NAS account deliberately granted no delete permission), the file is
+    still marked ROUTED — with a warning event — instead of ERROR."""
+    staging = tmp_path / "staging" / "Show.S01E01.mkv"
+    staging.parent.mkdir()
+    staging.write_bytes(b"video")
+
+    file = _make_file(local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    def _copy_then_fail_to_delete(src: str, dst: str) -> str:
+        shutil.copy2(src, dst)
+        raise PermissionError("delete not permitted on this share")
+
+    events: list[tuple[str, str, dict[str, object] | None]] = []
+
+    async def on_event(level: str, msg: str, ctx: dict[str, object] | None) -> None:
+        events.append((level, msg, ctx))
+
+    with patch("shutil.move", side_effect=_copy_then_fail_to_delete):
+        orch = RouteOrchestrator(session)
+        result = await orch.run(on_event=on_event)
+
+    assert result.files_routed == 1
+    assert result.files_failed == 0
+    assert file.status == FileStatus.ROUTED
+    assert file.error_message is None
+    assert (tmp_path / "media" / "tv" / "Show" / "Season 01" / "Show.S01E01.mkv").exists()
+    # The original is left behind since it couldn't be deleted.
+    assert staging.exists()
+
+    warn_events = [e for e in events if e[0] == "warn"]
+    assert len(warn_events) == 1
+    assert "could not delete the original" in warn_events[0][1]
 
 
 # ---------------------------------------------------------------------------
