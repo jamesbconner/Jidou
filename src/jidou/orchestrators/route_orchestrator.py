@@ -183,7 +183,11 @@ class RouteOrchestrator:
         """Route all MATCHED files to their final locations.
 
         Transitions: MATCHED → ROUTING → ROUTED (or ERROR on failure).
-        The staging file is moved (not copied) so disk space is reclaimed.
+        The staging file is moved (not copied) so disk space is reclaimed. If
+        the destination filesystem allows writes but not deletes (e.g. a
+        deliberately delete-restricted NAS account), a copy that succeeds but
+        fails to remove the original is still treated as ROUTED, with a
+        warning logged instead of an error — see ``run()`` below.
 
         Args:
             dry_run: Log what would happen without moving any files.
@@ -354,17 +358,56 @@ class RouteOrchestrator:
                     await self.session.flush()
                     await self.session.commit()
 
-                    shutil.move(str(source), str(dest))
+                    try:
+                        shutil.move(str(source), str(dest))
+                    except OSError as move_exc:
+                        # shutil.move falls back to copy-then-delete when a fast
+                        # rename isn't possible (e.g. correcting a mis-routed
+                        # file already on the NAS). Some NAS accounts are
+                        # deliberately granted no delete permission to prevent
+                        # a catastrophic accidental wipe, so the copy can
+                        # succeed while the cleanup delete of the original
+                        # fails. Detect that specific case (dest now holds a
+                        # full copy of source) and treat it as a successful
+                        # route with a warning, rather than failing the file
+                        # and leaving it stuck as MATCHED/ERROR forever.
+                        if (
+                            dest.exists()
+                            and source.exists()
+                            and dest.stat().st_size == source.stat().st_size
+                        ):
+                            logger.warning(
+                                "Routed %s → %s, but could not remove the original "
+                                "(likely no delete permission on the source share): %s",
+                                source,
+                                dest,
+                                move_exc,
+                            )
+                            await _emit(
+                                "warn",
+                                f"Routed {file.original_filename!r} → {dest}, but could not "
+                                f"delete the original at {source} ({move_exc}). "
+                                f"Remove it manually to reclaim space.",
+                                {
+                                    "file_id": file.id,
+                                    "show": show.title,
+                                    "dest": str(dest),
+                                    "leftover_source": str(source),
+                                },
+                            )
+                        else:
+                            raise
+                    else:
+                        logger.info("Routed %s → %s", source, dest)
+                        await _emit(
+                            "info",
+                            f"Routed {file.original_filename!r} → {dest}",
+                            {"file_id": file.id, "show": show.title, "dest": str(dest)},
+                        )
 
                     file.status = FileStatus.ROUTED
                     file.error_message = None
                     files_routed += 1
-                    logger.info("Routed %s → %s", source, dest)
-                    await _emit(
-                        "info",
-                        f"Routed {file.original_filename!r} → {dest}",
-                        {"file_id": file.id, "show": show.title, "dest": str(dest)},
-                    )
 
                     await self._update_episode_tracking(file, show.id)
 
