@@ -597,14 +597,14 @@ export default function ShowDetail() {
                             <div className="shrink-0 flex items-center gap-2">
                               <button
                                 onClick={() => setLinkFileEp(ep)}
-                                className="text-xs text-blue-600 hover:underline"
+                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
                               >
                                 Match File
                               </button>
                               {hasImportEps && (
                                 <button
                                   onClick={() => handleEpisodeFixEps(ep)}
-                                  className="text-xs text-blue-600 hover:underline"
+                                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
                                 >
                                   Fix Eps
                                 </button>
