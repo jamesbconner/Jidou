@@ -16,7 +16,8 @@ class Episode(TimestampMixin, Base):
     :class:`DownloadedFile` has been linked to this episode, and
     ``file_tracked_at`` records exactly when that transition occurred so
     activity dashboards can track intake volume over time regardless of
-    whether the file arrived via SFTP download or path import.
+    whether the file arrived via SFTP download or path import. ``watched``/
+    ``watched_at`` follow the same pattern for user-driven watch state.
     """
 
     __tablename__ = "episodes"
@@ -37,6 +38,8 @@ class Episode(TimestampMixin, Base):
     file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tracked_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    watched: Mapped[bool] = mapped_column(Boolean, default=False)
+    watched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the Episode."""

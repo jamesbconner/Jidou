@@ -608,6 +608,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/episodes/{episode_id}/watched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Episode Watched
+         * @description Mark a single episode as watched.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         episode_id: Database primary key of the episode.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Episode` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show or episode is not found.
+         */
+        post: operations["set_episode_watched_api_shows__show_id__episodes__episode_id__watched_post"];
+        /**
+         * Clear Episode Watched Route
+         * @description Clear the watched flag on a single episode.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         episode_id: Database primary key of the episode.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Episode` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show or episode is not found.
+         */
+        delete: operations["clear_episode_watched_route_api_shows__show_id__episodes__episode_id__watched_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shows/{show_id}/episodes/watched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Set Episodes Watched
+         * @description Mark every episode in a show (or one season) as watched.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         payload: ``season_number`` scopes the update to one season; omit to
+         *             apply it to the whole show.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated episodes, ordered by season and episode number.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        post: operations["bulk_set_episodes_watched_api_shows__show_id__episodes_watched_post"];
+        /**
+         * Bulk Clear Episodes Watched
+         * @description Clear the watched flag on every episode in a show (or one season).
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         payload: ``season_number`` scopes the update to one season; omit to
+         *             apply it to the whole show.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated episodes, ordered by season and episode number.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        delete: operations["bulk_clear_episodes_watched_api_shows__show_id__episodes_watched_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/episodes/{episode_id}/begin-rematch": {
         parameters: {
             query?: never;
@@ -2643,6 +2737,17 @@ export interface components {
             mode: string;
         };
         /**
+         * BulkWatchedRequest
+         * @description Request body for bulk watched/unwatched endpoints.
+         *
+         *     ``season_number`` scopes the operation to one season; omit (or pass
+         *     ``null``) to apply it to every episode in the show.
+         */
+        BulkWatchedRequest: {
+            /** Season Number */
+            season_number?: number | null;
+        };
+        /**
          * CalendarEpisode
          * @description One episode airing within a requested calendar date range.
          *
@@ -2797,6 +2902,10 @@ export interface components {
             tracked_filename?: string | null;
             /** Tracked Source */
             tracked_source?: string | null;
+            /** Watched */
+            watched: boolean;
+            /** Watched At */
+            watched_at?: string | null;
             /**
              * Backing Files
              * @default []
@@ -3695,6 +3804,11 @@ export interface components {
              * @default 0
              */
             episode_count: number;
+            /**
+             * Watched Episode Count
+             * @default 0
+             */
+            watched_episode_count: number;
             /**
              * Matched File Count
              * @default 0
@@ -4818,6 +4932,148 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_episode_watched_api_shows__show_id__episodes__episode_id__watched_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+                episode_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_episode_watched_route_api_shows__show_id__episodes__episode_id__watched_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+                episode_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_set_episodes_watched_api_shows__show_id__episodes_watched_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkWatchedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_clear_episodes_watched_api_shows__show_id__episodes_watched_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkWatchedRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

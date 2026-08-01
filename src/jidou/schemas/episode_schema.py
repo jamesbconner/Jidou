@@ -25,6 +25,8 @@ class EpisodeRead(BaseModel):
     episode_type: str | None = None
     still_path: str | None = None
     file_tracked: bool
+    watched: bool
+    watched_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -52,6 +54,8 @@ class EpisodeList(BaseModel):
     file_tracked: bool
     tracked_filename: str | None = None
     tracked_source: str | None = None
+    watched: bool
+    watched_at: datetime | None = None
     backing_files: list[BackingFile] = []
 
     @computed_field  # type: ignore[prop-decorator]
@@ -72,3 +76,13 @@ class EpisodeList(BaseModel):
             if self.tracked_filename is not None
             else None
         )
+
+
+class BulkWatchedRequest(BaseModel):
+    """Request body for bulk watched/unwatched endpoints.
+
+    ``season_number`` scopes the operation to one season; omit (or pass
+    ``null``) to apply it to every episode in the show.
+    """
+
+    season_number: int | None = None
