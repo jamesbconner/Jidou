@@ -554,7 +554,12 @@ export default function ShowDetail() {
                             <WatchedToggle
                               watched={ep.watched}
                               onToggle={() => handleToggleWatched(ep)}
-                              disabled={setEpisodeWatched.isPending || clearEpisodeWatched.isPending}
+                              disabled={
+                                (setEpisodeWatched.isPending &&
+                                  setEpisodeWatched.variables?.episodeId === ep.id) ||
+                                (clearEpisodeWatched.isPending &&
+                                  clearEpisodeWatched.variables?.episodeId === ep.id)
+                              }
                             />
                             <div className="min-w-0">
                               <span className="text-gray-400 mr-2">{ep.episode_number}.</span>

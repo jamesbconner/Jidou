@@ -1070,6 +1070,33 @@ async def _get_episode_or_404(db_session: AsyncSession, show_id: int, episode_id
     return ep
 
 
+async def _get_show_episodes_or_404(
+    db_session: AsyncSession, show_id: int, season_number: int | None
+) -> list[Episode]:
+    """Fetch a show's episodes (optionally scoped to one season), or raise 404.
+
+    Args:
+        db_session: DB session (injected).
+        show_id: Database primary key of the show.
+        season_number: If given, only episodes from this season are returned.
+
+    Returns:
+        Episodes ordered by season and episode number.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(Episode.show_id == show_id)
+    if season_number is not None:
+        ep_stmt = ep_stmt.where(Episode.season_number == season_number)
+    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
+    return list((await db_session.execute(ep_stmt)).scalars().all())
+
+
 @router.post("/{show_id}/episodes/{episode_id}/watched", response_model=EpisodeList)
 async def set_episode_watched(
     show_id: int,
@@ -1144,15 +1171,7 @@ async def bulk_set_episodes_watched(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Show not found")
-
-    ep_stmt = select(Episode).where(Episode.show_id == show_id)
-    if payload.season_number is not None:
-        ep_stmt = ep_stmt.where(Episode.season_number == payload.season_number)
-    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
-    episodes = list((await db_session.execute(ep_stmt)).scalars().all())
+    episodes = await _get_show_episodes_or_404(db_session, show_id, payload.season_number)
 
     for ep in episodes:
         mark_episode_watched(ep)
@@ -1181,15 +1200,7 @@ async def bulk_clear_episodes_watched(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Show not found")
-
-    ep_stmt = select(Episode).where(Episode.show_id == show_id)
-    if payload.season_number is not None:
-        ep_stmt = ep_stmt.where(Episode.season_number == payload.season_number)
-    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
-    episodes = list((await db_session.execute(ep_stmt)).scalars().all())
+    episodes = await _get_show_episodes_or_404(db_session, show_id, payload.season_number)
 
     for ep in episodes:
         clear_episode_watched(ep)
