@@ -22,7 +22,7 @@ from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.calendar_schema import CalendarEpisode
 from jidou.schemas.discover_schema import DiscoverResult
-from jidou.schemas.episode_schema import BackingFile, EpisodeList
+from jidou.schemas.episode_schema import BackingFile, BulkWatchedRequest, EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief, FileRead
 from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
@@ -41,6 +41,7 @@ from jidou.schemas.show_schema import (
 from jidou.services.cache import cache
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
+from jidou.services.episode_watching import clear_episode_watched, mark_episode_watched
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_resolution import resolve_show_local_path
@@ -364,6 +365,12 @@ async def list_shows(
         .correlate(Show)
         .scalar_subquery()
     )
+    watched_ep_count_sq = (
+        select(func.count(Episode.id))
+        .where(Episode.show_id == Show.id, Episode.watched.is_(True))
+        .correlate(Show)
+        .scalar_subquery()
+    )
     file_count_sq = (
         select(func.count(DownloadedFile.id))
         .where(DownloadedFile.show_id == Show.id)
@@ -384,6 +391,7 @@ async def list_shows(
         select(
             Show,
             ep_count_sq.label("episode_count"),
+            watched_ep_count_sq.label("watched_episode_count"),
             file_count_sq.label("matched_file_count"),
             active_rss_sq.label("has_active_rss_subscription"),
         )
@@ -393,9 +401,10 @@ async def list_shows(
     )
     rows = (await db_session.execute(stmt)).all()
     shows: list[ShowList] = []
-    for show, ep_count, file_count, has_active_rss in rows:
+    for show, ep_count, watched_ep_count, file_count, has_active_rss in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
+        data.watched_episode_count = watched_ep_count
         data.matched_file_count = file_count
         data.has_active_rss_subscription = has_active_rss
         shows.append(data)
@@ -1034,6 +1043,159 @@ async def list_episodes(
         el.backing_files = files_by_episode.get(ep.id, [])
         result.append(el)
     return result
+
+
+async def _get_episode_or_404(db_session: AsyncSession, show_id: int, episode_id: int) -> Episode:
+    """Fetch an episode scoped to *show_id*, or raise 404.
+
+    Args:
+        db_session: DB session (injected).
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+
+    Returns:
+        The matching :class:`Episode` record.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
+    ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
+    if ep is None:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    return ep
+
+
+@router.post("/{show_id}/episodes/{episode_id}/watched", response_model=EpisodeList)
+async def set_episode_watched(
+    show_id: int,
+    episode_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Episode:
+    """Mark a single episode as watched.
+
+    Args:
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Episode` record.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+    """
+    ep = await _get_episode_or_404(db_session, show_id, episode_id)
+    mark_episode_watched(ep)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(ep)
+    return ep
+
+
+@router.delete("/{show_id}/episodes/{episode_id}/watched", response_model=EpisodeList)
+async def clear_episode_watched_route(
+    show_id: int,
+    episode_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Episode:
+    """Clear the watched flag on a single episode.
+
+    Args:
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Episode` record.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+    """
+    ep = await _get_episode_or_404(db_session, show_id, episode_id)
+    clear_episode_watched(ep)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(ep)
+    return ep
+
+
+@router.post("/{show_id}/episodes/watched", response_model=list[EpisodeList])
+async def bulk_set_episodes_watched(
+    show_id: int,
+    payload: BulkWatchedRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[Episode]:
+    """Mark every episode in a show (or one season) as watched.
+
+    Args:
+        show_id: Database primary key of the show.
+        payload: ``season_number`` scopes the update to one season; omit to
+            apply it to the whole show.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated episodes, ordered by season and episode number.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(Episode.show_id == show_id)
+    if payload.season_number is not None:
+        ep_stmt = ep_stmt.where(Episode.season_number == payload.season_number)
+    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
+    episodes = list((await db_session.execute(ep_stmt)).scalars().all())
+
+    for ep in episodes:
+        mark_episode_watched(ep)
+    await db_session.flush()
+    await db_session.commit()
+    return episodes
+
+
+@router.delete("/{show_id}/episodes/watched", response_model=list[EpisodeList])
+async def bulk_clear_episodes_watched(
+    show_id: int,
+    payload: BulkWatchedRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[Episode]:
+    """Clear the watched flag on every episode in a show (or one season).
+
+    Args:
+        show_id: Database primary key of the show.
+        payload: ``season_number`` scopes the update to one season; omit to
+            apply it to the whole show.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated episodes, ordered by season and episode number.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    show_stmt = select(Show).where(Show.id == show_id)
+    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    ep_stmt = select(Episode).where(Episode.show_id == show_id)
+    if payload.season_number is not None:
+        ep_stmt = ep_stmt.where(Episode.season_number == payload.season_number)
+    ep_stmt = ep_stmt.order_by(Episode.season_number, Episode.episode_number)
+    episodes = list((await db_session.execute(ep_stmt)).scalars().all())
+
+    for ep in episodes:
+        clear_episode_watched(ep)
+    await db_session.flush()
+    await db_session.commit()
+    return episodes
 
 
 @router.post(

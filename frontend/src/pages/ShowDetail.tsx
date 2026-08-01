@@ -9,6 +9,10 @@ import {
   useSyncEpisodes,
   useDeleteShow,
   usePatchShow,
+  useSetEpisodeWatched,
+  useClearEpisodeWatched,
+  useBulkSetEpisodesWatched,
+  useBulkClearEpisodesWatched,
 } from '@/hooks/useShows'
 import { useBeginEpisodeRematch, useFilesByShow } from '@/hooks/useFiles'
 import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useRss'
@@ -33,6 +37,8 @@ import { ShowRematchModal } from '@/components/ShowRematchModal'
 import { ContentTypeModal } from '@/components/ContentTypeModal'
 import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
+import { WatchedToggle } from '@/components/WatchedToggle'
+import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -164,6 +170,10 @@ export default function ShowDetail() {
   const deleteShow = useDeleteShow()
   const beginRematch = useBeginEpisodeRematch()
   const patchShow = usePatchShow()
+  const setEpisodeWatched = useSetEpisodeWatched()
+  const clearEpisodeWatched = useClearEpisodeWatched()
+  const bulkSetWatched = useBulkSetEpisodesWatched()
+  const bulkClearWatched = useBulkClearEpisodesWatched()
   const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
   const { data: rssFeeds = [] } = useRssFeeds()
   const ensureRssStub = useEnsureRssStub()
@@ -230,6 +240,8 @@ export default function ShowDetail() {
   }
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
+  const watchedCount = episodes.filter((e) => e.watched).length
+  const allWatched = episodes.length > 0 && watchedCount === episodes.length
   const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
@@ -256,6 +268,14 @@ export default function ShowDetail() {
       setFileForRematch(file)
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
+    }
+  }
+
+  function handleToggleWatched(ep: EpisodeList) {
+    if (ep.watched) {
+      clearEpisodeWatched.mutate({ showId, episodeId: ep.id })
+    } else {
+      setEpisodeWatched.mutate({ showId, episodeId: ep.id })
     }
   }
 
@@ -330,6 +350,14 @@ export default function ShowDetail() {
               {show.overview && (
                 <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>
               )}
+              {!isMovie && (
+                <WatchedProgressBar
+                  watched={watchedCount}
+                  total={episodes.length}
+                  showLabel
+                  className="mt-2 max-w-xl"
+                />
+              )}
               {isMovie ? (
                 <p className="text-sm text-gray-500 mt-2">
                   {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
@@ -360,6 +388,22 @@ export default function ShowDetail() {
               <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 Fix Match
               </Button>
+              {!isMovie && episodes.length > 0 && (
+                <Button
+                  onClick={() =>
+                    allWatched
+                      ? bulkClearWatched.mutate({ showId })
+                      : bulkSetWatched.mutate({ showId })
+                  }
+                  disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
+                  variant="secondary"
+                  tone="light"
+                  size="sm"
+                  className="w-28"
+                >
+                  {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
+                </Button>
+              )}
               <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
               </Button>
@@ -467,7 +511,10 @@ export default function ShowDetail() {
           {Object.entries(bySeason)
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([season, eps]) => {
+              const seasonNumber = Number(season)
               const seasonTracked = eps.filter((e) => e.file_tracked).length
+              const seasonWatched = eps.filter((e) => e.watched).length
+              const seasonAllWatched = seasonWatched === eps.length
               return (
                 <details key={season} className="mb-2">
                   <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
@@ -477,6 +524,23 @@ export default function ShowDetail() {
                     {seasonTracked > 0 && (
                       <span className="text-xs text-green-600">{seasonTracked} tracked</span>
                     )}
+                    {seasonWatched > 0 && (
+                      <span className="text-xs text-gray-500">{seasonWatched} watched</span>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        if (seasonAllWatched) {
+                          bulkClearWatched.mutate({ showId, seasonNumber })
+                        } else {
+                          bulkSetWatched.mutate({ showId, seasonNumber })
+                        }
+                      }}
+                      disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
+                      className="text-xs text-blue-600 hover:underline disabled:opacity-40"
+                    >
+                      {seasonAllWatched ? 'Mark season unwatched' : 'Mark season watched'}
+                    </button>
                   </summary>
                   <div className="mt-2 divide-y border rounded-lg">
                     {eps
@@ -486,29 +550,36 @@ export default function ShowDetail() {
                           key={ep.id}
                           className="flex items-start justify-between px-3 py-2 text-sm gap-3"
                         >
-                          <div className="min-w-0">
-                            <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
-                            {ep.name}
-                            {ep.air_date && (
-                              <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
-                            )}
-                            {ep.file_tracked &&
-                              (ep.backing_files.length > 0
-                                ? ep.backing_files.map((bf) => (
-                                    <div
-                                      key={bf.id}
-                                      className="text-xs text-gray-400 font-mono mt-0.5"
-                                    >
-                                      {bf.filename.replace(/\\/g, '/').split('/').pop() ??
-                                        bf.filename}
-                                    </div>
-                                  ))
-                                : ep.tracked_filename_display && (
-                                    <div className="text-xs text-gray-400 font-mono mt-0.5">
-                                      {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
-                                        ep.tracked_filename_display}
-                                    </div>
-                                  ))}
+                          <div className="flex items-start gap-2 min-w-0">
+                            <WatchedToggle
+                              watched={ep.watched}
+                              onToggle={() => handleToggleWatched(ep)}
+                              disabled={setEpisodeWatched.isPending || clearEpisodeWatched.isPending}
+                            />
+                            <div className="min-w-0">
+                              <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
+                              {ep.name}
+                              {ep.air_date && (
+                                <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                              )}
+                              {ep.file_tracked &&
+                                (ep.backing_files.length > 0
+                                  ? ep.backing_files.map((bf) => (
+                                      <div
+                                        key={bf.id}
+                                        className="text-xs text-gray-400 font-mono mt-0.5"
+                                      >
+                                        {bf.filename.replace(/\\/g, '/').split('/').pop() ??
+                                          bf.filename}
+                                      </div>
+                                    ))
+                                  : ep.tracked_filename_display && (
+                                      <div className="text-xs text-gray-400 font-mono mt-0.5">
+                                        {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
+                                          ep.tracked_filename_display}
+                                      </div>
+                                    ))}
+                            </div>
                           </div>
                           {ep.file_tracked ? (
                             <TrackedBadges

@@ -258,6 +258,7 @@ class ShowList(BaseModel):
     local_path: str | None = None
     adult: bool | None = None
     episode_count: int = 0
+    watched_episode_count: int = 0
     matched_file_count: int = 0
     has_active_rss_subscription: bool = False
     created_at: datetime

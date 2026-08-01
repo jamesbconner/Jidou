@@ -253,3 +253,54 @@ export function useAssignImportEpisode() {
     },
   })
 }
+
+// A show-list card's watched-progress overlay reads ShowList.watched_episode_count,
+// so every watched mutation must also invalidate showKeys.all, not just the
+// per-show episode list.
+function useInvalidateWatched() {
+  const qc = useQueryClient()
+  return (showId: number) => {
+    qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    qc.invalidateQueries({ queryKey: showKeys.all })
+  }
+}
+
+export function useSetEpisodeWatched() {
+  const invalidate = useInvalidateWatched()
+  return useMutation({
+    mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
+      api.post<EpisodeList>(`/shows/${showId}/episodes/${episodeId}/watched`),
+    onSuccess: (_data, { showId }) => invalidate(showId),
+  })
+}
+
+export function useClearEpisodeWatched() {
+  const invalidate = useInvalidateWatched()
+  return useMutation({
+    mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
+      api.delete<EpisodeList>(`/shows/${showId}/episodes/${episodeId}/watched`),
+    onSuccess: (_data, { showId }) => invalidate(showId),
+  })
+}
+
+export function useBulkSetEpisodesWatched() {
+  const invalidate = useInvalidateWatched()
+  return useMutation({
+    mutationFn: ({ showId, seasonNumber }: { showId: number; seasonNumber?: number }) =>
+      api.post<EpisodeList[]>(`/shows/${showId}/episodes/watched`, {
+        season_number: seasonNumber ?? null,
+      }),
+    onSuccess: (_data, { showId }) => invalidate(showId),
+  })
+}
+
+export function useBulkClearEpisodesWatched() {
+  const invalidate = useInvalidateWatched()
+  return useMutation({
+    mutationFn: ({ showId, seasonNumber }: { showId: number; seasonNumber?: number }) =>
+      api.delete<EpisodeList[]>(`/shows/${showId}/episodes/watched`, {
+        season_number: seasonNumber ?? null,
+      }),
+    onSuccess: (_data, { showId }) => invalidate(showId),
+  })
+}

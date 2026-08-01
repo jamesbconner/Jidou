@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import { Card } from '@/components/ui/Card'
+import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import type { ShowList } from '@/types/api'
 
 const TMDB_IMG = '/api/images/w300'
@@ -100,6 +101,15 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
             !
           </span>
         )}
+
+        {/* Watched progress — bottom overlay; self-hides for movies (episode_count 0) */}
+        <WatchedProgressBar
+          watched={show.watched_episode_count}
+          total={show.episode_count}
+          className="absolute bottom-0 left-0 right-0"
+          trackClassName="h-1 w-full overflow-hidden bg-black/40"
+          barClassName="h-full bg-green-500"
+        />
       </div>
       <div className="p-3">
         <Link to={`/shows/${show.id}`} className="font-semibold text-sm hover:underline line-clamp-2">

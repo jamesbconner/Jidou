@@ -103,6 +103,8 @@ def _make_episode(*, id: int = 10, show_id: int = 1) -> MagicMock:
     ep.file_tracked = False
     ep.tracked_filename = None
     ep.tracked_source = None
+    ep.watched = False
+    ep.watched_at = None
     ep.created_at = datetime.now(UTC)
     ep.updated_at = datetime.now(UTC)
     return ep
@@ -112,6 +114,7 @@ def _session_override(
     single: MagicMock | None = None,
     many: list[MagicMock] | None = None,
     has_active_rss: bool = False,
+    watched_count: int = 0,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -126,8 +129,9 @@ def _session_override(
         items = many or ([single] if single else [])
         result.scalar_one_or_none.return_value = single
         result.scalars.return_value.all.return_value = items
-        # list_shows returns (show, ep_count, file_count, has_active_rss) tuples via .all()
-        result.all.return_value = [(item, 0, 0, has_active_rss) for item in items]
+        # list_shows returns (show, ep_count, watched_ep_count, file_count,
+        # has_active_rss) tuples via .all()
+        result.all.return_value = [(item, 0, watched_count, 0, has_active_rss) for item in items]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
@@ -195,6 +199,20 @@ def test_list_shows_defaults_active_rss_subscription_to_false() -> None:
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json()[0]["has_active_rss_subscription"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_watched_episode_count() -> None:
+    """watched_episode_count reflects the correlated count subquery per show."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], watched_count=3)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["watched_episode_count"] == 3
     finally:
         app.dependency_overrides.clear()
 
@@ -750,6 +768,200 @@ def test_list_episodes_returns_404_for_missing_show() -> None:
     try:
         response = TestClient(app).get("/api/shows/9999/episodes")
         assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST/DELETE /api/shows/{show_id}/episodes/{episode_id}/watched
+# ---------------------------------------------------------------------------
+
+
+def _two_query_session(show: MagicMock | None, episode: MagicMock | None) -> "type[AsyncMock]":
+    """Session override for routes that look up a show, then an episode."""
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = episode
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    return _session  # type: ignore[return-value]
+
+
+def test_set_episode_watched_returns_404_when_show_missing() -> None:
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _two_query_session(None, None)
+    try:
+        response = TestClient(app).post("/api/shows/9999/episodes/1/watched")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_set_episode_watched_returns_404_when_episode_missing() -> None:
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    app.dependency_overrides[get_session] = _two_query_session(show, None)
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/9999/watched")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_set_episode_watched_marks_episode() -> None:
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    app.dependency_overrides[get_session] = _two_query_session(show, ep)
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/10/watched")
+        assert response.status_code == 200
+        assert ep.watched is True
+        assert ep.watched_at is not None
+        assert response.json()["watched"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_watched_returns_404_when_show_missing() -> None:
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _two_query_session(None, None)
+    try:
+        response = TestClient(app).delete("/api/shows/9999/episodes/1/watched")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_watched_clears_episode() -> None:
+    from datetime import UTC, datetime
+
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    ep.watched = True
+    ep.watched_at = datetime.now(UTC)
+    app.dependency_overrides[get_session] = _two_query_session(show, ep)
+    try:
+        response = TestClient(app).delete("/api/shows/1/episodes/10/watched")
+        assert response.status_code == 200
+        assert ep.watched is False
+        assert ep.watched_at is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST/DELETE /api/shows/{show_id}/episodes/watched (bulk)
+# ---------------------------------------------------------------------------
+
+
+def _bulk_watched_session(show: MagicMock | None, episodes: list[MagicMock]) -> "type[AsyncMock]":
+    """Session override for the bulk watched/unwatched routes."""
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = episodes
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    return _session  # type: ignore[return-value]
+
+
+def test_bulk_set_episodes_watched_returns_404_when_show_missing() -> None:
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _bulk_watched_session(None, [])
+    try:
+        response = TestClient(app).post("/api/shows/9999/episodes/watched", json={})
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_bulk_set_episodes_watched_marks_every_episode() -> None:
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    episodes = [_make_episode(id=10, show_id=1), _make_episode(id=11, show_id=1)]
+    app.dependency_overrides[get_session] = _bulk_watched_session(show, episodes)
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/watched", json={})
+        assert response.status_code == 200
+        assert all(ep.watched is True for ep in episodes)
+        assert len(response.json()) == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_bulk_set_episodes_watched_scoped_to_season() -> None:
+    """A season_number filter must be applied to the episode query, not just accepted."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    episodes = [_make_episode(id=10, show_id=1)]
+    sessions: list[AsyncMock] = []
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = episodes
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        sessions.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/episodes/watched", json={"season_number": 2})
+        assert response.status_code == 200
+        assert episodes[0].watched is True
+
+        ep_stmt = sessions[0].execute.await_args_list[1].args[0]
+        compiled = str(ep_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "season_number" in compiled
+        assert "= 2" in compiled
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_bulk_clear_episodes_watched_clears_every_episode() -> None:
+    from datetime import UTC, datetime
+
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    episodes = [_make_episode(id=10, show_id=1), _make_episode(id=11, show_id=1)]
+    for ep in episodes:
+        ep.watched = True
+        ep.watched_at = datetime.now(UTC)
+    app.dependency_overrides[get_session] = _bulk_watched_session(show, episodes)
+    try:
+        response = TestClient(app).request("DELETE", "/api/shows/1/episodes/watched", json={})
+        assert response.status_code == 200
+        assert all(ep.watched is False for ep in episodes)
+        assert all(ep.watched_at is None for ep in episodes)
     finally:
         app.dependency_overrides.clear()
 

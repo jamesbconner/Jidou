@@ -86,6 +86,8 @@ _EPISODE_HANDLED_COLUMNS = frozenset(
         "file_tracked_at",
         "tracked_filename",
         "tracked_source",
+        "watched",
+        "watched_at",
     }
 )
 
@@ -439,6 +441,8 @@ def _build_episode(row: dict[str, Any]) -> Episode:
         file_tracked_at=_parse_iso_datetime(row.get("file_tracked_at")),
         tracked_filename=row.get("tracked_filename"),
         tracked_source=row.get("tracked_source"),
+        watched=row.get("watched", False),
+        watched_at=_parse_iso_datetime(row.get("watched_at")),
     )
 
 
@@ -455,6 +459,7 @@ def _update_episode(ep: Episode, row: dict[str, Any]) -> None:
     ep.file_tracked = row.get("file_tracked", ep.file_tracked)
     ep.tracked_filename = row.get("tracked_filename", ep.tracked_filename)
     ep.tracked_source = row.get("tracked_source", ep.tracked_source)
+    ep.watched = row.get("watched", ep.watched)
 
     if "file_tracked_at" in row:
         raw = row.get("file_tracked_at")
@@ -467,6 +472,16 @@ def _update_episode(ep: Episode, row: dict[str, Any]) -> None:
             # existing timestamp -- leave it untouched, same as air_date.
             if parsed is not None:
                 ep.file_tracked_at = parsed
+
+    if "watched_at" in row:
+        watched_raw = row.get("watched_at")
+        if watched_raw is None:
+            # Explicit null is a legitimate signal that watched was cleared.
+            ep.watched_at = None
+        else:
+            watched_parsed = _parse_iso_datetime(watched_raw)
+            if watched_parsed is not None:
+                ep.watched_at = watched_parsed
 
     air_date_raw = row.get("air_date")
     if air_date_raw:
