@@ -44,6 +44,7 @@ def _make_file(
     f.parsed_episode = None
     f.parsed_confidence = None
     f.parsed_content_type = None
+    f.crc32_declared = None
     f.error_message = None
     return f
 
@@ -156,6 +157,48 @@ async def test_run_with_llm_and_matched_show():
     assert file1.parsed_season == 1
     assert file1.parsed_episode == 1
     assert file1.parsed_content_type == "anime"
+
+
+async def test_run_persists_crc32_declared_from_llm():
+    """The LLM's own crc32 reading is persisted separately from any other source.
+
+    Uses lowercase in the LLM response to show crc32_declared is stored
+    exactly as parse_filename() returned it (unlike the regex path, which
+    always uppercases) -- so a case mismatch against crc32_extracted is a
+    visible, debuggable signal instead of being silently normalised away.
+    """
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.[ABCD1234].1080p.mkv")
+    show = _make_show(title="Attack on Titan")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": "abcd1234", "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    await orch.run()
+
+    assert file1.crc32_declared == "abcd1234"
 
 
 async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
@@ -376,6 +419,32 @@ async def test_run_no_llm_heuristic_proceeds_to_db_lookup():
 
     assert result.files_matched == 1
     assert file1.status == FileStatus.MATCHED
+
+
+async def test_run_persists_crc32_declared_from_heuristic():
+    """Without an LLM, the heuristic regex reading is still persisted as declared."""
+    show = _make_show(title="UnknownFile")
+    file1 = _make_file(filename="UnknownFile.S01E01.[ABCD1234].mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    orch = ParseOrchestrator(session, llm=None)
+    await orch.run()
+
+    assert file1.crc32_declared == "ABCD1234"
 
 
 async def test_run_movie_bypasses_confidence_gate():
