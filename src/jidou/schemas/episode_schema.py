@@ -48,6 +48,7 @@ class EpisodeList(BaseModel):
     season_number: int
     episode_number: int
     name: str
+    overview: str | None = None
     air_date: date | None = None
     episode_type: str | None = None
     absolute_episode_number: int | None = None

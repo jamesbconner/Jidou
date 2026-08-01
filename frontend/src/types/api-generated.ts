@@ -2890,6 +2890,8 @@ export interface components {
             episode_number: number;
             /** Name */
             name: string;
+            /** Overview */
+            overview?: string | null;
             /** Air Date */
             air_date?: string | null;
             /** Episode Type */

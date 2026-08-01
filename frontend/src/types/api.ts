@@ -73,7 +73,6 @@ export type EpisodeList = Omit<components['schemas']['EpisodeList'], 'tracked_so
 
 export interface EpisodeRead extends EpisodeList {
   tmdb_id: number
-  overview: string | null
   runtime: number | null
   still_path: string | null
   created_at: string

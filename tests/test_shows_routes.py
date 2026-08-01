@@ -721,6 +721,36 @@ def test_list_episodes_returns_episode_list() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_episodes_includes_overview() -> None:
+    """GET /api/shows/{id}/episodes surfaces each episode's overview text."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    episode = _make_episode(id=10, show_id=1)
+    episode.overview = "A pilot episode overview."
+
+    async def _two_query_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = [episode]
+        files_result = MagicMock()
+        files_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, files_result])
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _two_query_session
+    try:
+        response = TestClient(app).get("/api/shows/1/episodes")
+        assert response.status_code == 200
+        body = response.json()
+        assert body[0]["overview"] == "A pilot episode overview."
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_episodes_tracked_filename_display_is_decoded() -> None:
     """tracked_filename_display shows a readable name; tracked_filename stays byte-exact.
 
