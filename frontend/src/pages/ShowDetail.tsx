@@ -199,7 +199,7 @@ export default function ShowDetail() {
   const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
   const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
-  const [episodesTab, setEpisodesTab] = useState<'episodes' | 'data'>('episodes')
+  const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
 
   useEffect(() => {
     setRematchOpen(false)
@@ -498,14 +498,14 @@ export default function ShowDetail() {
                 Episodes ({episodes.length})
               </button>
               <button
-                onClick={() => setEpisodesTab('data')}
+                onClick={() => setEpisodesTab('missing')}
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  episodesTab === 'data'
+                  episodesTab === 'missing'
                     ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                Data Quality
+                Missing Episodes
                 {missingCount > 0 && (
                   <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
                     {missingCount}
@@ -539,7 +539,7 @@ export default function ShowDetail() {
               </div>
             )}
           </div>
-          {episodesTab === 'data' ? (
+          {episodesTab === 'missing' ? (
             <MissingEpisodesList episodes={episodes} />
           ) : (
             <>

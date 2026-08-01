@@ -115,6 +115,7 @@ def _session_override(
     many: list[MagicMock] | None = None,
     has_active_rss: bool = False,
     watched_count: int = 0,
+    missing_count: int = 0,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -130,8 +131,10 @@ def _session_override(
         result.scalar_one_or_none.return_value = single
         result.scalars.return_value.all.return_value = items
         # list_shows returns (show, ep_count, watched_ep_count, file_count,
-        # has_active_rss) tuples via .all()
-        result.all.return_value = [(item, 0, watched_count, 0, has_active_rss) for item in items]
+        # missing_ep_count, has_active_rss) tuples via .all()
+        result.all.return_value = [
+            (item, 0, watched_count, 0, missing_count, has_active_rss) for item in items
+        ]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
         session.refresh = AsyncMock()
@@ -213,6 +216,20 @@ def test_list_shows_surfaces_watched_episode_count() -> None:
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json()[0]["watched_episode_count"] == 3
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_missing_episode_count() -> None:
+    """missing_episode_count reflects the correlated count subquery per show."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], missing_count=5)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["missing_episode_count"] == 5
     finally:
         app.dependency_overrides.clear()
 

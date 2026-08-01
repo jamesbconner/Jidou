@@ -9,6 +9,7 @@ import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
@@ -99,6 +100,7 @@ function applyFilters(
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
   const [dqFilter, setDqFilter] = useState<string | null>(null)
+  const [missingQuery, setMissingQuery] = useState('')
   const [query, setQuery] = useState('')
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
   const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
@@ -220,6 +222,21 @@ export default function Shows() {
       ? allShows.filter(check.test)
       : allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
   }, [allShows, dqFilter])
+
+  const showsWithMissingEpisodes = useMemo(
+    () => allShows.filter((s) => s.missing_episode_count > 0),
+    [allShows],
+  )
+  const totalMissingEpisodes = useMemo(
+    () => showsWithMissingEpisodes.reduce((sum, s) => sum + s.missing_episode_count, 0),
+    [showsWithMissingEpisodes],
+  )
+  const missingEpisodeRows = useMemo(() => {
+    const q = missingQuery.trim().toLowerCase()
+    return showsWithMissingEpisodes
+      .filter((s) => !q || s.title.toLowerCase().includes(q))
+      .sort((a, b) => b.missing_episode_count - a.missing_episode_count)
+  }, [showsWithMissingEpisodes, missingQuery])
 
   const activeFilterCount = [
     filterContentType, filterStatus, filterGenre, filterLanguage, filterMinRating,
@@ -511,6 +528,65 @@ export default function Shows() {
                 </button>
               )
             })}
+          </div>
+
+          {/* Missing episodes aggregation */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">Missing Episodes</h3>
+                {totalMissingEpisodes > 0 && (
+                  <span className="bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5 font-medium">
+                    {totalMissingEpisodes}
+                  </span>
+                )}
+              </div>
+              {showsWithMissingEpisodes.length > 0 && (
+                <input
+                  type="search"
+                  placeholder="Filter by title…"
+                  value={missingQuery}
+                  onChange={(e) => setMissingQuery(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+            </div>
+            {showsWithMissingEpisodes.length === 0 ? (
+              <p className="text-sm text-gray-500">No missing episodes across the library.</p>
+            ) : missingEpisodeRows.length === 0 ? (
+              <p className="text-sm text-gray-500">No shows match &quot;{missingQuery}&quot;.</p>
+            ) : (
+              <Card className="overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Show</th>
+                      <th className="px-4 py-2 text-left">Missing</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {missingEpisodeRows.map((s) => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2">
+                          <Link
+                            to={`/shows/${s.id}`}
+                            className="font-medium hover:underline text-blue-700"
+                          >
+                            {s.title}
+                          </Link>
+                          <span className="block text-xs text-gray-400">TMDB #{s.tmdb_id}</span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="bg-amber-100 text-amber-700 text-xs font-medium rounded-full px-2 py-0.5">
+                            {s.missing_episode_count}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
           </div>
 
           {/* Active filter description */}

@@ -195,6 +195,10 @@ export interface paths {
          *         sort: Sort order key. One of: ``title_asc``, ``title_desc``,
          *             ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
          *             ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
+         *         today: The caller's notion of "today", used to decide whether an
+         *             episode has aired for ``missing_episode_count``. Defaults to the
+         *             server's current date; overridable so a client on a different
+         *             timezone doesn't disagree with the server about "today".
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -3817,6 +3821,11 @@ export interface components {
              */
             matched_file_count: number;
             /**
+             * Missing Episode Count
+             * @default 0
+             */
+            missing_episode_count: number;
+            /**
              * Has Active Rss Subscription
              * @default false
              */
@@ -4477,6 +4486,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 sort?: string;
+                today?: string | null;
             };
             header?: {
                 "x-api-key"?: string | null;

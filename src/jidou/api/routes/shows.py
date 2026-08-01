@@ -344,6 +344,7 @@ async def list_shows(
             "|release_desc|release_asc|last_aired_desc|rating_desc|episodes_desc)$"
         ),
     ),
+    today: date | None = None,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[ShowList]:
     """List all shows stored in the database.
@@ -354,11 +355,16 @@ async def list_shows(
         sort: Sort order key. One of: ``title_asc``, ``title_desc``,
             ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
             ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
+        today: The caller's notion of "today", used to decide whether an
+            episode has aired for ``missing_episode_count``. Defaults to the
+            server's current date; overridable so a client on a different
+            timezone doesn't disagree with the server about "today".
         db_session: DB session (injected).
 
     Returns:
         List of shows in the requested order with local episode counts.
     """
+    today = today or date.today()
     ep_count_sq = (
         select(func.count(Episode.id))
         .where(Episode.show_id == Show.id)
@@ -374,6 +380,16 @@ async def list_shows(
     file_count_sq = (
         select(func.count(DownloadedFile.id))
         .where(DownloadedFile.show_id == Show.id)
+        .correlate(Show)
+        .scalar_subquery()
+    )
+    missing_ep_count_sq = (
+        select(func.count(Episode.id))
+        .where(
+            Episode.show_id == Show.id,
+            Episode.air_date < today,
+            Episode.file_tracked.is_(False),
+        )
         .correlate(Show)
         .scalar_subquery()
     )
@@ -393,6 +409,7 @@ async def list_shows(
             ep_count_sq.label("episode_count"),
             watched_ep_count_sq.label("watched_episode_count"),
             file_count_sq.label("matched_file_count"),
+            missing_ep_count_sq.label("missing_episode_count"),
             active_rss_sq.label("has_active_rss_subscription"),
         )
         .order_by(_SORT_MAP[sort])
@@ -401,11 +418,12 @@ async def list_shows(
     )
     rows = (await db_session.execute(stmt)).all()
     shows: list[ShowList] = []
-    for show, ep_count, watched_ep_count, file_count, has_active_rss in rows:
+    for show, ep_count, watched_ep_count, file_count, missing_ep_count, has_active_rss in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
         data.watched_episode_count = watched_ep_count
         data.matched_file_count = file_count
+        data.missing_episode_count = missing_ep_count
         data.has_active_rss_subscription = has_active_rss
         shows.append(data)
     return shows
