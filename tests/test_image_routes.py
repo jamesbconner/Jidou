@@ -148,6 +148,7 @@ class TestCacheMiss:
         assert response.status_code == 502
 
     def test_network_error_returns_502(self, client: TestClient) -> None:
+        """Persistent transport errors exhaust retries and surface as 502."""
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = False
@@ -157,10 +158,42 @@ class TestCacheMiss:
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
             patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
             patch("httpx2.AsyncClient", return_value=mock_client),
+            patch("asyncio.sleep", AsyncMock()),
         ):
             response = client.get("/api/images/w300/abc123.jpg")
 
         assert response.status_code == 502
+        assert mock_client.get.call_count == images_module._MAX_TRANSPORT_RETRIES
+
+    def test_transport_error_retries_then_succeeds(self, client: TestClient) -> None:
+        """A transient DNS/connect failure on the first attempt is retried and succeeds."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"fetched-bytes"
+        mock_response.elapsed.total_seconds.return_value = 0.05
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
+        mock_client.get = AsyncMock(
+            side_effect=[httpx.ConnectError("No address associated with hostname"), mock_response]
+        )
+        mock_put = AsyncMock()
+
+        with (
+            patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=None)),
+            patch.object(images_module.image_cache_backend, "put", mock_put),
+            patch.object(images_module.image_rate_limiter, "acquire", _noop_acquire),
+            patch("httpx2.AsyncClient", return_value=mock_client),
+            patch("asyncio.sleep", AsyncMock()),
+        ):
+            response = client.get("/api/images/w300/abc123.jpg")
+
+        assert response.status_code == 200
+        assert response.content == b"fetched-bytes"
+        assert mock_client.get.call_count == 2
+        mock_put.assert_called_once_with("w300", "abc123.jpg", b"fetched-bytes")
 
 
 def test_backend_not_configured_returns_503(client: TestClient) -> None:

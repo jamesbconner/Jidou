@@ -24,6 +24,12 @@ _VALID_SIZES = frozenset({"w92", "w185", "w300", "w500", "w780", "w1280"})
 _FILENAME_RE = re.compile(r"^[A-Za-z0-9]+\.(jpg|png)$")
 _TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 
+# Transient transport failures (connect/read timeouts, refused/reset
+# connections, DNS resolution blips) are retried with exponential backoff
+# before giving up -- mirrors TMDBService._get_with_retry in services/tmdb.py.
+_MAX_TRANSPORT_RETRIES = 3
+_RETRY_BASE_DELAY_SECONDS = 0.5
+
 # Browser-side caching, independent of the backend's own disk retention
 # (settings.image_cache_retention_days).
 _BROWSER_CACHE_MAX_AGE = 604_800  # 7 days
@@ -62,6 +68,47 @@ def _cache_headers() -> dict[str, str]:
     return {"Cache-Control": f"public, max-age={_BROWSER_CACHE_MAX_AGE}"}
 
 
+async def _get_with_retry(url: str) -> httpx.Response:
+    """Issue one rate-limited GET, retrying transient transport failures.
+
+    Each attempt (including retries) re-acquires the rate limiter, since a
+    retry is a fresh call to the external CDN and must respect the same
+    budget as the original attempt. Mirrors TMDBService._get_with_retry in
+    services/tmdb.py.
+
+    Args:
+        url: Fully-qualified image URL.
+
+    Returns:
+        The successful HTTP response.
+
+    Raises:
+        httpx.HTTPStatusError: If TMDB returns a non-2xx status.
+        httpx.TransportError: If every attempt fails to connect.
+    """
+    for attempt in range(1, _MAX_TRANSPORT_RETRIES + 1):
+        try:
+            async with image_rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                return response
+        except httpx.TransportError as exc:
+            if attempt == _MAX_TRANSPORT_RETRIES:
+                logger.error("TMDB image fetch %s failed after %d attempts: %s", url, attempt, exc)
+                raise
+            delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                "TMDB image fetch %s transport error (attempt %d/%d): %s; retrying in %.1fs",
+                url,
+                attempt,
+                _MAX_TRANSPORT_RETRIES,
+                exc,
+                delay,
+            )
+            await asyncio.sleep(delay)
+    raise AssertionError("unreachable")  # loop always returns or raises
+
+
 async def _fetch_from_tmdb(size: str, filename: str) -> bytes:
     """Rate-limited fetch of one image's bytes from TMDB.
 
@@ -71,15 +118,17 @@ async def _fetch_from_tmdb(size: str, filename: str) -> bytes:
     poster/backdrop fetches don't queue behind (or steal budget from) TMDB
     metadata sync traffic.
 
+    Transient transport failures (connect/read timeouts, DNS resolution
+    blips) are retried with backoff via _get_with_retry before surfacing as
+    a 502 -- see _get_with_retry's docstring.
+
     Raises:
         HTTPException: 404 if TMDB has no such image, 502 for other
             upstream failures.
     """
     url = f"{_TMDB_IMAGE_BASE}/{size}/{filename}"
     try:
-        async with image_rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        response = await _get_with_retry(url)
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         if status_code == 404:
