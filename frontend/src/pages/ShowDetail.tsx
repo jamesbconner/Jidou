@@ -545,7 +545,17 @@ export default function ShowDetail() {
                   <div className="mt-2 divide-y border rounded-lg">
                     {eps
                       .sort((a, b) => a.episode_number - b.episode_number)
-                      .map((ep) => (
+                      .map((ep) => {
+                        const header = (
+                          <>
+                            <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
+                            {ep.name}
+                            {ep.air_date && (
+                              <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                            )}
+                          </>
+                        )
+                        return (
                         <div
                           key={ep.id}
                           className="flex items-start justify-between px-3 py-2 text-sm gap-3"
@@ -562,10 +572,13 @@ export default function ShowDetail() {
                               }
                             />
                             <div className="min-w-0">
-                              <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
-                              {ep.name}
-                              {ep.air_date && (
-                                <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                              {ep.overview ? (
+                                <details>
+                                  <summary className="cursor-pointer list-none">{header}</summary>
+                                  <p className="text-xs text-gray-500 mt-1">{ep.overview}</p>
+                                </details>
+                              ) : (
+                                header
                               )}
                               {ep.file_tracked &&
                                 (ep.backing_files.length > 0
@@ -612,7 +625,8 @@ export default function ShowDetail() {
                             </div>
                           )}
                         </div>
-                      ))}
+                        )
+                      })}
                   </div>
                 </details>
               )
