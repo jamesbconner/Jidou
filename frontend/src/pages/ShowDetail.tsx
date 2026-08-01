@@ -39,11 +39,13 @@ import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
 import { WatchedToggle } from '@/components/WatchedToggle'
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
+import { MissingEpisodesList } from '@/components/MissingEpisodesList'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { api } from '@/api/client'
 import { toHostPath } from '@/utils/paths'
+import { computeMissingEpisodes } from '@/utils/missingEpisodes'
 import type {
   EpisodeList,
   FileRead,
@@ -197,6 +199,7 @@ export default function ShowDetail() {
   const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
   const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
+  const [episodesTab, setEpisodesTab] = useState<'episodes' | 'data'>('episodes')
 
   useEffect(() => {
     setRematchOpen(false)
@@ -212,6 +215,7 @@ export default function ShowDetail() {
     setScanLocalFilesOpen(false)
     setScanLocalMovieFileOpen(false)
     setRssModalSub(null)
+    setEpisodesTab('episodes')
     syncEpisodes.reset()
     updatePaths.reset()
     patchShow.reset()
@@ -241,6 +245,7 @@ export default function ShowDetail() {
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
   const watchedCount = episodes.filter((e) => e.watched).length
+  const missingCount = computeMissingEpisodes(episodes).reduce((sum, s) => sum + s.missing.length, 0)
   const allWatched = episodes.length > 0 && watchedCount === episodes.length
   const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
@@ -480,32 +485,64 @@ export default function ShowDetail() {
         </Card>
       ) : (
         <Card as="section" padding="md">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Episodes ({episodes.length})</h2>
-            <div className="flex gap-2 flex-wrap items-center">
+          <div className="flex items-center justify-between mb-3 gap-4 flex-wrap">
+            <div className="flex border-b -mb-3">
               <button
-                onClick={() => syncEpisodes.mutate(showId)}
-                disabled={syncEpisodes.isPending}
-                className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setEpisodesTab('episodes')}
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  episodesTab === 'episodes'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
               >
-                {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
+                Episodes ({episodes.length})
               </button>
               <button
-                onClick={() => setScanLocalFilesOpen(true)}
-                className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                onClick={() => setEpisodesTab('data')}
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  episodesTab === 'data'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
               >
-                Scan Local Files
+                Data Quality
+                {missingCount > 0 && (
+                  <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+                    {missingCount}
+                  </span>
+                )}
               </button>
-              {syncEpisodes.isSuccess && (
-                <span className="text-xs text-green-600">Episodes synced</span>
-              )}
-              {syncEpisodes.isError && (
-                <span className="text-xs text-red-600">
-                  {(syncEpisodes.error as Error).message}
-                </span>
-              )}
             </div>
+            {episodesTab === 'episodes' && (
+              <div className="flex gap-2 flex-wrap items-center">
+                <button
+                  onClick={() => syncEpisodes.mutate(showId)}
+                  disabled={syncEpisodes.isPending}
+                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
+                </button>
+                <button
+                  onClick={() => setScanLocalFilesOpen(true)}
+                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                >
+                  Scan Local Files
+                </button>
+                {syncEpisodes.isSuccess && (
+                  <span className="text-xs text-green-600">Episodes synced</span>
+                )}
+                {syncEpisodes.isError && (
+                  <span className="text-xs text-red-600">
+                    {(syncEpisodes.error as Error).message}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
+          {episodesTab === 'data' ? (
+            <MissingEpisodesList episodes={episodes} />
+          ) : (
+            <>
           {beginRematch.isError && (
             <p className="text-xs text-red-500 mb-2">{(beginRematch.error as Error).message}</p>
           )}
@@ -631,6 +668,8 @@ export default function ShowDetail() {
                 </details>
               )
             })}
+            </>
+          )}
         </Card>
       )}
 
