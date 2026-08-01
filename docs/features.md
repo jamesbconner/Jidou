@@ -174,6 +174,20 @@ Shows can be added to the watchlist from the Show Detail page — a color-coded 
 
 ---
 
+## Watched tracking
+
+Track which episodes you've actually watched, independently of file tracking and the watchlist status above — `file_tracked` means "Jidou has the file," `watched` means "you've seen it."
+
+**Per-episode:** Each episode row on the Show Detail page has a toggle switch to the left of the episode name (`POST`/`DELETE /shows/{show_id}/episodes/{episode_id}/watched`).
+
+**Bulk marking:** A matching toggle sits to the left of each season header — flipping it marks (or unmarks) every episode in that season in one request. A **Mark Watched**/**Mark Unwatched** button next to **Add To Watchlist** does the same for the whole show. Both go through the same bulk endpoint (`POST`/`DELETE /shows/{show_id}/episodes/watched`, optionally scoped with `season_number`).
+
+**Progress display:** A progress bar sits under the show overview on the Show Detail page (`N / total watched`), and the Shows-page grid card shows the same progress as a thin bar along the bottom of the poster.
+
+![Show Detail watched toggles and progress bar](screenshots/show-detail-watched.png)
+
+---
+
 ## Discover
 
 The **Discover** page (nav bar, between Shows and Files) surfaces shows and movies not yet in your library: `GET /api/shows/discover` seeds recommendations from your most recently updated `watching`/`completed` watchlist shows, dedupes them, and fills out the feed with trending TV/movies when seeded results are thin — or falls back to plain trending if your watchlist has no watching/completed entries at all. Each card shows which watchlist shows it was recommended because of (`seeded_from`), and clicking a card opens a detail modal with the overview, rating, and a "View on TMDB" link.

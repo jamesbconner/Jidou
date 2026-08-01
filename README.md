@@ -26,7 +26,7 @@ Open http://localhost:3100
 |--|--|
 | [Quickstart](docs/quickstart.md) | Clone → configure → running in 5 minutes |
 | [Setup](docs/setup.md) | Docker, bare-metal, all env vars, SFTP, auth |
-| [Features](docs/features.md) | Scanning, matching, routing, watchlist, RSS, import |
+| [Features](docs/features.md) | Scanning, matching, routing, watchlist, watched tracking, RSS, import |
 | [API Reference](docs/api.md) | REST endpoints, authentication, WebSocket |
 | [Architecture](docs/architecture.md) | Design decisions and system structure |
 | [Matching Pipeline](docs/matching-pipeline.md) | How a file gets resolved to a show/episode — both the SFTP and path-import pipelines, in detail |
