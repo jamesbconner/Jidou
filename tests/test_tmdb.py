@@ -589,3 +589,59 @@ class TestTMDBRequestHTTPLayer:
             with pytest.raises(httpx.HTTPStatusError):
                 await tmdb_service.search("test")
         mock_cache_set.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_transport_error_retries_then_succeeds(self, tmdb_service: TMDBService) -> None:
+        """A ConnectError on the first attempt is retried and succeeds on the second."""
+        payload = {"results": [{"id": 7}]}
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.elapsed.total_seconds.return_value = 0.05
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = payload
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
+        mock_client.get = AsyncMock(side_effect=[httpx.ConnectError("refused"), mock_response])
+
+        @asynccontextmanager
+        async def _noop_acquire() -> AsyncGenerator[None]:
+            yield
+
+        with (
+            patch.object(tmdb_module.cache, "get", AsyncMock(return_value=None)),
+            patch.object(tmdb_module.cache, "set", AsyncMock()),
+            patch.object(tmdb_module.rate_limiter, "acquire", _noop_acquire),
+            patch("httpx2.AsyncClient", return_value=mock_client),
+            patch("asyncio.sleep", AsyncMock()),
+        ):
+            result = await tmdb_service.get_trending()
+
+        assert result == payload
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_transport_error_exhausts_retries_and_raises(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """Persistent ConnectErrors exhaust retries and the original error propagates."""
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        @asynccontextmanager
+        async def _noop_acquire() -> AsyncGenerator[None]:
+            yield
+
+        with (
+            patch.object(tmdb_module.cache, "get", AsyncMock(return_value=None)),
+            patch.object(tmdb_module.rate_limiter, "acquire", _noop_acquire),
+            patch("httpx2.AsyncClient", return_value=mock_client),
+            patch("asyncio.sleep", AsyncMock()),
+            pytest.raises(httpx.ConnectError),
+        ):
+            await tmdb_service.get_trending()
+
+        assert mock_client.get.call_count == TMDBService._MAX_TRANSPORT_RETRIES
