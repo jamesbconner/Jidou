@@ -145,6 +145,19 @@ class FilenameParseResult:
     llm_ok: bool
 
 
+def extract_crc32(filename: str) -> str | None:
+    """Return the 8-char uppercase CRC32 hex tag embedded in a filename, if any.
+
+    Args:
+        filename: Raw filename (basename or full path).
+
+    Returns:
+        8-char uppercase hex string, or None if no ``[XXXXXXXX]`` tag is present.
+    """
+    m = _CRC32_PAT.search(filename)
+    return m.group(1).upper() if m else None
+
+
 def _clean_filename(filename: str) -> tuple[str, str | None]:
     """Strip metadata noise from a filename and extract any CRC32 checksum.
 
@@ -158,8 +171,7 @@ def _clean_filename(filename: str) -> tuple[str, str | None]:
         Tuple of (cleaned_name, crc32) where crc32 is an 8-char uppercase
         hex string or None if no CRC32 tag was present.
     """
-    crc32_m = _CRC32_PAT.search(filename)
-    crc32 = crc32_m.group(1).upper() if crc32_m else None
+    crc32 = extract_crc32(filename)
     base = _EXTENSION_PAT.sub("", Path(filename).name)
     cleaned = _BRACKETS_PAT.sub("", base)
     cleaned = _QUALITY_PAT.sub("", cleaned)

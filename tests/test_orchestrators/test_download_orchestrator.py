@@ -9,11 +9,17 @@ import pytest
 from jidou.models.downloaded_file import FileStatus, IgnoredReason
 from jidou.orchestrators.download_orchestrator import (
     DownloadOrchestrator,
+    _hash_file,
     _staging_path_for,
 )
 from jidou.services.sftp_service import DownloadResult as SFTPDownloadResult
 
 _STAGING = "/data/staging"
+
+
+def _stub_hash_file(path):
+    """Stand-in for _hash_file when the test doesn't write a real local file."""
+    return "f" * 64, "FFFFFFFF"
 
 
 def _make_sftp_result(size=1000):
@@ -39,6 +45,8 @@ def _make_file(
     file.local_path = None
     file.file_size = 0
     file.ignored_reason = None
+    file.hash_sha256 = None
+    file.crc32 = None
     return file
 
 
@@ -108,10 +116,53 @@ def test_staging_path_traversal_raises():
 
 
 # ---------------------------------------------------------------------------
+# _hash_file unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_hash_file_known_values(tmp_path):
+    """SHA-256 and CRC32 match precomputed values for known content."""
+    p = tmp_path / "sample.bin"
+    p.write_bytes(b"hello world")
+
+    sha256_hex, crc32_hex = _hash_file(p)
+
+    assert sha256_hex == "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    assert crc32_hex == "0D4A1185"
+
+
+def test_hash_file_empty_file(tmp_path):
+    """Hashing an empty file returns the well-known empty-input digests."""
+    p = tmp_path / "empty.bin"
+    p.write_bytes(b"")
+
+    sha256_hex, crc32_hex = _hash_file(p)
+
+    assert sha256_hex == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    assert crc32_hex == "00000000"
+
+
+def test_hash_file_spans_multiple_chunks(tmp_path):
+    """Content larger than the chunk size is hashed correctly across reads."""
+    import hashlib
+    import zlib
+
+    data = b"x" * (3 * (1 << 20) + 17)  # > 3 chunks at the 1 MiB chunk size
+    p = tmp_path / "large.bin"
+    p.write_bytes(data)
+
+    sha256_hex, crc32_hex = _hash_file(p)
+
+    assert sha256_hex == hashlib.sha256(data).hexdigest()
+    assert crc32_hex == f"{zlib.crc32(data) & 0xFFFFFFFF:08X}"
+
+
+# ---------------------------------------------------------------------------
 # DownloadOrchestrator integration tests
 # ---------------------------------------------------------------------------
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_downloads_discovered_files():
     """DISCOVERED files are transferred and status set to DOWNLOADED."""
     file1 = _make_file(file_id=1, filename="ep1.mkv", remote_path="/remote/ep1.mkv")
@@ -134,6 +185,7 @@ async def test_run_downloads_discovered_files():
     assert session.commit.call_count == 2
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_routes_noscan_file_to_ignored():
     """A file tagged ignored_reason at discovery goes to IGNORED, not DOWNLOADED."""
     file1 = _make_file(file_id=1, filename="doc.mkv", remote_path="/remote/doc/doc.mkv")
@@ -153,6 +205,7 @@ async def test_run_routes_noscan_file_to_ignored():
     assert file2.status == FileStatus.DOWNLOADED
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_sets_staging_local_path():
     """Downloaded file gets a local_path under the staging root."""
     file1 = _make_file(remote_path="/downloads/shows/ShowName_S01E01.mkv")
@@ -223,6 +276,7 @@ async def test_run_resets_to_error_on_cancellation():
     assert session.commit.call_count == 2  # claim + error
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_sets_downloading_before_transfer():
     """Status is flushed as DOWNLOADING before transfers begin."""
     file1 = _make_file()
@@ -290,6 +344,7 @@ async def test_run_dry_run_calls_on_progress():
 # ---------------------------------------------------------------------------
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_on_progress_after_batch():
     """on_progress called once per file after batch downloads complete."""
     file1 = _make_file(file_id=1, filename="ep1.mkv")
@@ -415,6 +470,7 @@ async def test_run_outer_exception_non_gather_resets_downloading():
 # ---------------------------------------------------------------------------
 
 
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_on_event_called_for_each_successful_download():
     """on_event emits an info event for every successfully downloaded file."""
     file1 = _make_file(file_id=1, filename="ep1.mkv", remote_path="/remote/ep1.mkv")
@@ -464,3 +520,108 @@ async def test_on_event_called_in_dry_run():
 
     dry_run_calls = [c for c in on_event.call_args_list if "Dry run" in c[0][1]]
     assert len(dry_run_calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# run() — download integrity verification (SHA-256 / CRC32)
+# ---------------------------------------------------------------------------
+
+
+def _make_writing_download(data: bytes):
+    """Build a download_file side_effect that stages real bytes on disk.
+
+    Mirrors what SFTPService.download_file actually does (writes the
+    transferred bytes to local_path) so the post-download hashing step has
+    a real file to read.
+    """
+
+    async def _do(remote_path: str, local_path, dry_run: bool = False):
+        local_path = Path(local_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(data)
+        return SFTPDownloadResult(
+            remote_path=remote_path,
+            local_path=str(local_path),
+            size=len(data),
+            dry_run=False,
+            elapsed_seconds=0.1,
+        )
+
+    return _do
+
+
+async def test_run_populates_hash_columns_on_success(tmp_path):
+    """A successful download gets hash_sha256 and crc32 computed from the bytes."""
+    file1 = _make_file(filename="Show.S01E01.mkv", remote_path="/remote/ep.mkv")
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=_make_writing_download(b"hello world"))
+
+    orch = DownloadOrchestrator(session, sftp, str(tmp_path))
+    result = await orch.run()
+
+    assert result.files_downloaded == 1
+    assert file1.status == FileStatus.DOWNLOADED
+    assert file1.hash_sha256 == ("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
+    assert file1.crc32 == "0D4A1185"
+
+
+async def test_run_matching_crc32_tag_downloads_successfully(tmp_path):
+    """A filename-declared CRC32 that matches the computed one is a normal success."""
+    file1 = _make_file(filename="Show.S01E01.[0D4A1185].mkv", remote_path="/remote/ep.mkv")
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=_make_writing_download(b"hello world"))
+
+    orch = DownloadOrchestrator(session, sftp, str(tmp_path))
+    result = await orch.run()
+
+    assert result.files_downloaded == 1
+    assert result.files_failed == 0
+    assert file1.status == FileStatus.DOWNLOADED
+    assert file1.local_path is not None
+    assert file1.crc32 == "0D4A1185"
+
+
+async def test_run_mismatched_crc32_tag_marks_error_and_clears_local_path(tmp_path):
+    """A corrupt transfer (bytes don't match the filename's CRC32 tag) is flagged."""
+    file1 = _make_file(filename="Show.S01E01.[DEADBEEF].mkv", remote_path="/remote/ep.mkv")
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=_make_writing_download(b"hello world"))
+
+    orch = DownloadOrchestrator(session, sftp, str(tmp_path))
+    result = await orch.run()
+
+    assert result.files_failed == 1
+    assert result.files_downloaded == 0
+    assert file1.status == FileStatus.ERROR
+    assert file1.error_message == (
+        "CRC32 mismatch — corrupt download (expected DEADBEEF, got 0D4A1185)"
+    )
+    # Cleared so the existing ERROR + local_path IS NULL predicate retries it.
+    assert file1.local_path is None
+    # Diagnostics are still recorded even on mismatch.
+    assert file1.crc32 == "0D4A1185"
+
+
+async def test_run_retries_mismatched_file_on_next_run(tmp_path):
+    """After a CRC32 mismatch clears local_path, a follow-up run re-downloads it."""
+    file1 = _make_file(filename="Show.S01E01.[DEADBEEF].mkv", remote_path="/remote/ep.mkv")
+    file1.status = FileStatus.ERROR  # simulate the state after the first failed run
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=_make_writing_download(b"hello world"))
+
+    orch = DownloadOrchestrator(session, sftp, str(tmp_path))
+    result = await orch.run()
+
+    # base_where matches ERROR rows with local_path IS NULL (set by _make_file default)
+    assert sftp.download_file.call_count == 1
+    assert result.files_failed == 1
+    assert file1.status == FileStatus.ERROR
+    assert file1.local_path is None
