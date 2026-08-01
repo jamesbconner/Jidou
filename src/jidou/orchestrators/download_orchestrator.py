@@ -52,10 +52,12 @@ def _verify_integrity(file: DownloadedFile, sha256_hex: str, crc32_hex: str) -> 
         the computed one, else None.
     """
     file.hash_sha256 = sha256_hex
-    file.crc32 = crc32_hex
-    expected = extract_crc32(file.original_filename)
-    if expected is not None and expected != crc32_hex:
-        return f"CRC32 mismatch — corrupt download (expected {expected}, got {crc32_hex})"
+    file.crc32_computed = crc32_hex
+    file.crc32_extracted = extract_crc32(file.original_filename)
+    if file.crc32_extracted is not None and file.crc32_extracted != crc32_hex:
+        return (
+            f"CRC32 mismatch — corrupt download (expected {file.crc32_extracted}, got {crc32_hex})"
+        )
     return None
 
 

@@ -46,7 +46,9 @@ def _make_file(
     file.file_size = 0
     file.ignored_reason = None
     file.hash_sha256 = None
-    file.crc32 = None
+    file.crc32_extracted = None
+    file.crc32_declared = None
+    file.crc32_computed = None
     return file
 
 
@@ -564,7 +566,9 @@ async def test_run_populates_hash_columns_on_success(tmp_path):
     assert result.files_downloaded == 1
     assert file1.status == FileStatus.DOWNLOADED
     assert file1.hash_sha256 == ("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9")
-    assert file1.crc32 == "0D4A1185"
+    assert file1.crc32_computed == "0D4A1185"
+    # No [XXXXXXXX] tag in this filename — nothing to extract or compare against.
+    assert file1.crc32_extracted is None
 
 
 async def test_run_matching_crc32_tag_downloads_successfully(tmp_path):
@@ -582,7 +586,8 @@ async def test_run_matching_crc32_tag_downloads_successfully(tmp_path):
     assert result.files_failed == 0
     assert file1.status == FileStatus.DOWNLOADED
     assert file1.local_path is not None
-    assert file1.crc32 == "0D4A1185"
+    assert file1.crc32_extracted == "0D4A1185"
+    assert file1.crc32_computed == "0D4A1185"
 
 
 async def test_run_mismatched_crc32_tag_marks_error_and_clears_local_path(tmp_path):
@@ -604,8 +609,10 @@ async def test_run_mismatched_crc32_tag_marks_error_and_clears_local_path(tmp_pa
     )
     # Cleared so the existing ERROR + local_path IS NULL predicate retries it.
     assert file1.local_path is None
-    # Diagnostics are still recorded even on mismatch.
-    assert file1.crc32 == "0D4A1185"
+    # Diagnostics are still recorded even on mismatch, pinpointing the
+    # divergence: filename declared DEADBEEF, actual bytes hash to 0D4A1185.
+    assert file1.crc32_extracted == "DEADBEEF"
+    assert file1.crc32_computed == "0D4A1185"
 
 
 async def test_run_retries_mismatched_file_on_next_run(tmp_path):

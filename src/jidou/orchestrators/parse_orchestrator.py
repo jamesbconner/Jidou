@@ -264,6 +264,10 @@ class ParseOrchestrator:
                 file.parsed_episode = episode
                 file.parsed_confidence = confidence
                 file.parsed_content_type = content_type
+                # Independent of crc32_extracted (DownloadOrchestrator's regex-only
+                # reading) — lets a divergence (e.g. LLM misreads the tag) be
+                # pinpointed to this stage instead of masked as a false corruption.
+                file.crc32_declared = parsed.crc32
 
                 # Stage 2: confidence gate — skipped for heuristic results (llm_ok=False)
                 # and for movies (null episode is expected, not a sign of uncertainty).
