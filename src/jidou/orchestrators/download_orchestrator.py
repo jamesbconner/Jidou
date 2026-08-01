@@ -1,7 +1,9 @@
 """Orchestrator for downloading DISCOVERED files from SFTP to the local staging area."""
 
 import asyncio
+import hashlib
 import logging
+import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,9 +13,50 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.services.filename_parser import extract_crc32
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
+
+_HASH_CHUNK_SIZE = 1 << 20  # 1 MiB
+
+
+def _hash_file(path: Path) -> tuple[str, str]:
+    """Compute the SHA-256 and CRC32 of a file in one streaming read pass.
+
+    Args:
+        path: Local file to hash.
+
+    Returns:
+        Tuple of (sha256_hex, crc32_hex) where crc32_hex is 8-char uppercase.
+    """
+    sha256 = hashlib.sha256()
+    crc = 0
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(_HASH_CHUNK_SIZE), b""):
+            sha256.update(chunk)
+            crc = zlib.crc32(chunk, crc)
+    return sha256.hexdigest(), f"{crc & 0xFFFFFFFF:08X}"
+
+
+def _verify_integrity(file: DownloadedFile, sha256_hex: str, crc32_hex: str) -> str | None:
+    """Populate hash columns and return a mismatch error message, if any.
+
+    Args:
+        file: The row to update in place with the computed hashes.
+        sha256_hex: Computed SHA-256 of the staged file.
+        crc32_hex: Computed CRC32 of the staged file.
+
+    Returns:
+        An error message if the filename declares a CRC32 that doesn't match
+        the computed one, else None.
+    """
+    file.hash_sha256 = sha256_hex
+    file.crc32 = crc32_hex
+    expected = extract_crc32(file.original_filename)
+    if expected is not None and expected != crc32_hex:
+        return f"CRC32 mismatch — corrupt download (expected {expected}, got {crc32_hex})"
+    return None
 
 
 def _staging_path_for(remote_path: str, staging_root: str) -> Path:
@@ -222,20 +265,35 @@ class DownloadOrchestrator:
                     for (file, local_path), task in zip(pending, tasks, strict=True):
                         if task.done() and not task.cancelled() and task.exception() is None:
                             r = task.result()
-                            file.status = _post_download_status(file)
-                            file.local_path = str(local_path)
-                            file.file_size = r.size
-                            file.error_message = None
-                            files_downloaded += 1
-                            bytes_downloaded += r.size
-                            suffix = (
-                                " (noscan — excluded from matching)" if file.ignored_reason else ""
-                            )
-                            await _emit(
-                                "info",
-                                f"Downloaded {file.original_filename!r}{suffix}",
-                                {"file_id": file.id, "bytes": r.size},
-                            )
+                            sha256_hex, crc32_hex = await asyncio.to_thread(_hash_file, local_path)
+                            mismatch = _verify_integrity(file, sha256_hex, crc32_hex)
+                            if mismatch is not None:
+                                file.status = FileStatus.ERROR
+                                file.error_message = mismatch
+                                file.local_path = None
+                                files_failed += 1
+                                await _emit(
+                                    "error",
+                                    f"{mismatch}: {file.original_filename!r}",
+                                    {"file_id": file.id},
+                                )
+                            else:
+                                file.status = _post_download_status(file)
+                                file.local_path = str(local_path)
+                                file.file_size = r.size
+                                file.error_message = None
+                                files_downloaded += 1
+                                bytes_downloaded += r.size
+                                suffix = (
+                                    " (noscan — excluded from matching)"
+                                    if file.ignored_reason
+                                    else ""
+                                )
+                                await _emit(
+                                    "info",
+                                    f"Downloaded {file.original_filename!r}{suffix}",
+                                    {"file_id": file.id, "bytes": r.size},
+                                )
                         elif file.status == FileStatus.DOWNLOADING:
                             file.status = FileStatus.ERROR
                             file.error_message = "Download interrupted"
@@ -274,6 +332,20 @@ class DownloadOrchestrator:
                             {"file_id": file.id, "error": error_msg},
                         )
                     else:
+                        sha256_hex, crc32_hex = await asyncio.to_thread(_hash_file, local_path)
+                        mismatch = _verify_integrity(file, sha256_hex, crc32_hex)
+                        if mismatch is not None:
+                            logger.error("%s: %s", mismatch, file.remote_path)
+                            file.status = FileStatus.ERROR
+                            file.error_message = mismatch
+                            file.local_path = None
+                            files_failed += 1
+                            await _emit(
+                                "error",
+                                f"{mismatch}: {file.original_filename!r}",
+                                {"file_id": file.id},
+                            )
+                            continue
                         file.status = _post_download_status(file)
                         file.local_path = str(local_path)
                         file.file_size = result.size

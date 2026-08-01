@@ -3,8 +3,34 @@
 from jidou.services.filename_parser import (
     _clean_filename,
     _heuristic_parse,
+    extract_crc32,
     heuristic_se,
 )
+
+# ---------------------------------------------------------------------------
+# extract_crc32
+# ---------------------------------------------------------------------------
+
+
+def test_extract_crc32_present():
+    """8-char hex tag is returned as uppercase CRC32."""
+    assert extract_crc32("Show.Name.S01E01.[ABCD1234].mkv") == "ABCD1234"
+
+
+def test_extract_crc32_lowercase_normalised():
+    """Lowercase CRC32 is uppercased."""
+    assert extract_crc32("Show.Name.S01E01.[abcd1234].mkv") == "ABCD1234"
+
+
+def test_extract_crc32_absent():
+    """Returns None when no bracketed 8-hex-digit tag is present."""
+    assert extract_crc32("Show.Name.S01E01.mkv") is None
+
+
+def test_extract_crc32_ignores_non_hex_bracket_tag():
+    """A bracketed tag that isn't 8 hex digits (e.g. a release group) is not matched."""
+    assert extract_crc32("[HorribleSubs] Show Name - 01.mkv") is None
+
 
 # ---------------------------------------------------------------------------
 # heuristic_se

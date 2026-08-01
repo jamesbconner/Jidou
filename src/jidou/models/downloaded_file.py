@@ -117,6 +117,9 @@ class DownloadedFile(TimestampMixin, Base):
     local_path: Mapped[str | None] = mapped_column(String(1000))
     file_size: Mapped[int] = mapped_column(BigInteger, default=0)
     hash_sha256: Mapped[str | None] = mapped_column(String(64))
+    # Computed CRC32 of the downloaded bytes (uppercase 8-char hex), not the
+    # filename-declared value — see DownloadOrchestrator's integrity check.
+    crc32: Mapped[str | None] = mapped_column(String(8))
     status: Mapped[FileStatus] = mapped_column(
         SAEnum(FileStatus, values_callable=lambda e: [x.value for x in e]),
         default=FileStatus.DISCOVERED,
