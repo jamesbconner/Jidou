@@ -92,6 +92,10 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an untracked episode |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/begin-rematch` | Prepare a tracked episode's backing file for re-matching (download-backed episodes only) |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/assign-import` | Reassign a path-imported episode's tracked filename to a different episode, atomically |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/watched` | Mark a single episode watched |
+| DELETE | `/api/shows/{show_id}/episodes/{episode_id}/watched` | Clear the watched flag on a single episode |
+| POST | `/api/shows/{show_id}/episodes/watched` | Mark every episode in a show (or one season) watched |
+| DELETE | `/api/shows/{show_id}/episodes/watched` | Clear the watched flag on every episode in a show (or one season) |
 
 **`GET /api/shows/discover` query parameters:**
 
@@ -114,6 +118,12 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 }
 ```
 `status` is `matched` (untracked episode, ready to confirm via `link-file`), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file).
+
+**`POST`/`DELETE /shows/{show_id}/episodes/watched` request body (bulk):**
+```json
+{ "season_number": 1 }
+```
+Omit `season_number` (or pass `null`) to apply the change to every episode in the show. Both bulk routes return the affected episodes, ordered by season and episode number.
 
 **Query parameters for `GET /api/shows`:**
 

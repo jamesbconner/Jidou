@@ -33,6 +33,7 @@ General capture guidance:
 | 17 | `discover-page.png` | Discover page, a mix of seeded (with "Because you watch X" tags) and trending fill cards | `features.md` → Discover |
 | 18 | `poster-picker-modal.png` | Show Detail → Change Poster, modal open showing the candidate poster grid | `features.md` → Show library (poster selection) |
 | 19 | `scan-local-files-modal.png` | Show Detail → Scan Local Files, review list with a mix of matched/unmatched/conflict rows | `features.md` → Episode matching (Scanning a show's own directory) |
+| 20 | `show-detail-watched.png` | Show Detail page with the watched progress bar under the overview and a season expanded showing per-episode watched toggles, some on and some off | `features.md` → Watched tracking |
 
 ## Priority 3 — Setup and Troubleshooting (state-dependent, capture last)
 

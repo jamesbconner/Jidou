@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
 
+### Watched tracking
+- New `watched`/`watched_at` fields on `Episode` (mirrors the existing `file_tracked`/`file_tracked_at` pattern) — tracks what you've actually seen, independently of `file_tracked` (Jidou has the file) and watchlist status (viewing intent for the show as a whole). Closes #400.
+- Per-episode toggle switch on the Show Detail episode list, plus bulk mark/unmark for a whole season or the whole show (`POST`/`DELETE /shows/{show_id}/episodes/watched`, optionally scoped by `season_number`).
+- Progress bar under the show overview on Show Detail, and a thin bottom-of-poster overlay on the Shows-page grid card (`ShowList.watched_episode_count`).
+- Backup/restore and export cover the new fields — caught by the existing `check_restore_field_coverage` regression test, which fails any future column added to `Episode`/`Show` without a matching restore-side change.
+- Episode row cleanup (issue-driven): removed the "Matched"/"Imported"/"Tracked" status pills from the episode list — that detail is already on the Files page — and restyled the row actions (**Fix Match**, **Match File**, **Fix Eps**) as pill buttons instead of underlined text links. Closes #403.
+
 ### Discover page
 - `GET /api/shows/discover` — a personalized feed seeded from TMDB recommendations for the user's most recently updated `watching`/`completed` watchlist shows, deduped, with shows already in the library excluded and trending TV/movies filling out thin results (cold start falls back to plain trending). Cached 24h, keyed by the current seed show set. Closes #229.
 - New Discover page and nav entry, with one-click "Add + Watchlist" per result and a detail modal (poster, overview, rating, "View show"/"View on TMDB" links).
