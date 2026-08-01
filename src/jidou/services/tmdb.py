@@ -54,6 +54,11 @@ class TMDBService:
     that request the same URL simultaneously share a single HTTP round-trip.
     """
 
+    # Transient transport failures (connect/read timeouts, refused/reset
+    # connections) are retried with exponential backoff before giving up.
+    _MAX_TRANSPORT_RETRIES = 3
+    _RETRY_BASE_DELAY_SECONDS = 0.5
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -84,6 +89,8 @@ class TMDBService:
         Raises:
             ValueError: If ``TMDB_API_KEY`` is not configured.
             httpx.HTTPStatusError: If the API returns a non-2xx status.
+            httpx.TransportError: If the connection still fails after
+                :attr:`_MAX_TRANSPORT_RETRIES` attempts.
         """
         if not self.api_key:
             raise ValueError("TMDB_API_KEY is not configured")
@@ -142,10 +149,9 @@ class TMDBService:
             pre_request_cached = await cache.get(cache_key)
             if pre_request_cached is not None:
                 return pre_request_cached  # type: ignore[no-any-return]
-            async with rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, params=request_params)
-                response.raise_for_status()
-                result: dict[str, Any] = response.json()
+
+            response = await self._get_with_retry(url, request_params, endpoint)
+            result: dict[str, Any] = response.json()
 
             logger.info(
                 "TMDB %s → %s (%.1fs)",
@@ -160,6 +166,54 @@ class TMDBService:
                 async with self._flight_lock:
                     self._in_flight.pop(cache_key, None)
                 event.set()
+
+    async def _get_with_retry(
+        self, url: str, params: dict[str, Any], endpoint: str
+    ) -> "httpx.Response":
+        """Issue one rate-limited GET, retrying transient transport failures.
+
+        Each attempt (including retries) re-acquires the rate limiter, since a
+        retry is a fresh call to the external API and must respect the same
+        per-endpoint budget as the original attempt.
+
+        Args:
+            url: Fully-qualified request URL.
+            params: Query parameters, including the API key.
+            endpoint: Endpoint path, used only for log messages.
+
+        Returns:
+            The successful HTTP response.
+
+        Raises:
+            httpx.HTTPStatusError: If the API returns a non-2xx status.
+            httpx.TransportError: If every attempt fails to connect.
+        """
+        for attempt in range(1, self._MAX_TRANSPORT_RETRIES + 1):
+            try:
+                async with rate_limiter.acquire(), httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(url, params=params)
+                    response.raise_for_status()
+                    return response
+            except httpx.TransportError as exc:
+                if attempt == self._MAX_TRANSPORT_RETRIES:
+                    logger.error(
+                        "TMDB %s failed after %d attempts: %s",
+                        endpoint,
+                        attempt,
+                        exc,
+                    )
+                    raise
+                delay = self._RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                logger.warning(
+                    "TMDB %s transport error (attempt %d/%d): %s; retrying in %.1fs",
+                    endpoint,
+                    attempt,
+                    self._MAX_TRANSPORT_RETRIES,
+                    exc,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        raise AssertionError("unreachable")  # loop always returns or raises
 
     # ------------------------------------------------------------------
     # Trending / Search / Details
