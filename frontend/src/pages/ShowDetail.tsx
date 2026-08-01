@@ -340,6 +340,23 @@ export default function ShowDetail() {
               </p>
               <div className="flex items-center gap-2 flex-wrap mt-2">
                 <WatchlistToggleButton showId={showId} entryId={watchlistEntry?.id ?? null} />
+                {!isMovie && episodes.length > 0 && (
+                  <button
+                    onClick={() =>
+                      allWatched
+                        ? bulkClearWatched.mutate({ showId })
+                        : bulkSetWatched.mutate({ showId })
+                    }
+                    disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
+                    className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+                      allWatched
+                        ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
+                  </button>
+                )}
                 {watchlistEntry && (
                   <>
                     <QueuePositionSelect entries={watchlistEntries} entryId={watchlistEntry.id} />
@@ -388,22 +405,6 @@ export default function ShowDetail() {
               <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 Fix Match
               </Button>
-              {!isMovie && episodes.length > 0 && (
-                <Button
-                  onClick={() =>
-                    allWatched
-                      ? bulkClearWatched.mutate({ showId })
-                      : bulkSetWatched.mutate({ showId })
-                  }
-                  disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
-                  variant="secondary"
-                  tone="light"
-                  size="sm"
-                  className="w-28"
-                >
-                  {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
-                </Button>
-              )}
               <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
                 {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
               </Button>
@@ -518,6 +519,19 @@ export default function ShowDetail() {
               return (
                 <details key={season} className="mb-2">
                   <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
+                    <span onClick={(e) => e.preventDefault()}>
+                      <WatchedToggle
+                        watched={seasonAllWatched}
+                        onToggle={() => {
+                          if (seasonAllWatched) {
+                            bulkClearWatched.mutate({ showId, seasonNumber })
+                          } else {
+                            bulkSetWatched.mutate({ showId, seasonNumber })
+                          }
+                        }}
+                        disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
+                      />
+                    </span>
                     <span>
                       Season {season} ({eps.length} episodes)
                     </span>
@@ -527,20 +541,6 @@ export default function ShowDetail() {
                     {seasonWatched > 0 && (
                       <span className="text-xs text-gray-500">{seasonWatched} watched</span>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        if (seasonAllWatched) {
-                          bulkClearWatched.mutate({ showId, seasonNumber })
-                        } else {
-                          bulkSetWatched.mutate({ showId, seasonNumber })
-                        }
-                      }}
-                      disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
-                      className="text-xs text-blue-600 hover:underline disabled:opacity-40"
-                    >
-                      {seasonAllWatched ? 'Mark season unwatched' : 'Mark season watched'}
-                    </button>
                   </summary>
                   <div className="mt-2 divide-y border rounded-lg">
                     {eps
