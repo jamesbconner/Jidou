@@ -9,6 +9,7 @@ import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
@@ -37,7 +38,7 @@ const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
 
 const TMDB_IMG = '/api/images/w185'
 
-type Tab = 'library' | 'data'
+type Tab = 'library' | 'data' | 'missing'
 
 function sortShows(shows: ShowList[], sort: ShowSortOrder): ShowList[] {
   function nullsLast<T>(
@@ -99,6 +100,7 @@ function applyFilters(
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
   const [dqFilter, setDqFilter] = useState<string | null>(null)
+  const [missingQuery, setMissingQuery] = useState('')
   const [query, setQuery] = useState('')
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
   const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
@@ -221,6 +223,21 @@ export default function Shows() {
       : allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
   }, [allShows, dqFilter])
 
+  const showsWithMissingEpisodes = useMemo(
+    () => allShows.filter((s) => s.missing_episode_count > 0),
+    [allShows],
+  )
+  const totalMissingEpisodes = useMemo(
+    () => showsWithMissingEpisodes.reduce((sum, s) => sum + s.missing_episode_count, 0),
+    [showsWithMissingEpisodes],
+  )
+  const missingEpisodeRows = useMemo(() => {
+    const q = missingQuery.trim().toLowerCase()
+    return showsWithMissingEpisodes
+      .filter((s) => !q || s.title.toLowerCase().includes(q))
+      .sort((a, b) => b.missing_episode_count - a.missing_episode_count)
+  }, [showsWithMissingEpisodes, missingQuery])
+
   const activeFilterCount = [
     filterContentType, filterStatus, filterGenre, filterLanguage, filterMinRating,
   ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
@@ -293,6 +310,14 @@ export default function Shows() {
           {totalDqIssues > 0 && (
             <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
               {totalDqIssues}
+            </span>
+          )}
+        </button>
+        <button className={tabCls('missing')} onClick={() => setTab('missing')}>
+          Missing Episodes
+          {totalMissingEpisodes > 0 && (
+            <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+              {totalMissingEpisodes}
             </span>
           )}
         </button>
@@ -635,6 +660,65 @@ export default function Shows() {
               </table>
             </div>
           )}
+        </section>
+      )}
+
+      {tab === 'missing' && isLoading && (
+        <p className="text-gray-400 text-sm">Loading…</p>
+      )}
+
+      {tab === 'missing' && !isLoading && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-gray-500">
+              {showsWithMissingEpisodes.length === 0
+                ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
+                : `${totalMissingEpisodes} missing episode${totalMissingEpisodes !== 1 ? 's' : ''} across ${showsWithMissingEpisodes.length} show${showsWithMissingEpisodes.length !== 1 ? 's' : ''}.`}
+            </p>
+            {showsWithMissingEpisodes.length > 0 && (
+              <input
+                type="search"
+                placeholder="Filter by title…"
+                value={missingQuery}
+                onChange={(e) => setMissingQuery(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+          </div>
+          {showsWithMissingEpisodes.length > 0 && missingEpisodeRows.length === 0 ? (
+            <p className="text-sm text-gray-500">No shows match &quot;{missingQuery}&quot;.</p>
+          ) : missingEpisodeRows.length > 0 ? (
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Show</th>
+                    <th className="px-4 py-2 text-left">Missing</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {missingEpisodeRows.map((s) => (
+                    <tr key={s.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <Link
+                          to={`/shows/${s.id}`}
+                          className="font-medium hover:underline text-blue-700"
+                        >
+                          {s.title}
+                        </Link>
+                        <span className="block text-xs text-gray-400">TMDB #{s.tmdb_id}</span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="bg-amber-100 text-amber-700 text-xs font-medium rounded-full px-2 py-0.5">
+                          {s.missing_episode_count}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          ) : null}
         </section>
       )}
 
