@@ -90,6 +90,28 @@ async def test_fuzzy_substring_miss_returns_none() -> None:
     assert session.execute.await_count == 2
 
 
+async def test_fuzzy_substring_query_orders_exact_match_first() -> None:
+    """Regression test: when a fuzzy substring match hits more than one show
+    (e.g. "Daredevil" also matches "Daredevil: Born Again"), the exact title
+    match must sort first rather than whichever row happens to have the
+    lowest id, which is unrelated to which match is correct.
+
+    Verified structurally against the compiled SQL, since the mocked session
+    can't exercise real multi-row ordering.
+    """
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[_mock_result(None), _mock_result(None)])
+
+    await find_show_by_name(session, "Daredevil", fuzzy=True)
+
+    title_stmt = session.execute.await_args_list[1].args[0]
+    compiled = str(title_stmt.compile(compile_kwargs={"literal_binds": True}))
+    order_by_clause = compiled.upper().split("ORDER BY", 1)[1]
+    # The exact-match tiebreaker must precede id in the ORDER BY clause.
+    assert "LOWER" in order_by_clause
+    assert order_by_clause.index("LOWER") < order_by_clause.index("SHOWS.ID")
+
+
 async def test_fuzzy_and_exact_are_mutually_exclusive_not_stacked() -> None:
     """A single lookup issues exactly one title query — never both exact and fuzzy.
 
