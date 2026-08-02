@@ -36,8 +36,10 @@ from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
+from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.show_lookup import find_show_by_name
 from jidou.services.synthetic_file import create_synthetic_import_file
+from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
@@ -179,6 +181,9 @@ class PathImportOrchestrator:
             show isn't already in the DB reports its files as unmatched. Not
             validated here — the API route layer validates it, the same way
             ``content_type`` is validated only there.
+        local_tv_path: Container-side base directory for live-action TV series.
+        local_anime_path: Container-side base directory for anime series.
+        local_movie_path: Container-side base directory for movies.
     """
 
     def __init__(
@@ -190,6 +195,9 @@ class PathImportOrchestrator:
         llm: LLMService | None = None,
         on_event: Callable[[str, str, dict[str, object] | None], Awaitable[None]] | None = None,
         mode: str = "full",
+        local_tv_path: str = "/data/media/tv",
+        local_anime_path: str = "/data/media/anime",
+        local_movie_path: str = "/data/media/movies",
     ) -> None:
         self.session = session
         self.tmdb = tmdb
@@ -198,6 +206,9 @@ class PathImportOrchestrator:
         self.llm = llm
         self.on_event = on_event
         self.mode = mode
+        self.local_tv_path = local_tv_path
+        self.local_anime_path = local_anime_path
+        self.local_movie_path = local_movie_path
 
     async def _emit(
         self,
@@ -510,12 +521,13 @@ class PathImportOrchestrator:
             action: ``"found"``, ``"created"``, or ``"not_found"`` from resolution.
             entries: Parsed file entries to match against this show.
             set_local_path: Whether to auto-populate ``show.local_path`` from
-                ``entries[0].show_root`` when unset. False for a split-off
-                secondary group — ``show_root`` reflects the *directory's*
-                root (the primary show's location), not this show's, so
-                auto-setting it here would point the wrong show at the
-                primary show's library folder. The show is still fully
-                created/matched; only the auto-path step is skipped.
+                the show's own ``content_type``/``sys_name`` when unset.
+                False for a split-off secondary group — the entries'
+                ``show_root`` reflects the *directory's* root (the primary
+                show's location), not this show's, so auto-setting it here
+                would point the wrong show at the primary show's library
+                folder. The show is still fully created/matched; only the
+                auto-path step is skipped.
             matched_episode_ids: Shared set of episode IDs already claimed
                 by a previous ``_process_show_entries`` call within the same
                 ``_import_show`` invocation.  When provided, a collision
@@ -549,9 +561,21 @@ class PathImportOrchestrator:
         show_result.tmdb_id = show.tmdb_id
         show_result.tmdb_title = show.title
 
-        # Persist the show's root directory path if not already set.
+        # Persist the show's root directory path if not already set. Computed
+        # from content_type/sys_name rather than entries[0].show_root — that
+        # root reflects the raw (host-side) path typed into the import file,
+        # not the container-side path every downstream filesystem consumer
+        # (scan_show_directory, RouteOrchestrator) actually expects.
         if set_local_path and not self.dry_run and show.local_path is None and entries:
-            show.local_path = entries[0].show_root
+            dir_name = show.sys_name or sanitize_sys_name(show.title)
+            show.local_path = resolve_show_local_path(
+                content_type=show.content_type,
+                media_type=show.media_type,
+                sys_name=dir_name,
+                local_tv_path=self.local_tv_path,
+                local_anime_path=self.local_anime_path,
+                local_movie_path=self.local_movie_path,
+            )
             logger.debug("Set local_path=%r for show id=%d", show.local_path, show.id)
         elif not set_local_path and not self.dry_run and show.local_path is None:
             await self._emit(
