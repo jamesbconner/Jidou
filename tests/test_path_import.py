@@ -2968,6 +2968,306 @@ async def test_tmdb_create_show_alias_generation_failure_logged_not_raised() -> 
     assert show is not None
 
 
+@pytest.mark.asyncio
+async def test_tmdb_create_show_commits_before_episode_sync() -> None:
+    """The new show row is committed before the best-effort sync/alias steps run.
+
+    Regression test: without this checkpoint, a session.rollback() needed to
+    recover from a failed sync_show_episodes()/generate_aliases() flush would
+    also undo the show's own not-yet-committed INSERT.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    calls: list[str] = []
+
+    session = AsyncMock()
+    session.add = MagicMock(side_effect=lambda _obj: calls.append("add"))
+    session.flush = AsyncMock(side_effect=lambda: calls.append("flush"))
+    session.commit = AsyncMock(side_effect=lambda: calls.append("commit"))
+    session.scalar = AsyncMock(return_value=10)
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=lambda _show: calls.append("sync_episodes")
+        )
+        with patch(
+            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            AsyncMock(side_effect=lambda *a, **kw: calls.append("generate_aliases")),
+        ):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    # commit must land before sync/alias -- not after, and not skipped.
+    assert calls.index("commit") < calls.index("sync_episodes")
+    assert calls.index("commit") < calls.index("generate_aliases")
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_episode_sync_failure_rolls_back() -> None:
+    """A failed episode sync for a newly-created show rolls back the session.
+
+    Without this, the session is left in SQLAlchemy's PendingRollbackError
+    state, and the very next DB operation -- the next show in this import
+    batch, alias generation's own flush, etc. -- crashes on an unrelated,
+    already-stale failure instead of proceeding.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.rollback = AsyncMock()
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=RuntimeError("sync failed")
+        )
+        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    session.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_alias_generation_failure_rolls_back() -> None:
+    """A failed alias generation for a newly-created show rolls back the session."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.rollback = AsyncMock()
+    session.scalar = AsyncMock(return_value=10)
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        with patch(
+            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            AsyncMock(side_effect=RuntimeError("alias generation blew up")),
+        ):
+            show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created"
+    assert show is not None
+    session.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_integrity_error_fallback_syncs_missing_episodes() -> None:
+    """Regression test for issue #413: the race-recovery fallback must run the
+    same zero-episode check/sync the normal 'found in DB' path already has.
+
+    Without this, the losing side of a concurrent show-creation race could
+    see zero episodes (if the winning side's own sync hadn't finished yet)
+    and report every file in its batch as unmatched -- a false negative
+    caused entirely by timing, not a real data problem.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+    existing_show = _make_show(id=99, tmdb_id=42, title="SomeShow")
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup key")))
+    session.rollback = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)  # no episodes synced yet
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "found"
+    assert show is existing_show
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_awaited_once_with(existing_show)
+
+
+@pytest.mark.asyncio
+async def test_tmdb_create_show_integrity_error_fallback_skips_sync_when_episodes_exist() -> None:
+    """The race-recovery fallback does not re-sync a show that already has episodes."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    result_item = {"id": 42, "name": "SomeShow", "media_type": "tv"}
+    existing_show = _make_show(id=99, tmdb_id=42, title="SomeShow")
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock(side_effect=IntegrityError("insert", {}, Exception("dup key")))
+    session.rollback = AsyncMock()
+    session.scalar = AsyncMock(return_value=12)  # winning side's sync already finished
+
+    tmdb = AsyncMock()
+    tmdb.search = AsyncMock(return_value={"results": [result_item]})
+    tmdb.get_details = AsyncMock(return_value={"name": "SomeShow", "id": 42})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "found"
+    assert show is existing_show
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_awaited_once_with(existing_show)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_show / _sync_episodes_if_needed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_show_found_with_no_episodes_syncs_them() -> None:
+    """An existing show with zero synced episodes is synced before being returned."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    show = _make_show()
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
+        result_show, action = await orch._resolve_show("SomeShow")
+
+    assert action == "found"
+    assert result_show is show
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_awaited_once_with(show)
+
+
+@pytest.mark.asyncio
+async def test_resolve_show_episode_sync_failure_rolls_back() -> None:
+    """Regression test for issue #412: a failed episode sync for an existing
+    show rolls back the session rather than leaving it poisoned with
+    PendingRollbackError for the next DB operation."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    show = _make_show()
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=0)
+    session.rollback = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            side_effect=RuntimeError("sync failed")
+        )
+        result_show, action = await orch._resolve_show("SomeShow")
+
+    assert action == "found"
+    assert result_show is show
+    session.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_show_found_with_episodes_ensures_group_map() -> None:
+    """An existing show with episodes already synced skips re-sync but still
+    ensures the episode_group_map is up to date."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    show = _make_show()
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=12)
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(session, tmdb)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+    ):
+        mock_tmdb_orch_cls.return_value.ensure_episode_group_map = AsyncMock()
+        result_show, action = await orch._resolve_show("SomeShow")
+
+    assert action == "found"
+    assert result_show is show
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    mock_tmdb_orch_cls.return_value.ensure_episode_group_map.assert_awaited_once_with(show)
+
+
 # ---------------------------------------------------------------------------
 # LLM fallback diagnostics — outcomes must be visible via on_event, not just
 # the Python logger, and the final "No match" event must reflect any LLM
