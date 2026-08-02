@@ -857,12 +857,21 @@ def _make_episode(*, id: int, show_id: int, season: int, episode: int) -> MagicM
     return ep
 
 
-def _make_show(*, id: int = 1, tmdb_id: int = 999, title: str = "Dorohedoro") -> MagicMock:
+def _make_show(
+    *,
+    id: int = 1,
+    tmdb_id: int = 999,
+    title: str = "Dorohedoro",
+    content_type: str = "anime",
+) -> MagicMock:
     s = MagicMock()
     s.id = id
     s.tmdb_id = tmdb_id
     s.title = title
     s.aliases = []
+    s.content_type = content_type
+    s.media_type = "tv"
+    s.sys_name = title
     return s
 
 
@@ -1269,7 +1278,13 @@ def test_normalize_title_strips_punctuation() -> None:
 
 @pytest.mark.asyncio
 async def test_orchestrator_sets_local_path_when_unset() -> None:
-    """show_root from entry is persisted to show.local_path when not already set."""
+    """show.local_path is computed from content_type/sys_name, not entries[0].show_root.
+
+    Regression test: entries[0].show_root is the raw *host-side* path typed
+    into the import file (e.g. a UNC path like ``//nas-1821/video/tv/...``),
+    not the container-side path that scan_show_directory/RouteOrchestrator
+    expect. See jidou.services.path_resolution.resolve_show_local_path.
+    """
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
     from jidou.services.path_parser import ParsedPathEntry
 
@@ -1284,7 +1299,7 @@ async def test_orchestrator_sets_local_path_when_unset() -> None:
         )
     ]
 
-    show = _make_show()
+    show = _make_show(content_type="anime")
     show.local_path = None  # explicitly unset
 
     episode = _make_episode(id=10, show_id=1, season=1, episode=1)
@@ -1304,7 +1319,62 @@ async def test_orchestrator_sets_local_path_when_unset() -> None:
     ):
         await orch.run(entries)
 
-    assert show.local_path == r"Z:\anime tv\Dorohedoro"
+    assert show.local_path == "/data/media/anime/Dorohedoro"
+    assert show.local_path != entries[0].show_root
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_sets_local_path_from_container_base_for_content_type() -> None:
+    """A tv-content-type show gets the configured tv base, not the anime one.
+
+    Regression test for the bug where a TV show bulk-imported from a
+    Windows/UNC host path (e.g. ``//nas-1821/video/tv/The Boys``) ended up
+    with that host path stored verbatim as local_path, breaking
+    scan_show_directory (and RouteOrchestrator) since neither can see that
+    path inside the container.
+    """
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+    from jidou.services.path_parser import ParsedPathEntry
+
+    entries = [
+        ParsedPathEntry(
+            raw_path=r"\\nas-1821\video\tv\The Boys\Season 1\ep.mkv",
+            show_dir="The Boys",
+            show_root=r"\\nas-1821\video\tv\The Boys",
+            season=1,
+            episode=1,
+            is_absolute=False,
+        )
+    ]
+
+    show = _make_show(title="The Boys", content_type="tv")
+    show.local_path = None
+
+    episode = _make_episode(id=10, show_id=1, season=1, episode=1)
+
+    session = AsyncMock()
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = episode
+    session.execute.return_value = ep_result
+    session.commit = AsyncMock()
+
+    tmdb = AsyncMock()
+    orch = PathImportOrchestrator(
+        session,
+        tmdb,
+        local_tv_path="/data/media/tv",
+        local_anime_path="/data/media/anime",
+        local_movie_path="/data/media/movies",
+    )
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch.object(orch, "_tmdb_create_show", AsyncMock(return_value=(show, "created"))),
+    ):
+        await orch.run(entries)
+
+    assert show.local_path == "/data/media/tv/The Boys"
+    assert show.local_path != entries[0].show_root
 
 
 @pytest.mark.asyncio

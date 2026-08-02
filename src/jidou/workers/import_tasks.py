@@ -134,6 +134,9 @@ async def _path_import(
             llm=llm,
             on_event=on_event,
             mode=mode,
+            local_tv_path=settings.local_tv_path,
+            local_anime_path=settings.local_anime_path,
+            local_movie_path=settings.local_movie_path,
         )
         import_result = await orchestrator.run(entries, on_progress=on_progress)
 
