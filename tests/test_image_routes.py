@@ -271,6 +271,41 @@ class TestInFlightDedup:
         assert result == b"second-attempt-bytes"
         assert call_count == 2
 
+    async def test_owner_failure_elects_single_retry_owner_not_a_thundering_herd(self) -> None:
+        """Regression test: when the owner's fetch fails while other callers are
+        genuinely waiting concurrently, exactly one waiter is elected to retry --
+        not every waiter independently. Without the election loop, N concurrent
+        waiters would each make their own HTTP call on owner failure.
+        """
+        backend = await self._fake_backend()
+        fetch_call_count = 0
+        first_call_started = asyncio.Event()
+
+        async def fake_fetch_from_tmdb(size: str, filename: str) -> bytes:
+            nonlocal fetch_call_count
+            fetch_call_count += 1
+            if fetch_call_count == 1:
+                first_call_started.set()
+                await asyncio.sleep(0.02)  # let waiters queue behind the owner
+                raise HTTPException(status_code=502, detail="upstream error")
+            await asyncio.sleep(0.02)  # let any other waiters queue behind the retry owner
+            return b"retry-bytes"
+
+        with patch.object(images_module, "_fetch_from_tmdb", fake_fetch_from_tmdb):
+            task1 = asyncio.create_task(images_module._fetch_and_cache(backend, "w300", "abc.jpg"))
+            await first_call_started.wait()
+            task2 = asyncio.create_task(images_module._fetch_and_cache(backend, "w300", "abc.jpg"))
+            task3 = asyncio.create_task(images_module._fetch_and_cache(backend, "w300", "abc.jpg"))
+            await asyncio.sleep(0)  # let task2/task3 register themselves as waiters
+            results = await asyncio.gather(task1, task2, task3, return_exceptions=True)
+
+        # Only 2 HTTP calls total: 1 owner (fails) + 1 elected retry owner
+        # (succeeds). Every other waiter reads from the cache the retry owner
+        # populates, rather than making its own independent call.
+        assert fetch_call_count == 2, f"Expected 2 fetch calls, got {fetch_call_count}"
+        successes = [r for r in results if r == b"retry-bytes"]
+        assert len(successes) >= 1
+
 
 def test_images_route_ignores_a_configured_api_key(client: TestClient) -> None:
     """/api/images/... is reachable without X-API-Key even when one is configured.

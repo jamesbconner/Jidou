@@ -37,8 +37,8 @@ _BROWSER_CACHE_MAX_AGE = 604_800  # 7 days
 # In-flight de-duplication so concurrent requests for the same never-cached
 # image share one upstream fetch instead of each independently fetching and
 # writing the same bytes -- mirrors TMDBService._request's dedup in
-# services/tmdb.py, which uses the same "waiter waits on the owner's event,
-# falls through to its own attempt if the owner failed" shape.
+# services/tmdb.py, which uses the same "waiter waits on the owner's event;
+# if the owner failed, exactly one waiter is elected to retry" shape.
 _in_flight: dict[str, asyncio.Event] = {}
 _flight_lock = asyncio.Lock()
 
@@ -153,9 +153,9 @@ async def _fetch_and_cache(backend: ImageCacheBackend, size: str, filename: str)
 
     Only the first concurrent caller for a given key performs the real
     fetch; other callers wait for it and read the freshly cached result. If
-    the owner's fetch fails, waiters fall through to fetching independently
-    (bounded by the same shared rate limiter) rather than replaying its
-    exception.
+    the owner's fetch fails, exactly one waiter is elected as the new owner
+    to retry -- not every waiter independently -- mirroring
+    TMDBService._request's dedup in services/tmdb.py.
     """
     key = f"{size}/{filename}"
     async with _flight_lock:
@@ -169,11 +169,23 @@ async def _fetch_and_cache(backend: ImageCacheBackend, size: str, filename: str)
             _in_flight[key] = event
 
     if not is_owner:
-        await event.wait()
-        cached = await backend.get(size, filename)
-        if cached is not None:
-            return cached
-        # Owner's fetch failed -- fall through and try independently below.
+        while True:
+            await event.wait()
+            cached = await backend.get(size, filename)
+            if cached is not None:
+                return cached
+            # Owner's fetch failed. Elect one waiter as new owner so the
+            # remaining waiters don't all make independent HTTP calls.
+            async with _flight_lock:
+                if key in _in_flight:
+                    # Another waiter won the election -- wait on their attempt.
+                    event = _in_flight[key]
+                    continue
+                event = asyncio.Event()
+                _in_flight[key] = event
+                is_owner = True
+                break
+        logger.warning("In-flight dedup: owner fetch failed for %s; this coroutine retrying", key)
 
     try:
         data = await _fetch_from_tmdb(size, filename)
