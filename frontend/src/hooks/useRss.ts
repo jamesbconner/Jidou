@@ -144,6 +144,20 @@ export function useTriggerRssPublish(dryRun = false) {
   })
 }
 
+export function useRssDownload() {
+  return useMutation({
+    mutationFn: async () => {
+      const { blob, filename } = await api.downloadBlob('/rss/download')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+  })
+}
+
 export function useRssRecommendations() {
   return useQuery({
     queryKey: rssKeys.recommendations(),
