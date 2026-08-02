@@ -147,6 +147,10 @@ def _make_file(
     episode_id: int | None = 1,
     parsed_season: int | None = 1,
     parsed_episode: int | None = 1,
+    # Matches len(b"video"), the staging content most tests in this module
+    # write to disk, so the ROUTING-retry size-verification check passes by
+    # default without every call site needing to pass it explicitly.
+    file_size: int = 5,
 ) -> MagicMock:
     f = MagicMock()
     f.id = file_id
@@ -157,6 +161,7 @@ def _make_file(
     f.episode_id = episode_id
     f.parsed_season = parsed_season
     f.parsed_episode = parsed_episode
+    f.file_size = file_size
     f.error_message = None
     return f
 
@@ -428,6 +433,96 @@ async def test_run_retry_staging_gone_dest_exists(tmp_path: Path) -> None:
     # staging does NOT exist
 
     file = _make_file(local_path=staging_path)
+    show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    orch = RouteOrchestrator(session)
+    result = await orch.run()
+
+    assert result.files_routed == 1
+    assert file.status == FileStatus.ROUTED
+    assert file.local_path == str(dest_file)
+
+
+@pytest.mark.asyncio
+async def test_run_crash_before_move_does_not_orphan_file(tmp_path: Path) -> None:
+    """Regression test for the RouteOrchestrator crash-safety bug: if the
+    process dies before shutil.move ever runs, local_path must still point
+    at the real (staging) location on the next run, not a destination the
+    file was never actually moved to.
+
+    Simulates the crash by having shutil.move raise before doing anything,
+    then asserts the DB row still points at the real, current location of
+    the file rather than a nonexistent destination.
+    """
+    staging = tmp_path / "staging" / "Show.S01E01.mkv"
+    staging.parent.mkdir()
+    staging.write_bytes(b"video")
+
+    file = _make_file(local_path=str(staging))
+    original_staging_path = str(staging)
+    show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    with patch("shutil.move", side_effect=OSError("simulated crash before move")):
+        orch = RouteOrchestrator(session)
+        result = await orch.run()
+
+    assert result.files_failed == 1
+    assert file.status == FileStatus.ERROR
+    # local_path must still point at the real, current location of the file
+    # (still sitting at staging, untouched) -- not the destination it was
+    # never actually moved to.
+    assert file.local_path == original_staging_path
+    assert staging.exists()
+
+
+@pytest.mark.asyncio
+async def test_run_retry_dest_size_mismatch_not_assumed_to_be_prior_move(
+    tmp_path: Path,
+) -> None:
+    """A destination collision landing exactly when a retry is in flight must
+    not be misattributed to this DB row just because staging is gone and
+    *some* file exists at dest -- verify the size actually matches first."""
+    dest_dir = tmp_path / "media" / "tv" / "Show" / "Season 01"
+    dest_dir.mkdir(parents=True)
+    dest_file = dest_dir / "Show.S01E01.mkv"
+    dest_file.write_bytes(b"unrelated file with a different size entirely")
+
+    staging_path = str(tmp_path / "staging" / "Show.S01E01.mkv")
+    # staging does NOT exist
+
+    file = _make_file(local_path=staging_path, file_size=5)  # tracked size is "video" (5 bytes)
+    show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
+    ep = _make_episode()
+    session = _make_session([(file, show)], ep=ep)
+
+    orch = RouteOrchestrator(session)
+    result = await orch.run()
+
+    assert result.files_failed == 1
+    assert file.status == FileStatus.ERROR
+    assert file.local_path == staging_path
+    # The unrelated file at dest must be left alone.
+    assert dest_file.read_bytes() == b"unrelated file with a different size entirely"
+
+
+@pytest.mark.asyncio
+async def test_run_retry_dest_size_unknown_skips_verification(tmp_path: Path) -> None:
+    """file_size == 0 (legacy rows predating this field) is treated as
+    "unknown" and falls back to the prior, unverified retry behavior rather
+    than failing every legacy row's retry."""
+    dest_dir = tmp_path / "media" / "tv" / "Show" / "Season 01"
+    dest_dir.mkdir(parents=True)
+    dest_file = dest_dir / "Show.S01E01.mkv"
+    dest_file.write_bytes(b"video")
+
+    staging_path = str(tmp_path / "staging" / "Show.S01E01.mkv")
+    # staging does NOT exist
+
+    file = _make_file(local_path=staging_path, file_size=0)
     show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
     ep = _make_episode()
     session = _make_session([(file, show)], ep=ep)

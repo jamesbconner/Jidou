@@ -294,6 +294,19 @@ class RouteOrchestrator:
                 # dest exists, the move completed but the commit didn't — just
                 # record ROUTED and move on.
                 if not source.exists() and dest.exists() and str(file.local_path) != str(dest):
+                    # Verify dest actually holds *this* file's content before
+                    # accepting "my own prior move must have succeeded" —
+                    # otherwise a genuine destination collision landing
+                    # exactly when a retry is in flight would misattribute
+                    # someone else's file to this DB row. file_size == 0 means
+                    # "unknown" (e.g. legacy rows predating this field) and
+                    # skips the check, matching the prior, unverified behavior.
+                    if file.file_size and dest.stat().st_size != file.file_size:
+                        raise FileNotFoundError(
+                            f"Staging file not found: {source} (destination {dest} "
+                            "exists but its size does not match the tracked file, "
+                            "so this is not assumed to be our own prior move)"
+                        )
                     logger.warning(
                         "Retry: staging gone but dest exists for file id=%d; marking ROUTED",
                         file.id,
@@ -351,13 +364,6 @@ class RouteOrchestrator:
                 else:
                     dest.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Write dest to DB *before* the filesystem move so a crash
-                    # after the move still leaves the row pointing at the correct
-                    # location.
-                    file.local_path = str(dest)
-                    await self.session.flush()
-                    await self.session.commit()
-
                     try:
                         shutil.move(str(source), str(dest))
                     except OSError as move_exc:
@@ -405,6 +411,16 @@ class RouteOrchestrator:
                             {"file_id": file.id, "show": show.title, "dest": str(dest)},
                         )
 
+                    # Only point local_path at dest once the move (or the NAS
+                    # copy-then-failed-delete fallback above) has actually
+                    # happened. Writing this before the move and then crashing
+                    # before shutil.move runs would durably orphan the file:
+                    # the DB would say it's at dest while the file is still
+                    # sitting untouched at the old staging path, with no
+                    # durable record of where it really is. A crash *after*
+                    # the move but before this commit is still recovered by
+                    # the ROUTING-retry branch above on the next run.
+                    file.local_path = str(dest)
                     file.status = FileStatus.ROUTED
                     file.error_message = None
                     files_routed += 1
