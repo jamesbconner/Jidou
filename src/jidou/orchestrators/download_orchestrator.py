@@ -6,6 +6,7 @@ import logging
 import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +146,7 @@ class DownloadOrchestrator:
         self,
         dry_run: bool = False,
         max_workers: int = 8,
+        stale_downloading_seconds: int = 3600,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
         on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> DownloadResult:
@@ -160,6 +162,10 @@ class DownloadOrchestrator:
         Args:
             dry_run: Log what would be downloaded without performing transfers.
             max_workers: Maximum concurrent SFTP transfers per batch.
+            stale_downloading_seconds: A DOWNLOADING row untouched for longer
+                than this is treated as abandoned (e.g. a crash between
+                marking it DOWNLOADING and recording its outcome) and
+                reclaimed by this run instead of being skipped forever.
             on_progress: Optional async callback(current, total, message).
                 Called sequentially after each batch; callers may raise
                 TaskCancelledError inside the callback to abort the run.
@@ -184,8 +190,19 @@ class DownloadOrchestrator:
         # Only retry ERROR files that never reached staging (local_path IS NULL).
         # Parse and route failures also land in ERROR but have a staging local_path;
         # re-downloading them would undo pipeline progress.
-        base_where = (DownloadedFile.status == FileStatus.DISCOVERED) | (
-            (DownloadedFile.status == FileStatus.ERROR) & (DownloadedFile.local_path.is_(None))
+        #
+        # Also reclaim DOWNLOADING rows stale beyond stale_downloading_seconds: a
+        # crash (or a failed final status-commit) between marking a file DOWNLOADING
+        # and recording its outcome otherwise leaves it stuck there forever, since
+        # no other query ever re-selects DOWNLOADING rows.
+        stale_cutoff = datetime.now(UTC) - timedelta(seconds=stale_downloading_seconds)
+        base_where = (
+            (DownloadedFile.status == FileStatus.DISCOVERED)
+            | ((DownloadedFile.status == FileStatus.ERROR) & (DownloadedFile.local_path.is_(None)))
+            | (
+                (DownloadedFile.status == FileStatus.DOWNLOADING)
+                & (DownloadedFile.updated_at < stale_cutoff)
+            )
         )
 
         if dry_run:
@@ -241,6 +258,18 @@ class DownloadOrchestrator:
             # Mark all batch files DOWNLOADING before releases the locks.
             pending: list[tuple[DownloadedFile, Path]] = []
             for file in batch:
+                if file.status == FileStatus.DOWNLOADING:
+                    logger.warning(
+                        "Reclaiming stale DOWNLOADING file (stuck since %s): %s",
+                        file.updated_at,
+                        file.remote_path,
+                    )
+                    await _emit(
+                        "warning",
+                        f"Retrying stuck download {file.original_filename!r} "
+                        "(left DOWNLOADING by a previous, apparently crashed run)",
+                        {"file_id": file.id},
+                    )
                 local_path = _staging_path_for(file.remote_path, self.local_staging_path)
                 file.status = FileStatus.DOWNLOADING
                 pending.append((file, local_path))

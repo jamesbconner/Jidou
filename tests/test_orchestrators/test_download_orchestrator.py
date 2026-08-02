@@ -188,6 +188,31 @@ async def test_run_downloads_discovered_files():
 
 
 @patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
+async def test_run_reclaims_stale_downloading_file():
+    """A file left DOWNLOADING by a crashed prior run is retried, with a warning emitted."""
+    file1 = _make_file(file_id=1, filename="stuck.mkv", remote_path="/remote/stuck.mkv")
+    file1.status = FileStatus.DOWNLOADING
+
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result(size=500))
+
+    events = []
+
+    async def on_event(level, msg, ctx):
+        events.append((level, msg, ctx))
+
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+    result = await orch.run(on_event=on_event)
+
+    assert result.files_downloaded == 1
+    assert file1.status == FileStatus.DOWNLOADED
+    warnings = [e for e in events if e[0] == "warning"]
+    assert len(warnings) == 1
+    assert warnings[0][2] == {"file_id": 1}
+
+
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
 async def test_run_routes_noscan_file_to_ignored():
     """A file tagged ignored_reason at discovery goes to IGNORED, not DOWNLOADED."""
     file1 = _make_file(file_id=1, filename="doc.mkv", remote_path="/remote/doc/doc.mkv")

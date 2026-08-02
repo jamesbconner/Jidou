@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     sftp_max_workers: int = Field(default=8, ge=1, le=32)
     sftp_max_retries: int = Field(default=3, ge=0)
     sftp_retry_delay: float = Field(default=1.0, ge=0.1)
+    # A file can be left stuck in DOWNLOADING forever if the process crashes (or
+    # the final status-commit itself fails) between marking it DOWNLOADING and
+    # recording its outcome — see DownloadOrchestrator.run(). Any DOWNLOADING row
+    # older than this is treated as abandoned and reclaimed by the next run.
+    download_stale_downloading_seconds: int = Field(default=3600, ge=60)
 
     @property
     def sftp_remote_paths_list(self) -> list[str]:
