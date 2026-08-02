@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -332,22 +333,32 @@ async def test_publish_dry_run_never_calls_deluge_commands() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_aborts_before_upload_if_stop_fails() -> None:
-    """A failed stop command aborts the publish; upload and restart never run."""
+async def test_publish_aborts_before_upload_but_still_restarts_if_stop_fails() -> None:
+    """A failed stop command aborts the publish before backup/upload -- but restart
+    is still attempted afterward. Once a stop has been requested, the signal may
+    have reached Deluge before the failure occurred (e.g. a dropped connection
+    right after it was sent), so restart always runs rather than leaving Deluge's
+    state unresolved."""
     from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 
     session = _make_session()
     sftp = MagicMock()
     sftp.upload_bytes = AsyncMock()
-    sftp.run_command = AsyncMock(side_effect=RuntimeError("Remote command exited 1"))
+
+    async def _run_command(cmd: str) -> None:
+        if cmd == "systemctl stop deluged":
+            raise RuntimeError("Remote command exited 1")
+
+    sftp.run_command = AsyncMock(side_effect=_run_command)
 
     feed = _make_feed()
     sub = _make_sub(feed=feed)
     session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
 
-    with patch(
-        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
-    ) as mock_orc_cls:
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
         mock_orc = MagicMock()
         mock_orc.run = AsyncMock(return_value=_import_result_ok())
         mock_orc_cls.return_value = mock_orc
@@ -363,9 +374,63 @@ async def test_publish_aborts_before_upload_if_stop_fails() -> None:
         result = await orc.run()
 
     sftp.upload_bytes.assert_not_called()
-    assert sftp.run_command.call_count == 1  # only the failed stop attempt
+    sftp.run_command.assert_any_call("systemctl stop deluged")
+    sftp.run_command.assert_any_call("systemctl start deluged")
+    assert sftp.run_command.call_count == 2
     assert result.errors
     assert "stop" in result.errors[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_publish_restarts_deluge_if_cancelled_during_stop_delay() -> None:
+    """Regression test for the critical crash-safety bug: a cancellation during
+    the post-stop delay must still reach the `finally` and restart Deluge,
+    rather than leaving it stopped forever because the delay ran outside any
+    try/finally that guaranteed a restart."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+    sftp.run_command = AsyncMock()
+
+    sleep_calls = 0
+
+    async def _fake_sleep(seconds: float) -> None:
+        # Simulate the task being cancelled while waiting for Deluge to stop
+        # (the first sleep). The restart delay's sleep (in `finally`) must
+        # still run normally afterward -- that's the whole point of the fix.
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls == 1:
+            raise asyncio.CancelledError()
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as mock_orc_cls,
+        patch("asyncio.sleep", side_effect=_fake_sleep),
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(
+            session,
+            sftp,
+            "/remote/yarss2.conf",
+            dry_run=False,
+            deluge_stop_command="systemctl stop deluged",
+            deluge_restart_command="systemctl start deluged",
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await orc.run()
+
+    sftp.upload_bytes.assert_not_called()
+    sftp.run_command.assert_any_call("systemctl stop deluged")
+    sftp.run_command.assert_any_call("systemctl start deluged")
 
 
 @pytest.mark.asyncio
