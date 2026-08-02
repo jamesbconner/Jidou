@@ -6,10 +6,6 @@ import { createElement } from 'react'
 import Shows from '@/pages/Shows'
 import type { ShowList } from '@/types/api'
 
-// Deliberately avoids tripping any of DQ_CHECKS (no_path/no_content_type/
-// no_local_episodes/orphan) — otherwise the same show would also appear in
-// the pre-existing "Issue table" below, colliding with getByText assertions
-// aimed only at the new Missing Episodes aggregation table.
 function makeShow(overrides: Partial<ShowList> = {}): ShowList {
   return {
     id: 1,
@@ -71,18 +67,18 @@ function mockShowsPage(shows: ShowList[]) {
   })
 }
 
-async function openDataQualityTab() {
+async function openMissingEpisodesTab() {
   render(<Shows />, { wrapper: makeWrapper() })
-  await waitFor(() => expect(screen.getByText(/Data Quality/)).toBeInTheDocument())
-  fireEvent.click(screen.getByText(/Data Quality/))
+  const tab = await screen.findByRole('button', { name: /Missing Episodes/ })
+  fireEvent.click(tab)
 }
 
-describe('Shows page — Missing Episodes aggregation', () => {
+describe('Shows page — Missing Episodes tab', () => {
   test('shows an empty state when no shows have missing episodes', async () => {
     mockShowsPage([makeShow({ missing_episode_count: 0 })])
-    await openDataQualityTab()
+    await openMissingEpisodesTab()
     await waitFor(() =>
-      expect(screen.getByText('No missing episodes across the library.')).toBeInTheDocument(),
+      expect(screen.getByText('No missing episodes across 1 show.')).toBeInTheDocument(),
     )
   })
 
@@ -91,7 +87,7 @@ describe('Shows page — Missing Episodes aggregation', () => {
       makeShow({ id: 1, title: 'Low Gaps', missing_episode_count: 2 }),
       makeShow({ id: 2, title: 'High Gaps', missing_episode_count: 40 }),
     ])
-    await openDataQualityTab()
+    await openMissingEpisodesTab()
     await waitFor(() => expect(screen.getByText('High Gaps')).toBeInTheDocument())
     const rows = screen.getAllByRole('row').filter((r) => r.querySelector('td'))
     expect(rows[0]).toHaveTextContent('High Gaps')
@@ -103,7 +99,7 @@ describe('Shows page — Missing Episodes aggregation', () => {
       makeShow({ id: 1, title: 'Complete Show', missing_episode_count: 0 }),
       makeShow({ id: 2, title: 'Gappy Show', missing_episode_count: 3 }),
     ])
-    await openDataQualityTab()
+    await openMissingEpisodesTab()
     await waitFor(() => expect(screen.getByText('Gappy Show')).toBeInTheDocument())
     expect(screen.queryByText('Complete Show')).not.toBeInTheDocument()
   })
@@ -113,7 +109,7 @@ describe('Shows page — Missing Episodes aggregation', () => {
       makeShow({ id: 1, title: 'Breaking Bad', missing_episode_count: 3 }),
       makeShow({ id: 2, title: 'Better Call Saul', missing_episode_count: 5 }),
     ])
-    await openDataQualityTab()
+    await openMissingEpisodesTab()
     await waitFor(() => expect(screen.getByText('Breaking Bad')).toBeInTheDocument())
 
     fireEvent.change(screen.getByPlaceholderText('Filter by title…'), {
@@ -125,8 +121,19 @@ describe('Shows page — Missing Episodes aggregation', () => {
 
   test('show title links to show detail page', async () => {
     mockShowsPage([makeShow({ id: 42, title: 'Linked Show', missing_episode_count: 1 })])
-    await openDataQualityTab()
+    await openMissingEpisodesTab()
     await waitFor(() => expect(screen.getByText('Linked Show')).toBeInTheDocument())
     expect(screen.getByText('Linked Show').closest('a')).toHaveAttribute('href', '/shows/42')
+  })
+
+  test('does not show the Missing Episodes table under the Data Quality tab', async () => {
+    mockShowsPage([makeShow({ id: 1, title: 'Gappy Show', missing_episode_count: 3 })])
+    render(<Shows />, { wrapper: makeWrapper() })
+    const dqTab = await screen.findByRole('button', { name: /^Data Quality/ })
+    fireEvent.click(dqTab)
+    await waitFor(() =>
+      expect(screen.getByText(/No data quality issues found/)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Gappy Show')).not.toBeInTheDocument()
   })
 })

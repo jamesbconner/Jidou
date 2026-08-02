@@ -38,7 +38,7 @@ const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
 
 const TMDB_IMG = '/api/images/w185'
 
-type Tab = 'library' | 'data'
+type Tab = 'library' | 'data' | 'missing'
 
 function sortShows(shows: ShowList[], sort: ShowSortOrder): ShowList[] {
   function nullsLast<T>(
@@ -313,6 +313,14 @@ export default function Shows() {
             </span>
           )}
         </button>
+        <button className={tabCls('missing')} onClick={() => setTab('missing')}>
+          Missing Episodes
+          {totalMissingEpisodes > 0 && (
+            <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+              {totalMissingEpisodes}
+            </span>
+          )}
+        </button>
       </div>
 
       {(tab === 'library' || tmdbModalOpen) && (
@@ -530,65 +538,6 @@ export default function Shows() {
             })}
           </div>
 
-          {/* Missing episodes aggregation */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-700">Missing Episodes</h3>
-                {totalMissingEpisodes > 0 && (
-                  <span className="bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5 font-medium">
-                    {totalMissingEpisodes}
-                  </span>
-                )}
-              </div>
-              {showsWithMissingEpisodes.length > 0 && (
-                <input
-                  type="search"
-                  placeholder="Filter by title…"
-                  value={missingQuery}
-                  onChange={(e) => setMissingQuery(e.target.value)}
-                  className="border rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              )}
-            </div>
-            {showsWithMissingEpisodes.length === 0 ? (
-              <p className="text-sm text-gray-500">No missing episodes across the library.</p>
-            ) : missingEpisodeRows.length === 0 ? (
-              <p className="text-sm text-gray-500">No shows match &quot;{missingQuery}&quot;.</p>
-            ) : (
-              <Card className="overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Show</th>
-                      <th className="px-4 py-2 text-left">Missing</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {missingEpisodeRows.map((s) => (
-                      <tr key={s.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2">
-                          <Link
-                            to={`/shows/${s.id}`}
-                            className="font-medium hover:underline text-blue-700"
-                          >
-                            {s.title}
-                          </Link>
-                          <span className="block text-xs text-gray-400">TMDB #{s.tmdb_id}</span>
-                        </td>
-                        <td className="px-4 py-2">
-                          <span className="bg-amber-100 text-amber-700 text-xs font-medium rounded-full px-2 py-0.5">
-                            {s.missing_episode_count}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            )}
-          </div>
-
           {/* Active filter description */}
           {dqFilter && (() => {
             const check = DQ_CHECKS.find((c) => c.key === dqFilter)!
@@ -711,6 +660,65 @@ export default function Shows() {
               </table>
             </div>
           )}
+        </section>
+      )}
+
+      {tab === 'missing' && isLoading && (
+        <p className="text-gray-400 text-sm">Loading…</p>
+      )}
+
+      {tab === 'missing' && !isLoading && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-gray-500">
+              {showsWithMissingEpisodes.length === 0
+                ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
+                : `${totalMissingEpisodes} missing episode${totalMissingEpisodes !== 1 ? 's' : ''} across ${showsWithMissingEpisodes.length} show${showsWithMissingEpisodes.length !== 1 ? 's' : ''}.`}
+            </p>
+            {showsWithMissingEpisodes.length > 0 && (
+              <input
+                type="search"
+                placeholder="Filter by title…"
+                value={missingQuery}
+                onChange={(e) => setMissingQuery(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+          </div>
+          {showsWithMissingEpisodes.length > 0 && missingEpisodeRows.length === 0 ? (
+            <p className="text-sm text-gray-500">No shows match &quot;{missingQuery}&quot;.</p>
+          ) : missingEpisodeRows.length > 0 ? (
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Show</th>
+                    <th className="px-4 py-2 text-left">Missing</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {missingEpisodeRows.map((s) => (
+                    <tr key={s.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <Link
+                          to={`/shows/${s.id}`}
+                          className="font-medium hover:underline text-blue-700"
+                        >
+                          {s.title}
+                        </Link>
+                        <span className="block text-xs text-gray-400">TMDB #{s.tmdb_id}</span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="bg-amber-100 text-amber-700 text-xs font-medium rounded-full px-2 py-0.5">
+                          {s.missing_episode_count}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          ) : null}
         </section>
       )}
 
