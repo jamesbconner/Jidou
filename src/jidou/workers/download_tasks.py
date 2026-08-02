@@ -61,6 +61,7 @@ async def _download_files(
         result = await DownloadOrchestrator(session, sftp, settings.local_staging_path).run(
             dry_run=dry_run,
             max_workers=settings.sftp_max_workers,
+            stale_downloading_seconds=settings.download_stale_downloading_seconds,
             on_progress=on_progress,
             on_event=on_event,
         )

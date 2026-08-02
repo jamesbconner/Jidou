@@ -38,3 +38,9 @@ def test_settings_image_cache_defaults() -> None:
     assert default.image_cache_path == "/data/image-cache"
     assert default.image_cache_expiration_enabled is True
     assert default.image_cache_retention_days == 180
+
+
+def test_settings_download_stale_downloading_default() -> None:
+    """Stale-DOWNLOADING reclaim threshold defaults to one hour."""
+    default = Settings(_env_file=None)
+    assert default.download_stale_downloading_seconds == 3600
