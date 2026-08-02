@@ -12,6 +12,7 @@ prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POS
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from jidou.services.file_filters import is_valid_directory, is_valid_media_file
@@ -73,6 +74,14 @@ _NON_EPISODE_ASSET_WORD = re.compile(r"\b(NCED|NCOP|OP|ED|PV|CM|SP|OVA|OAD)\b", 
 # Applied last because it is the most ambiguous pattern.
 _COMPACT_EP = re.compile(r"\b(\d{3,4})\b")
 _COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
+
+# A bare 3-4 digit token that looks like a scene-release year tag (e.g.
+# "Show.Name.2024.1080p.WEB-DL.mkv" — a near-universal release convention) is
+# excluded from the compact SxxExx guess below. The upper bound tracks the
+# current year (plus headroom for near-future release dates) instead of a
+# fixed cutoff, so it never silently goes stale.
+_YEAR_EXCLUSION_MIN = 1900
+_YEAR_EXCLUSION_HEADROOM_YEARS = 2
 
 _MEDIA_EXTENSIONS = frozenset(
     {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
@@ -594,7 +603,7 @@ def _parse_episode(
         if raw in _COMPACT_QUALITY:
             continue
         n = int(raw)
-        if 1900 <= n <= 2030:
+        if _YEAR_EXCLUSION_MIN <= n <= date.today().year + _YEAR_EXCLUSION_HEADROOM_YEARS:
             continue
         s_num = int(raw[:-2])
         e_num = int(raw[-2:])
