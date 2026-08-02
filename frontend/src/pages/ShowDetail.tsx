@@ -245,7 +245,9 @@ export default function ShowDetail() {
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
   const watchedCount = episodes.filter((e) => e.watched).length
-  const missingCount = computeMissingEpisodes(episodes).reduce((sum, s) => sum + s.missing.length, 0)
+  const missingCount = (
+    config?.today ? computeMissingEpisodes(episodes, config.today) : computeMissingEpisodes(episodes)
+  ).reduce((sum, s) => sum + s.missing.length, 0)
   const allWatched = episodes.length > 0 && watchedCount === episodes.length
   const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
@@ -540,7 +542,7 @@ export default function ShowDetail() {
             )}
           </div>
           {episodesTab === 'missing' ? (
-            <MissingEpisodesList episodes={episodes} />
+            <MissingEpisodesList episodes={episodes} today={config?.today} />
           ) : (
             <>
           {beginRematch.isError && (

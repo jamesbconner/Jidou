@@ -1,5 +1,6 @@
 """Tests for the /config API routes."""
 
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -19,6 +20,19 @@ def test_get_config_returns_200() -> None:
     assert "app_name" in body
     assert "debug" in body
     assert "api_key_enabled" in body
+
+
+def test_get_config_surfaces_server_local_today() -> None:
+    """GET /api/config exposes the server's local date for client date math.
+
+    Frontend "has this episode aired" calculations key off this value
+    rather than the browser's own clock, so they agree with server-side
+    queries (e.g. missing_episode_count on GET /shows) that use the
+    server's local timezone.
+    """
+    response = TestClient(app).get("/api/config")
+    assert response.status_code == 200
+    assert response.json()["today"] == date.today().isoformat()
 
 
 def test_get_config_api_key_enabled_reflects_setting() -> None:

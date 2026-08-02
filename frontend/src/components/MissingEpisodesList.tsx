@@ -4,6 +4,12 @@ import type { EpisodeList } from '@/types/api'
 
 interface Props {
   episodes: EpisodeList[]
+  /**
+   * Server's local date (from GET /config), used as "today" so this
+   * agrees with the server-computed missing_episode_count shown elsewhere
+   * instead of drifting against the browser's own clock/timezone.
+   */
+  today?: string
 }
 
 /**
@@ -11,9 +17,9 @@ interface Props {
  * linked file, grouped by season. Mirrors the row-per-item table used on the
  * Watchlist page, minus imagery — just the stats needed to act on gaps.
  */
-export function MissingEpisodesList({ episodes }: Props) {
+export function MissingEpisodesList({ episodes, today }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const seasons = computeMissingEpisodes(episodes)
+  const seasons = today ? computeMissingEpisodes(episodes, today) : computeMissingEpisodes(episodes)
   const totalMissing = seasons.reduce((sum, s) => sum + s.missing.length, 0)
 
   function toggle(seasonNumber: number) {

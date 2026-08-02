@@ -1,6 +1,7 @@
 """API routes for configuration read and connection testing."""
 
 import logging
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -22,10 +23,16 @@ async def get_config() -> dict[str, Any]:
     verifying which settings are active without inspecting environment variables
     directly.
 
+    Includes ``today`` (server local date) so client-side "has this episode
+    aired" calculations agree with the server's own date-based queries
+    (e.g. ``missing_episode_count`` on ``GET /shows``) instead of drifting
+    against the browser's local/UTC clock.
+
     Returns:
         Dictionary of visible configuration values.
     """
     return {
+        "today": date.today().isoformat(),
         "app_name": settings.app_name,
         "debug": settings.debug,
         "database_url": _redact(settings.database_url),

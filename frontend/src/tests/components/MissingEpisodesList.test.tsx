@@ -50,6 +50,15 @@ describe('MissingEpisodesList', () => {
     expect(screen.getByText('Season 1')).toBeInTheDocument()
   })
 
+  test('uses the today prop (server local date) instead of the browser clock', () => {
+    // Air date is "today" from the server's perspective, so it has not
+    // aired yet and must not count as missing — even though it's already
+    // in the past relative to a later client-side default.
+    const episodes = [makeEpisode({ air_date: '2026-06-15', file_tracked: false })]
+    render(<MissingEpisodesList episodes={episodes} today="2026-06-15" />)
+    expect(screen.getByText(/up to date/i)).toBeInTheDocument()
+  })
+
   test('expands a season row on click to reveal episode detail', () => {
     const episodes = [
       makeEpisode({

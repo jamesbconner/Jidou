@@ -214,6 +214,7 @@ export interface MediaPaths {
 }
 
 export interface AppConfig {
+  today: string
   app_name: string
   debug: boolean
   database_url: string | null
