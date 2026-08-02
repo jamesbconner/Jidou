@@ -2787,7 +2787,9 @@ async def test_tmdb_create_show_supplemental_calls_failure_does_not_block_creati
     assert action == "created"
     assert show is not None
     assert show.external_ids == {}
-    assert show.episode_groups == []
+    # episode_groups stays None (not []) on a failed fetch so a later sync
+    # can retry, rather than being treated as TMDB-confirmed-empty forever.
+    assert show.episode_groups is None
 
 
 async def test_tmdb_create_show_stores_adult_flag() -> None:
