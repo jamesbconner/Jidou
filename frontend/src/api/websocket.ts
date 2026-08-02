@@ -13,9 +13,11 @@ export function connectTaskProgress(
   let ws: WebSocket | null = null
   let stopped = false
   let retryDelay = 1000
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const MAX_DELAY = 30_000
 
   function connect() {
+    if (stopped) return
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     onStateChange('connecting')
     ws = new WebSocket(`${proto}://${location.host}/ws/task-progress/${celeryTaskId}`)
@@ -36,7 +38,7 @@ export function connectTaskProgress(
     ws.onclose = () => {
       onStateChange('closed')
       if (!stopped) {
-        setTimeout(connect, retryDelay)
+        reconnectTimer = setTimeout(connect, retryDelay)
         retryDelay = Math.min(retryDelay * 2, MAX_DELAY)
       }
     }
@@ -51,6 +53,10 @@ export function connectTaskProgress(
   return {
     close() {
       stopped = true
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
       ws?.close()
     },
   }
