@@ -217,9 +217,17 @@ class ParseOrchestrator:
                 # Stage 1b: LLM parses show name + confirms/corrects S/E
                 parsed = await parse_filename(file.original_filename, self.llm)
 
-                # Prefer LLM values; fall back to regex anchor if LLM missed them
-                season: int | None = parsed.season or (se[0] if se else None)
-                episode: int | None = parsed.episode or (se[1] if se else None)
+                # Prefer LLM values; fall back to regex anchor if LLM missed them.
+                # `is not None` (not `or`) because 0 is a real, meaningful value
+                # here -- season 0 is TMDB's specials convention, and "or" would
+                # otherwise treat a correctly-identified 0 as falsy/absent and
+                # silently replace it with the regex fallback (or None).
+                season: int | None = (
+                    parsed.season if parsed.season is not None else (se[0] if se else None)
+                )
+                episode: int | None = (
+                    parsed.episode if parsed.episode is not None else (se[1] if se else None)
+                )
                 show_name: str | None = parsed.show_name
                 confidence: float = parsed.confidence
                 content_type: str | None = parsed.content_type

@@ -201,6 +201,89 @@ async def test_run_persists_crc32_declared_from_llm():
     assert file1.crc32_declared == "abcd1234"
 
 
+async def test_run_llm_season_zero_is_preserved_not_treated_as_absent(monkeypatch):
+    """Regression test for the falsy-zero bug: season=0 (TMDB's specials
+    convention) from the LLM must not be discarded and replaced with the
+    regex fallback (or None) just because 0 is falsy in Python.
+
+    heuristic_se is forced to return None so the regex path can't also
+    independently arrive at 0 -- that would mask the bug ("0 or 0" still
+    equals 0), which is exactly why it went unnoticed in the first place.
+    """
+    monkeypatch.setattr("jidou.orchestrators.parse_orchestrator.heuristic_se", lambda _f: None)
+
+    file1 = _make_file(filename="Attack on Titan - Special - No Regrets.mkv")
+    show = _make_show(title="Attack on Titan")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 0, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.9, '
+        '"reasoning": "Specials convention, no literal S00 marker in filename."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    await orch.run()
+
+    assert file1.parsed_season == 0
+
+
+async def test_run_llm_episode_zero_is_preserved_not_treated_as_absent(monkeypatch):
+    """Same falsy-zero bug, on the episode side (episode=0 is a real value too)."""
+    monkeypatch.setattr("jidou.orchestrators.parse_orchestrator.heuristic_se", lambda _f: None)
+
+    file1 = _make_file(filename="Show - Episode Zero - Prologue.mkv")
+    show = _make_show(title="Show")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Show", "season": 1, "episode": 0, '
+        '"crc32": null, "content_type": "tv", "confidence": 0.9, '
+        '"reasoning": "Prologue episode, numbered 0."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    await orch.run()
+
+    assert file1.parsed_episode == 0
+
+
 async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
     """A fuzzy/substring show match must not get permanently written as an alias.
 
