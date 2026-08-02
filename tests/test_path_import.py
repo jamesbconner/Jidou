@@ -2,6 +2,7 @@
 
 import os
 import sys
+from datetime import date
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -236,6 +237,45 @@ class TestParseLine:
         assert entry is not None
         assert entry.season == 10
         assert entry.episode is None
+
+    def test_compact_excludes_current_year_release_tag(self) -> None:
+        # A scene-release year tag for "this year" must never be treated as
+        # a compact SxxExx guess. The exclusion upper bound tracks the
+        # current year dynamically (see _YEAR_EXCLUSION_HEADROOM_YEARS)
+        # rather than a fixed cutoff that would eventually go stale.
+        year = date.today().year
+        line = rf"Z:\tv\Show\Show.Name.{year}.1080p.WEB-DL.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season is None
+        assert entry.episode is None
+
+    def test_compact_excludes_near_future_release_tag(self) -> None:
+        # Headroom beyond "this year" so a near-future release date is also
+        # excluded, not just the current year.
+        year = date.today().year + 2
+        line = rf"Z:\tv\Show\Show.Name.{year}.1080p.WEB-DL.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season is None
+        assert entry.episode is None
+
+    def test_compact_excludes_year_1900_lower_bound(self) -> None:
+        line = r"Z:\tv\Show\Show.Name.1900.DVDRip.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season is None
+        assert entry.episode is None
+
+    def test_compact_matches_number_beyond_year_exclusion_headroom(self) -> None:
+        # A bare compact token safely past the headroom window is still
+        # parsed as a season/episode guess, not swallowed by the exclusion.
+        year = date.today().year + 3
+        line = rf"Z:\tv\Show\Show.Name.{year}.mkv"
+        entry = parse_line(line)
+        assert entry is not None
+        assert entry.season == year // 100
+        assert entry.episode == year % 100
 
     def test_compact_sets_absolute_candidate_to_raw_joined_number(self) -> None:
         # No season directory — "212" is ambiguous between S02E12 and a pure
