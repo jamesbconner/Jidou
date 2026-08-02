@@ -8,6 +8,7 @@ import {
   useRssSubscriptions,
   useTriggerRssImport,
   useTriggerRssPublish,
+  useRssDownload,
 } from '@/hooks/useRss'
 import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
@@ -27,32 +28,13 @@ export default function RSS() {
   const [feedFilter, setFeedFilter] = useState<number | 'unlinked' | 'all'>('all')
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
-  const [downloading, setDownloading] = useState(false)
   const qc = useQueryClient()
-
-  const handleDownload = async () => {
-    setDownloading(true)
-    try {
-      const resp = await fetch('/api/rss/download')
-      if (!resp.ok) throw new Error(`Server returned ${resp.status}`)
-      const blob = await resp.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'yarss2.conf'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      alert(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setDownloading(false)
-    }
-  }
 
   const { data: feeds = [] } = useRssFeeds()
   const { data: subs, isLoading } = useRssSubscriptions()
   const triggerImport = useTriggerRssImport()
   const triggerPublish = useTriggerRssPublish()
+  const download = useRssDownload()
 
   const { data: importTask } = useQuery({
     queryKey: ['tasks', importTaskId],
@@ -140,15 +122,30 @@ export default function RSS() {
             </button>
             <div className="w-px h-6 bg-gray-300 mx-1" />
             <button
-              onClick={handleDownload}
-              disabled={downloading}
+              onClick={() => download.mutate()}
+              disabled={download.isPending}
               className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
             >
-              {downloading ? 'Downloading…' : 'Download'}
+              {download.isPending ? 'Downloading…' : 'Download'}
             </button>
           </div>
           {importTask && <div className="text-right text-xs">Import: <TaskStatusBadge task={importTask} /></div>}
           {publishTask && <div className="text-right text-xs">Publish: <TaskStatusBadge task={publishTask} /></div>}
+          {triggerImport.isError && (
+            <p className="text-xs text-red-600">
+              Import failed to start: {(triggerImport.error as Error)?.message ?? 'Unknown error'}
+            </p>
+          )}
+          {triggerPublish.isError && (
+            <p className="text-xs text-red-600">
+              Publish failed to start: {(triggerPublish.error as Error)?.message ?? 'Unknown error'}
+            </p>
+          )}
+          {download.isError && (
+            <p className="text-xs text-red-600">
+              Download failed: {(download.error as Error)?.message ?? 'Unknown error'}
+            </p>
+          )}
           <p className="text-xs text-gray-400">
             Check the <Link to="/tasks" className="text-indigo-500 hover:underline">Tasks page</Link> for details.
           </p>
