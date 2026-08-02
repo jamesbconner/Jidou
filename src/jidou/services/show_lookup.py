@@ -57,10 +57,15 @@ async def find_show_by_name(
         # Escape % and _ so parsed names containing SQL wildcard characters
         # do not match arbitrary shows.
         escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # A substring match can hit multiple shows (e.g. "Daredevil" also
+        # matches "Daredevil: Born Again"). Order the exact title match first
+        # -- `!=` is False (sorts first) for the exact match, True for every
+        # other substring hit -- rather than picking whichever row happens to
+        # have the lowest id, which is unrelated to which match is correct.
         title_stmt = (
             select(Show)
             .where(Show.title.ilike(f"%{escaped}%", escape="\\"))
-            .order_by(Show.id)
+            .order_by(func.lower(Show.title) != normalised, Show.id)
             .limit(1)
         )
     else:
