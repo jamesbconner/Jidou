@@ -75,7 +75,11 @@ class RssPublishOrchestrator:
             If it fails, the publish aborts before touching any remote files.
         deluge_restart_command: Optional shell command run over SSH after the
             backup/upload, in a ``finally`` block, so Deluge always comes back
-            up and reloads the new config — even if the upload itself failed.
+            up and reloads the new config. Attempted whenever a stop was
+            requested — even if the upload failed, the stop command itself
+            failed, or the stop sequence was interrupted by cancellation —
+            since the stop command's signal may have reached Deluge before
+            any of those failures occurred.
         deluge_stop_delay_seconds: Seconds to wait after ``deluge_stop_command``
             succeeds before touching any remote files. The stop command only
             requests a shutdown (e.g. ``pkill``) — it returns as soon as the
@@ -161,32 +165,44 @@ class RssPublishOrchestrator:
             result.errors.append(msg)
             return result
 
-        # 3. Stop the remote Deluge service so it cannot clobber this write with its
-        # own autosave, and so it re-reads the config fresh once restarted. If the
-        # stop command fails, abort before touching any remote files — Deluge's
-        # state is unknown and there is nothing to restart.
-        if self._deluge_stop_command:
-            if not self._dry_run:
-                await self._on_event("info", "Stopping remote Deluge service", None)
-                try:
-                    await self._sftp.run_command(self._deluge_stop_command)
-                except Exception as exc:
-                    msg = f"Failed to stop remote Deluge service; aborting publish: {exc}"
-                    logger.error(msg)
-                    result.errors.append(msg)
-                    await self._on_event("error", msg, None)
-                    return result
-                if self._deluge_stop_delay_seconds > 0:
-                    await self._on_event(
-                        "info",
-                        f"Waiting {self._deluge_stop_delay_seconds:g}s for Deluge to fully stop",
-                        None,
-                    )
-                    await asyncio.sleep(self._deluge_stop_delay_seconds)
-            else:
-                await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
-
         try:
+            # 3. Stop the remote Deluge service so it cannot clobber this write with
+            # its own autosave, and so it re-reads the config fresh once restarted.
+            # This lives inside the try (rather than before it) specifically so that
+            # a cancellation during the stop command itself, or during the post-stop
+            # delay, still reaches the `finally` below and restarts Deluge — leaving
+            # the stop command outside this block let a cancellation in that window
+            # leave Deluge stopped forever, with the `finally` never reached at all.
+            if self._deluge_stop_command:
+                if not self._dry_run:
+                    await self._on_event("info", "Stopping remote Deluge service", None)
+                    try:
+                        await self._sftp.run_command(self._deluge_stop_command)
+                    except Exception as exc:
+                        # Abort before touching any remote files — Deluge's exact
+                        # state is unknown, so backup/compose/upload don't run. The
+                        # `finally` below still fires on this return and attempts a
+                        # restart regardless, since the stop command may have landed
+                        # before failing (e.g. a dropped connection after the signal
+                        # was already sent).
+                        msg = f"Failed to stop remote Deluge service; aborting publish: {exc}"
+                        logger.error(msg)
+                        result.errors.append(msg)
+                        await self._on_event("error", msg, None)
+                        return result
+                    if self._deluge_stop_delay_seconds > 0:
+                        await self._on_event(
+                            "info",
+                            (
+                                f"Waiting {self._deluge_stop_delay_seconds:g}s "
+                                "for Deluge to fully stop"
+                            ),
+                            None,
+                        )
+                        await asyncio.sleep(self._deluge_stop_delay_seconds)
+                else:
+                    await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
+
             # 4. Back up the current remote file
             ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             remote = PurePosixPath(self._remote_path)
