@@ -177,9 +177,24 @@ async def test_generate_aliases_tmdb_failure_keeps_existing() -> None:
 
     await generate_aliases(show, tmdb, llm=None)
 
-    # Empty TMDB response → tmdb source cleared, flat aliases cleared too
+    # A transient TMDB failure preserves the previously-learned tmdb
+    # aliases rather than wiping them with an empty list.
+    assert show.aliases_sources["tmdb"] == ["old alias"]
+    assert show.aliases == ["old alias"]
+
+
+@pytest.mark.asyncio
+async def test_generate_aliases_tmdb_failure_with_no_prior_aliases_stays_empty() -> None:
+    """A transient failure on a show with no prior TMDB aliases yields an
+    empty tmdb source (nothing to preserve), not a crash.
+    """
+    show = _make_show(aliases=None, aliases_sources=None)
+    tmdb = MagicMock()
+    tmdb.get_alternative_titles = AsyncMock(side_effect=RuntimeError("TMDB down"))
+
+    await generate_aliases(show, tmdb, llm=None)
+
     assert show.aliases_sources["tmdb"] == []
-    # User aliases still empty → flat result is None
     assert show.aliases is None
 
 

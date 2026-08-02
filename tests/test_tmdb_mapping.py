@@ -51,8 +51,12 @@ async def test_fetch_show_metadata_external_ids_failure_falls_back_to_empty() ->
     assert data["name"] == "Show"
 
 
-async def test_fetch_show_metadata_episode_groups_failure_falls_back_to_empty() -> None:
-    """A transient get_episode_groups failure does not abort the fetch."""
+async def test_fetch_show_metadata_episode_groups_failure_leaves_unset() -> None:
+    """A transient get_episode_groups failure does not abort the fetch, and
+    leaves episode_groups as None (not []) so a later sync can retry --
+    collapsing it to [] would be indistinguishable from "TMDB confirmed no
+    groups" and would permanently disable the retry.
+    """
     tmdb = AsyncMock()
     tmdb.get_details = AsyncMock(return_value={"name": "Show"})
     tmdb.get_external_ids = AsyncMock(return_value={})
@@ -60,7 +64,7 @@ async def test_fetch_show_metadata_episode_groups_failure_falls_back_to_empty() 
 
     data = await fetch_show_metadata(tmdb, 42, "tv")
 
-    assert data["episode_groups"] == []
+    assert data["episode_groups"] is None
 
 
 async def test_fetch_show_metadata_get_details_failure_propagates() -> None:
@@ -244,6 +248,15 @@ def test_build_show_fields_defaults_external_ids_and_episode_groups_to_empty() -
     fields = build_show_fields({"name": "Show"}, 1, "tv")
     assert fields["external_ids"] == {}
     assert fields["episode_groups"] == []
+
+
+def test_build_show_fields_preserves_none_episode_groups() -> None:
+    """An explicit None (fetch_show_metadata's failed-fetch sentinel) passes
+    through unchanged rather than being coerced to [], so TMDBOrchestrator's
+    "None means never checked, retry it" gate still fires on the next sync.
+    """
+    fields = build_show_fields({"name": "Show", "episode_groups": None}, 1, "tv")
+    assert fields["episode_groups"] is None
 
 
 # ---------------------------------------------------------------------------

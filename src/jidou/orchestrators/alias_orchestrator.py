@@ -174,20 +174,33 @@ async def generate_aliases(
         llm: Optional LLM service; if ``None`` or unavailable the LLM source
             is cleared and only TMDB aliases are generated.
     """
+    # 0. Snapshot existing sources up front so a failed TMDB fetch below can
+    # fall back to them instead of an empty list.
+    existing: dict[str, list[str]] = show.aliases_sources or {}
+
     # 1. Fetch TMDB alternative titles (cached by TMDBService).
+    raw: dict[str, object] | None
     try:
         raw = await tmdb.get_alternative_titles(show.tmdb_id, media_type=show.media_type)
     except Exception:
         logger.warning(
-            "Failed to fetch alternative titles for show id=%d tmdb_id=%d",
+            "Failed to fetch alternative titles for show id=%d tmdb_id=%d; "
+            "preserving previously known TMDB aliases instead of wiping them",
             show.id,
             show.tmdb_id,
             exc_info=True,
         )
-        raw = {}
+        raw = None
 
-    # 2. Extract TMDB aliases.
-    tmdb_aliases = _extract_tmdb_aliases(raw, show.title)
+    # 2. Extract TMDB aliases. A fetch failure preserves the aliases already
+    # known from a prior successful call rather than replacing them with an
+    # empty list, which would otherwise be indistinguishable from "TMDB
+    # genuinely has no alternative titles."
+    tmdb_aliases = (
+        _extract_tmdb_aliases(raw, show.title)
+        if raw is not None
+        else list(existing.get("tmdb") or [])
+    )
 
     # 3. LLM aliases (optional).
     llm_aliases: list[str] = []
@@ -202,7 +215,6 @@ async def generate_aliases(
             )
 
     # 4. Preserve existing user aliases.
-    existing: dict[str, list[str]] = show.aliases_sources or {}
     user_aliases: list[str] = existing.get("user") or []
     # Migration guard: shows created via import or before aliases_sources was
     # introduced may have flat entries in show.aliases with no corresponding

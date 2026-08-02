@@ -65,12 +65,26 @@ async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) 
     except Exception:
         logger.debug("get_external_ids failed for tmdb_id=%d", tmdb_id)
 
-    episode_groups: list[dict[str, Any]] = []
+    # None means "TV show, but the fetch failed" so a later sync can retry;
+    # [] means "confirmed empty" (movies, or a TV show TMDB reports has no
+    # groups) and is intentionally left alone by TMDBOrchestrator to avoid
+    # re-fetching every sync. Collapsing both to [] here would make a
+    # transient failure indistinguishable from a confirmed-empty result.
+    episode_groups: list[dict[str, Any]] | None
     if media_type == "tv":
         try:
             episode_groups = await fetch_episode_groups_list(tmdb, tmdb_id)
         except Exception:
-            logger.debug("get_episode_groups failed for tmdb_id=%d", tmdb_id)
+            logger.warning(
+                "get_episode_groups failed for tmdb_id=%d; leaving episode_groups "
+                "unset so a future sync can retry rather than treating this as "
+                "confirmed-empty",
+                tmdb_id,
+                exc_info=True,
+            )
+            episode_groups = None
+    else:
+        episode_groups = []
 
     return {**data, "external_ids": external_ids, "episode_groups": episode_groups}
 
@@ -150,7 +164,12 @@ def build_show_fields(
         "next_episode_to_air": data.get("next_episode_to_air"),
         "homepage": data.get("homepage"),
         "external_ids": data.get("external_ids") or {},
-        "episode_groups": data.get("episode_groups") or [],
+        # `.get(..., [])` (not `or []`) so an explicit None -- set by
+        # fetch_show_metadata when a fetch attempt failed -- passes through
+        # instead of being coerced to a confirmed-empty [], while a genuinely
+        # absent key (data not sourced from fetch_show_metadata at all) still
+        # defaults to [].
+        "episode_groups": data.get("episode_groups", []),
         "status": data.get("status"),
         "in_production": data.get("in_production"),
         "number_of_seasons": data.get("number_of_seasons"),
