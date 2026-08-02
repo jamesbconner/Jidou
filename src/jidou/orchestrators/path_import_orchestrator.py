@@ -433,7 +433,26 @@ class PathImportOrchestrator:
             {"show_id": show.id, "tmdb_id": show.tmdb_id},
         )
         logger.info("Found existing show %r (id=%d) for name %r", show.title, show.id, name)
-        # If episodes haven't been synced yet, do it now so file matching can proceed.
+        await self._sync_episodes_if_needed(show)
+
+        return show, "found"
+
+    async def _sync_episodes_if_needed(self, show: Show) -> None:
+        """Sync a show's episodes from TMDB if none are tracked yet.
+
+        Shared by :meth:`_resolve_show` (a show found via a normal DB lookup)
+        and :meth:`_tmdb_create_show`'s concurrent-create race recovery (a
+        show found via its ``IntegrityError`` fallback) — both are "a show
+        that already exists in the DB, possibly with zero episodes synced
+        yet." Previously only the former ran this check, so an import that
+        lost a show-creation race could see zero episodes for the winning
+        show (if its own sync hadn't finished yet) and report every file in
+        its batch as unmatched — a false negative caused entirely by timing,
+        not a real data problem.
+
+        Args:
+            show: An already-committed Show row to check/sync.
+        """
         ep_count = await self.session.scalar(
             select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
         )
@@ -445,6 +464,14 @@ class PathImportOrchestrator:
                 try:
                     await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
                 except Exception as exc:
+                    # show is already committed (found via a DB lookup, not
+                    # just-flushed) -- rolling back here only discards this
+                    # sync attempt's own partial work, clearing the
+                    # PendingRollbackError state a failed flush leaves behind
+                    # so the next DB operation (the next show in this import
+                    # batch, etc.) doesn't crash on an unrelated poisoned
+                    # session.
+                    await self.session.rollback()
                     await self._emit("error", f"Episode sync failed for '{show.title}': {exc}")
                     logger.exception("Episode sync failed for show id=%d", show.id)
         else:
@@ -464,8 +491,6 @@ class PathImportOrchestrator:
                     show.id,
                     exc_info=True,
                 )
-
-        return show, "found"
 
     async def _process_show_entries(
         self,
@@ -816,8 +841,23 @@ class PathImportOrchestrator:
             fallback = await self._db_find_show(title)
             if fallback:
                 await self._emit("info", f"Show '{title}' already existed (concurrent create)")
+                # The winning request's own sync_show_episodes() may still be
+                # in flight (a TMDB round-trip with retries) -- without this
+                # check, every entry in this import's batch would be matched
+                # against zero episodes and reported as unmatched, a false
+                # negative caused entirely by losing the timing race.
+                await self._sync_episodes_if_needed(fallback)
                 return fallback, "found"
             return None, "not_found"
+
+        # Commit the show row now, before the best-effort episode-sync and
+        # alias-generation steps below. Both can fail via a DB-level error
+        # deep inside a nested flush, which requires a session.rollback() to
+        # clear the resulting PendingRollbackError -- without this checkpoint,
+        # that rollback would also undo this show's own not-yet-committed
+        # INSERT, poisoning every subsequent operation on this session
+        # instead of just discarding the failed step's own partial work.
+        await self.session.commit()
 
         await self._emit(
             "info",
@@ -835,9 +875,11 @@ class PathImportOrchestrator:
             )
             await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
         except Exception as exc:
+            await self.session.rollback()
             await self._emit("error", f"Episode sync failed for '{title}': {exc}")
             logger.exception("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id)
-            # Show row exists; proceed to episode matching with whatever was synced.
+            # Show row is already committed above; proceed to episode
+            # matching with whatever was synced.
 
         # Generate TMDB alternative-title aliases and LLM aliases.  The
         # directory-name alias (stored in show.aliases at construction time when
@@ -850,6 +892,7 @@ class PathImportOrchestrator:
             await self.session.flush()
             await self._emit("info", f"Generated aliases for '{title}'")
         except Exception:
+            await self.session.rollback()
             logger.warning(
                 "Alias generation failed for %r (tmdb_id=%d); "
                 "aliases can be regenerated via the Manage Aliases modal",
