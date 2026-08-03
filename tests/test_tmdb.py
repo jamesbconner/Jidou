@@ -418,6 +418,58 @@ class TestTMDBService:
         assert len(successful) >= 1
         assert all(r == mock_response_data for r in successful)
 
+    @pytest.mark.asyncio
+    async def test_inflight_dedup_fails_fast_after_max_election_rounds(
+        self,
+        tmdb_service: TMDBService,
+    ) -> None:
+        """During a sustained outage, only _MAX_DEDUP_ELECTION_ROUNDS owners retry.
+
+        Without the cap, each of N concurrent callers would take a serial turn
+        as elected owner, so the Nth caller only learns the endpoint is down
+        after N rate-limited retry cycles. With the cap, once that many owners
+        have failed in a row the remaining waiters fail fast with the same
+        error instead of taking their own turn.
+        """
+        http_calls = 0
+
+        async def always_failing_get(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)  # let siblings queue up behind this "owner"
+            raise RuntimeError(f"simulated sustained outage (attempt {http_calls})")
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
+        mock_client.get = always_failing_get
+
+        @asynccontextmanager  # type: ignore[arg-type]
+        async def noop_acquire() -> AsyncGenerator[None]:
+            yield
+
+        with (
+            patch("httpx2.AsyncClient", return_value=mock_client),
+            patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
+            patch("redis.asyncio.from_url", return_value=_FakeRedis()),
+        ):
+            results = await asyncio.gather(
+                tmdb_service.get_trending(media_type="tv"),
+                tmdb_service.get_trending(media_type="tv"),
+                tmdb_service.get_trending(media_type="tv"),
+                tmdb_service.get_trending(media_type="tv"),
+                tmdb_service.get_trending(media_type="tv"),
+                return_exceptions=True,
+            )
+
+        # Exactly _MAX_DEDUP_ELECTION_ROUNDS owners take a serial turn; the
+        # remaining callers fail fast without ever calling the endpoint again.
+        assert http_calls == tmdb_service._MAX_DEDUP_ELECTION_ROUNDS, (
+            f"Expected {tmdb_service._MAX_DEDUP_ELECTION_ROUNDS} HTTP calls, got {http_calls}"
+        )
+        assert len(results) == 5
+        assert all(isinstance(r, Exception) for r in results)
+
 
 class TestTMDBPublicMethodsCoverage:
     """Cover public methods not yet reached by TestTMDBService."""

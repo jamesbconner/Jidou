@@ -59,6 +59,14 @@ class TMDBService:
     _MAX_TRANSPORT_RETRIES = 3
     _RETRY_BASE_DELAY_SECONDS = 0.5
 
+    # Cap on how many times a *new* owner is elected to retry the same
+    # deduplicated request after a failure, independent of how many callers
+    # (N) are waiting. Without this cap, a sustained outage serializes all N
+    # callers through their own full retry cycle one after another -- the
+    # Nth caller only learns the endpoint is down after N elections' worth of
+    # rate-limited attempts, even though the 1st caller knew at t=0.
+    _MAX_DEDUP_ELECTION_ROUNDS = 2
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -75,6 +83,12 @@ class TMDBService:
         # Per-instance in-flight deduplication state.
         self._in_flight: dict[str, asyncio.Event] = {}
         self._flight_lock = asyncio.Lock()
+        # How many owners have been elected so far for a given cache key
+        # (reset to 1 whenever a brand-new dedup batch starts), and the most
+        # recent owner's exception, so waiters that hit the election cap can
+        # fail fast with the real error instead of taking another serial turn.
+        self._in_flight_rounds: dict[str, int] = {}
+        self._in_flight_error: dict[str, BaseException] = {}
 
     async def _request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Make an authenticated, rate-limited, deduplicated request to TMDB.
@@ -91,6 +105,9 @@ class TMDBService:
             httpx.HTTPStatusError: If the API returns a non-2xx status.
             httpx.TransportError: If the connection still fails after
                 :attr:`_MAX_TRANSPORT_RETRIES` attempts.
+            Exception: The last owner's error, re-raised to any waiter that
+                arrives once :attr:`_MAX_DEDUP_ELECTION_ROUNDS` elected owners
+                have already failed in a row for this key (fail-fast).
         """
         if not self.api_key:
             raise ValueError("TMDB_API_KEY is not configured")
@@ -113,6 +130,7 @@ class TMDBService:
             else:
                 event = asyncio.Event()
                 self._in_flight[cache_key] = event
+                self._in_flight_rounds[cache_key] = 1
                 is_owner = True
 
         if not is_owner:
@@ -123,19 +141,45 @@ class TMDBService:
                 if refreshed is not None:
                     return refreshed  # type: ignore[no-any-return]
                 # Owner's request failed.  Elect one waiter as new owner so the
-                # remaining waiters don't all make independent HTTP calls.
+                # remaining waiters don't all make independent HTTP calls --
+                # unless the election cap is already reached, in which case
+                # this (and every remaining) waiter fails fast instead of
+                # taking its own serial turn against a demonstrably-down endpoint.
                 async with self._flight_lock:
                     if cache_key in self._in_flight:
                         # Another waiter won the election — wait on their attempt.
                         event = self._in_flight[cache_key]
                         continue
+                    round_number = self._in_flight_rounds.get(cache_key, 0) + 1
+                    if round_number > self._MAX_DEDUP_ELECTION_ROUNDS:
+                        # Deliberately not popped: every remaining sibling
+                        # waiter must see the same capped round count and the
+                        # same error so they all fail fast too, instead of the
+                        # first one clearing state and the next re-electing
+                        # itself as a "fresh" owner.
+                        error = self._in_flight_error.get(cache_key)
+                        logger.warning(
+                            "In-flight dedup: %s failed %d time(s) in a row; "
+                            "failing fast instead of electing another retry owner",
+                            endpoint,
+                            self._MAX_DEDUP_ELECTION_ROUNDS,
+                        )
+                        if error is not None:
+                            raise error
+                        raise RuntimeError(
+                            f"TMDB {endpoint} request failed (in-flight dedup fail-fast)"
+                        )
+                    self._in_flight_rounds[cache_key] = round_number
                     event = asyncio.Event()
                     self._in_flight[cache_key] = event
                     is_owner = True
                     break
             logger.warning(
-                "In-flight dedup: owner request failed for %s; this coroutine retrying",
+                "In-flight dedup: owner request failed for %s; this coroutine retrying "
+                "(election round %d/%d)",
                 endpoint,
+                self._in_flight_rounds[cache_key],
+                self._MAX_DEDUP_ELECTION_ROUNDS,
             )
 
         # --- Rate-limited HTTP request ---
@@ -148,6 +192,8 @@ class TMDBService:
             #     request between the initial cache miss and this point.
             pre_request_cached = await cache.get(cache_key)
             if pre_request_cached is not None:
+                self._in_flight_rounds.pop(cache_key, None)
+                self._in_flight_error.pop(cache_key, None)
                 return pre_request_cached  # type: ignore[no-any-return]
 
             response = await self._get_with_retry(url, request_params, endpoint)
@@ -160,7 +206,13 @@ class TMDBService:
                 response.elapsed.total_seconds(),
             )
             await cache.set(cache_key, result, label=endpoint, ttl=_ttl_for_endpoint(endpoint))
+            self._in_flight_rounds.pop(cache_key, None)
+            self._in_flight_error.pop(cache_key, None)
             return result
+        except Exception as exc:
+            if is_owner:
+                self._in_flight_error[cache_key] = exc
+            raise
         finally:
             if is_owner:
                 async with self._flight_lock:
