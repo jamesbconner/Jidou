@@ -11,6 +11,7 @@ downloads run concurrently up to ``max_workers`` simultaneous transfers.
 from __future__ import annotations
 
 import asyncio
+import errno
 import fnmatch
 import logging
 import stat
@@ -50,6 +51,14 @@ _TRANSIENT_SFTP_ERRORS: tuple[type[BaseException], ...] = (
     asyncssh.ChannelOpenError,
     OSError,
 )
+
+# download_file()/upload_file() perform local filesystem I/O (via asyncssh's
+# sftp.get()/put()) inside the same retry-wrapped call as the network
+# transfer, so a local disk-full or permission error also surfaces as an
+# OSError here. These errno values are permanent local conditions that
+# exponential-backoff retries cannot fix — retrying just delays the
+# inevitable failure with misleading "retrying..." log lines.
+_PERMANENT_LOCAL_ERRNOS = frozenset({errno.ENOSPC, errno.EACCES, errno.EROFS})
 
 
 @dataclass
@@ -229,7 +238,9 @@ class SFTPService:
 
         Retries on transient network errors (:data:`_TRANSIENT_SFTP_ERRORS`).
         Permanent SFTP errors (permission denied, file not found) propagate
-        immediately without retrying.
+        immediately without retrying, as do permanent local filesystem
+        errors (:data:`_PERMANENT_LOCAL_ERRNOS`) raised by the local I/O
+        that ``download_file``/``upload_file`` perform inside the same call.
 
         Args:
             label: Human-readable name used in log messages.
@@ -249,6 +260,8 @@ class SFTPService:
             try:
                 return await coro_factory()
             except _TRANSIENT_SFTP_ERRORS as exc:
+                if isinstance(exc, OSError) and exc.errno in _PERMANENT_LOCAL_ERRNOS:
+                    raise
                 last_exc = exc
                 if attempt == self._max_retries:
                     break
