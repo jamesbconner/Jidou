@@ -253,6 +253,90 @@ async def test_rssfeed_key_resolves_feed_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upsert_feeds_dry_run_maps_new_feed_to_placeholder_id() -> None:
+    """_upsert_feeds in dry-run maps a brand-new feed's key to the placeholder id.
+
+    Regression test for #425: previously a new feed's key was simply omitted
+    from the returned mapping in dry-run mode (no real id exists yet), making
+    it indistinguishable from a genuinely unresolvable key.
+    """
+    from jidou.orchestrators.rss_import_orchestrator import (
+        _DRY_RUN_PENDING_FEED_ID,
+        RssImportResult,
+    )
+
+    session = _make_session()
+    session.execute = AsyncMock(return_value=_exec_result(scalar=None))  # no existing row
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=True,
+        on_event=_noop_event,
+    )
+
+    rssfeeds = {"1": {"name": "New Feed", "url": "https://example.com/new.rss"}}
+    result = RssImportResult()
+    key_to_id = await orc._upsert_feeds(rssfeeds, result)
+
+    assert key_to_id == {"1": _DRY_RUN_PENDING_FEED_ID}
+    assert result.feeds_created == 1
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_subscription_for_new_feed_does_not_warn() -> None:
+    """A subscription pointing at a brand-new feed must not spuriously warn in dry-run.
+
+    Regression test for #425: a dry-run preview where most feeds already
+    exist but one subscription points at a brand-new feed previously warned
+    "could not resolve feed" for that subscription, even though the real
+    (non-dry-run) import would resolve it correctly once the feed is
+    actually created. A genuinely unresolvable rssfeed_key must still warn.
+    """
+    from jidou.orchestrators.rss_import_orchestrator import (
+        _DRY_RUN_PENDING_FEED_ID,
+        RssImportResult,
+    )
+
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=[]), _exec_result(scalars_all=[])]
+    )
+
+    events: list[tuple[str, str, object]] = []
+
+    async def _capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg, ctx))
+
+    sftp = _make_sftp()
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=sftp,
+        remote_path="/remote/yarss2.conf",
+        dry_run=True,
+        on_event=_capture_event,
+    )
+
+    # feed_key_to_id as _upsert_feeds produces it in dry-run: "0" already
+    # exists (real id), "1" is brand-new (placeholder).
+    feed_key_to_id = {"0": 10, "1": _DRY_RUN_PENDING_FEED_ID}
+    remote_subs = {
+        "216": {"name": "Existing-Feed Sub", "active": True, "rssfeed_key": "0"},
+        "217": {"name": "New-Feed Sub", "active": True, "rssfeed_key": "1"},
+        "218": {"name": "Truly Unresolvable", "active": True, "rssfeed_key": "999"},
+    }
+    result = RssImportResult()
+    await orc._upsert_subscriptions(remote_subs, feed_key_to_id, result)
+
+    warn_msgs = [msg for level, msg, _ in events if level == "warn"]
+    assert not any("New-Feed Sub" in m for m in warn_msgs)
+    assert any("Truly Unresolvable" in m for m in warn_msgs)
+
+
+@pytest.mark.asyncio
 async def test_show_auto_linked_by_name() -> None:
     """A subscription whose name matches a show title gets show_id set."""
     from jidou.models.rss import RssSubscription
