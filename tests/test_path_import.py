@@ -2069,6 +2069,10 @@ async def test_import_show_creates_synthetic_routed_file_for_newly_tracked_episo
     assert created_file.remote_path == f"synthetic-import://{raw_path}"
     assert created_file.local_path == raw_path
     assert created_file.status == FileStatus.ROUTED
+    # Regression test (issue #424): without these, a later rematch's Phase 3
+    # orphan-relink pass can never find this row.
+    assert created_file.parsed_season == episode.season_number
+    assert created_file.parsed_episode == episode.episode_number
 
 
 @pytest.mark.asyncio

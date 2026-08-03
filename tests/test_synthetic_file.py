@@ -71,6 +71,33 @@ async def test_episode_id_none_for_movie_file() -> None:
     assert record is not None
     assert record.show_id == 1
     assert record.episode_id is None
+    assert record.parsed_season is None
+    assert record.parsed_episode is None
+
+
+@pytest.mark.asyncio
+async def test_stores_parsed_season_and_episode_when_provided() -> None:
+    """parsed_season/parsed_episode round-trip onto the created record.
+
+    Regression test: without these, ShowRematchOrchestrator's Phase 3
+    orphan-relink pass can never find this row after a future rematch (its
+    query requires both to be non-null), silently leaving the file
+    unlinked forever. See issue #424.
+    """
+    session = _make_session()
+
+    record = await create_synthetic_import_file(
+        session,
+        show_id=1,
+        episode_id=10,
+        raw_path="/media/Show/ep.mkv",
+        parsed_season=3,
+        parsed_episode=7,
+    )
+
+    assert record is not None
+    assert record.parsed_season == 3
+    assert record.parsed_episode == 7
 
 
 @pytest.mark.asyncio

@@ -1407,13 +1407,25 @@ async def assign_import_episode(
 
         if displaced and displaced != payload.filename:
             mark_episode_tracked(source_ep, displaced, "import")
-            await _resync_synthetic_file_episode(db_session, displaced, source_ep.id)
+            await _resync_synthetic_file_episode(
+                db_session,
+                displaced,
+                source_ep.id,
+                season_number=source_ep.season_number,
+                episode_number=source_ep.episode_number,
+            )
         else:
             clear_episode_tracking(source_ep)
 
     # Assign the filename to the target episode.
     mark_episode_tracked(target_ep, payload.filename, "import")
-    await _resync_synthetic_file_episode(db_session, payload.filename, target_ep.id)
+    await _resync_synthetic_file_episode(
+        db_session,
+        payload.filename,
+        target_ep.id,
+        season_number=target_ep.season_number,
+        episode_number=target_ep.episode_number,
+    )
 
     await db_session.flush()
     await db_session.commit()
@@ -1499,7 +1511,14 @@ async def link_episode_file(
         )
 
     mark_episode_tracked(ep, payload.path, "import")
-    await create_synthetic_import_file(db_session, show_id, episode_id, payload.path)
+    await create_synthetic_import_file(
+        db_session,
+        show_id,
+        episode_id,
+        payload.path,
+        parsed_season=ep.season_number,
+        parsed_episode=ep.episode_number,
+    )
     await db_session.commit()
 
     synthetic_remote_path = f"synthetic-import://{payload.path}"
@@ -1779,6 +1798,9 @@ async def _resync_synthetic_file_episode(
     db_session: AsyncSession,
     filename: str,
     episode_id: int,
+    *,
+    season_number: int,
+    episode_number: int,
 ) -> None:
     """Repoint a path-imported file's synthetic DownloadedFile at its new episode.
 
@@ -1790,6 +1812,13 @@ async def _resync_synthetic_file_episode(
     whichever episode held the filename before the reassignment, so the Files
     page would list it under the wrong (or no longer tracked) episode.
 
+    ``parsed_season``/``parsed_episode`` must move with ``episode_id`` too: a
+    later show-rematch's orphan-relink pass (see
+    ``ShowRematchOrchestrator._restore_tracking_and_relink``) keys its lookup
+    on those fields, not ``episode_id`` — leaving them stale here would make a
+    future rematch silently relink this file to the wrong episode instead of
+    correctly orphaning it.
+
     A no-op if no such row exists yet (e.g. data imported before this
     convention existed).
 
@@ -1798,6 +1827,8 @@ async def _resync_synthetic_file_episode(
         filename: The raw path used as both ``Episode.tracked_filename`` and
             the synthetic file's ``remote_path`` suffix.
         episode_id: The episode the file should now be linked to.
+        season_number: The new episode's season number.
+        episode_number: The new episode's episode number.
     """
     stmt = select(DownloadedFile).where(
         DownloadedFile.remote_path == f"synthetic-import://{filename}"
@@ -1805,3 +1836,5 @@ async def _resync_synthetic_file_episode(
     synthetic_file = (await db_session.execute(stmt)).scalar_one_or_none()
     if synthetic_file is not None:
         synthetic_file.episode_id = episode_id
+        synthetic_file.parsed_season = season_number
+        synthetic_file.parsed_episode = episode_number

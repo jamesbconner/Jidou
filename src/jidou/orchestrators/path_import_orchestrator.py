@@ -665,7 +665,12 @@ class PathImportOrchestrator:
                     if newly_tracked:
                         mark_episode_tracked(ep, entry.raw_path, "import")
                         await create_synthetic_import_file(
-                            self.session, show.id, ep.id, entry.raw_path
+                            self.session,
+                            show.id,
+                            ep.id,
+                            entry.raw_path,
+                            parsed_season=ep.season_number,
+                            parsed_episode=ep.episode_number,
                         )
                     else:
                         ep.file_tracked = True
