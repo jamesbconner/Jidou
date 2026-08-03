@@ -338,4 +338,7 @@ async def test_soft_failure_marks_failed_no_complete_event_and_raises_after_sess
     assert failed_calls[0].kwargs["result_summary"] == {"errors": ["bad config"], "dry_run": False}
     complete_events = [c for c in mock_emit.call_args_list if c.args[0]["type"] == "complete"]
     assert complete_events == []
+    error_events = [c for c in mock_emit.call_args_list if c.args[0]["type"] == "error"]
+    assert len(error_events) == 1
+    assert error_events[0].args[0]["data"]["error"] == "Import failed: bad config"
     mock_engine.dispose.assert_called_once()

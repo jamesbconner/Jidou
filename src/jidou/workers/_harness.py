@@ -140,6 +140,13 @@ async def run_task_workflow(
                     progress_message=result.message,
                     result_summary=result.result_summary,
                 )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "error",
+                        "data": {"error": result.message},
+                    }
+                )
                 # Use the caller's own message (e.g. "Import failed: ...") for
                 # the raised exception, not a re-derived "; ".join(errors) --
                 # that would drop the prefix callers already composed.
