@@ -89,6 +89,15 @@ _SUBSCRIPTION_COLUMNS = frozenset(
     }
 )
 
+# Placeholder feed_id for a brand-new feed in dry-run mode. The real ID only
+# exists once the row is actually flushed, but subscription-resolution
+# warnings need to tell "this feed key will exist once the real run creates
+# it" apart from "this feed key is genuinely unresolvable" -- both currently
+# look identical (missing from feed_key_to_id) without this sentinel. Never
+# persisted: every write path that uses a resolved feed_id is itself gated
+# behind `if not self._dry_run`, so this value never reaches the database.
+_DRY_RUN_PENDING_FEED_ID = -1
+
 
 @dataclass
 class RssImportResult:
@@ -215,7 +224,10 @@ class RssImportOrchestrator:
             result: Mutated in-place with feed counts.
 
         Returns:
-            Mapping of remote_key → DB feed_id for foreign-key linking.
+            Mapping of remote_key → DB feed_id for foreign-key linking. In
+            dry-run mode, a brand-new feed maps to
+            :data:`_DRY_RUN_PENDING_FEED_ID` rather than a real id, since the
+            row is never actually flushed.
         """
         key_to_id: dict[str, int] = {}
 
@@ -237,6 +249,12 @@ class RssImportOrchestrator:
                     self._session.add(feed)
                     await self._session.flush()
                     key_to_id[key] = feed.id
+                else:
+                    # No real ID exists yet, but the key is resolvable once a
+                    # real run creates the feed -- record that with a
+                    # placeholder so subscription resolution doesn't mistake
+                    # this for a genuinely unresolvable feed key.
+                    key_to_id[key] = _DRY_RUN_PENDING_FEED_ID
                 result.feeds_created += 1
                 logger.debug("Created RssFeed remote_key=%r name=%r", key, name)
             else:
@@ -433,7 +451,9 @@ class RssImportOrchestrator:
 
         Args:
             sub_dict: Subscription dict (may be remote or merged).
-            feed_key_to_id: remote_key → DB id from the feed upsert pass.
+            feed_key_to_id: remote_key → DB id from the feed upsert pass. In
+                dry-run mode this may map to :data:`_DRY_RUN_PENDING_FEED_ID`
+                for a feed that would be created by a real run.
 
         Returns:
             DB feed id, or ``None`` if not resolvable.
