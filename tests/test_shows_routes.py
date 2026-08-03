@@ -2816,9 +2816,13 @@ def test_assign_import_repoints_synthetic_files_to_new_episodes() -> None:
     source_ep = _make_tracked_episode(id=5, show_id=1)
     source_ep.tracked_filename = "/media/show/ep05.mkv"
     source_ep.tracked_source = "import"
+    source_ep.season_number = 1
+    source_ep.episode_number = 5
     target_ep = _make_tracked_episode(id=10, show_id=1)
     target_ep.tracked_filename = "/media/show/ep10.mkv"
     target_ep.tracked_source = "import"
+    target_ep.season_number = 1
+    target_ep.episode_number = 10
 
     displaced_file = MagicMock(episode_id=10)  # currently on target_ep
     reassigned_file = MagicMock(episode_id=5)  # currently on source_ep
@@ -2859,6 +2863,13 @@ def test_assign_import_repoints_synthetic_files_to_new_episodes() -> None:
         assert displaced_file.episode_id == source_ep.id
         # The file for "ep05.mkv" (assigned to target) now points at target_ep.
         assert reassigned_file.episode_id == target_ep.id
+        # Regression test (issue #424): parsed_season/parsed_episode must move
+        # with episode_id, or a later rematch would use a stale key and
+        # silently relink to the wrong episode instead of correctly orphaning.
+        assert displaced_file.parsed_season == source_ep.season_number
+        assert displaced_file.parsed_episode == source_ep.episode_number
+        assert reassigned_file.parsed_season == target_ep.season_number
+        assert reassigned_file.parsed_episode == target_ep.episode_number
     finally:
         app.dependency_overrides.clear()
 
@@ -3142,6 +3153,8 @@ def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> 
 
     linked = _make_linked_file(show_id=1, episode_id=10, raw_path=raw_path)
 
+    captured: list[AsyncMock] = []
+
     async def _session() -> AsyncMock:
         session = AsyncMock()
         show_result = MagicMock()
@@ -3161,6 +3174,7 @@ def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> 
         session.begin_nested = MagicMock(return_value=nested_ctx)
         session.add = MagicMock()
         session.commit = AsyncMock()
+        captured.append(session)
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -3174,6 +3188,11 @@ def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> 
         assert ep.tracked_source == "import"
         assert ep.tracked_filename == raw_path
         assert response.json()["id"] == linked.id
+        # Regression test (issue #424): without these, a later rematch's
+        # Phase 3 orphan-relink pass can never find this row.
+        created_file = captured[0].add.call_args[0][0]
+        assert created_file.parsed_season == ep.season_number
+        assert created_file.parsed_episode == ep.episode_number
     finally:
         app.dependency_overrides.clear()
 

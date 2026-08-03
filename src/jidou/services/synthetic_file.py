@@ -25,6 +25,9 @@ async def create_synthetic_import_file(
     show_id: int,
     episode_id: int | None,
     raw_path: str,
+    *,
+    parsed_season: int | None = None,
+    parsed_episode: int | None = None,
 ) -> DownloadedFile | None:
     """Create a display-only, already-ROUTED DownloadedFile for a file at its final path.
 
@@ -47,6 +50,13 @@ async def create_synthetic_import_file(
             to the show alone (see ``POST /shows/{show_id}/link-movie-file``).
         raw_path: The file's existing absolute path (already at its final
             on-disk location).
+        parsed_season: The matched episode's season number, or ``None`` for
+            a movie. Populated so a later show-rematch's orphan-relink pass
+            (see ``ShowRematchOrchestrator._restore_tracking_and_relink``)
+            can find this row after episodes are purged and re-synced from
+            TMDB — without it the file is silently excluded from relinking.
+        parsed_episode: The matched episode's episode number, or ``None``
+            for a movie.
 
     Returns:
         The created (or pre-existing) :class:`DownloadedFile`, or ``None`` if
@@ -71,6 +81,8 @@ async def create_synthetic_import_file(
         remote_path=synthetic_remote_path,
         local_path=raw_path,
         status=FileStatus.ROUTED,
+        parsed_season=parsed_season,
+        parsed_episode=parsed_episode,
     )
     try:
         async with session.begin_nested():
