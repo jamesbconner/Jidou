@@ -13,6 +13,7 @@ import pytest
 from jidou.services.sftp_service import (
     CommandResult,
     DownloadProgress,
+    DownloadResult,
     RecursiveListResult,
     RemoteFile,
     SFTPService,
@@ -1204,6 +1205,44 @@ class TestDownloadFiles:
             )
 
         mock_connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_one_file_exception_does_not_cancel_the_others(
+        self, sftp_service: SFTPService, tmp_path: Path
+    ) -> None:
+        """A failure downloading one file must not cancel the rest of the batch.
+
+        Without per-file isolation, asyncio.gather (no return_exceptions=True)
+        raises the first exception and cancels every other pending task,
+        discarding already-completed results -- exactly the bug this test
+        guards against. Mirrors
+        test_one_path_exception_does_not_affect_others for the sibling
+        list_remote_files_recursive_batch.
+        """
+
+        async def fake_download_file(
+            remote_path: str, local_path: str | Path, dry_run: bool = False
+        ) -> DownloadResult:
+            if remote_path == "/remote/bad.mkv":
+                raise OSError("connection reset")
+            return DownloadResult(
+                remote_path=remote_path,
+                local_path=str(local_path),
+                size=100,
+                dry_run=False,
+                elapsed_seconds=0.01,
+            )
+
+        with patch.object(sftp_service, "download_file", side_effect=fake_download_file):
+            results = await sftp_service.download_files(
+                ["/remote/good.mkv", "/remote/bad.mkv"],
+                tmp_path,
+            )
+
+        assert len(results) == 2
+        assert not isinstance(results[0], BaseException)
+        assert results[0].remote_path == "/remote/good.mkv"
+        assert isinstance(results[1], OSError)
 
 
 # ---------------------------------------------------------------------------

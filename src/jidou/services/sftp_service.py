@@ -650,23 +650,30 @@ class SFTPService:
         local_base: str | Path,
         dry_run: bool = False,
         on_progress: Callable[[DownloadProgress], None] | None = None,
-    ) -> list[DownloadResult]:
+    ) -> list[DownloadResult | BaseException]:
         """Download multiple files concurrently, emitting per-file progress.
 
         Up to ``max_workers`` transfers run simultaneously.  Each transfer
         independently retries transient failures via :meth:`download_file`.
+        Each transfer is fully independent; a failure downloading one file is
+        captured and returned alongside the others rather than propagated, so
+        one bad file never cancels the rest of the batch (mirrors
+        :meth:`list_remote_files_recursive_batch`'s per-path isolation).
 
         Args:
             remote_paths: Remote file paths to download.
             local_base: Local directory where files are written (filename from
                 the remote path is preserved).
             dry_run: Passed through to each :meth:`download_file` call.
-            on_progress: Optional callback invoked after each file completes.
-                Receives a :class:`DownloadProgress` snapshot.
+            on_progress: Optional callback invoked after each successful file.
+                Receives a :class:`DownloadProgress` snapshot. Not invoked for
+                a file whose download raised — check the corresponding entry
+                in the returned list instead.
 
         Returns:
-            List of :class:`DownloadResult` objects in the same order as
-            *remote_paths*.
+            List of ``DownloadResult | BaseException``, one per input path, in
+            the same order as *remote_paths*. Check each entry's type to tell
+            a completed transfer from a failed one.
 
         Raises:
             ValueError: If two or more paths in *remote_paths* share the same
@@ -688,7 +695,7 @@ class SFTPService:
                 f"Duplicate filenames in remote_paths would overwrite local files: {sorted(dupes)}"
             )
 
-        results: list[DownloadResult | None] = [None] * total
+        results: list[DownloadResult | BaseException | None] = [None] * total
         semaphore = asyncio.Semaphore(self._max_workers)
 
         async def _download_one(idx: int, remote_path: str) -> None:
@@ -696,7 +703,11 @@ class SFTPService:
                 filename = Path(remote_path).name
                 local_path = base / filename
                 file_start = time.monotonic()
-                result = await self.download_file(remote_path, local_path, dry_run=dry_run)
+                try:
+                    result = await self.download_file(remote_path, local_path, dry_run=dry_run)
+                except Exception as exc:
+                    results[idx] = exc
+                    return
                 results[idx] = result
                 if on_progress is not None:
                     on_progress(
@@ -712,9 +723,10 @@ class SFTPService:
 
         await asyncio.gather(*[_download_one(i, p) for i, p in enumerate(remote_paths)])
 
+        succeeded = sum(1 for r in results if isinstance(r, DownloadResult))
         logger.info(
-            "Batch download complete: %d/%d files in %.2fs (dry_run=%s)",
-            total,
+            "Batch download complete: %d/%d succeeded in %.2fs (dry_run=%s)",
+            succeeded,
             total,
             time.monotonic() - batch_start,
             dry_run,
