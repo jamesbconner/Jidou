@@ -89,6 +89,7 @@ async def test_update_task_status_sets_completed_at() -> None:
     """Terminal status transitions must populate completed_at."""
     task = MagicMock(spec=BackgroundTask)
     task.status = TaskStatus.RUNNING.value
+    task.completed_at = None
 
     session = _make_mock_session(task)
     before = datetime.now(UTC)
@@ -97,6 +98,29 @@ async def test_update_task_status_sets_completed_at() -> None:
 
     assert task.completed_at is not None
     assert before <= task.completed_at <= after
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_repeat_terminal_update_does_not_bump_completed_at() -> None:
+    """A repeat/retried terminal update must not overwrite the original completed_at.
+
+    Regression test for #426: the terminal guard explicitly allows an
+    idempotent self-transition (e.g. COMPLETED→COMPLETED) for worker cleanup
+    paths, but completed_at was being reset unconditionally on every terminal
+    update, silently bumping the original completion timestamp forward on a
+    duplicate/retried update.
+    """
+    task = MagicMock(spec=BackgroundTask)
+    task.status = TaskStatus.COMPLETED.value
+    original_completed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    task.completed_at = original_completed_at
+
+    session = _make_mock_session(task)
+    result = await update_task_status(session, "tid", TaskStatus.COMPLETED)
+
+    assert result is task
+    assert task.completed_at == original_completed_at
+    session.commit.assert_called_once()
 
 
 @pytest.mark.asyncio

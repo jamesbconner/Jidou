@@ -90,7 +90,14 @@ async def update_task_status(
         )
         return task
 
-    if status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+    # Only set on first arrival at a terminal state -- a repeat/retried
+    # terminal update (e.g. COMPLETED→COMPLETED self-transition, which the
+    # guard above explicitly permits) must not bump the original completion
+    # timestamp forward.
+    if (
+        status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
+        and task.completed_at is None
+    ):
         task.completed_at = datetime.now(UTC)
 
     task.status = status
