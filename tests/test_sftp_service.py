@@ -1,6 +1,7 @@
 """Tests for the SFTPService."""
 
 import asyncio
+import errno
 import socket
 import time
 from pathlib import Path
@@ -228,6 +229,44 @@ class TestExecuteWithRetry:
 
         assert result == "ok"
         assert attempts == 2
+
+    @pytest.mark.asyncio
+    async def test_disk_full_local_oserror_is_not_retried(self, sftp_service: SFTPService) -> None:
+        """A local ENOSPC (disk full) is permanent — retrying cannot free disk space.
+
+        Regression test: download_file()/upload_file() perform local
+        filesystem I/O inside the same retry-wrapped call as the network
+        transfer, so a local OSError must not be treated the same as a
+        transient network OSError.
+        """
+        attempts = 0
+
+        async def factory() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with pytest.raises(OSError, match="No space left on device"):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_permission_denied_local_oserror_is_not_retried(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """A local EACCES (permission denied) is permanent, not a network blip."""
+        attempts = 0
+
+        async def factory() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise OSError(errno.EACCES, "Permission denied")
+
+        with pytest.raises(OSError, match="Permission denied"):
+            await sftp_service._execute_with_retry("test op", factory)
+
+        assert attempts == 1
 
     @pytest.mark.asyncio
     async def test_zero_max_retries_fails_after_single_attempt(
