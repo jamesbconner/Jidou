@@ -1,5 +1,6 @@
 """Tests for the LLM service (multi-provider with caching and graceful degradation)."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -561,3 +562,108 @@ class TestConnectionMaxTokens:
         payload = client.post.call_args.kwargs["json"]
         # 20 tokens: enough for a JSON schema response, far below the 1024 default.
         assert payload["max_tokens"] <= 25
+
+
+# ---------------------------------------------------------------------------
+# In-flight deduplication
+# ---------------------------------------------------------------------------
+
+
+class TestInFlightDeduplication:
+    @pytest.mark.asyncio
+    async def test_concurrent_identical_calls_share_one_http_request(
+        self, openai_service: LLMService
+    ) -> None:
+        """Concurrent complete() calls with identical args must share one HTTP call.
+
+        The first caller ("owner") makes the request; callers that arrive while
+        the owner is in-flight wait on the owner's asyncio.Event and read the
+        cache it populates instead of issuing their own requests.
+        """
+        http_calls = 0
+
+        async def slow_post(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)  # yield so the other callers reach _in_flight check
+            return _openai_response("42")
+
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.__aexit__.return_value = False
+        client.post = slow_post
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            results = await asyncio.gather(
+                openai_service.complete("What is 6x7?"),
+                openai_service.complete("What is 6x7?"),
+                openai_service.complete("What is 6x7?"),
+            )
+
+        assert http_calls == 1, f"Expected 1 HTTP call, got {http_calls}"
+        assert all(r is not None and r.content == "42" for r in results)
+
+    @pytest.mark.asyncio
+    async def test_owner_failure_elects_single_retry_owner(
+        self, openai_service: LLMService
+    ) -> None:
+        """When the owner's call fails, exactly one waiter retries; others wait.
+
+        Without the election, every waiter would fire its own independent HTTP
+        call on owner failure (a thundering-herd bug), duplicating cost/latency
+        on the slowest, most expensive external call in the system.
+        """
+        http_calls = 0
+
+        async def failing_then_succeeding_post(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)  # let waiters queue
+            if http_calls == 1:
+                raise RuntimeError("simulated provider error")
+            return _openai_response("42")
+
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.__aexit__.return_value = False
+        client.post = failing_then_succeeding_post
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            results = await asyncio.gather(
+                openai_service.complete("What is 6x7?"),
+                openai_service.complete("What is 6x7?"),
+                openai_service.complete("What is 6x7?"),
+            )
+
+        # Only 2 HTTP calls total: 1 owner (fails, returns None) + 1 elected
+        # retry owner (succeeds). The third coroutine reads from the cache the
+        # retry owner populates.
+        assert http_calls == 2, f"Expected 2 HTTP calls, got {http_calls}"
+        successful = [r for r in results if r is not None]
+        assert len(successful) >= 1
+        assert all(r.content == "42" for r in successful)
+
+    @pytest.mark.asyncio
+    async def test_bypass_cache_calls_do_not_dedup(self, openai_service: LLMService) -> None:
+        """bypass_cache=True calls skip in-flight dedup and each hit the provider."""
+        http_calls = 0
+
+        async def slow_post(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)
+            return _openai_response("42")
+
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.__aexit__.return_value = False
+        client.post = slow_post
+
+        with patch("httpx2.AsyncClient", return_value=client):
+            results = await asyncio.gather(
+                openai_service.complete("What is 6x7?", bypass_cache=True),
+                openai_service.complete("What is 6x7?", bypass_cache=True),
+            )
+
+        assert http_calls == 2
+        assert all(r is not None and r.content == "42" for r in results)
