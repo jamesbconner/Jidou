@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.services.episode_match_llm import (
+    _MAX_EPISODES_IN_PROMPT,
     llm_match_episode,
     llm_parse_episode,
     llm_pick_candidate,
@@ -415,6 +416,78 @@ async def test_llm_match_no_episodes_returns_none() -> None:
     assert season is None
     assert episode_num is None
     llm.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_llm_match_truncates_and_warns_over_episode_cap() -> None:
+    """A show with more episodes than the prompt cap is truncated, with a warning."""
+    events, capture = _event_capture()
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 1, "episode": 5}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    eps = [_make_ep_row(1, i) for i in range(1, _MAX_EPISODES_IN_PROMPT + 51)]
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = eps
+
+    matched_episode = _make_episode(ep_id=5, show_id=1, season=1, episode=5)
+    match_result = MagicMock()
+    match_result.scalar_one_or_none.return_value = matched_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, match_result])
+
+    ep, _, _ = await llm_match_episode(
+        session,
+        llm,
+        show_id=1,
+        show_title="Long Runner",
+        entry=_make_entry(),
+        on_event=capture,
+    )
+    assert ep is matched_episode
+
+    warnings = [e for e in events if e[0] == "warn"]
+    assert len(warnings) == 1
+    assert "Long Runner" in warnings[0][1]
+    assert str(_MAX_EPISODES_IN_PROMPT) in warnings[0][1]
+
+    sent_prompt = llm.complete.call_args.kwargs["prompt"]
+    assert sent_prompt.count("S01E") == _MAX_EPISODES_IN_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_llm_match_no_warning_under_episode_cap() -> None:
+    """A show at or under the prompt cap does not emit a truncation warning."""
+    events, capture = _event_capture()
+    mock_response = MagicMock()
+    mock_response.content = '{"season": 1, "episode": 5}'
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=mock_response)
+
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, i) for i in range(1, 11)]
+
+    matched_episode = _make_episode(ep_id=5, show_id=1, season=1, episode=5)
+    match_result = MagicMock()
+    match_result.scalar_one_or_none.return_value = matched_episode
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, match_result])
+
+    ep, _, _ = await llm_match_episode(
+        session,
+        llm,
+        show_id=1,
+        show_title="Short Show",
+        entry=_make_entry(),
+        on_event=capture,
+    )
+    assert ep is matched_episode
+    assert [e for e in events if e[0] == "warn"] == []
 
 
 @pytest.mark.asyncio

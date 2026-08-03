@@ -124,6 +124,13 @@ _LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = {
     },
 }
 
+# Prompt-token-budget cap on the number of episodes shown to the LLM in
+# llm_match_episode()'s episode list. Comfortably larger than any current
+# show while still fitting in context; a show with more episodes than this
+# has its tail episodes silently unmatchable via this path, so exceeding it
+# is logged and emitted as a warning rather than truncated in silence.
+_MAX_EPISODES_IN_PROMPT = 1500
+
 
 async def _emit(
     on_event: OnEvent | None, level: str, msg: str, ctx: dict[str, object] | None = None
@@ -359,8 +366,25 @@ async def llm_match_episode(
     if not eps:
         return None, None, None
 
+    if len(eps) > _MAX_EPISODES_IN_PROMPT:
+        logger.warning(
+            "Show %r has %d episodes; truncating to first %d for LLM match "
+            "(tail episodes unmatchable via this path)",
+            show_title,
+            len(eps),
+            _MAX_EPISODES_IN_PROMPT,
+        )
+        await _emit(
+            on_event,
+            "warn",
+            f"Show '{show_title}' has {len(eps)} episodes; only the first "
+            f"{_MAX_EPISODES_IN_PROMPT} are shown to the LLM match, so tail "
+            "episodes cannot be matched via this path",
+        )
+
     ep_list = "\n".join(
-        f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}" for ep in eps[:500]
+        f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
+        for ep in eps[:_MAX_EPISODES_IN_PROMPT]
     )
     filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
     prompt = (
