@@ -78,7 +78,7 @@ async def insert_or_skip_duplicate(session: AsyncSession, obj: object) -> bool:
     except IntegrityError as exc:
         orig = getattr(exc, "orig", None)
         pgcode = getattr(orig, "pgcode", None)
-        if pgcode is not None and pgcode != "23505":
+        if pgcode != "23505":
             raise
         logger.debug("Insert skipped due to unique-constraint race: %r", obj)
         return False
