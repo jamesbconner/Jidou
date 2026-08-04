@@ -176,6 +176,7 @@ class ManualMatchOrchestrator:
             content_type=payload.content_type,
             local_path=payload.local_path,
             cached=False,
+            track_missing_episodes=True,
         )
         self.session.add(show)
         try:

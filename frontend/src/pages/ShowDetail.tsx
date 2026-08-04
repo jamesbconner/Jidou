@@ -245,9 +245,13 @@ export default function ShowDetail() {
 
   const trackedCount = episodes.filter((e) => e.file_tracked).length
   const watchedCount = episodes.filter((e) => e.watched).length
-  const missingCount = (
-    config?.today ? computeMissingEpisodes(episodes, config.today) : computeMissingEpisodes(episodes)
-  ).reduce((sum, s) => sum + s.missing.length, 0)
+  const missingCount = show.track_missing_episodes
+    ? (
+        config?.today
+          ? computeMissingEpisodes(episodes, config.today)
+          : computeMissingEpisodes(episodes)
+      ).reduce((sum, s) => sum + s.missing.length, 0)
+    : 0
   const allWatched = episodes.length > 0 && watchedCount === episodes.length
   const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
@@ -362,6 +366,24 @@ export default function ShowDetail() {
                     }`}
                   >
                     {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
+                  </button>
+                )}
+                {!isMovie && (
+                  <button
+                    onClick={() =>
+                      patchShow.mutate({
+                        id: showId,
+                        patch: { track_missing_episodes: !show.track_missing_episodes },
+                      })
+                    }
+                    disabled={patchShow.isPending}
+                    className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+                      !show.track_missing_episodes
+                        ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {show.track_missing_episodes ? 'Ignore Missing Eps' : 'Track Missing Eps'}
                   </button>
                 )}
                 {watchlistEntry && (

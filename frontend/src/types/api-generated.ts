@@ -199,6 +199,8 @@ export interface paths {
          *             episode has aired for ``missing_episode_count``. Defaults to the
          *             server's current date; overridable so a client on a different
          *             timezone doesn't disagree with the server about "today".
+         *             ``missing_episode_count`` is reported as 0 for shows with
+         *             ``track_missing_episodes=False``, regardless of actual gaps.
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -1442,6 +1444,11 @@ export interface paths {
          *     Secrets (API keys, passwords) are redacted.  This endpoint is useful for
          *     verifying which settings are active without inspecting environment variables
          *     directly.
+         *
+         *     Includes ``today`` (server local date) so client-side "has this episode
+         *     aired" calculations agree with the server's own date-based queries
+         *     (e.g. ``missing_episode_count`` on ``GET /shows``) instead of drifting
+         *     against the browser's local/UTC clock.
          *
          *     Returns:
          *         Dictionary of visible configuration values.
@@ -3806,6 +3813,11 @@ export interface components {
             /** Adult */
             adult?: boolean | null;
             /**
+             * Track Missing Episodes
+             * @default true
+             */
+            track_missing_episodes: boolean;
+            /**
              * Episode Count
              * @default 0
              */
@@ -3856,6 +3868,11 @@ export interface components {
              * @description Manual poster override (TMDB file_path) for the Show Details header
              */
             detail_poster_path?: string | null;
+            /**
+             * Track Missing Episodes
+             * @description When False, this show is excluded from missing-episode counts/lists
+             */
+            track_missing_episodes?: boolean | null;
         };
         /**
          * ShowPaths
@@ -3959,6 +3976,11 @@ export interface components {
             list_poster_path?: string | null;
             /** Detail Poster Path */
             detail_poster_path?: string | null;
+            /**
+             * Track Missing Episodes
+             * @default true
+             */
+            track_missing_episodes: boolean;
             /**
              * Created At
              * Format: date-time
