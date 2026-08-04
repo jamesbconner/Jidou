@@ -66,7 +66,8 @@ async def test_uses_llm_when_episode_none() -> None:
 
 @pytest.mark.asyncio
 async def test_returns_none_when_llm_also_fails() -> None:
-    """If episode is None and LLM also returns None, no episode is matched."""
+    """If episode is None and both the LLM parse and the title-list fallback
+    fail, no episode is matched."""
     session = AsyncMock()
     llm = MagicMock()
     llm.is_available.return_value = True
@@ -81,12 +82,53 @@ async def test_returns_none_when_llm_also_fails() -> None:
         is_absolute=False,
     )
 
-    ep, season, ep_num = await match_entry_to_episode(
-        session, llm, show_id=1, show_title="SomeShow", entry=entry
-    )
+    with patch(
+        "jidou.services.episode_file_matching.llm_match_episode",
+        AsyncMock(return_value=(None, None, None)),
+    ) as mock_llm_match:
+        ep, season, ep_num = await match_entry_to_episode(
+            session, llm, show_id=1, show_title="SomeShow", entry=entry
+        )
     assert ep is None
     assert season == 1
     assert ep_num is None
+    mock_llm_match.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_matches_via_title_when_no_number_anywhere() -> None:
+    """A filename with no season/episode number anywhere still gets a shot at
+    matching by title against the show's full episode list (issue #312): when
+    llm_parse_episode also can't extract a number, the title-list match is
+    tried as a last resort instead of giving up immediately.
+    """
+    episode = _make_episode(id=42, show_id=1, season=3, episode=5)
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(return_value=MagicMock(content='{"season": null, "episode": null}'))
+
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\The Series Finale.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=None,
+        is_absolute=True,
+    )
+
+    with patch(
+        "jidou.services.episode_file_matching.llm_match_episode",
+        AsyncMock(return_value=(episode, 3, 5)),
+    ) as mock_llm_match:
+        ep, season, ep_num = await match_entry_to_episode(
+            AsyncMock(), llm, show_id=1, show_title="Show", entry=entry
+        )
+
+    assert ep is episode
+    assert season == 3
+    assert ep_num == 5
+    mock_llm_match.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +459,7 @@ async def test_llm_fills_in_season_when_originally_none() -> None:
 async def test_surfaces_llm_season_when_episode_still_none() -> None:
     """Bugbot-caught regression: llm_parse_episode can resolve a season
     without an episode. That season must not be silently discarded just
-    because the overall attempt still failed.
+    because the title-list fallback also fails.
     """
     mock_response = MagicMock()
     mock_response.content = '{"season": 2, "episode": null}'
@@ -434,9 +476,13 @@ async def test_surfaces_llm_season_when_episode_still_none() -> None:
         is_absolute=True,
     )
 
-    ep, season, episode_num = await match_entry_to_episode(
-        AsyncMock(), llm, show_id=1, show_title="Show", entry=entry
-    )
+    with patch(
+        "jidou.services.episode_file_matching.llm_match_episode",
+        AsyncMock(return_value=(None, None, None)),
+    ):
+        ep, season, episode_num = await match_entry_to_episode(
+            AsyncMock(), llm, show_id=1, show_title="Show", entry=entry
+        )
 
     assert ep is None
     assert season == 2  # LLM's season must be surfaced, not discarded

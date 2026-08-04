@@ -10,7 +10,6 @@ from jidou.services.episode_match_llm import (
     llm_parse_episode,
     llm_pick_candidate,
 )
-from jidou.services.path_parser import ParsedPathEntry
 
 
 def _make_ep_row(season: int, episode: int, name: str = "Episode") -> MagicMock:
@@ -372,15 +371,7 @@ async def test_llm_pick_candidate_exception_is_emitted() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_entry(episode: int | None = 1, season: int | None = None) -> ParsedPathEntry:
-    return ParsedPathEntry(
-        raw_path=r"Z:\tv\Show\ep.mkv",
-        show_dir="Show",
-        show_root=r"Z:\tv\Show",
-        season=season,
-        episode=episode,
-        is_absolute=True,
-    )
+_FILENAME = r"Z:\tv\Show\ep.mkv"
 
 
 @pytest.mark.asyncio
@@ -389,7 +380,7 @@ async def test_llm_match_unavailable_returns_none() -> None:
     session = AsyncMock()
 
     ep, season, episode_num = await llm_match_episode(
-        session, None, show_id=1, show_title="Show", entry=_make_entry()
+        session, None, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -410,7 +401,7 @@ async def test_llm_match_no_episodes_returns_none() -> None:
     session.execute = AsyncMock(return_value=empty)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -444,7 +435,7 @@ async def test_llm_match_truncates_and_warns_over_episode_cap() -> None:
         llm,
         show_id=1,
         show_title="Long Runner",
-        entry=_make_entry(),
+        filename=_FILENAME,
         on_event=capture,
     )
     assert ep is matched_episode
@@ -483,7 +474,7 @@ async def test_llm_match_no_warning_under_episode_cap() -> None:
         llm,
         show_id=1,
         show_title="Short Show",
-        entry=_make_entry(),
+        filename=_FILENAME,
         on_event=capture,
     )
     assert ep is matched_episode
@@ -503,7 +494,7 @@ async def test_llm_match_complete_raises_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -523,7 +514,7 @@ async def test_llm_match_response_none_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -545,7 +536,7 @@ async def test_llm_match_invalid_json_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -567,7 +558,7 @@ async def test_llm_match_non_dict_json_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -589,7 +580,7 @@ async def test_llm_match_missing_season_or_episode_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -613,7 +604,7 @@ async def test_llm_match_non_integer_season_episode_returns_none() -> None:
     session.execute = AsyncMock(return_value=eps_result)
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     assert season is None
@@ -642,7 +633,7 @@ async def test_llm_match_success_returns_episode() -> None:
     session.execute = AsyncMock(side_effect=[eps_result, match_result])
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is matched_episode
     assert season == 1
@@ -669,7 +660,7 @@ async def test_llm_match_markdown_fence_stripped() -> None:
     session.execute = AsyncMock(side_effect=[eps_result, match_result])
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is matched_episode
     assert season == 2
@@ -694,7 +685,7 @@ async def test_llm_match_db_lookup_miss_returns_none() -> None:
     session.execute = AsyncMock(side_effect=[eps_result, miss_result])
 
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=_make_entry()
+        session, llm, show_id=1, show_title="Show", filename=_FILENAME
     )
     assert ep is None
     # The proposed season/episode must still be surfaced even though no DB
@@ -718,17 +709,13 @@ async def test_llm_match_exception_is_emitted() -> None:
     ]
     session.execute = AsyncMock(return_value=eps_result)
 
-    entry = ParsedPathEntry(
-        raw_path=r"Z:\tv\Show\Show 01.mkv",
-        show_dir="Show",
-        show_root=r"Z:\tv\Show",
-        season=None,
-        episode=1,
-        is_absolute=True,
-    )
-
     ep, season, episode_num = await llm_match_episode(
-        session, llm, show_id=1, show_title="Show", entry=entry, on_event=capture
+        session,
+        llm,
+        show_id=1,
+        show_title="Show",
+        filename=r"Z:\tv\Show\Show 01.mkv",
+        on_event=capture,
     )
 
     assert ep is None

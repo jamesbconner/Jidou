@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.show import Show
 from jidou.services.episode_lookup import resolve_episode
+from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file
 from jidou.services.filename_parser import heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
@@ -309,6 +310,23 @@ class ParseOrchestrator:
                 if show is not None:
                     file.show_id = show.id
                     ep = await resolve_episode(self.session, show.id, season, episode)
+                    if ep is None and llm_active:
+                        # No number matched a known episode (or none was found
+                        # at all) -- last resort: match by title against the
+                        # show's full episode list before giving up.
+                        ep, llm_ep_season, llm_ep_num = await llm_match_episode(
+                            self.session,
+                            self.llm,
+                            show.id,
+                            show.title,
+                            file.original_filename,
+                            on_event=_emit,
+                        )
+                        if ep is not None:
+                            season = llm_ep_season if llm_ep_season is not None else season
+                            episode = llm_ep_num if llm_ep_num is not None else episode
+                            file.parsed_season = season
+                            file.parsed_episode = episode
                     file.episode_id = ep.id if ep is not None else None
                     # When the LLM returned season=None (anime absolute numbering),
                     # backfill parsed_season from the resolved episode so RouteOrchestrator
