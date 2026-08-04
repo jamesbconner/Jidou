@@ -2,7 +2,14 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
-import { useSearchShows, useLibraryIndex, useCreateShow, useDeleteShow, showKeys } from '@/hooks/useShows'
+import {
+  useSearchShows,
+  useLibraryIndex,
+  useCreateShow,
+  useDeleteShow,
+  useRematchShow,
+  showKeys,
+} from '@/hooks/useShows'
 import { dashboardKeys, type RecentQueryParams } from '@/hooks/useDashboard'
 import type { ShowList, ShowCreate } from '@/types/api'
 
@@ -157,6 +164,30 @@ describe('useDeleteShow', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
+  })
+})
+
+// Regression: a rematch can change a show's title/poster/tmdb_id, which is
+// exactly what the Dashboard's "Recently Added"/"Recent Episodes" carousels
+// cache — the same dashboard cache-namespace gap useCreateShow/useDeleteShow
+// were already fixed for. See https://github.com/jamesbconner/Jidou/issues/434.
+describe('useRematchShow', () => {
+  test('invalidates dashboard queries in addition to show queries', async () => {
+    const { wrapper, qc } = makeWrapperWithClient()
+    qc.setQueryData(showKeys.all, [])
+    qc.setQueryData(showKeys.detail(1), makeShow())
+    qc.setQueryData(dashboardKeys.recentShows(RECENT_PARAMS), [])
+
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(makeShow()))
+
+    const { result } = renderHook(() => useRematchShow(1), { wrapper })
+    result.current.mutate({ tmdbId: 1396, mediaType: 'tv' })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(showKeys.detail(1))?.isInvalidated).toBe(true)
     expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
   })
 })

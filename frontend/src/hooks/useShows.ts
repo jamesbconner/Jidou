@@ -197,6 +197,9 @@ export function useRematchShow(showId: number) {
       qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
       qc.invalidateQueries({ queryKey: showKeys.all })
+      // Same cache-namespace gap as useCreateShow/useDeleteShow — a rematch
+      // can change the title/poster/tmdb_id shown in the Dashboard carousels.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
     },
   })
 }
