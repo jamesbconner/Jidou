@@ -359,6 +359,8 @@ async def list_shows(
             episode has aired for ``missing_episode_count``. Defaults to the
             server's current date; overridable so a client on a different
             timezone doesn't disagree with the server about "today".
+            ``missing_episode_count`` is reported as 0 for shows with
+            ``track_missing_episodes=False``, regardless of actual gaps.
         db_session: DB session (injected).
 
     Returns:
@@ -423,7 +425,7 @@ async def list_shows(
         data.episode_count = ep_count
         data.watched_episode_count = watched_ep_count
         data.matched_file_count = file_count
-        data.missing_episode_count = missing_ep_count
+        data.missing_episode_count = missing_ep_count if show.track_missing_episodes else 0
         data.has_active_rss_subscription = has_active_rss
         shows.append(data)
     return shows
@@ -573,6 +575,7 @@ async def create_show(
         local_path=local_path,
         sys_name=sys_name,
         cached=False,
+        track_missing_episodes=True,
     )
     db_session.add(show)
     try:

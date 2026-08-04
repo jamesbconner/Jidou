@@ -92,6 +92,8 @@ class Show(TimestampMixin, Base):
     # be silently reverted on the next sync. NULL falls back to poster_path.
     list_poster_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     detail_poster_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # User opt-out: excludes this show from missing-episode counts/lists when False
+    track_missing_episodes: Mapped[bool] = mapped_column(Boolean, default=True)
 
     def __repr__(self) -> str:
         """Return a concise representation of the Show."""

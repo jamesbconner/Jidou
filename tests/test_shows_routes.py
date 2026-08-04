@@ -37,6 +37,7 @@ def _make_show(
     title: str = "Test Show",
     media_type: str = "tv",
     local_path: str | None = None,
+    track_missing_episodes: bool = True,
 ) -> MagicMock:
     """Build a minimal Show mock suitable for route responses."""
     from datetime import UTC, datetime
@@ -78,6 +79,7 @@ def _make_show(
     s.local_path = local_path
     s.list_poster_path = None
     s.detail_poster_path = None
+    s.track_missing_episodes = track_missing_episodes
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
     return s
@@ -230,6 +232,20 @@ def test_list_shows_surfaces_missing_episode_count() -> None:
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json()[0]["missing_episode_count"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_zeroes_missing_episode_count_when_tracking_disabled() -> None:
+    """A show with track_missing_episodes=False always reports missing_episode_count=0."""
+    from jidou.database import get_session
+
+    show = _make_show(track_missing_episodes=False)
+    app.dependency_overrides[get_session] = _session_override(many=[show], missing_count=5)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["missing_episode_count"] == 0
     finally:
         app.dependency_overrides.clear()
 
@@ -600,6 +616,20 @@ def test_patch_show_rejects_invalid_content_type() -> None:
     """PATCH /api/shows/{id} returns 422 for an invalid content_type value."""
     response = TestClient(app).patch("/api/shows/1", json={"content_type": "cartoon"})
     assert response.status_code == 422
+
+
+def test_patch_show_sets_track_missing_episodes() -> None:
+    """PATCH /api/shows/{id} toggles track_missing_episodes on the show object."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, track_missing_episodes=True)
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch("/api/shows/1", json={"track_missing_episodes": False})
+        assert response.status_code == 200
+        assert show.track_missing_episodes is False
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_patch_show_sets_list_and_detail_poster_overrides() -> None:
