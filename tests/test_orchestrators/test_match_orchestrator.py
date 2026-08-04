@@ -9,6 +9,8 @@ resolution.
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from jidou.models.downloaded_file import FileStatus
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _sanitize_alias
 
@@ -81,6 +83,20 @@ def _make_session(files=None, show=None, episode=None):
 
     session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result] * 10)
     return session
+
+
+@pytest.fixture(autouse=True)
+def _stub_llm_match_episode(monkeypatch):
+    """Default no-op stub for ParseOrchestrator's episode-list LLM fallback.
+
+    Keeps every existing test that leaves the episode DB lookup unresolved
+    passing unchanged -- the fallback now fires but yields no new match,
+    identical to today's observable behavior. Tests exercising the fallback
+    itself override this stub's return_value.
+    """
+    stub = AsyncMock(return_value=(None, None, None))
+    monkeypatch.setattr("jidou.orchestrators.parse_orchestrator.llm_match_episode", stub)
+    return stub
 
 
 async def test_run_no_llm_marks_unmatched():
@@ -157,6 +173,97 @@ async def test_run_with_llm_and_matched_show():
     assert file1.parsed_season == 1
     assert file1.parsed_episode == 1
     assert file1.parsed_content_type == "anime"
+
+
+async def test_run_llm_match_episode_fallback_resolves_episode(_stub_llm_match_episode):
+    """When the DB episode lookup misses (e.g. a title-only filename with no
+    S/E marker), the episode-list LLM fallback can still resolve it (#312).
+    """
+    file1 = _make_file(filename="Attack.on.Titan.The.Series.Finale.mkv")
+    show = _make_show(title="Attack on Titan")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    # find_show_by_name's alias-containment check runs first and returns via
+    # .scalars().first() -- a hit there short-circuits before the title-match
+    # query ever runs, so the alias check must MISS here for both queries to
+    # actually fire (mirroring the real two-query lookup chain).
+    alias_miss = MagicMock()
+    alias_miss.scalars.return_value.first.return_value = None
+
+    show_result = MagicMock()
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None  # DB S/E lookup misses
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            file_result,
+            alias_miss,  # alias check (miss)
+            show_result,  # title fallback (hit)
+            ep_result,  # episode lookup (miss)
+            MagicMock(),  # dismiss_orphans_for_file, since the fallback resolves ep
+        ]
+    )
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": null, "episode": null, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "No S/E marker; title-only filename."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    matched_episode = MagicMock()
+    matched_episode.id = 99
+    matched_episode.season_number = 4
+    _stub_llm_match_episode.return_value = (matched_episode, 4, 28)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+    assert file1.episode_id == 99
+    assert file1.parsed_season == 4
+    assert file1.parsed_episode == 28
+    _stub_llm_match_episode.assert_called_once()
+
+
+async def test_run_llm_match_episode_fallback_not_attempted_without_llm(_stub_llm_match_episode):
+    """Without an LLM, the episode-list fallback is never attempted, even
+    when the show matches but the episode DB lookup misses."""
+    file1 = _make_file(filename="UnknownFile.S09E09.mkv")
+    show = _make_show(title="Test Show")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    alias_miss = MagicMock()
+    alias_miss.scalars.return_value.first.return_value = None
+
+    show_result = MagicMock()
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, alias_miss, show_result, ep_result])
+
+    orch = ParseOrchestrator(session, llm=None)
+    await orch.run()
+
+    _stub_llm_match_episode.assert_not_called()
 
 
 async def test_run_persists_crc32_declared_from_llm():

@@ -34,6 +34,8 @@ async def match_entry_to_episode(
     Lookup priority:
     1. If regex gave no episode, ask the LLM to parse season/episode from
        the filename alone (lightweight prompt, no episode list needed).
+       If that also finds no episode number, step 5 (episode-list title
+       match) is tried immediately as a last resort before giving up.
     2. Season + episode DB match (standard S##E## lookup).
     3. On a season>1 miss: episode_groups-based remap — resolves a
        declared season/episode that doesn't exist in TMDB's real
@@ -72,14 +74,23 @@ async def match_entry_to_episode(
     """
     season = entry.season
     episode = entry.episode
+    filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
 
     if episode is None:
-        filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
         llm_season, llm_episode = await llm_parse_episode(llm, filename, season, on_event=on_event)
         if llm_episode is None:
-            # The LLM may still have proposed a season even without an
-            # episode — surface it rather than silently discarding it.
-            return None, season if season is not None else llm_season, episode
+            # No number anywhere in the filename, and the LLM couldn't parse
+            # one either — last resort: match by title against the show's
+            # full episode list before giving up entirely.
+            fallback_season = season if season is not None else llm_season
+            llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
+                session, llm, show_id, show_title, filename, on_event=on_event
+            )
+            return (
+                llm_ep,
+                llm_match_season if llm_match_season is not None else fallback_season,
+                llm_match_episode_num,
+            )
         episode = llm_episode
         if season is None:
             season = llm_season
@@ -104,13 +115,13 @@ async def match_entry_to_episode(
             abs_ep = await resolve_episode(session, show_id, None, absolute_guess)
             if abs_ep is not None:
                 return abs_ep, season, episode
-            llm_ep, llm_season, llm_episode_num = await llm_match_episode(
-                session, llm, show_id, show_title, entry, on_event=on_event
+            llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
+                session, llm, show_id, show_title, filename, on_event=on_event
             )
             return (
                 llm_ep,
-                llm_season if llm_season is not None else season,
-                llm_episode_num if llm_episode_num is not None else episode,
+                llm_match_season if llm_match_season is not None else season,
+                llm_match_episode_num if llm_match_episode_num is not None else episode,
             )
         # Season 1 directory: the episode number may still be a continuous
         # absolute count (e.g. a show with all 148 episodes in Season 01).
@@ -121,11 +132,11 @@ async def match_entry_to_episode(
     if abs_ep is not None:
         return abs_ep, season, episode
 
-    llm_ep, llm_season, llm_episode_num = await llm_match_episode(
-        session, llm, show_id, show_title, entry, on_event=on_event
+    llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
+        session, llm, show_id, show_title, filename, on_event=on_event
     )
     return (
         llm_ep,
-        llm_season if llm_season is not None else season,
-        llm_episode_num if llm_episode_num is not None else episode,
+        llm_match_season if llm_match_season is not None else season,
+        llm_match_episode_num if llm_match_episode_num is not None else episode,
     )

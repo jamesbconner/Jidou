@@ -16,7 +16,7 @@ details from pipeline sequencing.
 
 import logging
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,9 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.episode import Episode
 from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 from jidou.services.llm_service import LLMService
-
-if TYPE_CHECKING:
-    from jidou.services.path_parser import ParsedPathEntry
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +321,7 @@ async def llm_match_episode(
     llm: LLMService | None,
     show_id: int,
     show_title: str,
-    entry: "ParsedPathEntry",
+    filename: str,
     *,
     on_event: OnEvent | None = None,
 ) -> tuple[Episode | None, int | None, int | None]:
@@ -337,7 +334,8 @@ async def llm_match_episode(
         llm: LLMService instance, or None to skip (returns immediately).
         show_id: Database ID of the parent show.
         show_title: Show title for prompt context.
-        entry: Parsed entry with the raw file path.
+        filename: Raw filename, or a full path (only the basename is used),
+            of the file being matched.
         on_event: Optional async callback(level, message, ctx) for
             structured event log entries.
 
@@ -386,7 +384,7 @@ async def llm_match_episode(
         f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
         for ep in eps[:_MAX_EPISODES_IN_PROMPT]
     )
-    filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+    filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
     prompt = (
         f"Show: {sanitize_for_prompt(show_title)}\n"
         f"Filename: {sanitize_for_prompt(filename)}\n\n"
