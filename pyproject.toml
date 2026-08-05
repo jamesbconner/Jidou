@@ -20,7 +20,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "websockets>=17.0.1",
     # Database
-    "sqlalchemy[asyncio]>=2.0",
+    "sqlalchemy[asyncio]>=2.0.51",
     "asyncpg>=0.30",
     "alembic>=1.18.5",
     # Task queue
