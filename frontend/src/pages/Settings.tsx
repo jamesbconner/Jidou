@@ -403,6 +403,24 @@ export default function Settings() {
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
               <span className="text-gray-700">
+                Discover
+                <span className="block text-xs text-gray-400 font-normal">
+                  Show the discover page and its nav link.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.discover_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ discover_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-indigo-600"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700">
                 Recently added episodes
                 <span className="block text-xs text-gray-400 font-normal">
                   Show the &quot;Recently Added Episodes&quot; carousel on the dashboard.

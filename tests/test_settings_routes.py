@@ -36,6 +36,7 @@ class TestGetSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
@@ -57,6 +58,7 @@ class TestGetSettings:
             assert resp.json() == {
                 "show_adult_content": True,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
@@ -78,6 +80,29 @@ class TestGetSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": False,
+                "discover_enabled": True,
+                "recent_episodes_enabled": True,
+                "recent_movies_enabled": True,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_returns_stored_discover_enabled_value(self) -> None:
+        """GET /settings reflects a previously stored discover_enabled=False."""
+        row = MagicMock()
+        row.key = "dashboard.discover_enabled"
+        row.value = False
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            resp = TestClient(app).get("/api/settings")
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "discover_enabled": False,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
@@ -99,6 +124,7 @@ class TestGetSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
             }
@@ -120,6 +146,7 @@ class TestGetSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
             }
@@ -150,6 +177,7 @@ class TestUpdateSettings:
             assert resp.json() == {
                 "show_adult_content": True,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
@@ -180,6 +208,37 @@ class TestUpdateSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": False,
+                "discover_enabled": True,
+                "recent_episodes_enabled": True,
+                "recent_movies_enabled": True,
+            }
+            assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_updates_discover_enabled(self) -> None:
+        """PATCH /settings with discover_enabled applies the update and returns state."""
+        row = MagicMock()
+        row.key = "dashboard.discover_enabled"
+        row.value = False
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = [row]
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None, result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch("/api/settings", json={"discover_enabled": False})
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "discover_enabled": False,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
@@ -209,6 +268,7 @@ class TestUpdateSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
             }
@@ -238,6 +298,7 @@ class TestUpdateSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
             }
@@ -261,6 +322,7 @@ class TestUpdateSettings:
             assert resp.json() == {
                 "show_adult_content": False,
                 "calendar_enabled": True,
+                "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
             }
