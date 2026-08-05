@@ -14,7 +14,7 @@ dependencies = [
     "rich>=13.7",
     # Validation
     "pydantic>=2.9",
-    "pydantic-settings>=2.6",
+    "pydantic-settings>=2.14.2",
     # Web framework
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
