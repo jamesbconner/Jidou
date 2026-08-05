@@ -16,7 +16,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useWatchlist, useCreateWatchlistEntry, usePatchWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
+import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
 import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
@@ -34,48 +34,6 @@ const TMDB_BACKDROP_IMG = '/api/images/w500'
 // [] each render would make the position-merge effect below (which depends
 // on `entries`) re-run and call setState every render, looping forever.
 const EMPTY_WATCHLIST_ENTRIES: WatchlistRead[] = []
-
-function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(notes ?? '')
-  const cancelRef = useRef(false)
-  const patch = usePatchWatchlistEntry()
-
-  function commit() {
-    if (cancelRef.current) { cancelRef.current = false; return }
-    setEditing(false)
-    const trimmed = value.trim()
-    const next = trimmed === '' ? null : trimmed
-    if (next !== notes) patch.mutate({ id, update: { notes: next } })
-  }
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { cancelRef.current = false; setValue(notes ?? ''); setEditing(true) }}
-        className="text-left text-gray-500 hover:text-blue-600 hover:underline max-w-[12rem] truncate block"
-        title={notes ?? 'Click to add notes'}
-      >
-        {notes ?? '—'}
-      </button>
-    )
-  }
-
-  return (
-    <input
-      type="text"
-      autoFocus
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') { cancelRef.current = true; setValue(notes ?? ''); setEditing(false) }
-      }}
-      className="border rounded px-1 py-0.5 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    />
-  )
-}
 
 // ─── Drag handle icon ─────────────────────────────────────────────────────────
 
@@ -153,20 +111,25 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
           {entry.show.title}
         </Link>
         <span className="block text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
-        {entry.next_up && (
-          <span className="block text-xs text-gray-500 mt-0.5">
-            Next: S{String(entry.next_up.season_number).padStart(2, '0')}E
-            {String(entry.next_up.episode_number).padStart(2, '0')}
-            {entry.next_up.air_date && ` · ${entry.next_up.air_date}`}
-            {entry.next_up.file_tracked ? ' · tracked ✓' : ' · not downloaded'}
-          </span>
-        )}
       </td>
       <td className="px-4 py-2">
         <WatchlistStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
       </td>
       <td className="px-4 py-2">
-        <InlineNotes id={entry.id} notes={entry.notes} />
+        {entry.next_up ? (
+          <>
+            <span className="block font-medium">
+              S{String(entry.next_up.season_number).padStart(2, '0')}E
+              {String(entry.next_up.episode_number).padStart(2, '0')}
+              {entry.next_up.file_tracked && ' ✓'}
+            </span>
+            {entry.next_up.air_date && (
+              <span className="block text-xs text-gray-400">{entry.next_up.air_date}</span>
+            )}
+          </>
+        ) : (
+          <span className="text-gray-300">—</span>
+        )}
       </td>
       <td className="px-4 py-2 text-gray-400 text-xs">
         {new Date(entry.created_at).toLocaleDateString()}
@@ -542,7 +505,7 @@ export default function Watchlist() {
                 <th className="px-2 py-2 w-48" />
                 <th className="px-4 py-2 text-left">Show</th>
                 <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Notes</th>
+                <th className="px-4 py-2 text-left">Up Next</th>
                 <th className="px-4 py-2 text-left">Added</th>
                 <th className="px-4 py-2" />
               </tr>

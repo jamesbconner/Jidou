@@ -93,11 +93,12 @@ describe('Watchlist page', () => {
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
     expect(
-      screen.getByText((_, el) => el?.textContent === 'Next: S02E06 · 2026-01-15 · tracked ✓'),
+      screen.getByText((_, el) => el?.textContent === 'S02E06 ✓'),
     ).toBeInTheDocument()
+    expect(screen.getByText('2026-01-15')).toBeInTheDocument()
   })
 
-  test('shows "not downloaded" for a next-up episode that has no file tracked', async () => {
+  test('omits the tracked checkmark for a next-up episode that has no file tracked', async () => {
     const withNextUp: WatchlistList[] = [
       {
         ...entries[0],
@@ -114,15 +115,17 @@ describe('Watchlist page', () => {
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
     expect(
-      screen.getByText((_, el) => el?.textContent === 'Next: S01E01 · 2030-01-01 · not downloaded'),
+      screen.getByText((_, el) => el?.textContent === 'S01E01'),
     ).toBeInTheDocument()
+    expect(screen.getByText('2030-01-01')).toBeInTheDocument()
   })
 
-  test('omits the next-up line for an entry with no unwatched episode', async () => {
+  test('shows a placeholder in the Up Next column for an entry with no unwatched episode', async () => {
     mockWatchlistAndShows(entries)
     render(<Watchlist />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
-    expect(screen.queryByText(/^Next:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^S\d{2}E\d{2}/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
   })
 
   test('show name links to show detail page', async () => {
