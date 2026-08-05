@@ -54,7 +54,7 @@ dev = [
 
     # --- Build / Publish ---
     "build>=1.2",
-    "twine>=5.1",
+    "twine>=7.0.0",
 
     # --- Security ---
     "bandit>=1.7.9",
