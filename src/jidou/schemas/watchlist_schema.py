@@ -18,7 +18,7 @@ class ShowBrief(BaseModel):
     backdrop_path: str | None = None
 
 
-class EpisodeBrief(BaseModel):
+class WatchlistNextUpEpisode(BaseModel):
     """Minimal episode info for the watchlist's "next up" indicator.
 
     ``air_date`` is included deliberately unfiltered — the lowest unwatched
@@ -72,7 +72,7 @@ class WatchlistRead(BaseModel):
     position: int
     created_at: datetime
     updated_at: datetime
-    next_up: EpisodeBrief | None = None
+    next_up: WatchlistNextUpEpisode | None = None
 
 
 class WatchlistList(BaseModel):

@@ -13,8 +13,8 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.watchlist_schema import (
-    EpisodeBrief,
     WatchlistCreate,
+    WatchlistNextUpEpisode,
     WatchlistPositionItem,
     WatchlistRead,
     WatchlistUpdate,
@@ -92,7 +92,7 @@ async def list_watchlist(
     for entry, season_number, episode_number, name, air_date, file_tracked in rows:
         data = WatchlistRead.model_validate(entry)
         if season_number is not None:
-            data.next_up = EpisodeBrief(
+            data.next_up = WatchlistNextUpEpisode(
                 season_number=season_number,
                 episode_number=episode_number,
                 name=name,

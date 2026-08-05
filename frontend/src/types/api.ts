@@ -365,7 +365,7 @@ export type WatchlistStatus = components['schemas']['WatchlistStatus']
 
 export type WatchlistShowBrief = components['schemas']['jidou__schemas__watchlist_schema__ShowBrief']
 
-export type WatchlistNextUp = components['schemas']['jidou__schemas__watchlist_schema__EpisodeBrief']
+export type WatchlistNextUp = components['schemas']['WatchlistNextUpEpisode']
 
 // Frontend-only slice type — no endpoint returns a bare WatchlistList, but
 // it's still exercised directly in tests, so it stays hand-written rather
