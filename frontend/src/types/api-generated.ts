@@ -2679,6 +2679,8 @@ export interface components {
             show_adult_content?: boolean | null;
             /** Calendar Enabled */
             calendar_enabled?: boolean | null;
+            /** Discover Enabled */
+            discover_enabled?: boolean | null;
             /** Recent Episodes Enabled */
             recent_episodes_enabled?: boolean | null;
             /** Recent Movies Enabled */
@@ -2699,6 +2701,11 @@ export interface components {
              * @description Whether the airing calendar page and nav link are shown
              */
             calendar_enabled: boolean;
+            /**
+             * Discover Enabled
+             * @description Whether the discover page and nav link are shown
+             */
+            discover_enabled: boolean;
             /**
              * Recent Episodes Enabled
              * @description Whether the dashboard's Recently Added Episodes carousel is shown

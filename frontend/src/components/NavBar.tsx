@@ -9,7 +9,6 @@ import type { AppConfig } from '@/types/api'
 const BASE_LINKS = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/shows', label: 'Shows' },
-  { to: '/discover', label: 'Discover' },
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/tasks', label: 'Tasks' },
@@ -24,14 +23,18 @@ export function NavBar() {
   })
   const { data: appSettings } = useAppSettings()
 
-  let links = BASE_LINKS.slice(0, 5)
+  let links = BASE_LINKS.slice(0, 2)
+  if (appSettings?.discover_enabled ?? true) {
+    links = [...links, { to: '/discover', label: 'Discover' }]
+  }
+  links = [...links, ...BASE_LINKS.slice(2, 4)]
   if (appSettings?.calendar_enabled ?? true) {
     links = [...links, { to: '/calendar', label: 'Calendar' }]
   }
   if (config?.rss_config_path_set) {
     links = [...links, { to: '/rss', label: 'RSS' }]
   }
-  links = [...links, ...BASE_LINKS.slice(5)]
+  links = [...links, ...BASE_LINKS.slice(4)]
 
   return (
     <nav className="sticky top-0 z-40 bg-gray-900 text-white px-6 py-3 flex items-center gap-6">

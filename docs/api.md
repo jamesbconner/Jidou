@@ -49,7 +49,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`) |
+| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `discover_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`) |
 | PATCH | `/api/settings` | Update one or more settings |
 
 ---
