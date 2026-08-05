@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 
 interface PaginationProps {
   /** Zero-indexed current page. */
@@ -14,12 +14,16 @@ interface PaginationProps {
  */
 export function Pagination({ page, totalPages, onPageChange }: PaginationProps) {
   const [jumpValue, setJumpValue] = useState(String(page + 1))
+  const [prevPage, setPrevPage] = useState(page)
 
   // Keep the input in sync when the page changes from elsewhere (Prev/Next
-  // buttons, filters resetting to page 0, the "snap back" clamp effect, etc.)
-  useEffect(() => {
+  // buttons, filters resetting to page 0, the "snap back" clamp effect,
+  // etc.) — adjusted directly during render rather than in an effect, per
+  // React's guidance for syncing state to a prop change.
+  if (page !== prevPage) {
+    setPrevPage(page)
     setJumpValue(String(page + 1))
-  }, [page])
+  }
 
   if (totalPages <= 1) return null
 

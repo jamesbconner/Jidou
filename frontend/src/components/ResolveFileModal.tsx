@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
@@ -23,7 +23,6 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
   const debouncedQuery = useDebounce(searchQuery, 300)
   const [customSearch, setCustomSearch] = useState(false)
-  const [folderEdited, setFolderEdited] = useState(false)
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -61,22 +60,16 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const displayResults = customSearch ? searchAsSuggestions : (suggestions?.results ?? [])
   const isLoading = customSearch ? searchLoading : suggestionsLoading
 
-  // Suggest folder name when selection changes, but not if the user has already
-  // typed a custom name.  Changing the selected show resets folderEdited so the
-  // suggestion updates automatically.
-  useEffect(() => {
-    if (!selected || folderEdited) return
-    setFolderName(sanitizeFolderName(selected.title ?? ''))
-  }, [selected, folderEdited])
-
-  // Snap content type when selection changes: movies snap to 'movie', everything
-  // else defaults to 'anime' (the most common use case).  Reset folderEdited so
-  // the folder name suggestion updates for the new show.
-  useEffect(() => {
-    if (!selected) return
-    setContentType(selected.media_type === 'movie' ? 'movie' : 'anime')
-    setFolderEdited(false)
-  }, [selected])
+  // Selecting a result: snap content type (movies -> 'movie', everything else
+  // defaults to 'anime'), suggest a folder name, and reset folderEdited so
+  // that suggestion isn't immediately treated as a user edit. selected only
+  // changes from the one click handler below, so this lives there directly
+  // instead of in an effect.
+  function selectSuggestion(suggestion: TmdbSuggestion) {
+    setSelected(suggestion)
+    setContentType(suggestion.media_type === 'movie' ? 'movie' : 'anime')
+    setFolderName(sanitizeFolderName(suggestion.title ?? ''))
+  }
 
   function handleConfirm() {
     if (!selected || !config) return
@@ -179,7 +172,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
               {displayResults.map((r) => (
                 <button
                   key={`${r.tmdb_id}-${r.media_type}`}
-                  onClick={() => setSelected(r)}
+                  onClick={() => selectSuggestion(r)}
                   className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
                     selected?.tmdb_id === r.tmdb_id && selected?.media_type === r.media_type
                       ? 'border-indigo-500 bg-indigo-950/50'
@@ -243,7 +236,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 <input
                   type="text"
                   value={folderName}
-                  onChange={(e) => { setFolderName(e.target.value); setFolderEdited(true) }}
+                  onChange={(e) => setFolderName(e.target.value)}
                   placeholder="Show Name"
                   className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                 />

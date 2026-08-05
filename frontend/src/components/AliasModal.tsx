@@ -1,4 +1,4 @@
-import { useState, useEffect, KeyboardEvent } from 'react'
+import { useState, KeyboardEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useUpdateShowAliases, useRegenerateShowAliases } from '@/hooks/useShows'
@@ -14,14 +14,18 @@ export function AliasModal({ show, onClose }: Props) {
 
   const [userAliases, setUserAliases] = useState<string[]>(sources.user)
   const [newAlias, setNewAlias] = useState('')
+  const [prevAliasesSources, setPrevAliasesSources] = useState(show.aliases_sources)
 
   const updateAliases = useUpdateShowAliases(show.id)
   const regenerate = useRegenerateShowAliases(show.id)
 
-  // Sync user aliases from show data when regeneration completes.
-  useEffect(() => {
+  // Sync user aliases from show data when regeneration completes — adjusted
+  // directly during render rather than in an effect, per React's guidance
+  // for syncing state to a prop change.
+  if (show.aliases_sources !== prevAliasesSources) {
+    setPrevAliasesSources(show.aliases_sources)
     setUserAliases(show.aliases_sources?.user ?? [])
-  }, [show.aliases_sources])
+  }
 
   function addAlias() {
     const trimmed = newAlias.trim().toLowerCase()

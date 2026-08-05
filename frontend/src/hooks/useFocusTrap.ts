@@ -25,7 +25,12 @@ const trapStack: object[] = []
 export function useFocusTrap<T extends HTMLElement>(onClose?: () => void) {
   const ref = useRef<T>(null)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  // Keep the ref current after every render (not during render, since
+  // mutating a ref outside an event handler or effect is unsafe) — runs
+  // before any event fires since effects flush after commit.
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
   const idRef = useRef<object>({})
 
   // Capture the trigger during render — before autoFocus or any useEffect
