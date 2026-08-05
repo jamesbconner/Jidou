@@ -1,6 +1,6 @@
 """Pydantic schemas for WatchlistEntry API request/response validation."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,6 +16,23 @@ class ShowBrief(BaseModel):
     tmdb_id: int
     poster_path: str | None = None
     backdrop_path: str | None = None
+
+
+class EpisodeBrief(BaseModel):
+    """Minimal episode info for the watchlist's "next up" indicator.
+
+    ``air_date`` is included deliberately unfiltered — the lowest unwatched
+    episode may not have aired yet, and showing the date lets the user judge
+    that for themselves rather than having it silently filtered out.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    season_number: int
+    episode_number: int
+    name: str
+    air_date: date | None = None
+    file_tracked: bool
 
 
 class WatchlistCreate(BaseModel):
@@ -55,6 +72,7 @@ class WatchlistRead(BaseModel):
     position: int
     created_at: datetime
     updated_at: datetime
+    next_up: EpisodeBrief | None = None
 
 
 class WatchlistList(BaseModel):

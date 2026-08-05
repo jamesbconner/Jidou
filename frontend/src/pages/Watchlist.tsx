@@ -153,6 +153,14 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
           {entry.show.title}
         </Link>
         <span className="block text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
+        {entry.next_up && (
+          <span className="block text-xs text-gray-500 mt-0.5">
+            Next: S{String(entry.next_up.season_number).padStart(2, '0')}E
+            {String(entry.next_up.episode_number).padStart(2, '0')}
+            {entry.next_up.air_date && ` · ${entry.next_up.air_date}`}
+            {entry.next_up.file_tracked ? ' · tracked ✓' : ' · not downloaded'}
+          </span>
+        )}
       </td>
       <td className="px-4 py-2">
         <WatchlistStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />

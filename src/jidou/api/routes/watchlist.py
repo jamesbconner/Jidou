@@ -3,15 +3,17 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.database import get_session
+from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.watchlist_schema import (
+    EpisodeBrief,
     WatchlistCreate,
     WatchlistPositionItem,
     WatchlistRead,
@@ -30,8 +32,14 @@ async def list_watchlist(
     limit: int = 50,
     offset: int = 0,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> list[WatchlistEntry]:
+) -> list[WatchlistRead]:
     """List all watchlist entries, ordered by position then creation time.
+
+    Each entry's ``next_up`` field is the lowest ``(season_number,
+    episode_number)`` episode of its show that is not yet watched,
+    regardless of whether it has aired — the caller decides what to do with
+    an unaired "next up" episode using its ``air_date``, rather than that
+    information being silently filtered out here.
 
     Args:
         status: Optional filter by watchlist status.
@@ -45,7 +53,25 @@ async def list_watchlist(
     Raises:
         HTTPException: 400 if status is not a valid WatchlistStatus.
     """
-    stmt = select(WatchlistEntry).options(selectinload(WatchlistEntry.show))
+    next_up_sq = (
+        select(
+            Episode.season_number,
+            Episode.episode_number,
+            Episode.name,
+            Episode.air_date,
+            Episode.file_tracked,
+        )
+        .where(Episode.show_id == WatchlistEntry.show_id, Episode.watched.is_(False))
+        .order_by(Episode.season_number.asc(), Episode.episode_number.asc())
+        .limit(1)
+        .correlate(WatchlistEntry)
+        .lateral("next_up")
+    )
+    stmt = (
+        select(WatchlistEntry, next_up_sq)
+        .options(selectinload(WatchlistEntry.show))
+        .outerjoin(next_up_sq, true())
+    )
 
     if status is not None:
         try:
@@ -60,8 +86,21 @@ async def list_watchlist(
 
     stmt = stmt.order_by(WatchlistEntry.position.asc(), WatchlistEntry.created_at.asc())
     stmt = stmt.offset(offset).limit(limit)
-    result = await db_session.execute(stmt)
-    return list(result.scalars().all())
+    rows = (await db_session.execute(stmt)).all()
+
+    entries: list[WatchlistRead] = []
+    for entry, season_number, episode_number, name, air_date, file_tracked in rows:
+        data = WatchlistRead.model_validate(entry)
+        if season_number is not None:
+            data.next_up = EpisodeBrief(
+                season_number=season_number,
+                episode_number=episode_number,
+                name=name,
+                air_date=air_date,
+                file_tracked=file_tracked,
+            )
+        entries.append(data)
+    return entries
 
 
 @router.post("", response_model=WatchlistRead, status_code=201)

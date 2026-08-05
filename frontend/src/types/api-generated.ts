@@ -1899,6 +1899,12 @@ export interface paths {
          * List Watchlist
          * @description List all watchlist entries, ordered by position then creation time.
          *
+         *     Each entry's ``next_up`` field is the lowest ``(season_number,
+         *     episode_number)`` episode of its show that is not yet watched,
+         *     regardless of whether it has aired — the caller decides what to do with
+         *     an unaired "next up" episode using its ``air_date``, rather than that
+         *     information being silently filtered out here.
+         *
          *     Args:
          *         status: Optional filter by watchlist status.
          *         limit: Maximum results to return (default 50).
@@ -2873,20 +2879,6 @@ export interface components {
             seeded_from?: string[];
         };
         /**
-         * EpisodeBrief
-         * @description Minimal episode fields embedded in file responses.
-         */
-        EpisodeBrief: {
-            /** Id */
-            id: number;
-            /** Season Number */
-            season_number: number;
-            /** Episode Number */
-            episode_number: number;
-            /** Name */
-            name: string;
-        };
-        /**
          * EpisodeList
          * @description Slim episode record returned by list endpoints.
          */
@@ -3037,7 +3029,7 @@ export interface components {
              */
             updated_at: string;
             show?: components["schemas"]["jidou__schemas__file_schema__ShowBrief"] | null;
-            episode?: components["schemas"]["EpisodeBrief"] | null;
+            episode?: components["schemas"]["jidou__schemas__file_schema__EpisodeBrief"] | null;
         };
         /**
          * FileStatus
@@ -3595,7 +3587,7 @@ export interface components {
             /** Episode Number */
             episode_number?: number | null;
             /** @description Proposed episode match, or null if unmatched */
-            episode?: components["schemas"]["EpisodeBrief"] | null;
+            episode?: components["schemas"]["jidou__schemas__file_schema__EpisodeBrief"] | null;
             /**
              * Status
              * @description 'matched': proposed episode is untracked and ready to confirm. 'unmatched': no episode could be resolved for this file. 'conflict': the proposed episode is already tracked by a different file.
@@ -4257,6 +4249,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            next_up?: components["schemas"]["jidou__schemas__watchlist_schema__EpisodeBrief"] | null;
         };
         /**
          * WatchlistStatus
@@ -4276,6 +4269,20 @@ export interface components {
             position?: number | null;
         };
         /**
+         * EpisodeBrief
+         * @description Minimal episode fields embedded in file responses.
+         */
+        jidou__schemas__file_schema__EpisodeBrief: {
+            /** Id */
+            id: number;
+            /** Season Number */
+            season_number: number;
+            /** Episode Number */
+            episode_number: number;
+            /** Name */
+            name: string;
+        };
+        /**
          * ShowBrief
          * @description Minimal show fields embedded in file responses.
          */
@@ -4284,6 +4291,26 @@ export interface components {
             id: number;
             /** Title */
             title: string;
+        };
+        /**
+         * EpisodeBrief
+         * @description Minimal episode info for the watchlist's "next up" indicator.
+         *
+         *     ``air_date`` is included deliberately unfiltered — the lowest unwatched
+         *     episode may not have aired yet, and showing the date lets the user judge
+         *     that for themselves rather than having it silently filtered out.
+         */
+        jidou__schemas__watchlist_schema__EpisodeBrief: {
+            /** Season Number */
+            season_number: number;
+            /** Episode Number */
+            episode_number: number;
+            /** Name */
+            name: string;
+            /** Air Date */
+            air_date?: string | null;
+            /** File Tracked */
+            file_tracked: boolean;
         };
         /**
          * ShowBrief
