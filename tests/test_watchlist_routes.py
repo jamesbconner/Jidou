@@ -71,6 +71,7 @@ def _session_override(
     single: MagicMock | None = None,
     many: list[MagicMock] | None = None,
     execute_side_effect: list[MagicMock] | None = None,
+    next_up: tuple[int, int, str, object, bool] | None = None,
 ) -> "type[AsyncMock]":
     """Build a mock session factory.
 
@@ -78,6 +79,9 @@ def _session_override(
         single: Value for scalar_one_or_none().
         many: Value for scalars().all().
         execute_side_effect: List of mock results to return on successive execute() calls.
+        next_up: ``(season_number, episode_number, name, air_date, file_tracked)`` to
+            report as the LATERAL-joined next-up episode for every row in *many*/*single*.
+            Omit to simulate a show with no unwatched episodes (all-None row).
     """
 
     async def _mock_session() -> AsyncMock:
@@ -90,9 +94,14 @@ def _session_override(
         if execute_side_effect is not None:
             session.execute = AsyncMock(side_effect=execute_side_effect)
         else:
+            entries = many or ([single] if single else [])
             result = MagicMock()
             result.scalar_one_or_none.return_value = single
-            result.scalars.return_value.all.return_value = many or ([single] if single else [])
+            result.scalars.return_value.all.return_value = entries
+            # list_watchlist's LATERAL join reads rows via .all() as
+            # (entry, season_number, episode_number, name, air_date, file_tracked).
+            next_up_cols = next_up if next_up is not None else (None, None, None, None, None)
+            result.all.return_value = [(e, *next_up_cols) for e in entries]
             session.execute = AsyncMock(return_value=result)
 
         yield session
@@ -146,6 +155,72 @@ def test_list_watchlist_filter_by_status() -> None:
         response = TestClient(app).get("/api/watchlist?status=watching")
         assert response.status_code == 200
         assert response.json()[0]["status"] == "watching"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_watchlist_surfaces_next_up() -> None:
+    """GET /api/watchlist reports the lowest unwatched episode as next_up."""
+    from datetime import date
+
+    from jidou.database import get_session
+
+    entry = _make_entry()
+    app.dependency_overrides[get_session] = _session_override(
+        many=[entry],
+        next_up=(2, 6, "The Long Way Home", date(2026, 1, 15), True),
+    )
+    try:
+        response = TestClient(app).get("/api/watchlist")
+        assert response.status_code == 200
+        next_up = response.json()[0]["next_up"]
+        assert next_up == {
+            "season_number": 2,
+            "episode_number": 6,
+            "name": "The Long Way Home",
+            "air_date": "2026-01-15",
+            "file_tracked": True,
+        }
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_watchlist_next_up_null_when_no_unwatched_episodes() -> None:
+    """GET /api/watchlist reports next_up=null for a show with nothing left unwatched."""
+    from jidou.database import get_session
+
+    entry = _make_entry()
+    app.dependency_overrides[get_session] = _session_override(many=[entry])
+    try:
+        response = TestClient(app).get("/api/watchlist")
+        assert response.status_code == 200
+        assert response.json()[0]["next_up"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_watchlist_next_up_includes_unaired_episode() -> None:
+    """next_up is not filtered by air_date — an unaired episode is still reported.
+
+    The caller decides what to do with a future air_date rather than it being
+    silently excluded from the response.
+    """
+    from datetime import date, timedelta
+
+    from jidou.database import get_session
+
+    future_air_date = date.today() + timedelta(days=30)
+    entry = _make_entry()
+    app.dependency_overrides[get_session] = _session_override(
+        many=[entry],
+        next_up=(3, 1, "Season Premiere", future_air_date, False),
+    )
+    try:
+        response = TestClient(app).get("/api/watchlist")
+        assert response.status_code == 200
+        next_up = response.json()[0]["next_up"]
+        assert next_up["air_date"] == future_air_date.isoformat()
+        assert next_up["file_tracked"] is False
     finally:
         app.dependency_overrides.clear()
 

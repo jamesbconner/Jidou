@@ -76,6 +76,58 @@ describe('Watchlist page', () => {
     expect(screen.getAllByText('Planned').length).toBeGreaterThanOrEqual(1)
   })
 
+  test('renders next-up episode info when an entry has an unwatched episode', async () => {
+    const withNextUp: WatchlistList[] = [
+      {
+        ...entries[0],
+        next_up: {
+          season_number: 2,
+          episode_number: 6,
+          name: 'The Long Way Home',
+          air_date: '2026-01-15',
+          file_tracked: true,
+        },
+      },
+    ]
+    mockWatchlistAndShows(withNextUp)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+    expect(
+      screen.getByText((_, el) => el?.textContent === 'S02E06 ✓'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('2026-01-15')).toBeInTheDocument()
+  })
+
+  test('omits the tracked checkmark for a next-up episode that has no file tracked', async () => {
+    const withNextUp: WatchlistList[] = [
+      {
+        ...entries[0],
+        next_up: {
+          season_number: 1,
+          episode_number: 1,
+          name: 'Pilot',
+          air_date: '2030-01-01',
+          file_tracked: false,
+        },
+      },
+    ]
+    mockWatchlistAndShows(withNextUp)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+    expect(
+      screen.getByText((_, el) => el?.textContent === 'S01E01'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('2030-01-01')).toBeInTheDocument()
+  })
+
+  test('shows a placeholder in the Up Next column for an entry with no unwatched episode', async () => {
+    mockWatchlistAndShows(entries)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+    expect(screen.queryByText(/^S\d{2}E\d{2}/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
+  })
+
   test('show name links to show detail page', async () => {
     mockWatchlistAndShows(entries)
     render(<Watchlist />, { wrapper: makeWrapper() })
