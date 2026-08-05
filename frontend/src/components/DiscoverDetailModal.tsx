@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Modal } from '@/components/ui/Modal'
 import type { DiscoverResult } from '@/types/api'
 

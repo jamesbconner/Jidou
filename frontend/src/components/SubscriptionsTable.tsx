@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { usePatchRssSubscription, useDeleteRssSubscription } from '@/hooks/useRss'
 import { Badge } from '@/components/ui/Badge'
 import { SubscriptionCreateModal } from '@/components/SubscriptionCreateModal'

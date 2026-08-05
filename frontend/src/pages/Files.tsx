@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useFiles, fileKeys, type FilesPage } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'

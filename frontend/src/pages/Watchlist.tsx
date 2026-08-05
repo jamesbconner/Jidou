@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {
   DndContext,
   closestCenter,

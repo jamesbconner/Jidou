@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Modal } from '@/components/ui/Modal'
 import type { RecentSort } from '@/hooks/useDashboard'
 import type { RecentShowItem, RecentEpisodeItem } from '@/types/api'
