@@ -85,3 +85,69 @@ async def test_resolve_episode_season_none_both_miss_returns_none() -> None:
 
     assert ep is None
     assert session.execute.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-row degradation (issue #313)
+#
+# (show_id, season_number, episode_number) has no DB uniqueness constraint,
+# so a duplicate pair is possible (e.g. inconsistent TMDB data). Each query
+# must be ordered by id and capped with LIMIT 1 so the database enforces the
+# cap before scalar_one_or_none()'s one-row check runs, avoiding
+# MultipleResultsFound. These tests assert the emitted statement shape
+# directly, since the mock session can't reproduce SQLAlchemy's real
+# multi-row detection.
+# ---------------------------------------------------------------------------
+
+
+def _capture_stmt():
+    captured: list[object] = []
+
+    async def capture(stmt: object) -> MagicMock:
+        captured.append(stmt)
+        return _mock_result(None)
+
+    return captured, capture
+
+
+def _assert_limited_and_ordered_by_id(stmt: object) -> None:
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))  # type: ignore[attr-defined]
+    assert "ORDER BY episodes.id" in compiled
+    assert "LIMIT 1" in compiled
+
+
+async def test_resolve_episode_season_given_query_is_limited_and_ordered() -> None:
+    """The season+episode query orders by id and caps at 1 row, so a
+    duplicate (show_id, season_number, episode_number) row degrades
+    deterministically instead of raising MultipleResultsFound.
+    """
+    captured, capture = _capture_stmt()
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=capture)
+
+    await resolve_episode(session, show_id=1, season=2, episode=5)
+
+    _assert_limited_and_ordered_by_id(captured[0])
+
+
+async def test_resolve_episode_absolute_query_is_limited_and_ordered() -> None:
+    """The absolute_episode_number query is likewise ordered and capped."""
+    captured, capture = _capture_stmt()
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=capture)
+
+    await resolve_episode(session, show_id=1, season=None, episode=146)
+
+    _assert_limited_and_ordered_by_id(captured[0])
+
+
+async def test_resolve_episode_season_1_fallback_query_is_limited_and_ordered() -> None:
+    """The Season-1 fallback query is likewise ordered and capped."""
+    captured, capture = _capture_stmt()
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=capture)
+
+    await resolve_episode(session, show_id=1, season=None, episode=13)
+
+    assert len(captured) == 2
+    _assert_limited_and_ordered_by_id(captured[1])
