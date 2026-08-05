@@ -35,6 +35,15 @@ async def resolve_episode(
           — correct for the vast majority of anime distributed without
           season markers.
 
+    ``(show_id, season_number, episode_number)`` has no DB-level uniqueness
+    constraint — only ``tmdb_id`` is unique — since we don't control TMDB's
+    data quality and a hard constraint would turn an upstream inconsistency
+    into a failed sync instead of a degraded match. Every query below is
+    therefore ordered by ``Episode.id`` and capped with ``LIMIT 1``: the
+    database enforces the cap before the ORM's one-row check ever runs, so a
+    duplicate degrades deterministically (lowest id wins) instead of raising
+    ``MultipleResultsFound`` (issue #313).
+
     Args:
         session: Active async SQLAlchemy session.
         show_id: Database ID of the parent show.
@@ -49,24 +58,39 @@ async def resolve_episode(
         return None
 
     if season is not None:
-        stmt = select(Episode).where(
-            Episode.show_id == show_id,
-            Episode.season_number == season,
-            Episode.episode_number == episode,
+        stmt = (
+            select(Episode)
+            .where(
+                Episode.show_id == show_id,
+                Episode.season_number == season,
+                Episode.episode_number == episode,
+            )
+            .order_by(Episode.id)
+            .limit(1)
         )
         return (await session.execute(stmt)).scalar_one_or_none()
 
-    stmt = select(Episode).where(
-        Episode.show_id == show_id,
-        Episode.absolute_episode_number == episode,
+    stmt = (
+        select(Episode)
+        .where(
+            Episode.show_id == show_id,
+            Episode.absolute_episode_number == episode,
+        )
+        .order_by(Episode.id)
+        .limit(1)
     )
     ep = (await session.execute(stmt)).scalar_one_or_none()
     if ep is not None:
         return ep
 
-    stmt = select(Episode).where(
-        Episode.show_id == show_id,
-        Episode.season_number == 1,
-        Episode.episode_number == episode,
+    stmt = (
+        select(Episode)
+        .where(
+            Episode.show_id == show_id,
+            Episode.season_number == 1,
+            Episode.episode_number == episode,
+        )
+        .order_by(Episode.id)
+        .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
