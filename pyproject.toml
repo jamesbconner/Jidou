@@ -24,7 +24,7 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.18.5",
     # Task queue
-    "celery[redis]>=5.4",
+    "celery[redis]>=5.6.3",
     # Redis
     "redis>=5.2",
     "hiredis>=2.3",
