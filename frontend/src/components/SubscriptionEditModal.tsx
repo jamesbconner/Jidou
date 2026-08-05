@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { RssFeedRead, RssSubscriptionRead, RssSubscriptionUpdate } from '@/types/api'
 import { usePatchRssSubscription, useSuggestRegex } from '@/hooks/useRss'
 import { useShows } from '@/hooks/useShows'

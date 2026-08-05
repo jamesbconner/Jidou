@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { describe, test, expect } from 'vitest'
 import { ShowCard } from '@/components/ShowCard'
 import type { ShowList } from '@/types/api'

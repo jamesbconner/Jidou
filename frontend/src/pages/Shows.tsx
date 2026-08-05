@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ShowCard } from '@/components/ShowCard'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
 import { useShows, useSearchShows, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'

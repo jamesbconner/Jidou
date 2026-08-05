@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import { Card } from '@/components/ui/Card'
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
