@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
@@ -65,13 +65,14 @@ export function RematchModal({ file, onClose }: Props) {
 
   const libraryByTmdbId = useLibraryIndex()
 
-  // When a TMDB result is selected: derive content type from media_type and auto-fill folder.
-  // Single effect avoids the ordering hazard of two effects sharing selectedTmdb as a dep.
-  useEffect(() => {
-    if (!selectedTmdb) return
-    setContentType(selectedTmdb.media_type === 'movie' ? 'movie' : 'tv')
-    setFolderName(sanitizeFolderName(selectedTmdb.name ?? selectedTmdb.title ?? ''))
-  }, [selectedTmdb])
+  // When a TMDB result is selected: derive content type from media_type and
+  // auto-fill folder. selectedTmdb only changes from the one click handler
+  // below, so this lives there directly instead of in an effect.
+  function selectTmdb(result: TmdbResult) {
+    setSelectedTmdb(result)
+    setContentType(result.media_type === 'movie' ? 'movie' : 'tv')
+    setFolderName(sanitizeFolderName(result.name ?? result.title ?? ''))
+  }
 
   function switchMode(next: 'library' | 'tmdb') {
     setMode(next)
@@ -236,7 +237,7 @@ export function RematchModal({ file, onClose }: Props) {
                   {tmdbDisplayResults.map((r) => (
                     <button
                       key={`${r.id}-${r.media_type}`}
-                      onClick={() => setSelectedTmdb(r)}
+                      onClick={() => selectTmdb(r)}
                       className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
                         selectedTmdb?.id === r.id && selectedTmdb?.media_type === r.media_type
                           ? 'border-indigo-500 bg-indigo-950/50'

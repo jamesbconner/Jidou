@@ -28,10 +28,12 @@ export function EditPathModal({
   const [contentType, setContentType] = useState<ContentType>(parsed?.contentType ?? 'tv')
   const [folderName, setFolderName] = useState(parsed?.folderName ?? '')
 
-  // Re-parse when mediaPaths loads after mount.
+  // Re-parse when mediaPaths loads after mount — mediaPaths is async (a
+  // query result), so this can't be a same-render derivation.
   useEffect(() => {
     if (!mediaPaths) return
     const p = parseContainerPath(current, mediaPaths)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContentType(p.contentType)
     setFolderName(p.folderName)
   }, [mediaPaths]) // eslint-disable-line react-hooks/exhaustive-deps

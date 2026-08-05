@@ -43,6 +43,11 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
   // their own choice across a Rescan instead of being overwritten.
   useEffect(() => {
     if (!scan.data) return
+    // scan.data arrives asynchronously from two different triggers (the
+    // mount effect above and the Rescan button), so there's no single
+    // event handler to fold this into — this is a genuine sync-with-an-
+    // external-async-result effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelections((prev) => {
       const next = { ...prev }
       for (const row of scan.data!) {

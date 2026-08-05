@@ -201,7 +201,16 @@ export default function ShowDetail() {
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
 
+  // Resets ~13 independent pieces of local UI state plus 4 react-query
+  // mutation .reset() calls when navigating to a different show — React
+  // Router doesn't remount this component on a :id-only route change, so
+  // there's no single call site to fold this into. The documented
+  // alternative (key={showId} on the route element to force a remount) is
+  // a routing-level change beyond this component's scope; calling
+  // mutation .reset() during render would also be its own impurity, worse
+  // than the one this rule flags.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRematchOpen(false)
     setPathModalOpen(false)
     setContentTypeOpen(false)

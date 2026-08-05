@@ -45,6 +45,10 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   useEffect(() => {
     if (!mediaPaths || relativePath !== '') return
     const parsed = parseContainerPath(showLocalPath, mediaPaths)
+    // Seeding editable state from data that only becomes available
+    // asynchronously (mediaPaths loads after mount) — not a same-render
+    // derivation, so this can't move to a render-time computation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setContentType(parsed.contentType)
     setRelativePath(parsed.folderName ? `${parsed.folderName}/` : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps

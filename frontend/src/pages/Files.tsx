@@ -213,7 +213,14 @@ export default function Files() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [search])
 
-  useEffect(() => { setPage(0) }, [statusFilter, debouncedSearch])
+  // Reset to page 0 when a filter changes — adjusted directly during render
+  // rather than in an effect, per React's guidance for syncing state to a
+  // prop/input change.
+  const [prevFilterKey, setPrevFilterKey] = useState([statusFilter, debouncedSearch])
+  if (prevFilterKey[0] !== statusFilter || prevFilterKey[1] !== debouncedSearch) {
+    setPrevFilterKey([statusFilter, debouncedSearch])
+    setPage(0)
+  }
 
   const filesQuery = useFiles({
     status: statusFilter || undefined,
@@ -226,13 +233,12 @@ export default function Files() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const isLoading = filesQuery.isLoading
 
-  // Snap back to the last valid page when total shrinks (e.g. after a mutation
-  // or when a filter narrows results before the reset effect fires).
-  useEffect(() => {
-    if (total > 0 && page * PAGE_SIZE >= total) {
-      setPage(Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))
-    }
-  }, [total, page])
+  // Snap back to the last valid page when total shrinks (e.g. after a
+  // mutation). Self-correcting: once page is clamped, the condition is
+  // false on the next render, so this converges without needing an effect.
+  if (total > 0 && page * PAGE_SIZE >= total) {
+    setPage(Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))
+  }
 
   return (
     <div className="space-y-4">

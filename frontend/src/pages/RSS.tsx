@@ -20,6 +20,21 @@ import { RecommendationsTab } from '@/components/RecommendationsTab'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
+function TaskStatusBadge({ task }: { task: TaskRead | undefined }) {
+  if (!task) return null
+  const colors: Record<string, string> = {
+    completed: 'text-green-600',
+    failed: 'text-red-500',
+    running: 'text-blue-500',
+    pending: 'text-yellow-600',
+  }
+  return (
+    <span className={`text-xs font-medium ${colors[task.status] ?? 'text-gray-500'}`}>
+      {task.status}{task.progress_message ? ` — ${task.progress_message}` : ''}
+    </span>
+  )
+}
+
 export default function RSS() {
   const [tab, setTab] = useState<'subscriptions' | 'feeds' | 'recommendations'>('subscriptions')
   const [nameSearch, setNameSearch] = useState('')
@@ -78,21 +93,6 @@ export default function RSS() {
     if (typeof feedFilter === 'number' && s.feed_id !== feedFilter) return false
     return true
   })
-
-  function TaskStatusBadge({ task }: { task: TaskRead | undefined }) {
-    if (!task) return null
-    const colors: Record<string, string> = {
-      completed: 'text-green-600',
-      failed: 'text-red-500',
-      running: 'text-blue-500',
-      pending: 'text-yellow-600',
-    }
-    return (
-      <span className={`text-xs font-medium ${colors[task.status] ?? 'text-gray-500'}`}>
-        {task.status}{task.progress_message ? ` — ${task.progress_message}` : ''}
-      </span>
-    )
-  }
 
   return (
     <div className="space-y-6">

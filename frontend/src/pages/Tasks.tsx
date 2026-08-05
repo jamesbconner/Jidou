@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTasks, useTaskCount, useActiveTasks, useTask, useTaskDetail, useTaskDetailCache, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
@@ -89,10 +89,10 @@ export default function Tasks() {
     : undefined
   const totalPages = Math.max(1, Math.ceil((effectiveTotal ?? 1) / pageSize))
 
-  // Clamp page when total shrinks (e.g. after cancel or refetch)
-  useEffect(() => {
-    if (page >= totalPages) setPage(Math.max(0, totalPages - 1))
-  }, [totalPages, page])
+  // Clamp page when total shrinks (e.g. after cancel or refetch).
+  // Self-correcting: once page is clamped, the condition is false on the
+  // next render, so this converges without needing an effect.
+  if (page >= totalPages) setPage(Math.max(0, totalPages - 1))
 
   const triggerTask = useTriggerTask()
   const cancelTask = useCancelTask()
