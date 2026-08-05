@@ -43,7 +43,7 @@
     "autoprefixer": "^10.5.4",
     "eslint": "^9.0.0",
     "eslint-plugin-react": "^7.35.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
     "jsdom": "^30.0.1",
     "msw": "^2.15.0",
