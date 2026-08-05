@@ -29,6 +29,11 @@ import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/typ
 
 const TMDB_IMG = '/api/images/w92'
 const TMDB_BACKDROP_IMG = '/api/images/w500'
+// Stable reference so the `entries` destructuring default doesn't create a
+// new array identity on every render while the query is loading — a fresh
+// [] each render would make the position-merge effect below (which depends
+// on `entries`) re-run and call setState every render, looping forever.
+const EMPTY_WATCHLIST_ENTRIES: WatchlistRead[] = []
 
 function InlineNotes({ id, notes }: { id: number; notes: string | null }) {
   const [editing, setEditing] = useState(false)
@@ -200,7 +205,7 @@ export default function Watchlist() {
     return () => window.removeEventListener('keydown', onKey)
   }, [searchModalOpen])
 
-  const { data: entries = [], isLoading } = useWatchlist(statusFilter || undefined)
+  const { data: entries = EMPTY_WATCHLIST_ENTRIES, isLoading } = useWatchlist(statusFilter || undefined)
   // Unfiltered full list for search cross-reference — independent of the status filter and
   // the default limit=50 that powers the table, so search badges are always accurate.
   // TODO: this is a genuine bulk lookup (status per show across search results), so a
@@ -368,20 +373,31 @@ export default function Watchlist() {
               </button>
             </div>
 
-            {/* Library / TMDB pill toggle */}
+            {/* Library / TMDB toggle */}
             <div className="px-5 pt-4">
-              <div className="flex rounded-lg border text-sm overflow-hidden">
-                {(['library', 'tmdb'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => { setSearchMode(m) }}
-                    className={`flex-1 py-2 font-medium transition-colors ${
-                      searchMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              <div className="flex items-center justify-center gap-3 text-sm">
+                <span className={searchMode === 'library' ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                  Library
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={searchMode === 'tmdb'}
+                  aria-label="Toggle between library and TMDB search"
+                  onClick={() => setSearchMode((m) => (m === 'library' ? 'tmdb' : 'library'))}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      searchMode === 'tmdb' ? 'translate-x-4' : 'translate-x-0.5'
                     }`}
-                  >
-                    {m === 'library' ? 'Library' : 'TMDB'}
-                  </button>
-                ))}
+                  />
+                </button>
+                <span className={searchMode === 'tmdb' ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                  TMDB
+                </span>
               </div>
             </div>
 

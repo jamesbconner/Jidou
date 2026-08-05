@@ -94,6 +94,7 @@ describe('Watchlist page', () => {
   test('search input and Library/TMDB toggle are present', async () => {
     mockWatchlistAndShows([])
     render(<Watchlist />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByText('Search shows to add…'))
     expect(screen.getByPlaceholderText('Search your library…')).toBeInTheDocument()
     expect(screen.getByRole('switch')).toBeInTheDocument()
   })
@@ -101,6 +102,7 @@ describe('Watchlist page', () => {
   test('toggle switches between Library and TMDB mode', async () => {
     mockWatchlistAndShows([])
     render(<Watchlist />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByText('Search shows to add…'))
     const toggle = screen.getByRole('switch')
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     fireEvent.click(toggle)
