@@ -175,6 +175,63 @@ async def test_run_with_llm_and_matched_show():
     assert file1.parsed_content_type == "anime"
 
 
+async def test_run_retries_unmatched_file_and_clears_error_message():
+    """UNMATCHED files are retried alongside DOWNLOADED ones (#unmatched-retry).
+
+    Covers the scenario where a show didn't exist at first-parse time: the
+    file was left UNMATCHED, the user then adds/resolves the show, and a
+    plain re-run of the task should pick the file back up and clear the
+    stale error_message from the earlier failed attempt.
+    """
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.1080p.mkv", status=FileStatus.UNMATCHED)
+    file1.error_message = "No show found for parsed name 'Attack on Titan'"
+    show = _make_show(title="Attack on Titan")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            file_result,
+            show_result,  # alias check
+            show_result,  # title fallback
+            ep_result,  # episode lookup
+        ]
+    )
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01 marker."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(session, llm=llm)
+    result = await orch.run()
+
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+    assert file1.error_message is None
+
+    file_query_stmt = session.execute.await_args_list[0].args[0]
+    compiled = str(file_query_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "'downloaded'" in compiled
+    assert "'unmatched'" in compiled
+
+
 async def test_run_llm_match_episode_fallback_resolves_episode(_stub_llm_match_episode):
     """When the DB episode lookup misses (e.g. a title-only filename with no
     S/E marker), the episode-list LLM fallback can still resolve it (#312).

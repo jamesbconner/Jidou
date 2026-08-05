@@ -63,7 +63,7 @@ def _is_exact_alias_match(show: Show, name: str) -> bool:
 
 
 class ParseOrchestrator:
-    """Parse DOWNLOADED filenames and match to shows via alias lookup + LLM.
+    """Parse DOWNLOADED/UNMATCHED filenames and match to shows via alias lookup + LLM.
 
     Two-stage pipeline per file:
       1. LLM extracts ``show_name``, ``season``, ``episode``, and
@@ -172,7 +172,12 @@ class ParseOrchestrator:
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
         on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
     ) -> ParseResult:
-        """Parse all DOWNLOADED files and update their status to MATCHED or UNMATCHED.
+        """Parse all DOWNLOADED and UNMATCHED files, updating status to MATCHED or UNMATCHED.
+
+        Re-including UNMATCHED files on every run lets a user add the missing
+        show (via the Files page "Resolve" flow or the Shows page) and then
+        simply re-run this task to sweep up every previously-unmatched file for
+        that show, instead of manually resolving each one.
 
         Files are processed sequentially.  On each file:
         - Heuristic regex extracts S/E numbers as a fast path.
@@ -198,7 +203,9 @@ class ParseOrchestrator:
                 except Exception:
                     logger.warning("Event logging failed; continuing", exc_info=True)
 
-        stmt = select(DownloadedFile).where(DownloadedFile.status == FileStatus.DOWNLOADED)
+        stmt = select(DownloadedFile).where(
+            DownloadedFile.status.in_([FileStatus.DOWNLOADED, FileStatus.UNMATCHED])
+        )
         files = list((await self.session.execute(stmt)).scalars().all())
         total = len(files)
 
@@ -341,6 +348,8 @@ class ParseOrchestrator:
                         else MatchedBy.HEURISTIC
                     )
                     file.status = FileStatus.MATCHED
+                    # Clear any stale reason from a prior UNMATCHED attempt.
+                    file.error_message = None
                     # Teach the alias index so future matches skip LLM — but only
                     # when show_name is already known to name this show exactly.
                     # A fuzzy substring hit from _find_show must never be

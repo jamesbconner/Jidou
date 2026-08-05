@@ -21,7 +21,7 @@ def match_files_task(  # type: ignore[no-untyped-def]
     self,
     dry_run: bool = False,
 ) -> str:
-    """Parse DOWNLOADED filenames and match them to shows.
+    """Parse DOWNLOADED/UNMATCHED filenames and match them to shows.
 
     Args:
         self: Celery request context for retries.
