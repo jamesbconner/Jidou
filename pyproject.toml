@@ -30,7 +30,7 @@ dependencies = [
     "hiredis>=2.3",
     # SFTP
     "asyncssh>=2.15",
-    "aiohttp>=3.11",
+    "aiohttp>=3.14.3",
     # Logging
     "structlog>=24.4",
     # Caching
