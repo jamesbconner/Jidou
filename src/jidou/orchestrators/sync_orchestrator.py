@@ -174,6 +174,9 @@ class SyncOrchestrator:
                 May raise TaskCancelledError; propagates uncaught.
             on_event: Optional async callback(level, message, ctx) for structured
                 event log entries — wired to append_task_event in the task layer.
+                Forwarded to Scan/Download/Parse/Route so each stage's
+                per-item detail (not just this method's one-line phase
+                summary) reaches the task log.
 
         Returns:
             SyncResult with results from each phase.
@@ -232,7 +235,7 @@ class SyncOrchestrator:
             await on_phase(2, _TOTAL_PHASES, "Scanning remote files")
         scan_result = await ScanOrchestrator(
             self.session, self.sftp, self.remote_paths, self.noscan_paths
-        ).run(dry_run=dry_run)
+        ).run(dry_run=dry_run, on_event=on_event)
         if on_event:
             await on_event(
                 "info",
@@ -246,7 +249,7 @@ class SyncOrchestrator:
             await on_phase(3, _TOTAL_PHASES, "Downloading new files")
         dl_result = await DownloadOrchestrator(
             self.session, self.sftp, self.local_staging_path
-        ).run(dry_run=dry_run, max_workers=self.sftp.max_workers)
+        ).run(dry_run=dry_run, max_workers=self.sftp.max_workers, on_event=on_event)
         if on_event:
             await on_event(
                 "info",
@@ -264,7 +267,7 @@ class SyncOrchestrator:
             local_tv_path=self.local_tv_path,
             local_anime_path=self.local_anime_path,
             local_movie_path=self.local_movie_path,
-        ).run(dry_run=dry_run)
+        ).run(dry_run=dry_run, on_event=on_event)
         if on_event:
             await on_event(
                 "info",
