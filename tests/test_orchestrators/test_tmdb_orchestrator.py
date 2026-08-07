@@ -1,5 +1,6 @@
 """Tests for TMDBOrchestrator."""
 
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,12 +64,13 @@ def _two_shows_first_fails_second_succeeds():
     return session, tmdb, show1, show2
 
 
-def _make_show(tmdb_id=12345, title="Test Show", cached=False, show_id=1):
+def _make_show(tmdb_id=12345, title="Test Show", cached=False, show_id=1, last_air_date=None):
     show = MagicMock()
     show.id = show_id
     show.tmdb_id = tmdb_id
     show.title = title
     show.cached = cached
+    show.last_air_date = last_air_date
     return show
 
 
@@ -159,6 +161,69 @@ async def test_sync_show_episodes_raises_for_a_movie():
         await orch.sync_show_episodes(show)
 
     tmdb.get_show_seasons.assert_not_called()
+
+
+async def test_sync_show_episodes_updates_last_air_date_from_newest_aired_episode():
+    """A routine episode sync (not just a full rematch) should keep
+    show.last_air_date current, since the Shows page "Recently Aired" sort
+    reads that column directly.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show(last_air_date=None)
+    yesterday = date.today() - timedelta(days=1)
+    last_week = date.today() - timedelta(days=7)
+    tmdb = _make_tmdb(
+        episodes=[
+            {"id": 101, "episode_number": 1, "name": "Ep1", "air_date": last_week.isoformat()},
+            {"id": 102, "episode_number": 2, "name": "Ep2", "air_date": yesterday.isoformat()},
+        ]
+    )
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert show.last_air_date == yesterday.isoformat()
+
+
+async def test_sync_show_episodes_ignores_unaired_future_episodes():
+    """A scheduled-but-unaired episode must not push last_air_date forward --
+    only episodes that have actually aired count.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show(last_air_date=None)
+    yesterday = date.today() - timedelta(days=1)
+    next_week = date.today() + timedelta(days=7)
+    tmdb = _make_tmdb(
+        episodes=[
+            {"id": 101, "episode_number": 1, "name": "Ep1", "air_date": yesterday.isoformat()},
+            {"id": 102, "episode_number": 2, "name": "Ep2", "air_date": next_week.isoformat()},
+        ]
+    )
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert show.last_air_date == yesterday.isoformat()
+
+
+async def test_sync_show_episodes_leaves_last_air_date_when_nothing_has_aired():
+    """No aired episodes in the synced set (e.g. a brand-new unreleased show)
+    must leave any previously-known last_air_date untouched rather than
+    clobbering it with None.
+    """
+    session = _make_session(existing_episode=None)
+    show = _make_show(last_air_date="2020-01-01")
+    next_week = date.today() + timedelta(days=7)
+    tmdb = _make_tmdb(
+        episodes=[
+            {"id": 101, "episode_number": 1, "name": "Ep1", "air_date": next_week.isoformat()},
+        ]
+    )
+
+    orch = TMDBOrchestrator(session, tmdb)
+    await orch.sync_show_episodes(show)
+
+    assert show.last_air_date == "2020-01-01"
 
 
 # Shaped after Frieren: Beyond Journey's End's real TMDB episode_groups (a
