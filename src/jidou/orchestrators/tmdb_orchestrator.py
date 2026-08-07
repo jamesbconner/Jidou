@@ -51,11 +51,15 @@ class TMDBOrchestrator:
     ) -> TMDBSyncResult:
         """Fetch all seasons and episodes for one show and upsert Episode rows.
 
-        Skips season 0 (specials). Marks show.cached = True on completion.
-        Flushes but does not commit — the caller owns the transaction
-        boundary. A caller processing multiple shows in one session (e.g.
-        :meth:`sync_all_shows`) must commit after each show itself if it
-        wants a later show's failure to leave earlier successes durable.
+        Skips season 0 (specials). Marks show.cached = True on completion,
+        and refreshes show.last_air_date from the newest already-aired
+        episode in the synced set (Shows-page "Recently Aired" sort reads
+        this column directly, so it must track routine episode syncs, not
+        just a full TMDB rematch). Flushes but does not commit — the caller
+        owns the transaction boundary. A caller processing multiple shows in
+        one session (e.g. :meth:`sync_all_shows`) must commit after each show
+        itself if it wants a later show's failure to leave earlier successes
+        durable.
 
         Args:
             show: Show ORM object to sync.
@@ -135,6 +139,15 @@ class TMDBOrchestrator:
 
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
+
+        today = date.today()
+        aired_dates = [
+            ep.air_date
+            for ep in episodes_by_key.values()
+            if ep.air_date is not None and ep.air_date <= today
+        ]
+        if aired_dates:
+            show.last_air_date = max(aired_dates).isoformat()
 
         await self._apply_episode_group_map(show, episodes_by_key.values())
         await self.session.flush()
