@@ -334,8 +334,15 @@ async def test_run_on_event_called_for_phase_results():
     assert any("TMDB" in msg or "sync" in msg for msg in messages)
 
 
-async def test_run_on_event_passed_to_route_orchestrator():
-    """RouteOrchestrator.run() is called with on_event parameter."""
+async def test_run_on_event_forwarded_to_every_sub_orchestrator():
+    """on_event must reach Scan/Download/Parse/Route, not just Route.
+
+    Regression test: SyncOrchestrator used to forward on_event only to
+    RouteOrchestrator, so the task log only ever showed per-file detail for
+    the routing phase -- Scan/Download/Parse collapsed to a single
+    one-line phase summary even though all four orchestrators support the
+    same structured per-item event callback.
+    """
     session = _make_session()
     sftp = MagicMock()
     sftp.max_workers = 4
@@ -359,8 +366,7 @@ async def test_run_on_event_passed_to_route_orchestrator():
         orch = SyncOrchestrator(session, sftp, tmdb)
         await orch.run(on_event=on_event)
 
-    # Verify RouteOrchestrator.run was called with on_event keyword argument
-    mock_route_cls.return_value.run.assert_called_once()
-    call_kwargs = mock_route_cls.return_value.run.call_args[1]
-    assert "on_event" in call_kwargs
-    assert call_kwargs["on_event"] == on_event
+    for mock_cls in (mock_scan_cls, mock_dl_cls, mock_parse_cls, mock_route_cls):
+        mock_cls.return_value.run.assert_called_once()
+        call_kwargs = mock_cls.return_value.run.call_args.kwargs
+        assert call_kwargs.get("on_event") is on_event
