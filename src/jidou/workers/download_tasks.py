@@ -58,7 +58,10 @@ async def _download_files(
             retry_delay=settings.sftp_retry_delay,
         )
 
-        result = await DownloadOrchestrator(session, sftp, settings.local_staging_path).run(
+        remote_paths = settings.sftp_remote_paths_list or ["/"]
+        result = await DownloadOrchestrator(
+            session, sftp, settings.local_staging_path, remote_paths
+        ).run(
             dry_run=dry_run,
             max_workers=settings.sftp_max_workers,
             stale_downloading_seconds=settings.download_stale_downloading_seconds,

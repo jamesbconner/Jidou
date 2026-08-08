@@ -251,7 +251,7 @@ class SyncOrchestrator:
         if on_phase:
             await on_phase(3, _TOTAL_PHASES, "Downloading new files")
         dl_result = await DownloadOrchestrator(
-            self.session, self.sftp, self.local_staging_path
+            self.session, self.sftp, self.local_staging_path, self.remote_paths
         ).run(dry_run=dry_run, max_workers=self.sftp.max_workers, on_event=on_event)
         if on_event:
             await on_event(

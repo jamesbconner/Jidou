@@ -62,16 +62,35 @@ def _verify_integrity(file: DownloadedFile, sha256_hex: str, crc32_hex: str) -> 
     return None
 
 
-def _staging_path_for(remote_path: str, staging_root: str) -> Path:
-    """Return the local staging destination, mirroring remote directory structure.
+def _staging_path_for(
+    remote_path: str, staging_root: str, remote_roots: list[str] | None = None
+) -> Path:
+    """Return the local staging destination, mirroring only the sub-path within a scan root.
 
-    For example: remote ``/downloads/shows/ShowName_S01E01.mkv`` under
-    staging root ``/data/staging`` becomes
-    ``/data/staging/downloads/shows/ShowName_S01E01.mkv``.
+    Only the portion of *remote_path* found *inside* whichever configured
+    *remote_roots* entry contains it is mirrored under *staging_root* — the
+    root itself is a long, deeply nested prefix shared by every file on
+    that SFTP source (e.g. ``/data/sdaa1/myuser/path/to/files/``) and
+    carries no useful information. Mirroring it verbatim into every staged
+    path routinely pushed the staged path past Windows' ~260-character
+    limit and broke transfers, even though only the directories/files
+    *within* the configured root (e.g. a show subdirectory) are meaningful.
+
+    For example: remote ``/data/sdaa1/myuser/path/to/files/anime/ep.mkv``
+    with a configured root of ``/data/sdaa1/myuser/path/to/files/`` and
+    staging root ``k:/staging`` becomes ``k:/staging/anime/ep.mkv`` — not
+    ``k:/staging/data/sdaa1/myuser/path/to/files/anime/ep.mkv``.
+
+    When *remote_path* doesn't fall under any entry in *remote_roots* (or
+    none are given, e.g. a root of just ``/``), the full path is mirrored
+    as before — there's nothing safe to strip.
 
     Args:
         remote_path: Full path of the file on the remote SFTP server.
         staging_root: Local staging directory root.
+        remote_roots: Configured SFTP scan roots (``SFTP_REMOTE_PATHS``).
+            The longest entry that is an ancestor of (or equal to)
+            *remote_path* is stripped before mirroring.
 
     Returns:
         Absolute :class:`Path` for the staging destination.
@@ -82,6 +101,17 @@ def _staging_path_for(remote_path: str, staging_root: str) -> Path:
     """
     # Strip leading slash so Path joining works correctly
     relative = remote_path.lstrip("/")
+    if remote_roots:
+        best_match = ""
+        for root in remote_roots:
+            normalized = root.strip("/")
+            matches = normalized and (
+                relative == normalized or relative.startswith(normalized + "/")
+            )
+            if matches and len(normalized) > len(best_match):
+                best_match = normalized
+        if best_match:
+            relative = relative[len(best_match) :].lstrip("/")
     destination = Path(staging_root) / relative
     resolved = destination.resolve()
     staging_resolved = Path(staging_root).resolve()
@@ -120,9 +150,12 @@ class DownloadResult:
 class DownloadOrchestrator:
     """Download DISCOVERED DownloadedFile records from SFTP to a local staging area.
 
-    Files land under ``local_staging_path`` with their remote directory
-    structure preserved.  ``show_id`` is still NULL at this stage; the parse
-    phase links each file to a show after download.
+    Files land under ``local_staging_path`` with their directory structure
+    *relative to the configured scan root* preserved (see
+    :func:`_staging_path_for`) — not the full remote path, which on a
+    deeply nested SFTP layout can push staged paths past Windows' path
+    length limit for no benefit. ``show_id`` is still NULL at this stage;
+    the parse phase links each file to a show after download.
 
     Args:
         session: Active async SQLAlchemy session (must be created with
@@ -130,6 +163,10 @@ class DownloadOrchestrator:
             each intermediate commit).
         sftp: Configured SFTPService instance.
         local_staging_path: Root directory for staging downloads.
+        remote_paths: Configured SFTP scan roots (``SFTP_REMOTE_PATHS``),
+            used to strip the common remote prefix from each file's
+            staging destination. Defaults to mirroring the full remote
+            path when not given.
     """
 
     def __init__(
@@ -137,10 +174,12 @@ class DownloadOrchestrator:
         session: AsyncSession,
         sftp: SFTPService,
         local_staging_path: str,
+        remote_paths: list[str] | None = None,
     ) -> None:
         self.session = session
         self.sftp = sftp
         self.local_staging_path = local_staging_path
+        self.remote_paths = remote_paths
 
     async def run(
         self,
@@ -213,7 +252,9 @@ class DownloadOrchestrator:
             for idx, file in enumerate(rows, 1):
                 if on_progress:
                     await on_progress(idx, total, f"Downloading {file.original_filename}")
-                local_path = _staging_path_for(file.remote_path, self.local_staging_path)
+                local_path = _staging_path_for(
+                    file.remote_path, self.local_staging_path, self.remote_paths
+                )
                 logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
                 await _emit(
                     "info",
@@ -270,7 +311,9 @@ class DownloadOrchestrator:
                         "(left DOWNLOADING by a previous, apparently crashed run)",
                         {"file_id": file.id},
                     )
-                local_path = _staging_path_for(file.remote_path, self.local_staging_path)
+                local_path = _staging_path_for(
+                    file.remote_path, self.local_staging_path, self.remote_paths
+                )
                 file.status = FileStatus.DOWNLOADING
                 pending.append((file, local_path))
 

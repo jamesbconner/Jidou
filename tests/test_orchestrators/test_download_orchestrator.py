@@ -117,6 +117,66 @@ def test_staging_path_traversal_raises():
         _staging_path_for("/downloads/../../../etc/passwd", "/data/staging")
 
 
+def test_staging_path_strips_configured_remote_root():
+    """Only the sub-path within a configured scan root is mirrored, not the
+    root itself -- a deeply nested SFTP prefix shared by every file
+    (e.g. a seedbox layout under /data/sdaa1/myuser/path/to/files/) carries
+    no useful information and, mirrored verbatim, routinely pushed staged
+    paths past Windows' path length limit and broke transfers (#unmatched).
+    """
+    result = _staging_path_for(
+        "/data/sdaa1/myuser/path/to/files/anime/ep.mkv",
+        "k:/staging",
+        remote_roots=["/data/sdaa1/myuser/path/to/files/"],
+    )
+    assert result == Path("k:/staging/anime/ep.mkv")
+
+
+def test_staging_path_strips_configured_root_without_trailing_slash():
+    """Trailing-slash normalization: a root configured without one still matches."""
+    result = _staging_path_for(
+        "/data/downloads/anime/ep.mkv",
+        "/staging",
+        remote_roots=["/data/downloads"],
+    )
+    assert result == Path("/staging/anime/ep.mkv")
+
+
+def test_staging_path_uses_longest_matching_root():
+    """When multiple configured roots match, the most specific one wins."""
+    result = _staging_path_for(
+        "/data/downloads/anime/ep.mkv",
+        "/staging",
+        remote_roots=["/data/downloads", "/data/downloads/anime"],
+    )
+    assert result == Path("/staging/ep.mkv")
+
+
+def test_staging_path_falls_back_to_full_mirror_when_no_root_matches():
+    """A remote_path outside every configured root mirrors in full, same as
+    today's behavior -- nothing safe to strip.
+    """
+    result = _staging_path_for(
+        "/other/place/ep.mkv",
+        "/staging",
+        remote_roots=["/data/downloads"],
+    )
+    assert result == Path("/staging/other/place/ep.mkv")
+
+
+def test_staging_path_root_of_slash_does_not_strip_anything():
+    """A configured root of just "/" (the default) can't safely strip
+    anything -- falls back to mirroring the full path, matching the
+    behavior when no remote_roots are given at all.
+    """
+    result = _staging_path_for(
+        "/downloads/shows/ep.mkv",
+        "/data/staging",
+        remote_roots=["/"],
+    )
+    assert result == Path("/data/staging/downloads/shows/ep.mkv")
+
+
 # ---------------------------------------------------------------------------
 # _hash_file unit tests
 # ---------------------------------------------------------------------------
@@ -246,6 +306,26 @@ async def test_run_sets_staging_local_path():
     call_args = sftp.download_file.call_args
     local_path_used = call_args[0][1]  # second positional arg to download_file
     assert local_path_used == Path("/staging/downloads/shows/ShowName_S01E01.mkv")
+
+
+@patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file)
+async def test_run_strips_configured_remote_root_from_staging_path():
+    """When remote_paths is configured, the staging path drops the shared
+    scan-root prefix instead of mirroring it -- see _staging_path_for.
+    """
+    file1 = _make_file(remote_path="/data/sdaa1/myuser/path/to/files/anime/ShowName_S01E01.mkv")
+    session = _make_session(files=[file1])
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(return_value=_make_sftp_result())
+
+    orch = DownloadOrchestrator(
+        session, sftp, "/staging", remote_paths=["/data/sdaa1/myuser/path/to/files/"]
+    )
+    await orch.run()
+
+    call_args = sftp.download_file.call_args
+    local_path_used = call_args[0][1]
+    assert local_path_used == Path("/staging/anime/ShowName_S01E01.mkv")
 
 
 async def test_run_marks_error_on_sftp_failure():
