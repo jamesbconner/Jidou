@@ -106,7 +106,11 @@ class ScanOrchestrator:
                 called once per configured remote path during the initial
                 shallow-listing phase.
             on_event: Optional async callback(level, message, ctx) for
-                structured per-item event log entries.
+                structured per-item event log entries. Fired only for newly
+                discovered files, directory walk outcomes, and errors —
+                already-known files are silently counted into
+                ``files_skipped`` rather than emitted one at a time, since a
+                library scan can skip thousands of them per run.
 
         Returns:
             ScanResult with counts. ``files_found``/``files_skipped`` reflect
@@ -155,8 +159,11 @@ class ScanOrchestrator:
         )
         for rf in all_top_level_files:
             if rf.path in existing_file_paths:
+                # Not emitted per-file: a library scan can skip thousands of
+                # already-known files, which would drown the new/interesting
+                # events below. The aggregate count is reported in the
+                # phase-summary event the caller (SyncOrchestrator) emits.
                 files_skipped += 1
-                await _emit("info", f"Already known: {rf.name!r}", {"remote_path": rf.path})
                 continue
             if await self._create_discovered_file(rf, dry_run):
                 files_created += 1
@@ -205,8 +212,9 @@ class ScanOrchestrator:
             )
             for rf in all_new_files:
                 if rf.path in new_dir_existing:
+                    # See the top-level-files loop above for why this is
+                    # aggregate-only, not per-file.
                     files_skipped += 1
-                    await _emit("info", f"Already known: {rf.name!r}", {"remote_path": rf.path})
                 elif await self._create_discovered_file(rf, dry_run):
                     files_created += 1
                     await _emit(
