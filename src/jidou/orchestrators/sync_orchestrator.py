@@ -239,9 +239,12 @@ class SyncOrchestrator:
         if on_event:
             await on_event(
                 "info",
-                f"Scan: {scan_result.files_created} new file(s) discovered"
-                + (" (dry run)" if dry_run else ""),
-                {"files_created": scan_result.files_created},
+                f"Scan: {scan_result.files_created} new file(s) discovered, "
+                f"{scan_result.files_skipped} already known" + (" (dry run)" if dry_run else ""),
+                {
+                    "files_created": scan_result.files_created,
+                    "files_skipped": scan_result.files_skipped,
+                },
             )
 
         # Phase 3: Download DISCOVERED files to staging

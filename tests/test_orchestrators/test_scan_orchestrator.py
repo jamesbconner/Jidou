@@ -611,10 +611,13 @@ async def test_dry_run_skips_directory_marker(monkeypatch: pytest.MonkeyPatch) -
 # ---------------------------------------------------------------------------
 
 
-async def test_on_event_called_for_created_and_skipped_top_level_files(
+async def test_on_event_called_only_for_newly_discovered_top_level_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every top-level file emits an event, whether created or skipped."""
+    """Newly discovered files emit an event; already-known files are silently
+    counted into files_skipped instead -- a library scan can skip thousands
+    of known files per run, which would otherwise drown the useful signal.
+    """
     new_file = _make_file("new.mkv", "/remote/new.mkv")
     known_file = _make_file("known.mkv", "/remote/known.mkv")
     session = _make_session()
@@ -623,13 +626,12 @@ async def test_on_event_called_for_created_and_skipped_top_level_files(
 
     on_event = AsyncMock()
     orch = ScanOrchestrator(session, sftp, ["/remote"])
-    await orch.run(on_event=on_event)
+    result = await orch.run(on_event=on_event)
 
-    assert on_event.call_count == 2
-    created_calls = [c for c in on_event.call_args_list if "Discovered" in c[0][1]]
-    known_calls = [c for c in on_event.call_args_list if "Already known" in c[0][1]]
-    assert len(created_calls) == 1
-    assert len(known_calls) == 1
+    assert on_event.call_count == 1
+    assert "Discovered" in on_event.call_args_list[0][0][1]
+    assert result.files_created == 1
+    assert result.files_skipped == 1
 
 
 async def test_on_event_called_for_shallow_listing_failure(

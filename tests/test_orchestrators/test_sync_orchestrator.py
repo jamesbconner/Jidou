@@ -334,6 +334,44 @@ async def test_run_on_event_called_for_phase_results():
     assert any("TMDB" in msg or "sync" in msg for msg in messages)
 
 
+async def test_run_scan_summary_includes_already_known_count():
+    """The Scan phase summary reports both new and already-known counts.
+
+    ScanOrchestrator itself only emits per-item events for newly discovered
+    files (a library scan can skip thousands of already-known files, which
+    would drown the log) -- so the phase-summary line SyncOrchestrator emits
+    is the only place the "already known" count is visible, and must include it.
+    """
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    on_event = AsyncMock()
+    scan_res = _make_scan_result(files_created=3, files_skipped=1204)
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=scan_res)
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        orch = SyncOrchestrator(session, sftp, tmdb)
+        await orch.run(on_event=on_event)
+
+    scan_messages = [c[0][1] for c in on_event.call_args_list if c[0][1].startswith("Scan:")]
+    assert len(scan_messages) == 1
+    assert "3 new file(s) discovered" in scan_messages[0]
+    assert "1204 already known" in scan_messages[0]
+
+
 async def test_run_on_event_forwarded_to_every_sub_orchestrator():
     """on_event must reach Scan/Download/Parse/Route, not just Route.
 

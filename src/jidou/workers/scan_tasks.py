@@ -69,6 +69,7 @@ async def _scan_remote(
             progress_total=result.paths_scanned,
             message=(
                 f"Scan complete: {result.files_created} new files found, "
+                f"{result.files_skipped} already known, "
                 f"{result.dirs_discovered} new directories discovered"
             ),
             result_summary={
