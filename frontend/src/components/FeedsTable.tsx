@@ -42,7 +42,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
-              <th className="px-3 py-2 w-12" title="Whether this feed has been assigned a remote_key (published to YaRSS2).">Key</th>
+              <th className="px-3 py-2 w-12">Key</th>
               <th className="px-3 py-2">Name</th>
               <th className="px-3 py-2 w-12" title="Whether a feed URL is set.">URL</th>
               <th className="px-3 py-2 w-12" title="Whether a default download location is set.">DL Loc</th>
@@ -56,9 +56,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
           <tbody className="divide-y divide-gray-100">
             {feeds.map((f) => (
               <tr key={f.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 text-center">
-                  <SetIndicator value={f.remote_key} unsetTitle="Not yet published (stub)" />
-                </td>
+                <td className="px-3 py-2 font-mono text-xs text-gray-500">{f.remote_key ?? '—'}</td>
                 <td className="px-3 py-2 font-medium">
                   <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 hover:underline text-left">
                     {f.name}
