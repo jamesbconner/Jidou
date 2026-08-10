@@ -43,6 +43,7 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   globalThis.fetch = vi.fn()
+  window.localStorage.clear()
 })
 
 afterEach(() => {
@@ -59,10 +60,15 @@ function mockResponse(body: unknown = null, status = 200): Response {
   } as Response
 }
 
-function mockShowsPage(shows: ShowList[]) {
+function mockShowsPage(shows: ShowList[], watchlistShowIds: number[] = []) {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input)
     if (url.startsWith('/api/shows?')) return mockResponse(shows)
+    if (url.startsWith('/api/watchlist?')) {
+      return mockResponse(
+        watchlistShowIds.map((show_id, i) => ({ id: i + 1, show_id, position: i + 1 })),
+      )
+    }
     return mockResponse([])
   })
 }
@@ -124,6 +130,103 @@ describe('Shows page — Missing Episodes tab', () => {
     await openMissingEpisodesTab()
     await waitFor(() => expect(screen.getByText('Linked Show')).toBeInTheDocument())
     expect(screen.getByText('Linked Show').closest('a')).toHaveAttribute('href', '/shows/42')
+  })
+
+  test('filters the list by content type', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Anime Show', content_type: 'anime', missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'TV Show', content_type: 'tv', missing_episode_count: 3 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Anime Show')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All types'), { target: { value: 'anime' } })
+    expect(screen.getByText('Anime Show')).toBeInTheDocument()
+    expect(screen.queryByText('TV Show')).not.toBeInTheDocument()
+  })
+
+  test('filters the list by status', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Ended Show', status: 'Ended', missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'Airing Show', status: 'Returning Series', missing_episode_count: 3 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Ended Show')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All statuses'), { target: { value: 'Ended' } })
+    expect(screen.getByText('Ended Show')).toBeInTheDocument()
+    expect(screen.queryByText('Airing Show')).not.toBeInTheDocument()
+  })
+
+  test('filters the list by genre', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Drama Show', genres: [{ id: 1, name: 'Drama' }], missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'Comedy Show', genres: [{ id: 2, name: 'Comedy' }], missing_episode_count: 3 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Drama Show')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All genres'), { target: { value: 'Comedy' } })
+    expect(screen.getByText('Comedy Show')).toBeInTheDocument()
+    expect(screen.queryByText('Drama Show')).not.toBeInTheDocument()
+  })
+
+  test('filters the list by language', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'English Show', original_language: 'en', missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'Japanese Show', original_language: 'ja', missing_episode_count: 3 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('English Show')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All languages'), { target: { value: 'ja' } })
+    expect(screen.getByText('Japanese Show')).toBeInTheDocument()
+    expect(screen.queryByText('English Show')).not.toBeInTheDocument()
+  })
+
+  test('filters the list by minimum missing count', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Few Missing', missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'Many Missing', missing_episode_count: 12 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Few Missing')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('Any missing'), { target: { value: '10' } })
+    expect(screen.getByText('Many Missing')).toBeInTheDocument()
+    expect(screen.queryByText('Few Missing')).not.toBeInTheDocument()
+  })
+
+  test('filters the list to watchlist-only shows', async () => {
+    mockShowsPage(
+      [
+        makeShow({ id: 1, title: 'On Watchlist', missing_episode_count: 2 }),
+        makeShow({ id: 2, title: 'Not On Watchlist', missing_episode_count: 3 }),
+      ],
+      [1],
+    )
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('On Watchlist')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Watchlist only'))
+    await waitFor(() => expect(screen.queryByText('Not On Watchlist')).not.toBeInTheDocument())
+    expect(screen.getByText('On Watchlist')).toBeInTheDocument()
+  })
+
+  test('Clear filters resets missing-tab filters independently of the library tab', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Anime Show', content_type: 'anime', missing_episode_count: 2 }),
+      makeShow({ id: 2, title: 'TV Show', content_type: 'tv', missing_episode_count: 3 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Anime Show')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All types'), { target: { value: 'anime' } })
+    expect(screen.queryByText('TV Show')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear filters/ }))
+    expect(screen.getByText('TV Show')).toBeInTheDocument()
+    expect(screen.getByText('Anime Show')).toBeInTheDocument()
   })
 
   test('does not show the Missing Episodes table under the Data Quality tab', async () => {

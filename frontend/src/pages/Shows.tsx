@@ -36,6 +36,24 @@ const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
   filterMinRating: '',
 }
 
+interface MissingFilterState {
+  filterContentType: string
+  filterStatus: string
+  filterGenre: string
+  filterLanguage: string
+  filterMinMissing: string
+  filterWatchlistOnly: boolean
+}
+
+const DEFAULT_MISSING_FILTERS: MissingFilterState = {
+  filterContentType: '',
+  filterStatus: '',
+  filterGenre: '',
+  filterLanguage: '',
+  filterMinMissing: '',
+  filterWatchlistOnly: false,
+}
+
 const TMDB_IMG = '/api/images/w185'
 
 type Tab = 'library' | 'data' | 'missing'
@@ -96,6 +114,33 @@ function applyFilters(
   })
 }
 
+function applyMissingFilters(
+  shows: ShowList[],
+  contentType: string,
+  status: string,
+  genre: string,
+  language: string,
+  minMissing: string,
+  watchlistOnly: boolean,
+  watchlistByShowId: Map<number, number>,
+): ShowList[] {
+  return shows.filter((s) => {
+    if (contentType === '__unset__') { if (s.content_type != null) return false }
+    else if (contentType && s.content_type !== contentType) return false
+
+    if (status && s.status !== status) return false
+
+    if (genre && !s.genres?.some((g) => g.name === genre)) return false
+
+    if (language && s.original_language !== language) return false
+
+    if (minMissing && s.missing_episode_count < Number(minMissing)) return false
+
+    if (watchlistOnly && !watchlistByShowId.has(s.id)) return false
+
+    return true
+  })
+}
 
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
@@ -124,6 +169,27 @@ export default function Shows() {
   const setFilterLanguage = (v: string) => setFilters({ ...filters, filterLanguage: v })
   const setFilterUpcoming = (v: boolean) => setFilters({ ...filters, filterUpcoming: v })
   const setFilterMinRating = (v: string) => setFilters({ ...filters, filterMinRating: v })
+
+  // Independent from the library tab's filter bar — persisted separately so
+  // switching tabs never cross-affects the other's filter choices.
+  const [missingFilters, setMissingFilters] = useLocalStorageState<MissingFilterState>(
+    'jidou:shows-missing-filters',
+    DEFAULT_MISSING_FILTERS,
+  )
+  const {
+    filterContentType: missingFilterContentType,
+    filterStatus: missingFilterStatus,
+    filterGenre: missingFilterGenre,
+    filterLanguage: missingFilterLanguage,
+    filterMinMissing,
+    filterWatchlistOnly: missingFilterWatchlistOnly,
+  } = missingFilters
+  const setMissingFilterContentType = (v: string) => setMissingFilters({ ...missingFilters, filterContentType: v })
+  const setMissingFilterStatus = (v: string) => setMissingFilters({ ...missingFilters, filterStatus: v })
+  const setMissingFilterGenre = (v: string) => setMissingFilters({ ...missingFilters, filterGenre: v })
+  const setMissingFilterLanguage = (v: string) => setMissingFilters({ ...missingFilters, filterLanguage: v })
+  const setFilterMinMissing = (v: string) => setMissingFilters({ ...missingFilters, filterMinMissing: v })
+  const setMissingFilterWatchlistOnly = (v: boolean) => setMissingFilters({ ...missingFilters, filterWatchlistOnly: v })
 
   const debouncedQuery = useDebounce(query, 300)
 
@@ -231,16 +297,41 @@ export default function Shows() {
     () => showsWithMissingEpisodes.reduce((sum, s) => sum + s.missing_episode_count, 0),
     [showsWithMissingEpisodes],
   )
+  const missingFiltered = useMemo(
+    () => applyMissingFilters(
+      showsWithMissingEpisodes,
+      missingFilterContentType,
+      missingFilterStatus,
+      missingFilterGenre,
+      missingFilterLanguage,
+      filterMinMissing,
+      missingFilterWatchlistOnly,
+      watchlistByShowId,
+    ),
+    [
+      showsWithMissingEpisodes, missingFilterContentType, missingFilterStatus, missingFilterGenre,
+      missingFilterLanguage, filterMinMissing, missingFilterWatchlistOnly, watchlistByShowId,
+    ],
+  )
+
   const missingEpisodeRows = useMemo(() => {
     const q = missingQuery.trim().toLowerCase()
-    return showsWithMissingEpisodes
+    return missingFiltered
       .filter((s) => !q || s.title.toLowerCase().includes(q))
       .sort((a, b) => b.missing_episode_count - a.missing_episode_count)
-  }, [showsWithMissingEpisodes, missingQuery])
+  }, [missingFiltered, missingQuery])
+  const missingRowsTotal = useMemo(
+    () => missingEpisodeRows.reduce((sum, s) => sum + s.missing_episode_count, 0),
+    [missingEpisodeRows],
+  )
 
   const activeFilterCount = [
     filterContentType, filterStatus, filterGenre, filterLanguage, filterMinRating,
   ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
+
+  const activeMissingFilterCount = [
+    missingFilterContentType, missingFilterStatus, missingFilterGenre, missingFilterLanguage, filterMinMissing,
+  ].filter(Boolean).length + (missingFilterWatchlistOnly ? 1 : 0)
 
   function clearFilters() {
     setFilters({
@@ -252,6 +343,10 @@ export default function Shows() {
       filterUpcoming: false,
       filterMinRating: '',
     })
+  }
+
+  function clearMissingFilters() {
+    setMissingFilters(DEFAULT_MISSING_FILTERS)
   }
 
   function closeModal() {
@@ -283,6 +378,11 @@ export default function Shows() {
         {tab === 'library' && activeFilterCount > 0 && (
           <Button onClick={clearFilters} variant="secondary" tone="light" size="sm">
             Clear filters ({activeFilterCount})
+          </Button>
+        )}
+        {tab === 'missing' && activeMissingFilterCount > 0 && (
+          <Button onClick={clearMissingFilters} variant="secondary" tone="light" size="sm">
+            Clear filters ({activeMissingFilterCount})
           </Button>
         )}
         {tab === 'library' && (
@@ -669,25 +769,73 @@ export default function Shows() {
 
       {tab === 'missing' && !isLoading && (
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-sm text-gray-500">
-              {showsWithMissingEpisodes.length === 0
-                ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
-                : `${totalMissingEpisodes} missing episode${totalMissingEpisodes !== 1 ? 's' : ''} across ${showsWithMissingEpisodes.length} show${showsWithMissingEpisodes.length !== 1 ? 's' : ''}.`}
-            </p>
-            {showsWithMissingEpisodes.length > 0 && (
+          {showsWithMissingEpisodes.length > 0 && (
+            <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
+              <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+
+              <select value={missingFilterContentType} onChange={(e) => setMissingFilterContentType(e.target.value)} className={selectCls}>
+                <option value="">All types</option>
+                <option value="anime">Anime</option>
+                <option value="tv">TV</option>
+                <option value="movie">Movie</option>
+                <option value="__unset__">Unset</option>
+              </select>
+
+              {statusOptions.length > 0 && (
+                <select value={missingFilterStatus} onChange={(e) => setMissingFilterStatus(e.target.value)} className={selectCls}>
+                  <option value="">All statuses</option>
+                  {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+
+              {genreOptions.length > 0 && (
+                <select value={missingFilterGenre} onChange={(e) => setMissingFilterGenre(e.target.value)} className={selectCls}>
+                  <option value="">All genres</option>
+                  {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              )}
+
+              {languageOptions.length > 0 && (
+                <select value={missingFilterLanguage} onChange={(e) => setMissingFilterLanguage(e.target.value)} className={selectCls}>
+                  <option value="">All languages</option>
+                  {languageOptions.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+                </select>
+              )}
+
+              <select value={filterMinMissing} onChange={(e) => setFilterMinMissing(e.target.value)} className={selectCls}>
+                <option value="">Any missing</option>
+                <option value="2">2+ missing</option>
+                <option value="5">5+ missing</option>
+                <option value="10">10+ missing</option>
+              </select>
+
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={missingFilterWatchlistOnly}
+                  onChange={(e) => setMissingFilterWatchlistOnly(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-700">Watchlist only</span>
+              </label>
+
               <input
                 type="search"
                 placeholder="Filter by title…"
                 value={missingQuery}
                 onChange={(e) => setMissingQuery(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            )}
-          </div>
-          {showsWithMissingEpisodes.length > 0 && missingEpisodeRows.length === 0 ? (
-            <p className="text-sm text-gray-500">No shows match &quot;{missingQuery}&quot;.</p>
-          ) : missingEpisodeRows.length > 0 ? (
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            {showsWithMissingEpisodes.length === 0
+              ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
+              : missingEpisodeRows.length === 0
+                ? `0 of ${showsWithMissingEpisodes.length} shows match the current filters.`
+                : `${missingRowsTotal} missing episode${missingRowsTotal !== 1 ? 's' : ''} across ${missingEpisodeRows.length} of ${showsWithMissingEpisodes.length} show${showsWithMissingEpisodes.length !== 1 ? 's' : ''}.`}
+          </p>
+          {missingEpisodeRows.length > 0 && (
             <Card className="overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
@@ -718,7 +866,7 @@ export default function Shows() {
                 </tbody>
               </table>
             </Card>
-          ) : null}
+          )}
         </section>
       )}
 
