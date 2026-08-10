@@ -213,6 +213,29 @@ describe('Shows page — Missing Episodes tab', () => {
     expect(screen.getByText('On Watchlist')).toBeInTheDocument()
   })
 
+  test('shows a loading state, not a false empty list, while the watchlist is still loading and Watchlist only is enabled', async () => {
+    let resolveWatchlist: (value: Response) => void = () => {}
+    const watchlistPromise = new Promise<Response>((resolve) => { resolveWatchlist = resolve })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.startsWith('/api/shows?')) {
+        return mockResponse([makeShow({ id: 1, title: 'Gappy Show', missing_episode_count: 3 })])
+      }
+      if (url.startsWith('/api/watchlist?')) return watchlistPromise
+      return mockResponse([])
+    })
+
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Gappy Show')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Watchlist only'))
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(screen.queryByText(/shows match the current filters/)).not.toBeInTheDocument()
+
+    resolveWatchlist(mockResponse([{ id: 1, show_id: 1, position: 1 }]))
+    await waitFor(() => expect(screen.getByText('Gappy Show')).toBeInTheDocument())
+  })
+
   test('Clear filters resets missing-tab filters independently of the library tab', async () => {
     mockShowsPage([
       makeShow({ id: 1, title: 'Anime Show', content_type: 'anime', missing_episode_count: 2 }),

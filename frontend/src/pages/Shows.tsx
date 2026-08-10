@@ -217,7 +217,7 @@ export default function Shows() {
   // by-show filter can't replace it — but the hardcoded limit=10000 sentinel is a smell.
   // Consider a lighter summary endpoint/field (show_id + status only, no embedded show)
   // once the watchlist is large enough for this to matter.
-  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
+  const { data: watchlistEntries = [], isLoading: watchlistLoading } = useWatchlist(undefined, 10000)
   const createWatchlistEntry = useCreateWatchlistEntry()
   const deleteWatchlistEntry = useDeleteWatchlistEntry()
 
@@ -273,6 +273,11 @@ export default function Shows() {
     () => applyFilters(displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating),
     [displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating],
   )
+
+  // The watchlist-only filter reads watchlistByShowId, which is empty until
+  // the watchlist query resolves — without this, rows can flash to "no
+  // matches" while the (slower) watchlist fetch is still in flight.
+  const missingTabLoading = isLoading || (missingFilterWatchlistOnly && watchlistLoading)
 
   const dqCounts = useMemo(
     () => Object.fromEntries(DQ_CHECKS.map((c) => [c.key, allShows.filter(c.test).length])),
@@ -763,11 +768,11 @@ export default function Shows() {
         </section>
       )}
 
-      {tab === 'missing' && isLoading && (
+      {tab === 'missing' && missingTabLoading && (
         <p className="text-gray-400 text-sm">Loading…</p>
       )}
 
-      {tab === 'missing' && !isLoading && (
+      {tab === 'missing' && !missingTabLoading && (
         <section className="space-y-3">
           {showsWithMissingEpisodes.length > 0 && (
             <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
