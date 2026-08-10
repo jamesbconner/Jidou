@@ -4,6 +4,20 @@ import { Badge } from '@/components/ui/Badge'
 import { FeedFormModal } from '@/components/FeedFormModal'
 import type { RssFeedRead } from '@/types/api'
 
+/** Compact set/unset indicator for a column whose full value would be too wide to show inline. */
+function SetIndicator({ value, unsetTitle }: { value: string | null | undefined; unsetTitle: string }) {
+  const isSet = value !== null && value !== undefined
+  return (
+    <span
+      title={isSet ? value : unsetTitle}
+      className={isSet ? 'text-green-600' : 'text-gray-300'}
+      aria-label={isSet ? `Set: ${value}` : unsetTitle}
+    >
+      {isSet ? '✓' : '—'}
+    </span>
+  )
+}
+
 export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
   const patch = usePatchRssFeed()
   const del = useDeleteRssFeed()
@@ -28,11 +42,13 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
-              <th className="px-3 py-2 w-12">Key</th>
+              <th className="px-3 py-2 w-12" title="Whether this feed has been assigned a remote_key (published to YaRSS2).">Key</th>
               <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2 max-w-[200px]">URL</th>
-              <th className="px-3 py-2">Default Download</th>
-              <th className="px-3 py-2">Default Move</th>
+              <th className="px-3 py-2 w-12" title="Whether a feed URL is set.">URL</th>
+              <th className="px-3 py-2 w-12" title="Whether a default download location is set.">DL Loc</th>
+              <th className="px-3 py-2 w-12" title="Whether a default move-completed location is set.">Move Loc</th>
+              <th className="px-3 py-2 w-12" title="Whether a regex include hint is set for the LLM suggester.">Incl. Hint</th>
+              <th className="px-3 py-2 w-12" title="Whether a regex exclude hint is set for the LLM suggester.">Excl. Hint</th>
               <th className="px-3 py-2 w-24" title="Inactive feeds are excluded from the published YaRSS2 config.">Active</th>
               <th className="px-3 py-2 w-24"></th>
             </tr>
@@ -40,17 +56,31 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
           <tbody className="divide-y divide-gray-100">
             {feeds.map((f) => (
               <tr key={f.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 font-mono text-xs text-gray-500">{f.remote_key ?? '—'}</td>
+                <td className="px-3 py-2 text-center">
+                  <SetIndicator value={f.remote_key} unsetTitle="Not yet published (stub)" />
+                </td>
                 <td className="px-3 py-2 font-medium">
                   <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 hover:underline text-left">
                     {f.name}
                   </button>
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-500 max-w-[200px] truncate">
-                  <a href={f.url} target="_blank" rel="noreferrer" className="hover:underline" title={f.url}>{f.url}</a>
+                <td className="px-3 py-2 text-center">
+                  <a href={f.url} target="_blank" rel="noreferrer" title={f.url} aria-label={`Open feed URL: ${f.url}`}>
+                    <SetIndicator value={f.url} unsetTitle="No URL set" />
+                  </a>
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-500">{f.default_download_location ?? '—'}</td>
-                <td className="px-3 py-2 text-xs text-gray-500">{f.default_move_completed ?? '—'}</td>
+                <td className="px-3 py-2 text-center">
+                  <SetIndicator value={f.default_download_location} unsetTitle="No default download location set" />
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <SetIndicator value={f.default_move_completed} unsetTitle="No default move-completed location set" />
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <SetIndicator value={f.regex_include_hint} unsetTitle="No regex include hint set" />
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <SetIndicator value={f.regex_exclude_hint} unsetTitle="No regex exclude hint set" />
+                </td>
                 <td className="px-3 py-2">
                   <button
                     onClick={() => patch.mutate({ id: f.id, update: { active: !f.active } })}
