@@ -9,6 +9,7 @@ Path format is detected automatically: a path containing ``\\`` or a drive-lette
 prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POSIX.
 """
 
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -453,6 +454,17 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     encoded name that doesn't literally byte-match ``show_root`` -- see
     :func:`_resolve_show_root`, which recovers it.
 
+    The walk follows symlinked subdirectories (e.g. a season folder relocated
+    to a different drive/mount and replaced with a symlink -- a common
+    library-reorganization pattern). ``Path.rglob("*")`` was tried first, but
+    pathlib's ``**`` matching never descends into a symlinked directory
+    (true on every current Python version, not a 3.13-only regression) --
+    it would silently scan only the seasons that are real directories. The
+    SFTP scan pipeline (:meth:`~jidou.services.sftp_service.SFTPService.
+    list_remote_files_recursive`) doesn't have this gap, since asyncssh's
+    ``readdir`` resolves symlinks like any other directory -- ``os.walk``
+    with ``followlinks=True`` brings local scanning in line with that.
+
     Args:
         show_root: Absolute container-side path to the show's own directory.
 
@@ -470,15 +482,20 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     encoded_show_dir = encode_path_bytes(root.name)
     encoded_show_root = encode_path_bytes(str(root))
 
+    file_paths: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        current_dir = Path(dirpath)
+        # Prune invalid directories (e.g. "Sample") before os.walk descends
+        # into them, mirroring the SFTP walker's skip-before-recursing rule
+        # in file_filters.is_valid_directory.
+        dirnames[:] = [name for name in dirnames if is_valid_directory(name)]
+        for filename in filenames:
+            if is_valid_media_file(filename):
+                file_paths.append(current_dir / filename)
+
     entries: list[ParsedPathEntry] = []
-    for file_path in sorted(root.rglob("*")):
-        if not file_path.is_file() or not is_valid_media_file(file_path.name):
-            continue
-
+    for file_path in sorted(file_paths):
         rel_parts = file_path.relative_to(root).parts
-        if any(not is_valid_directory(seg) for seg in rel_parts[:-1]):
-            continue
-
         dir_season = _detect_season_from_segments(rel_parts[:-1])
 
         fn_season, episode, absolute_candidate = _parse_episode(

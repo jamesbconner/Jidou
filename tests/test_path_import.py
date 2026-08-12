@@ -709,6 +709,29 @@ class TestScanShowDirectory:
         assert entries[0].season == 1
         assert entries[0].episode == 1
 
+    def test_symlinked_season_directory_is_scanned(self, tmp_path: Path) -> None:
+        """A season folder relocated to another drive/mount and replaced with
+        a symlink must still be scanned — regression test for pathlib's
+        rglob("*") silently never descending into symlinked directories
+        (true on every current Python version, not just 3.13)."""
+        from jidou.services.path_parser import scan_show_directory
+
+        show_dir = tmp_path / "show"
+        real_season = tmp_path / "real_season_02"
+        show_dir.mkdir()
+        real_season.mkdir()
+        (show_dir / "Season 01").mkdir()
+        (show_dir / "Season 01" / "Show.S01E01.mkv").write_text("x")
+        (real_season / "Show.S02E01.mkv").write_text("x")
+
+        try:
+            (show_dir / "Season 02").symlink_to(real_season, target_is_directory=True)
+        except OSError:
+            pytest.skip("Creating symlinks requires elevated privileges on this platform")
+
+        entries = scan_show_directory(str(show_dir))
+        assert {(e.season, e.episode) for e in entries} == {(1, 1), (2, 1)}
+
     def test_results_sorted_by_path(self, tmp_path: Path) -> None:
         from jidou.services.path_parser import scan_show_directory
 
