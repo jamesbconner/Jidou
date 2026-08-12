@@ -749,6 +749,10 @@ class TestScanShowDirectory:
             pytest.skip("Creating symlinks requires elevated privileges on this platform")
 
         entries = scan_show_directory(str(show_dir))
+        # Asserted as both count and set: a failed cycle guard would revisit
+        # "Season 01" through the loop symlink on every pass, producing
+        # duplicate S01E01 entries that a set-only comparison would hide.
+        assert len(entries) == 1
         assert {(e.season, e.episode) for e in entries} == {(1, 1)}
 
     def test_results_sorted_by_path(self, tmp_path: Path) -> None:
