@@ -709,6 +709,52 @@ class TestScanShowDirectory:
         assert entries[0].season == 1
         assert entries[0].episode == 1
 
+    def test_symlinked_season_directory_is_scanned(self, tmp_path: Path) -> None:
+        """A season folder relocated to another drive/mount and replaced with
+        a symlink must still be scanned — regression test for pathlib's
+        rglob("*") silently never descending into symlinked directories
+        (true on every current Python version, not just 3.13)."""
+        from jidou.services.path_parser import scan_show_directory
+
+        show_dir = tmp_path / "show"
+        real_season = tmp_path / "real_season_02"
+        show_dir.mkdir()
+        real_season.mkdir()
+        (show_dir / "Season 01").mkdir()
+        (show_dir / "Season 01" / "Show.S01E01.mkv").write_text("x")
+        (real_season / "Show.S02E01.mkv").write_text("x")
+
+        try:
+            (show_dir / "Season 02").symlink_to(real_season, target_is_directory=True)
+        except OSError:
+            pytest.skip("Creating symlinks requires elevated privileges on this platform")
+
+        entries = scan_show_directory(str(show_dir))
+        assert {(e.season, e.episode) for e in entries} == {(1, 1), (2, 1)}
+
+    def test_symlink_cycle_does_not_hang(self, tmp_path: Path) -> None:
+        """A symlink cycle (e.g. a stray symlink pointing back at an
+        ancestor directory) must not make the walk recurse forever —
+        regression test for the followlinks=True walk introduced to fix
+        symlinked season directories."""
+        from jidou.services.path_parser import scan_show_directory
+
+        show_dir = tmp_path / "show"
+        (show_dir / "Season 01").mkdir(parents=True)
+        (show_dir / "Season 01" / "Show.S01E01.mkv").write_text("x")
+
+        try:
+            (show_dir / "Season 01" / "loop").symlink_to(show_dir, target_is_directory=True)
+        except OSError:
+            pytest.skip("Creating symlinks requires elevated privileges on this platform")
+
+        entries = scan_show_directory(str(show_dir))
+        # Asserted as both count and set: a failed cycle guard would revisit
+        # "Season 01" through the loop symlink on every pass, producing
+        # duplicate S01E01 entries that a set-only comparison would hide.
+        assert len(entries) == 1
+        assert {(e.season, e.episode) for e in entries} == {(1, 1)}
+
     def test_results_sorted_by_path(self, tmp_path: Path) -> None:
         from jidou.services.path_parser import scan_show_directory
 

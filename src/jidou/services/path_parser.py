@@ -9,6 +9,7 @@ Path format is detected automatically: a path containing ``\\`` or a drive-lette
 prefix (``C:\\``) is parsed as a Windows path; everything else is treated as POSIX.
 """
 
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -453,6 +454,20 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     encoded name that doesn't literally byte-match ``show_root`` -- see
     :func:`_resolve_show_root`, which recovers it.
 
+    The walk follows symlinked subdirectories (e.g. a season folder relocated
+    to a different drive/mount and replaced with a symlink -- a common
+    library-reorganization pattern). ``Path.rglob("*")`` was tried first, but
+    pathlib's ``**`` matching never descends into a symlinked directory
+    (true on every current Python version, not a 3.13-only regression) --
+    it would silently scan only the seasons that are real directories. The
+    SFTP scan pipeline (:meth:`~jidou.services.sftp_service.SFTPService.
+    list_remote_files_recursive`) doesn't have this gap, since asyncssh's
+    ``readdir`` resolves symlinks like any other directory -- ``os.walk``
+    with ``followlinks=True`` brings local scanning in line with that. A
+    directory's real (device, inode) identity is tracked as it's visited so
+    a symlink cycle (e.g. one pointing back at an ancestor) is pruned
+    instead of making the walk recurse forever.
+
     Args:
         show_root: Absolute container-side path to the show's own directory.
 
@@ -470,15 +485,45 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     encoded_show_dir = encode_path_bytes(root.name)
     encoded_show_root = encode_path_bytes(str(root))
 
+    # followlinks=True has no built-in cycle guard, so a symlink pointing at
+    # an ancestor (or any symlink cycle) would otherwise make os.walk
+    # recurse forever. Track each directory's real (device, inode) identity
+    # the first time it's visited and prune any child that resolves back to
+    # an already-seen identity before os.walk descends into it again.
+    visited_dirs: set[tuple[int, int]] = set()
+    try:
+        root_stat = root.stat()
+    except OSError:
+        return []
+    visited_dirs.add((root_stat.st_dev, root_stat.st_ino))
+
+    file_paths: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        current_dir = Path(dirpath)
+        kept_dirnames = []
+        for name in dirnames:
+            # Prune invalid directories (e.g. "Sample") before os.walk
+            # descends into them, mirroring the SFTP walker's
+            # skip-before-recursing rule in file_filters.is_valid_directory.
+            if not is_valid_directory(name):
+                continue
+            try:
+                child_stat = (current_dir / name).stat()
+            except OSError:
+                continue
+            identity = (child_stat.st_dev, child_stat.st_ino)
+            if identity in visited_dirs:
+                continue
+            visited_dirs.add(identity)
+            kept_dirnames.append(name)
+        dirnames[:] = kept_dirnames
+        for filename in filenames:
+            if is_valid_media_file(filename):
+                file_paths.append(current_dir / filename)
+
     entries: list[ParsedPathEntry] = []
-    for file_path in sorted(root.rglob("*")):
-        if not file_path.is_file() or not is_valid_media_file(file_path.name):
-            continue
-
+    for file_path in sorted(file_paths):
         rel_parts = file_path.relative_to(root).parts
-        if any(not is_valid_directory(seg) for seg in rel_parts[:-1]):
-            continue
-
         dir_season = _detect_season_from_segments(rel_parts[:-1])
 
         fn_season, episode, absolute_candidate = _parse_episode(
