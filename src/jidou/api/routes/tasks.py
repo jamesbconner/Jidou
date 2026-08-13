@@ -105,6 +105,29 @@ async def cancel_task(
     return task
 
 
+@router.delete("/tasks/{task_id}", status_code=204)
+async def delete_task(
+    task_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> None:
+    """Delete a background task record.
+
+    Active tasks (pending or running) must be cancelled via
+    ``POST /tasks/{task_id}/cancel`` before they can be deleted.
+    """
+    stmt = select(BackgroundTask).where(BackgroundTask.id == task_id)
+    result = await db_session.execute(stmt)
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status in _ACTIVE_STATUSES:
+        raise HTTPException(status_code=400, detail="Cannot delete an active task; cancel it first")
+
+    await db_session.delete(task)
+    await db_session.commit()
+
+
 @router.post("/tasks/trigger", response_model=TaskRead)
 async def trigger_task(
     payload: TaskTrigger,

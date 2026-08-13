@@ -38,4 +38,14 @@ describe('TaskProgressBar', () => {
     render(<TaskProgressBar task={{ ...baseTask, status: 'completed' }} onCancel={vi.fn()} />)
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument()
   })
+
+  test('renders delete button for completed task when onDelete provided', () => {
+    render(<TaskProgressBar task={{ ...baseTask, status: 'completed' }} onDelete={vi.fn()} />)
+    expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+
+  test('does not render delete button while task is running', () => {
+    render(<TaskProgressBar task={baseTask} onDelete={vi.fn()} />)
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+  })
 })

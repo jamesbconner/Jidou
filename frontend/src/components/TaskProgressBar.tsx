@@ -6,6 +6,7 @@ import clsx from 'clsx'
 interface Props {
   task: TaskList
   onCancel?: () => void
+  onDelete?: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -77,7 +78,7 @@ function buildStats(task: TaskList): Stat[] {
   }
 }
 
-export function TaskProgressBar({ task, onCancel }: Props) {
+export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
   const pct =
     task.progress_total > 0
       ? Math.round((task.progress_current / task.progress_total) * 100)
@@ -100,6 +101,14 @@ export function TaskProgressBar({ task, onCancel }: Props) {
               className="text-xs text-red-600 hover:underline"
             >
               Cancel
+            </button>
+          )}
+          {task.status !== 'pending' && task.status !== 'running' && onDelete && (
+            <button
+              onClick={onDelete}
+              className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-600 hover:bg-red-100"
+            >
+              Delete
             </button>
           )}
         </div>
