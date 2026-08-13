@@ -1,6 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/* v4 changed the default border/divide color from gray-200 to currentColor
+   (see https://tailwindcss.com/docs/upgrade-guide#default-border-color) —
+   this is the official compat rule to preserve the old default, since this
+   codebase has many bare `border`/`border-t`/`border-b`/`divide-y` utilities
+   (Pagination, AliasModal, MissingEpisodesList, etc.) that never specified
+   an explicit color and would otherwise render near-black rules. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
 
 @layer components {
   /* Full-screen modal backdrop, centers its panel child. */
