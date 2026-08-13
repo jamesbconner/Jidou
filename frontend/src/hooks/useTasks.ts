@@ -131,3 +131,13 @@ export function useCancelTask() {
     },
   })
 }
+
+export function useDeleteTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.delete<void>(`/tasks/${id}`),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: taskKeys.all })
+    },
+  })
+}

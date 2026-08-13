@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTasks, useTaskCount, useActiveTasks, useTask, useTaskDetail, useTaskDetailCache, useTriggerTask, useCancelTask } from '@/hooks/useTasks'
+import { useTasks, useTaskCount, useActiveTasks, useTask, useTaskDetail, useTaskDetailCache, useTriggerTask, useCancelTask, useDeleteTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { TaskProgressBar } from '@/components/TaskProgressBar'
 import { TaskEventLog } from '@/components/TaskEventLog'
@@ -96,6 +96,7 @@ export default function Tasks() {
 
   const triggerTask = useTriggerTask()
   const cancelTask = useCancelTask()
+  const deleteTask = useDeleteTask()
 
   const { data: activeTasks = [] } = useActiveTasks()
 
@@ -221,6 +222,7 @@ export default function Tasks() {
                     ? () => cancelTask.mutate(t.id)
                     : undefined
                 }
+                onDelete={() => deleteTask.mutate(t.id)}
               />
               <p className="text-xs text-gray-400 mt-1">
                 Started {new Date(t.created_at).toLocaleString()}

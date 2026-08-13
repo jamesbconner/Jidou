@@ -35,6 +35,63 @@ def _make_task(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /api/tasks/{task_id}
+# ---------------------------------------------------------------------------
+
+
+def test_delete_task_not_found_returns_404() -> None:
+    """Deleting a non-existent task must return 404."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(None)
+    try:
+        client = TestClient(app)
+        response = client.delete("/api/tasks/999")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_active_task_returns_400() -> None:
+    """Deleting a PENDING or RUNNING task must return 400 without deleting it."""
+    from jidou.database import get_session
+
+    task = _make_task(id=3, status=TaskStatus.RUNNING.value)
+    app.dependency_overrides[get_session] = _session_override(task)
+    try:
+        client = TestClient(app)
+        response = client.delete("/api/tasks/3")
+        assert response.status_code == 400
+        assert "cancel it first" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_completed_task_succeeds() -> None:
+    """Deleting a COMPLETED task must return 204 and remove the row."""
+    from jidou.database import get_session
+
+    task = _make_task(id=4, status=TaskStatus.COMPLETED.value)
+    mock_session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = task
+    mock_session.execute = AsyncMock(return_value=result)
+
+    async def _mock_session():  # type: ignore[no-untyped-def]
+        yield mock_session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        client = TestClient(app)
+        response = client.delete("/api/tasks/4")
+        assert response.status_code == 204
+        mock_session.delete.assert_called_once_with(task)
+        mock_session.commit.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # POST /api/tasks/trigger
 # ---------------------------------------------------------------------------
 
