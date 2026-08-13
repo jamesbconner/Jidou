@@ -35,7 +35,7 @@ Hard rules:
      always part of show_name when attached to a word.
 
 4) season:
-   - Set only when explicitly present: "S02", "S2", "Season 2", or "2nd Season".
+   - Set only when explicitly present: "S02", "S2", "Season 2", "II", or "2nd Season".
    - Season markers must NEVER be included in show_name.
    - NEVER infer or hallucinate a season value from bare numbers or episode counts.
    - If a "Regex anchor" line is provided in the user message, use its season value
@@ -63,6 +63,7 @@ Hard rules:
    - "09": Episode 9, no season
    - "- 12": Episode 12, no season
    - "6": Episode 6, no season
+   - "II - 04": Season 2, Episode 4
 
 7) crc32:
    - If present: exactly 8 uppercase hexadecimal characters [0-9A-F] in brackets at the
