@@ -659,6 +659,24 @@ class TestScanShowDirectory:
 
         assert scan_show_directory(str(tmp_path / "does-not-exist")) == []
 
+    def test_recursive_false_ignores_subdirectory_files(self, tmp_path: Path) -> None:
+        """recursive=False (movie scan) lists only top-level files.
+
+        Used when show_root is a shared root (e.g. the movies base path)
+        rather than a directory exclusive to one show — descending would
+        surface other titles' files.
+        """
+        from jidou.services.path_parser import scan_show_directory
+
+        (tmp_path / "Top Level Movie.mkv").write_text("x")
+        subdir = tmp_path / "Some Other Title (2019)"
+        subdir.mkdir()
+        (subdir / "Some Other Title.mkv").write_text("x")
+
+        entries = scan_show_directory(str(tmp_path), recursive=False)
+        assert len(entries) == 1
+        assert Path(entries[0].raw_path).name == "Top Level Movie.mkv"
+
     def test_finds_media_files_in_season_subfolders(self, tmp_path: Path) -> None:
         from jidou.services.path_parser import scan_show_directory
 

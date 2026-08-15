@@ -427,7 +427,7 @@ def _resolve_show_root(show_root: str) -> Path | None:
     return None
 
 
-def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
+def scan_show_directory(show_root: str, recursive: bool = True) -> list[ParsedPathEntry]:
     """Walk an already-known show's own local directory and parse every media file.
 
     Unlike :func:`parse_line`, ``show_dir`` doesn't need to be inferred here —
@@ -470,11 +470,18 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
 
     Args:
         show_root: Absolute container-side path to the show's own directory.
+        recursive: When False, only list files directly in *show_root* —
+            no descent into subdirectories at all. Used for movie libraries
+            where ``show_root`` is the shared movies root rather than a
+            directory exclusive to one title, so recursing would surface
+            every other movie's files (and any of their own subfolders) as
+            false candidates. Defaults to True (the TV/anime behavior,
+            where ``show_root`` is exclusive to one show and season
+            subdirectories must be descended into).
 
     Returns:
-        List of :class:`ParsedPathEntry`, one per media file found (recursive,
-        any depth), sorted by path. Empty if *show_root* doesn't exist or
-        isn't a directory.
+        List of :class:`ParsedPathEntry`, one per media file found, sorted
+        by path. Empty if *show_root* doesn't exist or isn't a directory.
     """
     root = _resolve_show_root(show_root)
     if root is None:
@@ -485,41 +492,50 @@ def scan_show_directory(show_root: str) -> list[ParsedPathEntry]:
     encoded_show_dir = encode_path_bytes(root.name)
     encoded_show_root = encode_path_bytes(str(root))
 
-    # followlinks=True has no built-in cycle guard, so a symlink pointing at
-    # an ancestor (or any symlink cycle) would otherwise make os.walk
-    # recurse forever. Track each directory's real (device, inode) identity
-    # the first time it's visited and prune any child that resolves back to
-    # an already-seen identity before os.walk descends into it again.
-    visited_dirs: set[tuple[int, int]] = set()
-    try:
-        root_stat = root.stat()
-    except OSError:
-        return []
-    visited_dirs.add((root_stat.st_dev, root_stat.st_ino))
-
     file_paths: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
-        current_dir = Path(dirpath)
-        kept_dirnames = []
-        for name in dirnames:
-            # Prune invalid directories (e.g. "Sample") before os.walk
-            # descends into them, mirroring the SFTP walker's
-            # skip-before-recursing rule in file_filters.is_valid_directory.
-            if not is_valid_directory(name):
-                continue
-            try:
-                child_stat = (current_dir / name).stat()
-            except OSError:
-                continue
-            identity = (child_stat.st_dev, child_stat.st_ino)
-            if identity in visited_dirs:
-                continue
-            visited_dirs.add(identity)
-            kept_dirnames.append(name)
-        dirnames[:] = kept_dirnames
-        for filename in filenames:
-            if is_valid_media_file(filename):
-                file_paths.append(current_dir / filename)
+    if not recursive:
+        try:
+            for entry in root.iterdir():
+                if entry.is_file() and is_valid_media_file(entry.name):
+                    file_paths.append(entry)
+        except OSError:
+            return []
+    else:
+        # followlinks=True has no built-in cycle guard, so a symlink pointing
+        # at an ancestor (or any symlink cycle) would otherwise make os.walk
+        # recurse forever. Track each directory's real (device, inode)
+        # identity the first time it's visited and prune any child that
+        # resolves back to an already-seen identity before os.walk descends
+        # into it again.
+        visited_dirs: set[tuple[int, int]] = set()
+        try:
+            root_stat = root.stat()
+        except OSError:
+            return []
+        visited_dirs.add((root_stat.st_dev, root_stat.st_ino))
+
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+            current_dir = Path(dirpath)
+            kept_dirnames = []
+            for name in dirnames:
+                # Prune invalid directories (e.g. "Sample") before os.walk
+                # descends into them, mirroring the SFTP walker's
+                # skip-before-recursing rule in file_filters.is_valid_directory.
+                if not is_valid_directory(name):
+                    continue
+                try:
+                    child_stat = (current_dir / name).stat()
+                except OSError:
+                    continue
+                identity = (child_stat.st_dev, child_stat.st_ino)
+                if identity in visited_dirs:
+                    continue
+                visited_dirs.add(identity)
+                kept_dirnames.append(name)
+            dirnames[:] = kept_dirnames
+            for filename in filenames:
+                if is_valid_media_file(filename):
+                    file_paths.append(current_dir / filename)
 
     entries: list[ParsedPathEntry] = []
     for file_path in sorted(file_paths):

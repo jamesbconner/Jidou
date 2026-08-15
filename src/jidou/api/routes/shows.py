@@ -1651,17 +1651,24 @@ async def scan_show_local_movie_file(
     show_id: int,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[ScannedFileMatch]:
-    """List media files found under a movie's own local directory.
+    """List media files found directly under a movie's local directory.
 
     Movie counterpart to ``scan-local-files``: a movie has no ``Episode``
     rows to resolve a file against, so there is nothing to match — every
-    file found under ``show.local_path`` is either ready to link
+    file found directly under ``show.local_path`` is either ready to link
     (``matched``) or blocked because the movie already has a linked file,
     either from a prior link or an earlier row in this same scan
     (``conflict``). ``unmatched`` never occurs here, and ``season``/
     ``episode_number``/``episode`` are always null. Read-only: nothing is
     written. Confirm a proposed match via
     ``POST /shows/{show_id}/link-movie-file``.
+
+    ``show.local_path`` defaults to the shared movies root (see
+    :func:`~jidou.services.path_resolution.resolve_show_local_path`), not a
+    directory exclusive to this movie, so the scan is non-recursive (top
+    level only) and excludes any file already linked to *any* show, not
+    just this one — otherwise every other already-tracked movie in the
+    shared root would show up as a false candidate here.
 
     Args:
         show_id: Database primary key of the show.
@@ -1689,22 +1696,33 @@ async def scan_show_local_movie_file(
 
     # Filesystem I/O is synchronous — run it off the event loop so a large or
     # slow-mounted show directory doesn't stall every other concurrent request.
-    entries = await asyncio.to_thread(scan_show_directory, show.local_path)
+    # recursive=False: local_path is typically the shared movies root, not a
+    # directory exclusive to this movie, so descending into subdirectories
+    # would surface other movies' (and their own subfolders') files too.
+    entries = await asyncio.to_thread(scan_show_directory, show.local_path, recursive=False)
 
-    existing_paths_stmt = select(DownloadedFile.local_path).where(DownloadedFile.show_id == show_id)
-    existing_keys = {
-        path_comparison_key(p)
-        for (p,) in (await db_session.execute(existing_paths_stmt)).all()
-        if p
-    }
+    # Every file already linked to ANY show (not just this one) is excluded —
+    # local_path is commonly shared across every movie, so scoping this check
+    # to show_id alone would offer up every other already-tracked movie in
+    # the shared root as a false candidate.
+    linked_paths_stmt = select(DownloadedFile.show_id, DownloadedFile.local_path).where(
+        DownloadedFile.local_path.is_not(None)
+    )
+    linked_to_this_show: set[str] = set()
+    linked_to_other_show: set[str] = set()
+    for linked_show_id, path in (await db_session.execute(linked_paths_stmt)).all():
+        key = path_comparison_key(path)
+        (linked_to_this_show if linked_show_id == show_id else linked_to_other_show).add(key)
+
     # Any already-linked file at all means this movie is already tracked —
     # unlike episodes, there's no per-file slot to disambiguate against.
-    already_linked = bool(existing_keys)
+    already_linked = bool(linked_to_this_show)
 
     results: list[ScannedFileMatch] = []
     claimed = False
     for entry in entries:
-        if path_comparison_key(entry.raw_path) in existing_keys:
+        key = path_comparison_key(entry.raw_path)
+        if key in linked_to_this_show or key in linked_to_other_show:
             continue
 
         status: Literal["matched", "unmatched", "conflict"] = (

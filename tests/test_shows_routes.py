@@ -4125,7 +4125,7 @@ def test_scan_show_local_movie_file_skips_already_imported_paths(tmp_path: Path)
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
-        existing_result.all.return_value = [(str(real_file),)]
+        existing_result.all.return_value = [(1, str(real_file))]
         session.execute = AsyncMock(side_effect=[show_result, existing_result])
         yield session
 
@@ -4188,7 +4188,7 @@ def test_scan_show_local_movie_file_returns_conflict_when_already_linked(
         # scan's file by path_comparison_key, but its mere presence marks
         # the movie as already tracked.
         existing_result = MagicMock()
-        existing_result.all.return_value = [(str(tmp_path / "other-file.mkv"),)]
+        existing_result.all.return_value = [(1, str(tmp_path / "other-file.mkv"))]
         session.execute = AsyncMock(side_effect=[show_result, existing_result])
         yield session
 
@@ -4229,6 +4229,82 @@ def test_scan_show_local_movie_file_marks_second_file_as_conflict(tmp_path: Path
         assert len(body) == 2
         statuses = sorted(row["status"] for row in body)
         assert statuses == ["conflict", "matched"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_movie_file_excludes_files_linked_to_other_shows(
+    tmp_path: Path,
+) -> None:
+    """A file already linked to a DIFFERENT movie is omitted, not offered as a candidate.
+
+    local_path is typically the shared movies root (see resolve_show_local_path),
+    so a naive show_id-scoped exclusion would offer up every other already-
+    tracked movie in that shared directory as a false candidate.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    other_movie_file = tmp_path / "Other Movie.2019.mkv"
+    other_movie_file.write_text("data")
+    (tmp_path / "This Movie.2020.mkv").write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        # other_movie_file is linked to show_id=2, not this show (id=1).
+        existing_result.all.return_value = [(2, str(other_movie_file))]
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/scan-local-movie-file")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["filename"] == "This Movie.2020.mkv"
+        assert body[0]["status"] == "matched"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_movie_file_does_not_recurse_into_subdirectories(
+    tmp_path: Path,
+) -> None:
+    """Files in subdirectories of local_path are not returned (non-recursive scan).
+
+    local_path is typically the shared movies root, so recursing would pull
+    in files belonging to other movies kept in their own subfolders.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    (tmp_path / "Top Level Movie.2020.mkv").write_text("data")
+    subdir = tmp_path / "Some Other Movie (2019)"
+    subdir.mkdir()
+    (subdir / "Some Other Movie.2019.mkv").write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/scan-local-movie-file")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["filename"] == "Top Level Movie.2020.mkv"
     finally:
         app.dependency_overrides.clear()
 

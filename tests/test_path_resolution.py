@@ -9,11 +9,12 @@ _PATHS = {
 }
 
 
-def test_movie_content_type_uses_movie_root() -> None:
+def test_movie_content_type_uses_movie_root_flat() -> None:
+    """Movies resolve to the shared movies root with no per-title subdirectory."""
     result = resolve_show_local_path(
         content_type="movie", media_type=None, sys_name="Show", **_PATHS
     )
-    assert result == "/data/media/movies/Show"
+    assert result == "/data/media/movies"
 
 
 def test_anime_content_type_uses_anime_root() -> None:
@@ -39,7 +40,7 @@ def test_none_content_type_falls_back_to_media_type() -> None:
     result = resolve_show_local_path(
         content_type=None, media_type="movie", sys_name="Show", **_PATHS
     )
-    assert result == "/data/media/movies/Show"
+    assert result == "/data/media/movies"
 
 
 def test_none_content_type_and_none_media_type_defaults_to_tv() -> None:
