@@ -70,4 +70,43 @@ describe('ScanLocalMovieFileModal — shared-root scan with multiple untracked c
     expect(remainingButtons).toHaveLength(1)
     expect(remainingButtons[0]).toBeDisabled()
   })
+
+  test('sibling row disables while a link request is still in flight, before it resolves', async () => {
+    const rows = [scannedFile('/movies/A.mkv', 'A.mkv'), scannedFile('/movies/B.mkv', 'B.mkv')]
+    let resolveLink: (() => void) | undefined
+    const linkCalls: string[] = []
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/scan-local-movie-file')) return mockResponse(rows)
+      if (url.includes('/link-movie-file')) {
+        linkCalls.push(String(init?.body))
+        await new Promise<void>((resolve) => {
+          resolveLink = resolve
+        })
+        return mockResponse({ id: 1, original_filename: 'A.mkv', status: 'matched' })
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(ScanLocalMovieFileModal, { showId: 1, onClose: vi.fn() }),
+      { wrapper: makeWrapper() },
+    )
+
+    const linkButtons = await screen.findAllByRole('button', { name: 'Link' })
+    fireEvent.click(linkButtons[0])
+
+    // Request A is still in flight (unresolved) — the sibling must already
+    // be disabled here, not only after A succeeds. Otherwise a second click
+    // on B fires a concurrent request that can race the backend's
+    // "not already linked" check before either commits.
+    await waitFor(() => {
+      expect(linkButtons[1]).toBeDisabled()
+    })
+
+    fireEvent.click(linkButtons[1])
+    expect(linkCalls).toHaveLength(1)
+
+    resolveLink?.()
+  })
 })

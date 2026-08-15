@@ -19,10 +19,14 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   const [pendingPaths, setPendingPaths] = useState<Set<string>>(new Set())
   const [outcomes, setOutcomes] = useState<Record<string, RowOutcome>>({})
   // Mirrors pendingPaths but updated synchronously — setState is batched, so
-  // a fast double-click on the same row can invoke linkRow again before the
+  // a fast click on another row can invoke linkRow again before the
   // re-render that would disable its button lands. Checking this ref first
-  // closes that window without waiting on React.
-  const inFlightRef = useRef<Set<string>>(new Set())
+  // closes that window without waiting on React. A movie can only ever have
+  // one linked file, so this blocks ANY concurrent link request, not just a
+  // second click on the same row -- two simultaneous requests for different
+  // rows would otherwise both pass the backend's "not already linked" check
+  // before either commits.
+  const inFlightRef = useRef(false)
 
   useEffect(() => {
     scan.mutate(showId)
@@ -30,8 +34,8 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   }, [showId])
 
   async function linkRow(row: ScannedFileMatch) {
-    if (inFlightRef.current.has(row.path)) return
-    inFlightRef.current.add(row.path)
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     setPendingPaths((prev) => new Set(prev).add(row.path))
     try {
       await linkFile.mutateAsync({ showId, path: row.path })
@@ -40,7 +44,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
       const message = err instanceof Error ? err.message : 'Failed to link'
       setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'failed', message } }))
     } finally {
-      inFlightRef.current.delete(row.path)
+      inFlightRef.current = false
       setPendingPaths((prev) => {
         const next = new Set(prev)
         next.delete(row.path)
@@ -53,9 +57,14 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   // A movie can only ever have one linked file. Every untracked row in a
   // shared-root scan comes back 'matched' (see scan-local-movie-file), since
   // several other untracked titles routinely sit in the same directory — but
-  // once any one of them links successfully, every other row must stop
-  // being actionable immediately, or a further click just 422s until Rescan.
+  // once any one of them links (or is in the middle of linking), every
+  // other row must stop being actionable immediately: hasLinkedAny alone
+  // only covers the already-succeeded case, so pendingPaths.size > 0 is
+  // checked too, closing the window while a request is still in flight
+  // (inFlightRef above blocks the synchronous double-click case within
+  // that same window).
   const hasLinkedAny = Object.values(outcomes).some((o) => o.kind === 'linked')
+  const anyPending = pendingPaths.size > 0
 
   return (
     <Modal
@@ -95,7 +104,10 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
           const outcome = outcomes[row.path]
           const isPending = pendingPaths.has(row.path)
           const actionable =
-            row.status === 'matched' && outcome?.kind !== 'linked' && !hasLinkedAny
+            row.status === 'matched' &&
+            outcome?.kind !== 'linked' &&
+            !hasLinkedAny &&
+            !anyPending
 
           return (
             <div
