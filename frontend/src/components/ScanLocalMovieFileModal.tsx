@@ -50,6 +50,12 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   }
 
   const rows = scan.data ?? []
+  // A movie can only ever have one linked file. Every untracked row in a
+  // shared-root scan comes back 'matched' (see scan-local-movie-file), since
+  // several other untracked titles routinely sit in the same directory — but
+  // once any one of them links successfully, every other row must stop
+  // being actionable immediately, or a further click just 422s until Rescan.
+  const hasLinkedAny = Object.values(outcomes).some((o) => o.kind === 'linked')
 
   return (
     <Modal
@@ -88,7 +94,8 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
         {rows.map((row) => {
           const outcome = outcomes[row.path]
           const isPending = pendingPaths.has(row.path)
-          const actionable = row.status === 'matched' && outcome?.kind !== 'linked'
+          const actionable =
+            row.status === 'matched' && outcome?.kind !== 'linked' && !hasLinkedAny
 
           return (
             <div
@@ -100,7 +107,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
                 {outcome?.kind === 'failed' && (
                   <p className="text-[11px] text-red-400 mt-0.5">{outcome.message}</p>
                 )}
-                {row.status === 'conflict' && outcome?.kind !== 'linked' && (
+                {(row.status === 'conflict' || (hasLinkedAny && outcome?.kind !== 'linked')) && (
                   <p className="text-[11px] text-amber-500 mt-0.5">
                     This movie already has a linked file.
                   </p>
@@ -111,7 +118,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
                   className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
                     outcome?.kind === 'linked'
                       ? 'bg-green-900/40 text-green-400'
-                      : row.status === 'matched'
+                      : actionable
                         ? 'bg-indigo-900/40 text-indigo-400'
                         : 'bg-amber-900/40 text-amber-400'
                   }`}
@@ -120,7 +127,9 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
                     ? 'linked'
                     : outcome?.kind === 'failed'
                       ? 'failed'
-                      : row.status}
+                      : actionable
+                        ? row.status
+                        : 'conflict'}
                 </span>
                 {outcome?.kind !== 'linked' && (
                   <button
