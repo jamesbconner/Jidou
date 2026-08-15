@@ -28,6 +28,7 @@ from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
     LinkFileRequest,
+    LinkMovieFileRequest,
     PosterOption,
     RematchRequest,
     ScannedFileMatch,
@@ -1649,6 +1650,14 @@ async def scan_show_local_files(
 )
 async def scan_show_local_movie_file(
     show_id: int,
+    replace: bool = Query(
+        default=False,
+        description=(
+            "When True, files are 'matched' even if this movie already has a "
+            "linked file (the caller intends to replace it via link-movie-file "
+            "with replace=True), instead of coming back 'conflict'."
+        ),
+    ),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[ScannedFileMatch]:
     """List media files found directly under a movie's local directory.
@@ -1658,9 +1667,9 @@ async def scan_show_local_movie_file(
     file found directly under ``show.local_path`` that isn't already linked
     to some show is ``matched`` (the user picks the right one by filename
     via the "Link" button), or ``conflict`` if this movie already has a
-    linked file. ``unmatched`` never occurs here, and ``season``/
-    ``episode_number``/``episode`` are always null. Read-only: nothing is
-    written. Confirm a proposed match via
+    linked file and *replace* is False. ``unmatched`` never occurs here, and
+    ``season``/``episode_number``/``episode`` are always null. Read-only:
+    nothing is written. Confirm a proposed match via
     ``POST /shows/{show_id}/link-movie-file``.
 
     ``show.local_path`` defaults to the shared movies root (see
@@ -1675,6 +1684,7 @@ async def scan_show_local_movie_file(
 
     Args:
         show_id: Database primary key of the show.
+        replace: See the parameter description above.
         db_session: DB session (injected).
 
     Returns:
@@ -1719,13 +1729,14 @@ async def scan_show_local_movie_file(
 
     # Any already-linked file at all means this movie is already tracked —
     # unlike episodes, there's no per-file slot to disambiguate against, so
-    # every remaining candidate is blocked until the existing link is
-    # cleared. When this movie has no link yet, every remaining candidate is
-    # "matched" (not just the first) -- local_path is commonly shared across
-    # every movie, so a flat library legitimately surfaces multiple other
+    # every remaining candidate is blocked (unless replace=True, meaning the
+    # caller intends to swap out the existing link) until it's cleared. When
+    # this movie has no link yet, every remaining candidate is "matched"
+    # (not just the first) -- local_path is commonly shared across every
+    # movie, so a flat library legitimately surfaces multiple other
     # untracked titles in the same scan; the user picks the right one by
     # filename via the "Link" button.
-    already_linked = bool(linked_to_this_show)
+    already_linked = bool(linked_to_this_show) and not replace
 
     results: list[ScannedFileMatch] = []
     for entry in entries:
@@ -1757,10 +1768,10 @@ async def scan_show_local_movie_file(
 )
 async def link_movie_file(
     show_id: int,
-    payload: LinkFileRequest,
+    payload: LinkMovieFileRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DownloadedFile:
-    """Manually link an on-disk file path to an untracked movie.
+    """Manually link an on-disk file path to a movie.
 
     Movie counterpart to ``episodes/{episode_id}/link-file``: a movie has no
     ``Episode`` row to attach tracking state to, so "already tracked" here
@@ -1770,7 +1781,12 @@ async def link_movie_file(
     Args:
         show_id: Database primary key of the show.
         payload: Contains ``path`` — the absolute on-disk path of the file,
-            as returned verbatim by ``scan-local-movie-file``.
+            as returned verbatim by ``scan-local-movie-file`` (or typed
+            directly by the user) — and ``replace``: when True and the movie
+            already has a linked file, that file is unlinked (``show_id``,
+            ``episode_id``, ``matched_by`` cleared — the row itself is left
+            in place, same as the generic ``PATCH /files/{id}`` correction
+            path) before the new one is linked, instead of raising 422.
         db_session: DB session (injected).
 
     Returns:
@@ -1779,8 +1795,8 @@ async def link_movie_file(
     Raises:
         HTTPException: 404 if the show is not found.
         HTTPException: 422 if the show is not a movie, has no local path
-            configured, already has a linked file, or *path* does not point
-            to an existing file.
+            configured, already has a linked file and *replace* is False,
+            or *path* does not point to an existing file.
     """
     # Locked so two concurrent link-movie-file calls targeting the same show
     # can't both read "no linked file yet" before either commit lands.
@@ -1793,12 +1809,19 @@ async def link_movie_file(
     if not show.local_path:
         raise HTTPException(status_code=422, detail="Show has no local path configured")
 
-    existing_count_stmt = select(func.count()).where(DownloadedFile.show_id == show_id)
-    if (await db_session.execute(existing_count_stmt)).scalar_one() > 0:
-        raise HTTPException(
-            status_code=422,
-            detail="Movie already has a linked file. Unlink it before linking a new one.",
-        )
+    existing_stmt = select(DownloadedFile).where(DownloadedFile.show_id == show_id)
+    existing_files = list((await db_session.execute(existing_stmt)).scalars().all())
+    if existing_files:
+        if not payload.replace:
+            raise HTTPException(
+                status_code=422,
+                detail="Movie already has a linked file. Unlink it before linking a new one.",
+            )
+        for existing_file in existing_files:
+            existing_file.show_id = None
+            existing_file.episode_id = None
+            existing_file.matched_by = None
+        await db_session.flush()
 
     if not Path(decode_path_bytes(payload.path)).is_file():
         raise HTTPException(

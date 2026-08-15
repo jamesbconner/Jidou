@@ -4203,6 +4203,41 @@ def test_scan_show_local_movie_file_returns_conflict_when_already_linked(
         app.dependency_overrides.clear()
 
 
+def test_scan_show_local_movie_file_replace_true_returns_matched_despite_existing_link(
+    tmp_path: Path,
+) -> None:
+    """replace=true marks untracked files 'matched' even though this movie already has one.
+
+    Used by the Fix Match flow, which intends to swap the existing link out —
+    unlike the plain add flow (replace defaults False), it shouldn't block
+    the user from seeing candidates just because a link already exists.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    (tmp_path / "Movie.2020.mkv").write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.all.return_value = [(1, str(tmp_path / "other-file.mkv"))]
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post("/api/shows/1/scan-local-movie-file?replace=true")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "matched"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_scan_show_local_movie_file_marks_every_untracked_file_as_matched(
     tmp_path: Path,
 ) -> None:
@@ -4395,19 +4430,20 @@ def test_link_movie_file_returns_422_when_no_local_path() -> None:
 
 
 def test_link_movie_file_returns_422_when_already_linked(tmp_path: Path) -> None:
-    """Returns 422 when the movie already has a linked DownloadedFile."""
+    """Returns 422 when the movie already has a linked DownloadedFile and replace is not set."""
     from jidou.database import get_session
 
     show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
     show.content_type = "movie"
+    existing = _make_linked_file(show_id=1, raw_path=str(tmp_path / "Old.mkv"))
 
     async def _session() -> AsyncMock:
         session = AsyncMock()
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        count_result = MagicMock()
-        count_result.scalar_one.return_value = 1
-        session.execute = AsyncMock(side_effect=[show_result, count_result])
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = [existing]
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4418,6 +4454,59 @@ def test_link_movie_file_returns_422_when_already_linked(tmp_path: Path) -> None
         )
         assert response.status_code == 422
         assert "already has a linked file" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_movie_file_with_replace_unlinks_existing_file_then_links_new_one(
+    tmp_path: Path,
+) -> None:
+    """replace=True unlinks the existing file's tracking fields instead of 422ing."""
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import MatchedBy
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    old_file = _make_linked_file(show_id=1, episode_id=None, raw_path=str(tmp_path / "Old.mkv"))
+    old_file.matched_by = MatchedBy.MANUAL
+
+    new_path = tmp_path / "New.mkv"
+    new_path.write_text("data")
+    raw_path = str(new_path)
+    linked = _make_linked_file(show_id=1, episode_id=None, raw_path=raw_path)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = [old_file]
+        dedup_result = MagicMock()
+        dedup_result.scalar_one_or_none.return_value = None
+        refetch_result = MagicMock()
+        refetch_result.scalar_one.return_value = linked
+        session.execute = AsyncMock(
+            side_effect=[show_result, existing_result, dedup_result, refetch_result]
+        )
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/link-movie-file",
+            json={"path": raw_path, "replace": True},
+        )
+        assert response.status_code == 200
+        assert old_file.show_id is None
+        assert old_file.episode_id is None
+        assert old_file.matched_by is None
     finally:
         app.dependency_overrides.clear()
 
@@ -4434,9 +4523,9 @@ def test_link_movie_file_returns_422_when_path_does_not_exist(tmp_path: Path) ->
         session = AsyncMock()
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        count_result = MagicMock()
-        count_result.scalar_one.return_value = 0
-        session.execute = AsyncMock(side_effect=[show_result, count_result])
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4467,14 +4556,14 @@ def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
         session = AsyncMock()
         show_result = MagicMock()
         show_result.scalar_one_or_none.return_value = show
-        count_result = MagicMock()
-        count_result.scalar_one.return_value = 0
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = []
         dedup_result = MagicMock()
         dedup_result.scalar_one_or_none.return_value = None
         refetch_result = MagicMock()
         refetch_result.scalar_one.return_value = linked
         session.execute = AsyncMock(
-            side_effect=[show_result, count_result, dedup_result, refetch_result]
+            side_effect=[show_result, existing_result, dedup_result, refetch_result]
         )
         nested_ctx = AsyncMock()
         nested_ctx.__aenter__.return_value = None

@@ -234,8 +234,10 @@ export function useScanShowLocalFiles() {
 
 export function useScanShowLocalMovieFile() {
   return useMutation({
-    mutationFn: (showId: number) =>
-      api.post<ScannedFileMatch[]>(`/shows/${showId}/scan-local-movie-file`),
+    mutationFn: ({ showId, replace }: { showId: number; replace?: boolean }) =>
+      api.post<ScannedFileMatch[]>(
+        `/shows/${showId}/scan-local-movie-file${replace ? '?replace=true' : ''}`,
+      ),
   })
 }
 

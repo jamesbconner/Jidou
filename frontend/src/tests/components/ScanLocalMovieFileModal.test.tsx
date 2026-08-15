@@ -110,3 +110,91 @@ describe('ScanLocalMovieFileModal — shared-root scan with multiple untracked c
     resolveLink?.()
   })
 })
+
+describe('ScanLocalMovieFileModal — manual path entry', () => {
+  test('typing a path and clicking Link path sends it to link-movie-file', async () => {
+    let linkBody: { path: string; replace?: boolean } | undefined
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/scan-local-movie-file')) return mockResponse([])
+      if (url.includes('/link-movie-file')) {
+        linkBody = JSON.parse(String(init?.body)) as { path: string; replace?: boolean }
+        return mockResponse({ id: 1, original_filename: 'Movie.mkv', status: 'matched' })
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(ScanLocalMovieFileModal, { showId: 1, onClose: vi.fn() }),
+      { wrapper: makeWrapper() },
+    )
+
+    const input = await screen.findByLabelText('Enter the file path directly')
+    fireEvent.change(input, { target: { value: '/data/media/movies/Movie Title (2024).mkv' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Link path' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Linked.')).toBeInTheDocument()
+    })
+    expect(linkBody?.path).toBe('/data/media/movies/Movie Title (2024).mkv')
+  })
+
+  test('a literal % in a manually typed path is escaped before being sent', async () => {
+    let linkBody: { path: string } | undefined
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/scan-local-movie-file')) return mockResponse([])
+      if (url.includes('/link-movie-file')) {
+        linkBody = JSON.parse(String(init?.body)) as { path: string }
+        return mockResponse({ id: 1, original_filename: '50% Off.mkv', status: 'matched' })
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(ScanLocalMovieFileModal, { showId: 1, onClose: vi.fn() }),
+      { wrapper: makeWrapper() },
+    )
+
+    const input = await screen.findByLabelText('Enter the file path directly')
+    fireEvent.change(input, { target: { value: '/data/media/movies/50% Off.mkv' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Link path' }))
+
+    await waitFor(() => {
+      expect(linkBody?.path).toBe('/data/media/movies/50%25 Off.mkv')
+    })
+  })
+})
+
+describe('ScanLocalMovieFileModal — replace prop', () => {
+  test('replace=true requests the scan with replace=true and passes it through to link-movie-file', async () => {
+    const rows = [scannedFile('/movies/A.mkv', 'A.mkv')]
+    let scanUrl: string | undefined
+    let linkBody: { path: string; replace?: boolean } | undefined
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/scan-local-movie-file')) {
+        scanUrl = url
+        return mockResponse(rows)
+      }
+      if (url.includes('/link-movie-file')) {
+        linkBody = JSON.parse(String(init?.body)) as { path: string; replace?: boolean }
+        return mockResponse({ id: 1, original_filename: 'A.mkv', status: 'matched' })
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(ScanLocalMovieFileModal, { showId: 1, onClose: vi.fn(), replace: true }),
+      { wrapper: makeWrapper() },
+    )
+
+    expect(await screen.findByText('Fix movie file')).toBeInTheDocument()
+    expect(scanUrl).toContain('replace=true')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Link' }))
+    await waitFor(() => {
+      expect(linkBody?.replace).toBe(true)
+    })
+  })
+})
