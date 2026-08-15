@@ -559,6 +559,14 @@ export default function ShowDetail() {
             </div>
             {episodesTab === 'episodes' && (
               <div className="flex gap-2 flex-wrap items-center">
+                {syncEpisodes.isSuccess && (
+                  <span className="text-xs text-green-600">Episodes synced</span>
+                )}
+                {syncEpisodes.isError && (
+                  <span className="text-xs text-red-600">
+                    {(syncEpisodes.error as Error).message}
+                  </span>
+                )}
                 <button
                   onClick={() => syncEpisodes.mutate(showId)}
                   disabled={syncEpisodes.isPending}
@@ -572,14 +580,6 @@ export default function ShowDetail() {
                 >
                   Scan Local Files
                 </button>
-                {syncEpisodes.isSuccess && (
-                  <span className="text-xs text-green-600">Episodes synced</span>
-                )}
-                {syncEpisodes.isError && (
-                  <span className="text-xs text-red-600">
-                    {(syncEpisodes.error as Error).message}
-                  </span>
-                )}
               </div>
             )}
           </div>
