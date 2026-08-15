@@ -198,6 +198,7 @@ export default function ShowDetail() {
   const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
   const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
   const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
+  const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
 
@@ -223,6 +224,7 @@ export default function ShowDetail() {
     setLinkFileEp(null)
     setScanLocalFilesOpen(false)
     setScanLocalMovieFileOpen(false)
+    setFixMovieFileOpen(false)
     setRssModalSub(null)
     setEpisodesTab('episodes')
     syncEpisodes.reset()
@@ -509,7 +511,7 @@ export default function ShowDetail() {
                     <span className="text-xs text-gray-400">{f.status}</span>
                     {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                       <button
-                        onClick={() => setFileForRematch(f)}
+                        onClick={() => setFixMovieFileOpen(true)}
                         className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
                       >
                         Fix Match
@@ -816,6 +818,13 @@ export default function ShowDetail() {
         <ScanLocalMovieFileModal
           showId={showId}
           onClose={() => setScanLocalMovieFileOpen(false)}
+        />
+      )}
+      {fixMovieFileOpen && (
+        <ScanLocalMovieFileModal
+          showId={showId}
+          replace
+          onClose={() => setFixMovieFileOpen(false)}
         />
       )}
     </div>

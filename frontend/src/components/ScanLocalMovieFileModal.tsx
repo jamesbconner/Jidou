@@ -8,14 +8,32 @@ import type { ScannedFileMatch } from '@/types/api'
 interface Props {
   showId: number
   onClose: () => void
+  /**
+   * True when opened from the movie's existing linked file ("Fix Match")
+   * rather than the empty-state "Scan Local Files" button. Passed through
+   * to the scan/link calls so the backend treats this movie's current link
+   * as replaceable instead of a blocking conflict, and adjusts copy
+   * accordingly.
+   */
+  replace?: boolean
 }
 
 type RowOutcome = { kind: 'linked' } | { kind: 'failed'; message: string }
 
-export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
+// The one character a browser text input could produce that scan_show_directory's
+// encode_path_bytes (see path_transport.py) would otherwise misinterpret as the
+// start of a percent-encoded byte escape -- scanned rows already arrive
+// pre-encoded from the backend, but a manually typed path never went through
+// that encoding.
+function encodePathForApi(raw: string): string {
+  return raw.replace(/%/g, '%25')
+}
+
+export function ScanLocalMovieFileModal({ showId, onClose, replace = false }: Props) {
   const scan = useScanShowLocalMovieFile()
   const linkFile = useLinkMovieFile()
 
+  const [manualPath, setManualPath] = useState('')
   const [pendingPaths, setPendingPaths] = useState<Set<string>>(new Set())
   const [outcomes, setOutcomes] = useState<Record<string, RowOutcome>>({})
   // Mirrors pendingPaths but updated synchronously — setState is batched, so
@@ -29,28 +47,38 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
   const inFlightRef = useRef(false)
 
   useEffect(() => {
-    scan.mutate(showId)
+    scan.mutate({ showId, replace })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showId])
+  }, [showId, replace])
 
-  async function linkRow(row: ScannedFileMatch) {
+  async function performLink(path: string) {
     if (inFlightRef.current) return
     inFlightRef.current = true
-    setPendingPaths((prev) => new Set(prev).add(row.path))
+    setPendingPaths((prev) => new Set(prev).add(path))
     try {
-      await linkFile.mutateAsync({ showId, path: row.path })
-      setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'linked' } }))
+      await linkFile.mutateAsync({ showId, path, replace })
+      setOutcomes((prev) => ({ ...prev, [path]: { kind: 'linked' } }))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to link'
-      setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'failed', message } }))
+      setOutcomes((prev) => ({ ...prev, [path]: { kind: 'failed', message } }))
     } finally {
       inFlightRef.current = false
       setPendingPaths((prev) => {
         const next = new Set(prev)
-        next.delete(row.path)
+        next.delete(path)
         return next
       })
     }
+  }
+
+  function linkRow(row: ScannedFileMatch) {
+    return performLink(row.path)
+  }
+
+  const manualKey = encodePathForApi(manualPath.trim())
+  function linkManualPath() {
+    if (!manualPath.trim()) return
+    return performLink(manualKey)
   }
 
   const rows = scan.data ?? []
@@ -76,7 +104,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
     >
       <div className="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
         <h2 id="scan-local-movie-file-title" className="text-sm font-semibold text-zinc-100">
-          Scan local files
+          {replace ? 'Fix movie file' : 'Scan local files'}
         </h2>
         <button
           onClick={onClose}
@@ -88,6 +116,40 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
       </div>
 
       <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+        <div className="space-y-1.5">
+          <label
+            htmlFor="movie-file-manual-path"
+            className="text-xs text-zinc-400 block"
+          >
+            Enter the file path directly
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="movie-file-manual-path"
+              type="text"
+              value={manualPath}
+              onChange={(e) => setManualPath(e.target.value)}
+              placeholder="/data/media/movies/Movie Title (2024).mkv"
+              className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              onClick={linkManualPath}
+              disabled={!manualPath.trim() || anyPending || hasLinkedAny}
+              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              {pendingPaths.has(manualKey) ? 'Linking…' : 'Link path'}
+            </button>
+          </div>
+          {outcomes[manualKey]?.kind === 'failed' && (
+            <p className="text-[11px] text-red-400">{outcomes[manualKey].message}</p>
+          )}
+          {outcomes[manualKey]?.kind === 'linked' && (
+            <p className="text-[11px] text-green-400">Linked.</p>
+          )}
+        </div>
+
+        <p className="text-xs text-zinc-500">Or pick a file found under this movie&apos;s local path:</p>
+
         {scan.isPending && <p className="text-sm text-zinc-400">Scanning…</p>}
         {scan.isError && (
           <div className="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">
@@ -96,7 +158,8 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
         )}
         {scan.isSuccess && rows.length === 0 && (
           <p className="text-sm text-zinc-500">
-            No new media files found under this movie&apos;s local path.
+            {replace ? 'No other' : 'No new'} media files found under this movie&apos;s local
+            path.
           </p>
         )}
 
@@ -160,7 +223,7 @@ export function ScanLocalMovieFileModal({ showId, onClose }: Props) {
 
       <div className="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
         <button
-          onClick={() => scan.mutate(showId)}
+          onClick={() => scan.mutate({ showId, replace })}
           disabled={scan.isPending}
           className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
         >

@@ -118,8 +118,16 @@ export function useLinkEpisodeFile() {
 export function useLinkMovieFile() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ showId, path }: { showId: number; path: string }) =>
-      api.post<FileRead>(`/shows/${showId}/link-movie-file`, { path }),
+    mutationFn: ({
+      showId,
+      path,
+      replace,
+    }: {
+      showId: number
+      path: string
+      /** Unlink the movie's existing file first instead of 422ing. */
+      replace?: boolean
+    }) => api.post<FileRead>(`/shows/${showId}/link-movie-file`, { path, replace }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.all })
       qc.invalidateQueries({ queryKey: fileKeys.all })

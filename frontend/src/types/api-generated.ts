@@ -911,20 +911,31 @@ export interface paths {
         put?: never;
         /**
          * Scan Show Local Movie File
-         * @description List media files found under a movie's own local directory.
+         * @description List media files found directly under a movie's local directory.
          *
          *     Movie counterpart to ``scan-local-files``: a movie has no ``Episode``
          *     rows to resolve a file against, so there is nothing to match — every
-         *     file found under ``show.local_path`` is either ready to link
-         *     (``matched``) or blocked because the movie already has a linked file,
-         *     either from a prior link or an earlier row in this same scan
-         *     (``conflict``). ``unmatched`` never occurs here, and ``season``/
-         *     ``episode_number``/``episode`` are always null. Read-only: nothing is
-         *     written. Confirm a proposed match via
+         *     file found directly under ``show.local_path`` that isn't already linked
+         *     to some show is ``matched`` (the user picks the right one by filename
+         *     via the "Link" button), or ``conflict`` if this movie already has a
+         *     linked file and *replace* is False. ``unmatched`` never occurs here, and
+         *     ``season``/``episode_number``/``episode`` are always null. Read-only:
+         *     nothing is written. Confirm a proposed match via
          *     ``POST /shows/{show_id}/link-movie-file``.
+         *
+         *     ``show.local_path`` defaults to the shared movies root (see
+         *     :func:`~jidou.services.path_resolution.resolve_show_local_path`), not a
+         *     directory exclusive to this movie, so the scan is non-recursive (top
+         *     level only), excludes any file already linked to *any* show (not just
+         *     this one), and — unlike the old one-candidate-per-scan behavior — marks
+         *     every remaining untracked file as ``matched`` rather than just the
+         *     first: a flat shared root routinely surfaces several other untracked
+         *     titles in the same scan, and picking only the first would make it
+         *     impossible to link anything but whichever title happens to sort first.
          *
          *     Args:
          *         show_id: Database primary key of the show.
+         *         replace: See the parameter description above.
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -953,7 +964,7 @@ export interface paths {
         put?: never;
         /**
          * Link Movie File
-         * @description Manually link an on-disk file path to an untracked movie.
+         * @description Manually link an on-disk file path to a movie.
          *
          *     Movie counterpart to ``episodes/{episode_id}/link-file``: a movie has no
          *     ``Episode`` row to attach tracking state to, so "already tracked" here
@@ -963,17 +974,28 @@ export interface paths {
          *     Args:
          *         show_id: Database primary key of the show.
          *         payload: Contains ``path`` — the absolute on-disk path of the file,
-         *             as returned verbatim by ``scan-local-movie-file``.
+         *             as returned verbatim by ``scan-local-movie-file`` (or typed
+         *             directly by the user) — and ``replace``: when True and the movie
+         *             already has a linked file, that file is unlinked (``show_id``,
+         *             ``episode_id``, ``matched_by`` cleared — the row itself is left
+         *             in place, same as the generic ``PATCH /files/{id}`` correction
+         *             path) before the new one is linked, instead of raising 422.
          *         db_session: DB session (injected).
          *
+         *     A pre-existing ``DownloadedFile`` already at this exact path (e.g. one
+         *     orphaned by an earlier ``replace``) is re-linked to this show rather
+         *     than left untouched, since ``remote_path``-keyed idempotency would
+         *     otherwise silently no-op and leave the movie unlinked.
+         *
          *     Returns:
-         *         The created (or pre-existing) ``DownloadedFile`` record.
+         *         The created, re-linked, or pre-existing ``DownloadedFile`` record.
          *
          *     Raises:
          *         HTTPException: 404 if the show is not found.
          *         HTTPException: 422 if the show is not a movie, has no local path
-         *             configured, already has a linked file, or *path* does not point
-         *             to an existing file.
+         *             configured, already has a linked file and *replace* is False,
+         *             *path* does not point to an existing file, or *path* is already
+         *             linked to a different show.
          */
         post: operations["link_movie_file_api_shows__show_id__link_movie_file_post"];
         delete?: never;
@@ -1381,7 +1403,14 @@ export interface paths {
         get: operations["get_task_api_tasks__task_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Task
+         * @description Delete a background task record.
+         *
+         *     Active tasks (pending or running) must be cancelled via
+         *     ``POST /tasks/{task_id}/cancel`` before they can be deleted.
+         */
+        delete: operations["delete_task_api_tasks__task_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3103,6 +3132,23 @@ export interface components {
         LinkFileRequest: {
             /** Path */
             path: string;
+        };
+        /**
+         * LinkMovieFileRequest
+         * @description Payload for linking (or replacing) a movie's on-disk file.
+         *
+         *     ``replace`` is movie-specific -- a TV episode's ``link-file`` endpoint
+         *     always targets an untracked episode slot, so there's nothing to replace
+         *     there. See ``POST /shows/{show_id}/link-movie-file``.
+         */
+        LinkMovieFileRequest: {
+            /** Path */
+            path: string;
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
         };
         /**
          * OrphanRead
@@ -5312,7 +5358,10 @@ export interface operations {
     };
     scan_show_local_movie_file_api_shows__show_id__scan_local_movie_file_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description When True, files are 'matched' even if this movie already has a linked file (the caller intends to replace it via link-movie-file with replace=True), instead of coming back 'conflict'. */
+                replace?: boolean;
+            };
             header?: {
                 "x-api-key"?: string | null;
             };
@@ -5356,7 +5405,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LinkFileRequest"];
+                "application/json": components["schemas"]["LinkMovieFileRequest"];
             };
         };
         responses: {
@@ -5849,6 +5898,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TaskRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_api_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

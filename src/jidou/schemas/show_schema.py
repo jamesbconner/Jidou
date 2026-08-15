@@ -187,6 +187,17 @@ class LinkFileRequest(BaseModel):
     path: str
 
 
+class LinkMovieFileRequest(LinkFileRequest):
+    """Payload for linking (or replacing) a movie's on-disk file.
+
+    ``replace`` is movie-specific -- a TV episode's ``link-file`` endpoint
+    always targets an untracked episode slot, so there's nothing to replace
+    there. See ``POST /shows/{show_id}/link-movie-file``.
+    """
+
+    replace: bool = False
+
+
 class ScannedFileMatch(BaseModel):
     """One media file found while scanning a show's own local directory.
 

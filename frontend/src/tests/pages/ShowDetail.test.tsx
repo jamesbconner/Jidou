@@ -100,6 +100,7 @@ function mockShowDetail(initial: ShowRead, opts: { files?: unknown[] } = {}) {
       return mockResponse(show)
     }
     if (url.includes('/shows/1/episodes')) return mockResponse([])
+    if (url.includes('/shows/1/scan-local-movie-file')) return mockResponse([])
     if (url.includes('/files?show_id=1')) return mockResponse(opts.files ?? [])
     if (url.includes('/shows/1')) return mockResponse(show)
     if (url.includes('/config')) return mockResponse({ today: '2026-08-04' })
@@ -158,5 +159,28 @@ describe('ShowDetail — Movie file actions', () => {
     const filenameEl = await screen.findByText('Movie.2020.mkv')
     const row = within(filenameEl.parentElement as HTMLElement)
     expect(row.queryByRole('button', { name: 'Fix Match' })).not.toBeInTheDocument()
+  })
+
+  test('clicking Fix Match opens the movie file-path modal, not the show-rematch modal', async () => {
+    mockShowDetail(baseShow({ content_type: 'movie', media_type: 'movie' }), {
+      files: [{ id: 5, original_filename: 'Movie.2020.mkv', status: 'matched', show_id: 1 }],
+    })
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    const filenameEl = await screen.findByText('Movie.2020.mkv')
+    const row = within(filenameEl.parentElement as HTMLElement)
+    fireEvent.click(row.getByRole('button', { name: 'Fix Match' }))
+
+    // The replace-mode ScanLocalMovieFileModal — lets the user type a path
+    // directly or pick from a scan of the local path — not RematchModal
+    // (which reassigns the file to a different show/movie entirely).
+    expect(await screen.findByText('Fix movie file')).toBeInTheDocument()
+    expect(screen.getByLabelText('Enter the file path directly')).toBeInTheDocument()
+    expect(screen.queryByText('Fix show assignment')).not.toBeInTheDocument()
+
+    const scanCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => String(input).includes('/scan-local-movie-file'))
+    expect(String(scanCall?.[0])).toContain('replace=true')
   })
 })
