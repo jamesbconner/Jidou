@@ -10,6 +10,7 @@ import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { Card } from '@/components/ui/Card'
 import { api } from '@/api/client'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
+import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
 import { buildSeasonMap } from '@/utils/episodeUtils'
 
@@ -195,16 +196,42 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+const MAX_RECORDS_OPTIONS = [50, 100, 200, 500, 1000]
+
+interface FilesFilterState {
+  status: FileStatus | ''
+  pageSize: number
+  maxRecords: number | null
+  showIgnored: boolean
+}
+
+const DEFAULT_FILES_FILTERS: FilesFilterState = {
+  status: '',
+  pageSize: 50,
+  maxRecords: null,
+  showIgnored: false,
+}
 
 export default function Files() {
-  const [statusFilter, setStatusFilter] = useState<FileStatus | ''>('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(0)
   const [resolveFile, setResolveFile] = useState<FileRead | null>(null)
   const [rematchFile, setRematchFile] = useState<FileRead | null>(null)
   const [fixEpsFile, setFixEpsFile] = useState<FileRead | null>(null)
+
+  // Persisted so filter/pagination choices survive navigating away and back,
+  // not just page reloads — mirrors the Shows page's filter persistence.
+  const [filters, setFilters] = useLocalStorageState<FilesFilterState>(
+    'jidou:files-filters',
+    DEFAULT_FILES_FILTERS,
+  )
+  const { status: statusFilter, pageSize, maxRecords, showIgnored } = filters
+  const setStatusFilter = (v: FileStatus | '') => setFilters({ ...filters, status: v })
+  const setPageSize = (v: number) => setFilters({ ...filters, pageSize: v })
+  const setMaxRecords = (v: number | null) => setFilters({ ...filters, maxRecords: v })
+  const setShowIgnored = (v: boolean) => setFilters({ ...filters, showIgnored: v })
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -215,29 +242,50 @@ export default function Files() {
 
   // Reset to page 0 when a filter changes — adjusted directly during render
   // rather than in an effect, per React's guidance for syncing state to a
-  // prop/input change.
-  const [prevFilterKey, setPrevFilterKey] = useState([statusFilter, debouncedSearch])
-  if (prevFilterKey[0] !== statusFilter || prevFilterKey[1] !== debouncedSearch) {
-    setPrevFilterKey([statusFilter, debouncedSearch])
+  // prop/input change. `effectivePage` (rather than the stale `page` local)
+  // is used below so this render's own offset/limit reflect the reset
+  // immediately, instead of momentarily computing against the old page.
+  const [prevFilterKey, setPrevFilterKey] = useState(
+    [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const,
+  )
+  let effectivePage = page
+  if (
+    prevFilterKey[0] !== statusFilter ||
+    prevFilterKey[1] !== debouncedSearch ||
+    prevFilterKey[2] !== pageSize ||
+    prevFilterKey[3] !== maxRecords ||
+    prevFilterKey[4] !== showIgnored
+  ) {
+    setPrevFilterKey([statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored])
     setPage(0)
+    effectivePage = 0
   }
+
+  const offset = effectivePage * pageSize
+  // Cap the fetched page at maxRecords total across all pages combined — the
+  // last page under the cap is truncated rather than showing a full pageSize.
+  const effectiveLimit = maxRecords !== null
+    ? Math.max(0, Math.min(pageSize, maxRecords - offset))
+    : pageSize
 
   const filesQuery = useFiles({
     status: statusFilter || undefined,
-    page,
-    pageSize: PAGE_SIZE,
+    limit: effectiveLimit,
+    offset,
     search: debouncedSearch || undefined,
+    showIgnored,
   })
   const files = filesQuery.data?.data ?? []
   const total = filesQuery.data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const effectiveTotal = maxRecords !== null ? Math.min(total, maxRecords) : total
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize))
   const isLoading = filesQuery.isLoading
 
   // Snap back to the last valid page when total shrinks (e.g. after a
   // mutation). Self-correcting: once page is clamped, the condition is
   // false on the next render, so this converges without needing an effect.
-  if (total > 0 && page * PAGE_SIZE >= total) {
-    setPage(Math.max(0, Math.ceil(total / PAGE_SIZE) - 1))
+  if (effectiveTotal > 0 && page >= totalPages) {
+    setPage(totalPages - 1)
   }
 
   return (
@@ -260,6 +308,55 @@ export default function Files() {
             <option key={s} value={s}>{s || 'All statuses'}</option>
           ))}
         </select>
+        <div>
+          <label htmlFor="files-page-size" className="text-xs text-gray-500 mr-2">Per page</label>
+          <select
+            id="files-page-size"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="files-max-records" className="text-xs text-gray-500 mr-2">Max records</label>
+          <select
+            id="files-max-records"
+            value={maxRecords === null ? 'all' : String(maxRecords)}
+            onChange={(e) => setMaxRecords(e.target.value === 'all' ? null : Number(e.target.value))}
+            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {MAX_RECORDS_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+            <option value="all">All</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showIgnored}
+          aria-label={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
+          title={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
+          onClick={() => setShowIgnored(!showIgnored)}
+          className="flex items-center gap-2 text-sm text-gray-700"
+        >
+          <span
+            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+              showIgnored ? 'bg-blue-600' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                showIgnored ? 'translate-x-3.5' : 'translate-x-0.5'
+              }`}
+            />
+          </span>
+          Show ignored
+        </button>
       </div>
 
       {isLoading ? (
@@ -360,7 +457,12 @@ export default function Files() {
 
       {!isLoading && total > 0 && (
         <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>{total} file{total !== 1 ? 's' : ''}{(debouncedSearch || statusFilter) ? ' matching filters' : ''}</span>
+          <span>
+            {maxRecords !== null && total > maxRecords
+              ? `${maxRecords} of ${total} file${total !== 1 ? 's' : ''}`
+              : `${total} file${total !== 1 ? 's' : ''}`}
+            {(debouncedSearch || statusFilter) ? ' matching filters' : ''}
+          </span>
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}

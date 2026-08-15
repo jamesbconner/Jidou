@@ -151,6 +151,72 @@ def test_list_files_search_and_status_combined() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_files_excludes_ignored_by_default() -> None:
+    """GET /api/files with no status filter excludes ignored files by default."""
+    from jidou.database import get_session
+
+    sessions: list[AsyncMock] = []
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+        session.scalar = AsyncMock(return_value=0)
+        sessions.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).get("/api/files")
+        assert response.status_code == 200
+        stmt = sessions[0].execute.await_args_list[0].args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        where_clause = compiled.lower().split("where", 1)[1]
+        assert "!=" in where_clause
+        assert "ignored" in where_clause
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_show_ignored_true_includes_ignored() -> None:
+    """GET /api/files?show_ignored=true omits the ignored-exclusion filter."""
+    from jidou.database import get_session
+
+    sessions: list[AsyncMock] = []
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+        session.scalar = AsyncMock(return_value=0)
+        sessions.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).get("/api/files?show_ignored=true")
+        assert response.status_code == 200
+        stmt = sessions[0].execute.await_args_list[0].args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "where" not in compiled.lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_explicit_status_ignores_show_ignored_flag() -> None:
+    """An explicit status filter is unaffected by show_ignored (default false)."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(many=[], scalar_count=0)
+    try:
+        response = TestClient(app).get("/api/files?status=matched")
+        assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # GET /api/files/{file_id}
 # ---------------------------------------------------------------------------
