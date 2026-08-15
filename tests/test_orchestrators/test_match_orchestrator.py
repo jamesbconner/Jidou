@@ -784,7 +784,7 @@ async def test_resolve_local_path_anime():
 
 
 async def test_resolve_local_path_movie():
-    """show.content_type=movie routes to local_movie_path / sys_name."""
+    """show.content_type=movie routes to local_movie_path directly (no per-title subdir)."""
     session = _make_session()
     orch = ParseOrchestrator(
         session,
@@ -799,7 +799,7 @@ async def test_resolve_local_path_movie():
     show.media_type = "movie"
 
     path = orch._resolve_local_path(show)
-    assert path == "/media/movies/Spirited Away"
+    assert path == "/media/movies"
 
 
 async def test_resolve_local_path_falls_back_to_media_type():
@@ -1025,7 +1025,7 @@ async def test_run_movie_media_type_auto_sets_local_path_without_content_type():
     )
     await orch.run()
 
-    assert show.local_path == "/media/movies/Spirited Away"
+    assert show.local_path == "/media/movies"
 
 
 async def test_run_on_progress_called_per_file():

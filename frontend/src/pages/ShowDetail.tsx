@@ -505,7 +505,17 @@ export default function ShowDetail() {
                   <span className="font-mono text-xs text-gray-600 truncate">
                     {f.original_filename}
                   </span>
-                  <span className="text-xs text-gray-400 shrink-0">{f.status}</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-gray-400">{f.status}</span>
+                    {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
+                      <button
+                        onClick={() => setFileForRematch(f)}
+                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      >
+                        Fix Match
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
