@@ -34,6 +34,7 @@ async def list_files(
     status: str | None = None,
     show_id: int | None = None,
     search: str | None = None,
+    show_ignored: bool = False,
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -44,6 +45,9 @@ async def list_files(
         status: Filter by file status (``discovered``, ``downloaded``, etc.).
         show_id: Filter by matched show ID.
         search: Case-insensitive substring match on ``original_filename``.
+        show_ignored: When *status* is unset, include ``ignored`` files in the
+            unfiltered result. Has no effect when *status* is explicitly
+            provided — an explicit filter always wins.
         limit: Maximum results to return (1-1000, default 50).
         offset: Number of results to skip for pagination.
         response: FastAPI response object used to set ``X-Total-Count`` header.
@@ -67,6 +71,8 @@ async def list_files(
                 detail=f"Invalid status {status!r}. Must be one of: {valid}",
             ) from None
         filters.append(DownloadedFile.status == file_status)
+    elif not show_ignored:
+        filters.append(DownloadedFile.status != FileStatus.IGNORED)
 
     if show_id is not None:
         filters.append(DownloadedFile.show_id == show_id)

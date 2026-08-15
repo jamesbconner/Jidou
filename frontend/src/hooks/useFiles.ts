@@ -3,10 +3,26 @@ import { api } from '@/api/client'
 import { showKeys } from '@/hooks/useShows'
 import type { FileRead, FileMatchRequest, FileStatus, TmdbSuggestionsResponse } from '@/types/api'
 
+interface FilesListParams {
+  status?: FileStatus
+  limit: number
+  offset: number
+  search?: string
+  showIgnored?: boolean
+}
+
 export const fileKeys = {
   all: ['files'] as const,
-  list: (status?: FileStatus, page?: number, pageSize?: number, search?: string) =>
-    [...fileKeys.all, 'list', status ?? 'all', page ?? 0, pageSize ?? 50, search ?? ''] as const,
+  list: (params: FilesListParams) =>
+    [
+      ...fileKeys.all,
+      'list',
+      params.status ?? 'all',
+      params.limit,
+      params.offset,
+      params.search ?? '',
+      params.showIgnored ?? false,
+    ] as const,
   detail: (id: number) => [...fileKeys.all, 'detail', id] as const,
 }
 
@@ -15,25 +31,17 @@ export interface FilesPage {
   total: number
 }
 
-export function useFiles({
-  status,
-  page = 0,
-  pageSize = 50,
-  search,
-}: {
-  status?: FileStatus
-  page?: number
-  pageSize?: number
-  search?: string
-} = {}) {
-  const params = new URLSearchParams()
-  if (status) params.set('status', status)
-  if (search) params.set('search', search)
-  params.set('limit', String(pageSize))
-  params.set('offset', String(page * pageSize))
+export function useFiles(params: FilesListParams) {
+  const { status, limit, offset, search, showIgnored = false } = params
+  const qs = new URLSearchParams()
+  if (status) qs.set('status', status)
+  if (search) qs.set('search', search)
+  if (showIgnored) qs.set('show_ignored', 'true')
+  qs.set('limit', String(limit))
+  qs.set('offset', String(offset))
   return useQuery({
-    queryKey: fileKeys.list(status, page, pageSize, search),
-    queryFn: () => api.getWithTotal<FileRead[]>(`/files?${params}`),
+    queryKey: fileKeys.list(params),
+    queryFn: () => api.getWithTotal<FileRead[]>(`/files?${qs}`),
   })
 }
 
