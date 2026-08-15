@@ -4481,12 +4481,20 @@ def test_link_movie_file_with_replace_unlinks_existing_file_then_links_new_one(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = [old_file]
+        existing_synthetic_result = MagicMock()
+        existing_synthetic_result.scalar_one_or_none.return_value = None
         dedup_result = MagicMock()
         dedup_result.scalar_one_or_none.return_value = None
         refetch_result = MagicMock()
         refetch_result.scalar_one.return_value = linked
         session.execute = AsyncMock(
-            side_effect=[show_result, existing_result, dedup_result, refetch_result]
+            side_effect=[
+                show_result,
+                existing_result,
+                existing_synthetic_result,
+                dedup_result,
+                refetch_result,
+            ]
         )
         nested_ctx = AsyncMock()
         nested_ctx.__aenter__.return_value = None
@@ -4558,12 +4566,20 @@ def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = []
+        existing_synthetic_result = MagicMock()
+        existing_synthetic_result.scalar_one_or_none.return_value = None
         dedup_result = MagicMock()
         dedup_result.scalar_one_or_none.return_value = None
         refetch_result = MagicMock()
         refetch_result.scalar_one.return_value = linked
         session.execute = AsyncMock(
-            side_effect=[show_result, existing_result, dedup_result, refetch_result]
+            side_effect=[
+                show_result,
+                existing_result,
+                existing_synthetic_result,
+                dedup_result,
+                refetch_result,
+            ]
         )
         nested_ctx = AsyncMock()
         nested_ctx.__aenter__.return_value = None
@@ -4582,5 +4598,100 @@ def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert response.json()["id"] == linked.id
         assert response.json()["episode_id"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_movie_file_relinks_a_previously_orphaned_synthetic_row(tmp_path: Path) -> None:
+    """Re-linking a path this show was earlier unlinked from must actually re-link it.
+
+    Regression test (Bugbot finding on PR #524): create_synthetic_import_file
+    is keyed on remote_path alone, so re-running it against a path that
+    already has a DownloadedFile row (orphaned by a prior `replace`, show_id
+    cleared) would silently return that row unchanged -- a 200 response
+    while the movie stayed unlinked, and the row permanently un-relinkable
+    afterward (a null show_id sorts as "linked to some other show" for
+    scan-local-movie-file).
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    real_file = tmp_path / "Movie.2020.mkv"
+    real_file.write_text("data")
+    raw_path = str(real_file)
+
+    # Orphaned: a DownloadedFile row already exists for this exact path, but
+    # its show_id was cleared by an earlier replace.
+    orphan = _make_linked_file(show_id=1, episode_id=5, raw_path=raw_path)
+    orphan.show_id = None
+    orphan.episode_id = None
+    orphan.matched_by = None
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = []
+        existing_synthetic_result = MagicMock()
+        existing_synthetic_result.scalar_one_or_none.return_value = orphan
+        refetch_result = MagicMock()
+        refetch_result.scalar_one.return_value = orphan
+        session.execute = AsyncMock(
+            side_effect=[show_result, existing_result, existing_synthetic_result, refetch_result]
+        )
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/link-movie-file",
+            json={"path": raw_path},
+        )
+        assert response.status_code == 200
+        assert orphan.show_id == 1
+        assert orphan.episode_id is None
+        assert orphan.matched_by is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_movie_file_rejects_a_path_already_linked_to_a_different_show(
+    tmp_path: Path,
+) -> None:
+    """A path already tracked by a different show's DownloadedFile is not silently stolen."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    real_file = tmp_path / "Movie.2020.mkv"
+    real_file.write_text("data")
+    raw_path = str(real_file)
+
+    other_movie_file = _make_linked_file(show_id=2, episode_id=None, raw_path=raw_path)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = []
+        existing_synthetic_result = MagicMock()
+        existing_synthetic_result.scalar_one_or_none.return_value = other_movie_file
+        session.execute = AsyncMock(
+            side_effect=[show_result, existing_result, existing_synthetic_result]
+        )
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/link-movie-file",
+            json={"path": raw_path},
+        )
+        assert response.status_code == 422
+        assert "already linked to a different show" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()

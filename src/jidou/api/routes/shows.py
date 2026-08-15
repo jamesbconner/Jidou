@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service
 from jidou.database import get_session
-from jidou.models.downloaded_file import DownloadedFile
+from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
@@ -1789,14 +1789,20 @@ async def link_movie_file(
             path) before the new one is linked, instead of raising 422.
         db_session: DB session (injected).
 
+    A pre-existing ``DownloadedFile`` already at this exact path (e.g. one
+    orphaned by an earlier ``replace``) is re-linked to this show rather
+    than left untouched, since ``remote_path``-keyed idempotency would
+    otherwise silently no-op and leave the movie unlinked.
+
     Returns:
-        The created (or pre-existing) ``DownloadedFile`` record.
+        The created, re-linked, or pre-existing ``DownloadedFile`` record.
 
     Raises:
         HTTPException: 404 if the show is not found.
         HTTPException: 422 if the show is not a movie, has no local path
             configured, already has a linked file and *replace* is False,
-            or *path* does not point to an existing file.
+            *path* does not point to an existing file, or *path* is already
+            linked to a different show.
     """
     # Locked so two concurrent link-movie-file calls targeting the same show
     # can't both read "no linked file yet" before either commit lands.
@@ -1829,10 +1835,35 @@ async def link_movie_file(
             detail=f"No file exists at path: {decode_path_bytes_for_display(payload.path)}",
         )
 
-    await create_synthetic_import_file(db_session, show_id, None, payload.path)
+    # create_synthetic_import_file is keyed on remote_path alone, so it's a
+    # silent no-op (returns the existing row unchanged) when one already
+    # exists for this exact path -- including a row that was orphaned by an
+    # earlier replace above (show_id cleared). Without this check, re-linking
+    # a previously-replaced-out path (or the very path this movie was just
+    # unlinked from) would report success while leaving the movie unlinked,
+    # and that row would stay permanently un-relinkable since a null show_id
+    # sorts as "linked to some other show" for scan-local-movie-file too.
+    synthetic_remote_path = f"synthetic-import://{payload.path}"
+    existing_synthetic_stmt = select(DownloadedFile).where(
+        DownloadedFile.remote_path == synthetic_remote_path
+    )
+    existing_synthetic = (await db_session.execute(existing_synthetic_stmt)).scalar_one_or_none()
+
+    if existing_synthetic is not None and existing_synthetic.show_id not in (None, show_id):
+        raise HTTPException(
+            status_code=422,
+            detail="This file is already linked to a different show.",
+        )
+
+    if existing_synthetic is not None and existing_synthetic.show_id is None:
+        existing_synthetic.show_id = show_id
+        existing_synthetic.episode_id = None
+        existing_synthetic.matched_by = None
+        existing_synthetic.status = FileStatus.ROUTED
+    elif existing_synthetic is None:
+        await create_synthetic_import_file(db_session, show_id, None, payload.path)
     await db_session.commit()
 
-    synthetic_remote_path = f"synthetic-import://{payload.path}"
     refreshed = (
         await db_session.execute(
             select(DownloadedFile)

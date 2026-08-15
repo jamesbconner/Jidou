@@ -982,14 +982,20 @@ export interface paths {
          *             path) before the new one is linked, instead of raising 422.
          *         db_session: DB session (injected).
          *
+         *     A pre-existing ``DownloadedFile`` already at this exact path (e.g. one
+         *     orphaned by an earlier ``replace``) is re-linked to this show rather
+         *     than left untouched, since ``remote_path``-keyed idempotency would
+         *     otherwise silently no-op and leave the movie unlinked.
+         *
          *     Returns:
-         *         The created (or pre-existing) ``DownloadedFile`` record.
+         *         The created, re-linked, or pre-existing ``DownloadedFile`` record.
          *
          *     Raises:
          *         HTTPException: 404 if the show is not found.
          *         HTTPException: 422 if the show is not a movie, has no local path
          *             configured, already has a linked file and *replace* is False,
-         *             or *path* does not point to an existing file.
+         *             *path* does not point to an existing file, or *path* is already
+         *             linked to a different show.
          */
         post: operations["link_movie_file_api_shows__show_id__link_movie_file_post"];
         delete?: never;
