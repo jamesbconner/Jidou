@@ -1835,6 +1835,28 @@ async def link_movie_file(
             detail=f"No file exists at path: {decode_path_bytes_for_display(payload.path)}",
         )
 
+    # Look up every DownloadedFile already sitting at this exact on-disk path
+    # -- by local_path (path_comparison_key, same format-agnostic comparison
+    # scan-local-movie-file uses), not just a synthetic-import remote_path
+    # match. A file already tracked by another show via the normal SFTP
+    # pipeline (a real remote_path, not synthetic-import://) must be
+    # rejected too, or a manual path entry would create a second row for
+    # the same on-disk file and let two shows claim it simultaneously.
+    target_key = path_comparison_key(payload.path)
+    local_path_matches_stmt = select(DownloadedFile).where(DownloadedFile.local_path.is_not(None))
+    matches = [
+        f
+        for f in (await db_session.execute(local_path_matches_stmt)).scalars().all()
+        if f.local_path is not None and path_comparison_key(f.local_path) == target_key
+    ]
+
+    conflict = next((f for f in matches if f.show_id not in (None, show_id)), None)
+    if conflict is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="This file is already linked to a different show.",
+        )
+
     # create_synthetic_import_file is keyed on remote_path alone, so it's a
     # silent no-op (returns the existing row unchanged) when one already
     # exists for this exact path -- including a row that was orphaned by an
@@ -1844,23 +1866,16 @@ async def link_movie_file(
     # and that row would stay permanently un-relinkable since a null show_id
     # sorts as "linked to some other show" for scan-local-movie-file too.
     synthetic_remote_path = f"synthetic-import://{payload.path}"
-    existing_synthetic_stmt = select(DownloadedFile).where(
-        DownloadedFile.remote_path == synthetic_remote_path
+    orphaned_synthetic = next(
+        (f for f in matches if f.remote_path == synthetic_remote_path and f.show_id is None),
+        None,
     )
-    existing_synthetic = (await db_session.execute(existing_synthetic_stmt)).scalar_one_or_none()
-
-    if existing_synthetic is not None and existing_synthetic.show_id not in (None, show_id):
-        raise HTTPException(
-            status_code=422,
-            detail="This file is already linked to a different show.",
-        )
-
-    if existing_synthetic is not None and existing_synthetic.show_id is None:
-        existing_synthetic.show_id = show_id
-        existing_synthetic.episode_id = None
-        existing_synthetic.matched_by = None
-        existing_synthetic.status = FileStatus.ROUTED
-    elif existing_synthetic is None:
+    if orphaned_synthetic is not None:
+        orphaned_synthetic.show_id = show_id
+        orphaned_synthetic.episode_id = None
+        orphaned_synthetic.matched_by = None
+        orphaned_synthetic.status = FileStatus.ROUTED
+    else:
         await create_synthetic_import_file(db_session, show_id, None, payload.path)
     await db_session.commit()
 

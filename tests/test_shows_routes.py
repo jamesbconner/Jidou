@@ -4481,8 +4481,8 @@ def test_link_movie_file_with_replace_unlinks_existing_file_then_links_new_one(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = [old_file]
-        existing_synthetic_result = MagicMock()
-        existing_synthetic_result.scalar_one_or_none.return_value = None
+        local_path_matches_result = MagicMock()
+        local_path_matches_result.scalars.return_value.all.return_value = []
         dedup_result = MagicMock()
         dedup_result.scalar_one_or_none.return_value = None
         refetch_result = MagicMock()
@@ -4491,7 +4491,7 @@ def test_link_movie_file_with_replace_unlinks_existing_file_then_links_new_one(
             side_effect=[
                 show_result,
                 existing_result,
-                existing_synthetic_result,
+                local_path_matches_result,
                 dedup_result,
                 refetch_result,
             ]
@@ -4566,8 +4566,8 @@ def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = []
-        existing_synthetic_result = MagicMock()
-        existing_synthetic_result.scalar_one_or_none.return_value = None
+        local_path_matches_result = MagicMock()
+        local_path_matches_result.scalars.return_value.all.return_value = []
         dedup_result = MagicMock()
         dedup_result.scalar_one_or_none.return_value = None
         refetch_result = MagicMock()
@@ -4576,7 +4576,7 @@ def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
             side_effect=[
                 show_result,
                 existing_result,
-                existing_synthetic_result,
+                local_path_matches_result,
                 dedup_result,
                 refetch_result,
             ]
@@ -4634,12 +4634,12 @@ def test_link_movie_file_relinks_a_previously_orphaned_synthetic_row(tmp_path: P
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = []
-        existing_synthetic_result = MagicMock()
-        existing_synthetic_result.scalar_one_or_none.return_value = orphan
+        local_path_matches_result = MagicMock()
+        local_path_matches_result.scalars.return_value.all.return_value = [orphan]
         refetch_result = MagicMock()
         refetch_result.scalar_one.return_value = orphan
         session.execute = AsyncMock(
-            side_effect=[show_result, existing_result, existing_synthetic_result, refetch_result]
+            side_effect=[show_result, existing_result, local_path_matches_result, refetch_result]
         )
         session.commit = AsyncMock()
         yield session
@@ -4661,7 +4661,7 @@ def test_link_movie_file_relinks_a_previously_orphaned_synthetic_row(tmp_path: P
 def test_link_movie_file_rejects_a_path_already_linked_to_a_different_show(
     tmp_path: Path,
 ) -> None:
-    """A path already tracked by a different show's DownloadedFile is not silently stolen."""
+    """A path already tracked by a different show's synthetic file is not silently stolen."""
     from jidou.database import get_session
 
     show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
@@ -4678,10 +4678,59 @@ def test_link_movie_file_rejects_a_path_already_linked_to_a_different_show(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.scalars.return_value.all.return_value = []
-        existing_synthetic_result = MagicMock()
-        existing_synthetic_result.scalar_one_or_none.return_value = other_movie_file
+        local_path_matches_result = MagicMock()
+        local_path_matches_result.scalars.return_value.all.return_value = [other_movie_file]
         session.execute = AsyncMock(
-            side_effect=[show_result, existing_result, existing_synthetic_result]
+            side_effect=[show_result, existing_result, local_path_matches_result]
+        )
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/link-movie-file",
+            json={"path": raw_path},
+        )
+        assert response.status_code == 422
+        assert "already linked to a different show" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_movie_file_rejects_a_path_already_linked_via_the_normal_pipeline(
+    tmp_path: Path,
+) -> None:
+    """A path tracked by another show's non-synthetic (SFTP-origin) row is rejected too.
+
+    Regression test (Bugbot finding on PR #524): the conflict check
+    originally only looked up DownloadedFile by the synthetic-import://
+    remote_path, so a file already routed to another show through the
+    normal SFTP scan/download/match/route pipeline (a real remote_path,
+    not synthetic) was invisible to it -- a manual path entry would then
+    create a second DownloadedFile row for the same on-disk file, letting
+    two shows claim it simultaneously.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
+    show.content_type = "movie"
+    real_file = tmp_path / "Movie.2020.mkv"
+    real_file.write_text("data")
+    raw_path = str(real_file)
+
+    other_show_pipeline_file = _make_linked_file(show_id=2, episode_id=None, raw_path=raw_path)
+    other_show_pipeline_file.remote_path = "sftp://remote-host/incoming/Movie.2020.mkv"
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        existing_result = MagicMock()
+        existing_result.scalars.return_value.all.return_value = []
+        local_path_matches_result = MagicMock()
+        local_path_matches_result.scalars.return_value.all.return_value = [other_show_pipeline_file]
+        session.execute = AsyncMock(
+            side_effect=[show_result, existing_result, local_path_matches_result]
         )
         yield session
 
