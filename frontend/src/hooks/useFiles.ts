@@ -48,7 +48,10 @@ export function useFiles(params: FilesListParams) {
 export function useFilesByShow(showId: number, enabled = true) {
   return useQuery({
     queryKey: [...fileKeys.all, 'show', showId] as const,
-    queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}&limit=1000`),
+    // show_ignored=true: this is a show-scoped listing (e.g. Show Detail), not
+    // the triage Files page, so ignored files linked to the show must still
+    // appear rather than silently vanishing under the new default exclusion.
+    queryFn: () => api.get<FileRead[]>(`/files?show_id=${showId}&show_ignored=true&limit=1000`),
     enabled,
   })
 }

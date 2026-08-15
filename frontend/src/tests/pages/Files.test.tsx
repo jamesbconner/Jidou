@@ -160,6 +160,39 @@ describe('Files page — Per page / Max records controls', () => {
       expect(screen.getByText(/50 of 200 files/)).toBeInTheDocument()
     })
   })
+
+  test('raising per page while on a later page settles on a valid limit/offset, never zero', async () => {
+    mockFiles(500)
+    render(<Files />, { wrapper: makeWrapper() })
+
+    fireEvent.change(screen.getByLabelText('Max records'), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText('Per page'), { target: { value: '10' } })
+
+    // Jump to the last of 5 pages (offset=40) within the 50-record cap.
+    await waitFor(() => expect(screen.getByTitle('Last page')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Last page'))
+    await waitFor(() => {
+      const params = new URLSearchParams(lastFilesUrl().split('?')[1])
+      expect(params.get('offset')).toBe('40')
+    })
+
+    // Raising per-page to 100 makes the stale offset (400) exceed the
+    // 50-record cap — this must reset to page 0, not request limit=0.
+    fireEvent.change(screen.getByLabelText('Per page'), { target: { value: '100' } })
+
+    await waitFor(() => {
+      const params = new URLSearchParams(lastFilesUrl().split('?')[1])
+      expect(params.get('limit')).toBe('50')
+      expect(params.get('offset')).toBe('0')
+    })
+
+    const zeroLimitCall = vi.mocked(fetch).mock.calls.find((c) => {
+      const url = String(c[0])
+      if (!url.includes('/files?')) return false
+      return new URLSearchParams(url.split('?')[1]).get('limit') === '0'
+    })
+    expect(zeroLimitCall).toBeUndefined()
+  })
 })
 
 describe('Files page — filter persistence', () => {

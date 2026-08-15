@@ -138,6 +138,20 @@ describe('ShowDetail — Ignore Missing Eps toggle', () => {
   })
 })
 
+describe('ShowDetail — files fetch', () => {
+  test('requests show_ignored=true so ignored files linked to the show still appear', async () => {
+    // useFilesByShow only fires for movie-type shows (see isMovie in ShowDetail.tsx).
+    mockShowDetail(baseShow({ content_type: 'movie', media_type: 'movie' }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes('/files?show_id=1'))
+      expect(call).toBeDefined()
+      expect(String(call?.[0])).toContain('show_ignored=true')
+    })
+  })
+})
+
 describe('ShowDetail — Movie file actions', () => {
   test('renders Fix Match button for a matched movie file', async () => {
     mockShowDetail(baseShow({ content_type: 'movie', media_type: 'movie' }), {

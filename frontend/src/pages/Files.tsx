@@ -242,10 +242,13 @@ export default function Files() {
 
   // Reset to page 0 when a filter changes — adjusted directly during render
   // rather than in an effect, per React's guidance for syncing state to a
-  // prop/input change.
+  // prop/input change. `effectivePage` (rather than the stale `page` local)
+  // is used below so this render's own offset/limit reflect the reset
+  // immediately, instead of momentarily computing against the old page.
   const [prevFilterKey, setPrevFilterKey] = useState(
     [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const,
   )
+  let effectivePage = page
   if (
     prevFilterKey[0] !== statusFilter ||
     prevFilterKey[1] !== debouncedSearch ||
@@ -255,9 +258,10 @@ export default function Files() {
   ) {
     setPrevFilterKey([statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored])
     setPage(0)
+    effectivePage = 0
   }
 
-  const offset = page * pageSize
+  const offset = effectivePage * pageSize
   // Cap the fetched page at maxRecords total across all pages combined — the
   // last page under the cap is truncated rather than showing a full pageSize.
   const effectiveLimit = maxRecords !== null
