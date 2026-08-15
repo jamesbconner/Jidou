@@ -4203,14 +4203,23 @@ def test_scan_show_local_movie_file_returns_conflict_when_already_linked(
         app.dependency_overrides.clear()
 
 
-def test_scan_show_local_movie_file_marks_second_file_as_conflict(tmp_path: Path) -> None:
-    """Two files found in the same scan: only the first is 'matched'."""
+def test_scan_show_local_movie_file_marks_every_untracked_file_as_matched(
+    tmp_path: Path,
+) -> None:
+    """All untracked files found in the same scan are 'matched', not just the first.
+
+    Regression test: local_path is typically the shared movies root, so a
+    flat library routinely surfaces several other untracked titles in the
+    same scan alongside this movie's own file. Marking only the first as
+    linkable (the old per-movie-exclusive-directory behavior) would make it
+    impossible to link anything but whichever title happens to sort first.
+    """
     from jidou.database import get_session
 
     show = _make_show(id=1, media_type="movie", local_path=str(tmp_path))
     show.content_type = "movie"
-    (tmp_path / "Movie.2020.mkv").write_text("data")
-    (tmp_path / "Movie.2020.extended.mkv").write_text("data")
+    (tmp_path / "Movie One.2020.mkv").write_text("data")
+    (tmp_path / "Movie Two.2019.mkv").write_text("data")
 
     async def _session() -> AsyncMock:
         session = AsyncMock()
@@ -4227,8 +4236,7 @@ def test_scan_show_local_movie_file_marks_second_file_as_conflict(tmp_path: Path
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 2
-        statuses = sorted(row["status"] for row in body)
-        assert statuses == ["conflict", "matched"]
+        assert all(row["status"] == "matched" for row in body)
     finally:
         app.dependency_overrides.clear()
 

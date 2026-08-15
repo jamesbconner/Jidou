@@ -1655,10 +1655,10 @@ async def scan_show_local_movie_file(
 
     Movie counterpart to ``scan-local-files``: a movie has no ``Episode``
     rows to resolve a file against, so there is nothing to match — every
-    file found directly under ``show.local_path`` is either ready to link
-    (``matched``) or blocked because the movie already has a linked file,
-    either from a prior link or an earlier row in this same scan
-    (``conflict``). ``unmatched`` never occurs here, and ``season``/
+    file found directly under ``show.local_path`` that isn't already linked
+    to some show is ``matched`` (the user picks the right one by filename
+    via the "Link" button), or ``conflict`` if this movie already has a
+    linked file. ``unmatched`` never occurs here, and ``season``/
     ``episode_number``/``episode`` are always null. Read-only: nothing is
     written. Confirm a proposed match via
     ``POST /shows/{show_id}/link-movie-file``.
@@ -1666,9 +1666,12 @@ async def scan_show_local_movie_file(
     ``show.local_path`` defaults to the shared movies root (see
     :func:`~jidou.services.path_resolution.resolve_show_local_path`), not a
     directory exclusive to this movie, so the scan is non-recursive (top
-    level only) and excludes any file already linked to *any* show, not
-    just this one — otherwise every other already-tracked movie in the
-    shared root would show up as a false candidate here.
+    level only), excludes any file already linked to *any* show (not just
+    this one), and — unlike the old one-candidate-per-scan behavior — marks
+    every remaining untracked file as ``matched`` rather than just the
+    first: a flat shared root routinely surfaces several other untracked
+    titles in the same scan, and picking only the first would make it
+    impossible to link anything but whichever title happens to sort first.
 
     Args:
         show_id: Database primary key of the show.
@@ -1715,21 +1718,24 @@ async def scan_show_local_movie_file(
         (linked_to_this_show if linked_show_id == show_id else linked_to_other_show).add(key)
 
     # Any already-linked file at all means this movie is already tracked —
-    # unlike episodes, there's no per-file slot to disambiguate against.
+    # unlike episodes, there's no per-file slot to disambiguate against, so
+    # every remaining candidate is blocked until the existing link is
+    # cleared. When this movie has no link yet, every remaining candidate is
+    # "matched" (not just the first) -- local_path is commonly shared across
+    # every movie, so a flat library legitimately surfaces multiple other
+    # untracked titles in the same scan; the user picks the right one by
+    # filename via the "Link" button.
     already_linked = bool(linked_to_this_show)
 
     results: list[ScannedFileMatch] = []
-    claimed = False
     for entry in entries:
         key = path_comparison_key(entry.raw_path)
         if key in linked_to_this_show or key in linked_to_other_show:
             continue
 
         status: Literal["matched", "unmatched", "conflict"] = (
-            "conflict" if already_linked or claimed else "matched"
+            "conflict" if already_linked else "matched"
         )
-        if status == "matched":
-            claimed = True
 
         results.append(
             ScannedFileMatch(
