@@ -508,7 +508,6 @@ export default function ShowDetail() {
                     {f.original_filename}
                   </span>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-gray-400">{f.status}</span>
                     {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                       <button
                         onClick={() => setFixMovieFileOpen(true)}
