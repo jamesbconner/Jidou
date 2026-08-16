@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
 import Calendar from '@/pages/Calendar'
+import { addDays, toISODate } from '@/utils/calendarRange'
 import type { CalendarEpisode } from '@/types/api'
 
 function todayIso(): string {
@@ -77,6 +78,19 @@ function mockResponse(body: unknown = null, status = 200): Response {
 
 function mockCalendar(data: CalendarEpisode[]) {
   vi.mocked(fetch).mockResolvedValue(mockResponse(data))
+}
+
+function todayDate(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function rangeParagraph(): HTMLElement {
+  return screen.getByText((_, element) => {
+    if (!element || element.tagName !== 'P') return false
+    return /–/.test(element.textContent ?? '')
+  })
 }
 
 describe('Calendar page', () => {
@@ -167,5 +181,104 @@ describe('Calendar page', () => {
     await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
     expect(screen.queryByText('The Wire')).not.toBeInTheDocument()
     expect(screen.getAllByRole('combobox')[0]).toHaveValue('anime')
+  })
+})
+
+describe('Calendar page range/anchor settings', () => {
+  test('defaults reproduce the original 7-day, Monday-start behavior', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    expect(screen.getByRole('radio', { name: '7' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Week start' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Mon' })).toBeChecked()
+  })
+
+  test('selecting a shorter range narrows the date span and falls back the anchor', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('radio', { name: '3' }))
+
+    expect(screen.getByRole('radio', { name: 'Today start' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Week start' })).not.toBeChecked()
+
+    const today = todayDate()
+    const expected = `${toISODate(today)} – ${toISODate(addDays(today, 2))}`
+    expect(rangeParagraph().textContent).toContain(expected)
+  })
+
+  test('selecting the centered anchor centers today in the range', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Centered' }))
+
+    const today = todayDate()
+    const expected = `${toISODate(addDays(today, -3))} – ${toISODate(addDays(today, 3))}`
+    expect(rangeParagraph().textContent).toContain(expected)
+  })
+
+  test('the week-start anchor option is disabled unless range length is 7', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('radio', { name: '3' }))
+    expect(screen.getByRole('radio', { name: 'Week start' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('radio', { name: '7' }))
+    expect(screen.getByRole('radio', { name: 'Week start' })).not.toBeDisabled()
+  })
+
+  test('the "Week begins" control only shows for the week-start anchor', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    expect(screen.getByRole('radio', { name: 'Mon' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Today start' }))
+    expect(screen.queryByRole('radio', { name: 'Mon' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Week start' }))
+    expect(screen.getByRole('radio', { name: 'Mon' })).toBeInTheDocument()
+  })
+
+  test('range settings persist to localStorage independently of filters and are restored on remount', async () => {
+    mockCalendar(episodes)
+    const { unmount } = render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Sun' }))
+
+    const stored = JSON.parse(window.localStorage.getItem('jidou:calendar-range') ?? '{}')
+    expect(stored).toEqual({ rangeLength: 7, anchorMode: 'week-start', weekStartDay: 'sunday' })
+    expect(window.localStorage.getItem('jidou:calendar-filters')).toBeNull()
+
+    unmount()
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+    expect(screen.getByRole('radio', { name: 'Sun' })).toBeChecked()
+  })
+
+  test('changing a setting after paging resets to a fresh today-anchored window', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const initialRange = rangeParagraph().textContent
+
+    fireEvent.click(screen.getByText('Next →'))
+    expect(rangeParagraph().textContent).not.toBe(initialRange)
+
+    fireEvent.click(screen.getByRole('radio', { name: '3' }))
+
+    const today = todayDate()
+    const expected = `${toISODate(today)} – ${toISODate(addDays(today, 2))}`
+    expect(rangeParagraph().textContent).toContain(expected)
   })
 })

@@ -4,11 +4,26 @@ import { useCalendarWeek } from '@/hooks/useCalendar'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { Button } from '@/components/ui/Button'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import {
+  ANCHOR_MODE_OPTIONS,
+  DEFAULT_CALENDAR_RANGE,
+  GRID_COLS_CLASS,
+  RANGE_LENGTH_OPTIONS,
+  WEEK_START_DAY_OPTIONS,
+  addDays,
+  computeRangeStart,
+  dayLabel,
+  resolveAnchorMode,
+  toISODate,
+  type AnchorMode,
+  type CalendarRangeSettings,
+  type RangeLength,
+  type WeekStartDay,
+} from '@/utils/calendarRange'
 import type { CalendarEpisode } from '@/types/api'
 
 const TMDB_IMG = '/api/images/w92'
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 const STATUS_STYLE: Record<CalendarEpisode['status'], { dot: string; label: string }> = {
   tracked: { dot: 'bg-green-500', label: 'Aired — file tracked' },
@@ -41,25 +56,6 @@ function applyFilters(
     if (q && !ep.show_title.toLowerCase().includes(q)) return false
     return true
   })
-}
-
-function toISODate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function mondayOf(d: Date): Date {
-  const day = d.getDay() // 0 = Sunday
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(d)
-  monday.setDate(d.getDate() + diff)
-  monday.setHours(0, 0, 0, 0)
-  return monday
-}
-
-function addDays(d: Date, n: number): Date {
-  const copy = new Date(d)
-  copy.setDate(copy.getDate() + n)
-  return copy
 }
 
 function EpisodeCell({ episode }: { episode: CalendarEpisode }) {
@@ -95,7 +91,36 @@ function EpisodeCell({ episode }: { episode: CalendarEpisode }) {
 }
 
 export default function Calendar() {
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
+  // Persisted so range/anchor choices survive navigating away and back, not
+  // just page reloads — same pattern as the filters below, under its own key
+  // so the two settings don't interfere with each other.
+  const [rangeSettings, setRangeSettings] = useLocalStorageState<CalendarRangeSettings>(
+    'jidou:calendar-range',
+    DEFAULT_CALENDAR_RANGE,
+  )
+  const [rangeStart, setRangeStart] = useState(() => computeRangeStart(new Date(), rangeSettings))
+
+  function setRangeLength(rangeLength: RangeLength) {
+    const next = {
+      ...rangeSettings,
+      rangeLength,
+      anchorMode: resolveAnchorMode(rangeSettings.anchorMode, rangeLength),
+    }
+    setRangeSettings(next)
+    setRangeStart(computeRangeStart(new Date(), next))
+  }
+
+  function setAnchorMode(anchorMode: AnchorMode) {
+    const next = { ...rangeSettings, anchorMode }
+    setRangeSettings(next)
+    setRangeStart(computeRangeStart(new Date(), next))
+  }
+
+  function setWeekStartDay(weekStartDay: WeekStartDay) {
+    const next = { ...rangeSettings, weekStartDay }
+    setRangeSettings(next)
+    setRangeStart(computeRangeStart(new Date(), next))
+  }
 
   // Persisted so filter choices survive navigating away and back, not just
   // page reloads — matches the Shows page's filter-persistence behavior.
@@ -110,11 +135,11 @@ export default function Calendar() {
   const debouncedQuery = useDebounce(query, 300)
 
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
+    () => Array.from({ length: rangeSettings.rangeLength }, (_, i) => addDays(rangeStart, i)),
+    [rangeStart, rangeSettings.rangeLength],
   )
   const start = toISODate(days[0])
-  const end = toISODate(days[6])
+  const end = toISODate(days[days.length - 1])
   const today = toISODate(new Date())
 
   const { data: episodes = [], isLoading, isError, error } = useCalendarWeek(start, end, today)
@@ -153,23 +178,62 @@ export default function Calendar() {
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold mr-auto">Calendar</h1>
         <button
-          onClick={() => setWeekStart((w) => addDays(w, -7))}
+          onClick={() => setRangeStart((s) => addDays(s, -rangeSettings.rangeLength))}
           className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           ← Prev
         </button>
         <button
-          onClick={() => setWeekStart(mondayOf(new Date()))}
+          onClick={() => setRangeStart(computeRangeStart(new Date(), rangeSettings))}
           className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Today
         </button>
         <button
-          onClick={() => setWeekStart((w) => addDays(w, 7))}
+          onClick={() => setRangeStart((s) => addDays(s, rangeSettings.rangeLength))}
           className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Next →
         </button>
+      </div>
+
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">Range</span>
+          <SegmentedControl
+            aria-label="Range length"
+            options={RANGE_LENGTH_OPTIONS}
+            value={rangeSettings.rangeLength}
+            onChange={setRangeLength}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">Anchor</span>
+          <SegmentedControl
+            aria-label="Anchor mode"
+            options={ANCHOR_MODE_OPTIONS.map((o) => ({
+              ...o,
+              disabled: o.value === 'week-start' && rangeSettings.rangeLength !== 7,
+              disabledReason:
+                o.value === 'week-start' && rangeSettings.rangeLength !== 7
+                  ? 'Only available for 7-day range'
+                  : undefined,
+            }))}
+            value={rangeSettings.anchorMode}
+            onChange={setAnchorMode}
+          />
+        </div>
+        {rangeSettings.anchorMode === 'week-start' && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500">Week begins</span>
+            <SegmentedControl
+              aria-label="Week start day"
+              options={WEEK_START_DAY_OPTIONS}
+              value={rangeSettings.weekStartDay}
+              onChange={setWeekStartDay}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
@@ -216,10 +280,10 @@ export default function Calendar() {
       ) : isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : activeFilterCount > 0 && filtered.length === 0 ? (
-        <p className="text-sm text-gray-500">No episodes this week match the current filters.</p>
+        <p className="text-sm text-gray-500">No episodes in this range match the current filters.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-          {days.map((day, i) => {
+        <div className={GRID_COLS_CLASS[rangeSettings.rangeLength]}>
+          {days.map((day) => {
             const iso = toISODate(day)
             const dayEpisodes = byDay.get(iso) ?? []
             const isToday = iso === today
@@ -230,7 +294,7 @@ export default function Calendar() {
                     isToday ? 'bg-blue-500 text-white' : 'text-gray-500'
                   }`}
                 >
-                  {DAY_LABELS[i]} {day.getMonth() + 1}/{day.getDate()}
+                  {dayLabel(day)} {day.getMonth() + 1}/{day.getDate()}
                 </div>
                 <div className="space-y-2">
                   {dayEpisodes.length === 0 ? (
