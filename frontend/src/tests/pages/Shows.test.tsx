@@ -60,9 +60,16 @@ function mockResponse(body: unknown = null, status = 200): Response {
   } as Response
 }
 
-function mockShowsPage(shows: ShowList[], watchlistShowIds: number[] = []) {
+function mockShowsPage(
+  shows: ShowList[],
+  watchlistShowIds: number[] = [],
+  tmdbResults: unknown[] = [],
+) {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input)
+    if (url.startsWith('/api/shows/search?')) {
+      return mockResponse({ results: tmdbResults, total_results: tmdbResults.length, total_pages: 1, page: 1 })
+    }
     if (url.startsWith('/api/shows?')) return mockResponse(shows)
     if (url.startsWith('/api/watchlist?')) {
       return mockResponse(
@@ -261,5 +268,35 @@ describe('Shows page — Missing Episodes tab', () => {
       expect(screen.getByText(/No data quality issues found/)).toBeInTheDocument(),
     )
     expect(screen.queryByText('Gappy Show')).not.toBeInTheDocument()
+  })
+})
+
+describe('Shows page — Search Shows modal', () => {
+  test('clicking a TMDB result poster opens its metadata detail modal', async () => {
+    mockShowsPage([], [], [
+      {
+        id: 55,
+        name: 'Distant Planet',
+        overview: 'A show about a distant planet.',
+        poster_path: '/distant.jpg',
+        backdrop_path: null,
+        vote_average: 7.8,
+        vote_count: 200,
+        first_air_date: '2023-05-01',
+        media_type: 'tv',
+        original_language: 'en',
+      },
+    ])
+    render(<Shows />, { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Search shows…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'TMDB' }))
+    fireEvent.change(screen.getByPlaceholderText('Search TMDB…'), { target: { value: 'distant' } })
+
+    fireEvent.click(await screen.findByAltText('Distant Planet'))
+
+    await waitFor(() => expect(screen.getAllByText('Distant Planet').length).toBeGreaterThan(1))
+    expect(screen.getByText('A show about a distant planet.')).toBeInTheDocument()
+    expect(screen.getByText('★ 7.8')).toBeInTheDocument()
   })
 })
