@@ -27,7 +27,7 @@ General capture guidance:
 | 8 | `rss-subscriptions-tab.png` | RSS page, Subscriptions tab, a few rows with regex filters and an active/inactive mix | `features.md` → RSS feed integration |
 | 9 | `rss-recommendations-tab.png` | RSS page, Recommendations tab with at least one flagged subscription | `features.md` → RSS feed integration |
 | 10 | `data-quality-tab.png` | Shows page, Data tab, showing the per-show check table and an orphaned-tracking-record entry | `features.md` → Data Quality |
-| 11 | `calendar-page.png` | Airing calendar with a mix of tracked/missing/upcoming episodes visible in the same week | `features.md` → Airing calendar |
+| 11 | `calendar-page.png` | Airing calendar with a mix of tracked/missing/upcoming episodes visible in the same week, with the Range/Anchor toolbar visible | `features.md` → Airing calendar |
 | 12 | `dashboard-carousels.png` | Close crop on just the two Recently Added carousels (shows + episodes) | `features.md` → Dashboard |
 | 13 | `settings-page.png` | Settings page, Services card showing connection-test results (green checks) plus the feature-toggle group | `features.md` → Settings, and `setup.md` → Verifying the installation |
 | 17 | `discover-page.png` | Discover page, a mix of seeded (with "Because you watch X" tags) and trending fill cards | `features.md` → Discover |

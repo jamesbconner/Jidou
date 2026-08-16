@@ -232,7 +232,7 @@ The Dashboard is the landing page: a pipeline-status donut, a file-ingestion cha
 
 ## Airing calendar
 
-An optional calendar page (toggle in Settings) showing episodes airing in a date range across your whole library, each marked `tracked`, `missing`, or `upcoming` relative to today.
+An optional calendar page (toggle in Settings) showing episodes airing in a date range across your whole library, each marked `tracked`, `missing`, or `upcoming` relative to today. The date range is configurable and persists per-browser: a **range** of 1, 3, 5, or 7 days, and an **anchor** — starting on today, centered on today, or (7-day range only) starting at the beginning of the calendar week, with Sunday or Monday as the week-start day.
 
 ![Airing calendar page](screenshots/calendar-page.png)
 
