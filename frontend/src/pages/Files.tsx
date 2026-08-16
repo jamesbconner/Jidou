@@ -371,6 +371,7 @@ export default function Files() {
                 <th className="px-4 py-2 text-left">Filename</th>
                 <th className="px-4 py-2 text-left">Size</th>
                 <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Downloaded</th>
                 <th className="px-4 py-2 text-left">Show</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -379,7 +380,7 @@ export default function Files() {
               {files.map((f) => (
                 <tr key={f.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 font-mono text-xs max-w-xs">
-                    <div className="truncate">{f.original_filename}</div>
+                    <div className="truncate" title={f.original_filename}>{f.original_filename}</div>
                     {f.parsed_show_name && f.status === 'unmatched' && (
                       <div className="text-zinc-400 truncate text-xs mt-0.5">
                         Parsed: {f.parsed_show_name}
@@ -394,6 +395,9 @@ export default function Files() {
                   <td className="px-4 py-2 text-gray-500">{formatBytes(f.file_size)}</td>
                   <td className="px-4 py-2">
                     <FileStatusBadge status={f.status} />
+                  </td>
+                  <td className="px-4 py-2 text-gray-500 whitespace-nowrap">
+                    {new Date(f.created_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-2">
                     {f.show ? (
