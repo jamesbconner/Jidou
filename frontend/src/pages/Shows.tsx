@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router'
 import { ShowCard } from '@/components/ShowCard'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
@@ -7,6 +7,7 @@ import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import { useOrphans } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
+import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -150,6 +151,7 @@ export default function Shows() {
   const [resolvingOrphan, setResolvingOrphan] = useState<OrphanedTrackingRecord | null>(null)
   const [tmdbModalOpen, setTmdbModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'library' | 'tmdb'>('library')
+  const [detailResult, setDetailResult] = useState<TmdbResult | null>(null)
 
   const [pendingWatchlistShowIds, setPendingWatchlistShowIds] = useState<Set<number>>(new Set())
 
@@ -192,15 +194,6 @@ export default function Shows() {
   const setMissingFilterWatchlistOnly = (v: boolean) => setMissingFilters({ ...missingFilters, filterWatchlistOnly: v })
 
   const debouncedQuery = useDebounce(query, 300)
-
-  useEffect(() => {
-    if (!tmdbModalOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setTmdbModalOpen(false); setQuery('') }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tmdbModalOpen])
 
   // Single fetch covers both the modal search pool and the display grid.
   const { data: allShows = [], isLoading } = useShows('title_asc', 10000)
@@ -357,6 +350,7 @@ export default function Shows() {
   function closeModal() {
     setTmdbModalOpen(false)
     setQuery('')
+    setDetailResult(null)
   }
 
   function switchModalMode(mode: 'library' | 'tmdb') {
@@ -571,6 +565,7 @@ export default function Shows() {
                               onAdd={() => handleTrack(r)}
                               addPending={createShow.isPending}
                               onNavigate={closeModal}
+                              onCardClick={() => setDetailResult(r)}
                             />
                           )
                         })}
@@ -879,6 +874,17 @@ export default function Shows() {
         <OrphanResolveModal
           orphan={resolvingOrphan}
           onClose={() => setResolvingOrphan(null)}
+        />
+      )}
+
+      {detailResult && (
+        <DiscoverDetailModal
+          result={detailResult}
+          inLibraryShowId={
+            libraryIndex.get(`${detailResult.id}:${detailResult.media_type ?? 'tv'}`)?.id ?? null
+          }
+          onClose={() => setDetailResult(null)}
+          onNavigate={closeModal}
         />
       )}
     </div>
