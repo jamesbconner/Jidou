@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
 
+### Movies: flat routing and direct file linking
+- Movies now route to a shared root (`LOCAL_MOVIE_PATH/filename.mkv`) instead of a per-title subfolder — `resolve_show_local_path()` no longer creates `LOCAL_MOVIE_PATH/Movie Name/` for every movie. A movie that still needs its own folder can get one via an explicit `local_path` override on the Show Detail page.
+- New **Fix Match** button on a linked movie file opens `ScanLocalMovieFileModal` in a new replace mode — pick or type the correct on-disk file — instead of the episode-oriented `RematchModal`, which reassigned the show rather than the file. `link-movie-file` gained a `replace=true` mode that unlinks the existing file before linking the new one.
+- `scan-local-movie-file` is now non-recursive (movies typically share one flat root) and excludes files already linked to *any* show, not just this one, so already-tracked sibling movies don't show up as false candidates.
+- Bug fixes from Bugbot review on the above: any untracked file in a shared-root scan can now be linked (previously only the alphabetically-first one could); sibling Link buttons disable once one row links, and a single in-flight-request guard closes a race where two rows could link concurrently; `link-movie-file`'s "already linked elsewhere" check now matches by on-disk path across every `DownloadedFile` (not just synthetic-import rows), and re-linking a previously-unlinked path no longer silently no-ops on an orphaned row.
+- Removed the redundant status badge from the movie file row on Show Detail — the Fix Match button already signals when the file is actionable.
+
+### Files page
+- Ignored files are now hidden by default under "All statuses" — a new **Show ignored** toggle (`show_ignored` query param on `GET /files`, applies only when status is unset) brings them back. Show Detail's own file panels pass `show_ignored=true` so a show-scoped ignored file still appears there.
+- Added **Per Page** / **Max Records** controls matching the Tasks page, and status/pagination/toggle choices now persist to `localStorage` the way the Shows page does.
+
+### Missing Episodes tab filters
+- The Missing Episodes tab (Shows page → **Data**) gained content type, status, genre, language, minimum-missing-count, and watchlist-only filters, plus a **Clear filters** button, with filter state persisted independently from the Library tab's filter bar.
+
+### Search Shows metadata modal
+- Clicking a poster in the Search Shows modal's TMDB tab now opens a detail popup (title, overview, rating, year) instead of doing nothing, so you can confirm a match before adding it. Reuses the existing Discover detail modal rather than a near-duplicate component.
+
+### RSS Feeds table
+- URL, default locations, regex hints, and remote key now show as compact set/unset checkmarks (full value on hover) instead of cluttering the table — except the remote key ID, which reverted back to showing the number directly since a checkmark didn't convey a value useful for cross-referencing the remote YaRSS2 config. Regex hints are now visible in the table for the first time (previously edit-modal only).
+
+### Tasks page
+- New **Delete** pill button on completed/failed/cancelled task cards (`DELETE /api/tasks/{id}`, blocked while a task is pending/running — cancel first).
+
+### Bug fixes
+- Local file scan (`scan_show_directory`, used by **Scan Local Files**) silently skipped symlinked season directories — `Path.rglob` doesn't descend into symlinks on any current Python version, unlike the SFTP scanner which resolves them. Switched to `os.walk(followlinks=True)`, with (device, inode) tracking to prune any symlink that cycles back to an already-visited directory rather than hanging the walk.
+- "Episodes synced" confirmation message on Show Detail now renders immediately after the Sync Episodes button that produced it, instead of after both action buttons.
+
+### Internal refactors
+- Migrated the frontend from Tailwind CSS v3 to v4 (`@tailwindcss/vite`, `@import "tailwindcss"`, dropped `tailwind.config.ts` in favor of v4's automatic content detection) — completes an upgrade a Dependabot PR couldn't safely land alone because the version bump alone broke the production build (CI's frontend job never ran `npm run build`, only `tsc`/`eslint`/`vitest`). Added the upgrade tool's compatibility rule for v4's `currentColor` default on bare `border`/`divide-y` utilities to avoid a visual regression across several components that relied on the old `gray-200` default.
+
 ### Watched tracking
 - New `watched`/`watched_at` fields on `Episode` (mirrors the existing `file_tracked`/`file_tracked_at` pattern) — tracks what you've actually seen, independently of `file_tracked` (Jidou has the file) and watchlist status (viewing intent for the show as a whole). Closes #400.
 - Per-episode toggle switch on the Show Detail episode list, plus bulk mark/unmark for a whole season or the whole show (`POST`/`DELETE /shows/{show_id}/episodes/watched`, optionally scoped by `season_number`).

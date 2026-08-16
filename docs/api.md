@@ -90,6 +90,8 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | GET | `/api/shows/{id}/episodes` | List episodes for a show |
 | POST | `/api/shows/{show_id}/scan-local-files` | Read-only: scan the show's own local directory and propose episode matches for files found there |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an untracked episode |
+| POST | `/api/shows/{show_id}/scan-local-movie-file` | Movie counterpart to `scan-local-files`: non-recursive, no episode to resolve against — every file not already linked to *any* show is `matched` |
+| POST | `/api/shows/{show_id}/link-movie-file` | Manually link an on-disk file path to a movie; `replace=true` unlinks the movie's existing file first instead of 422ing |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/begin-rematch` | Prepare a tracked episode's backing file for re-matching (download-backed episodes only) |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/assign-import` | Reassign a path-imported episode's tracked filename to a different episode, atomically |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/watched` | Mark a single episode watched |
@@ -118,6 +120,17 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 }
 ```
 `status` is `matched` (untracked episode, ready to confirm via `link-file`), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file).
+
+**`POST /shows/{show_id}/scan-local-movie-file` query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `replace` | bool | When `true`, files are `matched` even if the movie already has a linked file (default `false`, in which case they come back `conflict`) |
+
+**`POST /shows/{show_id}/link-movie-file` request body:**
+```json
+{ "path": "/data/media/movies/Movie Name (2026).mkv", "replace": false }
+```
 
 **`POST`/`DELETE /shows/{show_id}/episodes/watched` request body (bulk):**
 ```json
@@ -154,6 +167,7 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | `status` | string | Filter by `FileStatus` value |
 | `show_id` | int | Filter by show |
 | `search` | string | Substring match on `original_filename` |
+| `show_ignored` | bool | Include `ignored` files (excluded by default); only applies when `status` is unset |
 | `limit` | int | Max results (1–1000, default 50) |
 | `offset` | int | Pagination offset |
 
@@ -201,7 +215,8 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | GET | `/api/tasks/count` | Count of tasks by status |
 | GET | `/api/tasks/active` | List currently running tasks |
 | POST | `/api/tasks/trigger` | Launch a background task |
-| DELETE | `/api/tasks/{id}` | Cancel a running task |
+| POST | `/api/tasks/{id}/cancel` | Cancel a pending or running task |
+| DELETE | `/api/tasks/{id}` | Delete a completed, failed, or cancelled task (400s a pending/running one — cancel first) |
 
 **Trigger request body:**
 ```json
