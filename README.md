@@ -43,6 +43,6 @@ Open http://localhost:3100
 | Workers | Celery 5 |
 | Database | PostgreSQL 16, SQLAlchemy 2 (async), Alembic |
 | Cache / Broker | Redis 7 |
-| Frontend | React 18, Vite 6, TypeScript, TailwindCSS, TanStack Query |
+| Frontend | React 19, Vite 8, TypeScript, TailwindCSS 4, TanStack Query |
 | Containers | Docker, Docker Compose |
 | Quality | ruff, mypy (strict), bandit, pytest, Vitest |

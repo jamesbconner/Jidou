@@ -9,7 +9,7 @@ What Jidou does and how to use each capability.
 Jidou maintains a local library of TV shows and anime linked to [TMDB](https://www.themoviedb.org/). Each show stores its TMDB metadata, a local filesystem path, a content type, and the full episode list.
 
 **Adding a show:**
-- Go to **Shows → Add Show** and search by title.
+- Go to **Shows → Add Show** and search by title. Click a poster to open a detail modal (overview, rating, year) and confirm it's the right match before adding.
 - Or browse **Trending** for currently popular titles, or add directly from [Discover](#discover).
 - Full TMDB details (genres, external IDs, episode groups) are fetched on creation — not just the sparse fields shown in a search result card — and episodes are synced automatically.
 
@@ -85,6 +85,8 @@ If both fail, the file is marked `unmatched` for manual review.
 
 ![Scan Local Files modal](screenshots/scan-local-files-modal.png)
 
+**Linking a movie's file:** Movies work the same way but through **Scan Local Files** on the movie's Show Detail page, non-recursively (movies typically share one flat root — see [File routing](#file-routing)), excluding files already linked to *any* movie so already-tracked siblings in the same root never show up as false candidates. **Fix Match** on an already-linked movie file opens the same modal in a replace mode — pick or type the correct on-disk file and it swaps the link, instead of the show-reassignment flow `RematchModal` uses for episodes.
+
 **Re-running the match:**
 - Tasks page → **Match**, or
 - `POST /api/tasks/trigger` with `{"task_type": "match"}`
@@ -100,8 +102,10 @@ Routing moves a `matched` file from the staging area to its final library path, 
 ```
 LOCAL_TV_PATH/Show Name/Season 01/filename.mkv
 LOCAL_ANIME_PATH/Show Name/Season 01/filename.mkv
-LOCAL_MOVIE_PATH/Movie Name/filename.mkv
+LOCAL_MOVIE_PATH/filename.mkv
 ```
+
+Movies route flat into the shared `LOCAL_MOVIE_PATH` root by default, not a per-title subfolder — a movie that still needs its own folder can get one via an explicit `local_path` override on the Show Detail page.
 
 **Triggering routing:**
 - Tasks page → **Route**, or
@@ -117,6 +121,7 @@ Some SFTP sources mix genuinely non-TV/movie files into otherwise normal downloa
 
 - **Configured noscan paths** — set `SFTP_NOSCAN_PATHS` in `.env` to one or more remote paths (parallel to `SFTP_REMOTE_PATHS`). Files under a noscan path are tagged at discovery time and routed straight to a terminal `ignored` status once downloaded, instead of `downloaded`.
 - **Manual ignore** — for a stray file a noscan path didn't catch, use the **Ignore** action on the Files page (or `POST /api/files/{id}/ignore`) on any `unmatched` or `error` file. The record is kept, not deleted, so the file is never re-downloaded.
+- **Ignored files are hidden by default** under "All statuses" on the Files page — switch on **Show ignored** to bring them back. The Files page also has **Per Page** / **Max Records** controls matching the Tasks page, and persists status/pagination/filter choices to `localStorage` the way the Shows page does.
 
 ---
 
@@ -209,7 +214,7 @@ Jidou can two-way sync with a Deluge-compatible RSS feed config (YaRSS2 format):
 - Every publish keeps a **snapshot** of the config it wrote, viewable from the RSS page for diffing against a previous publish.
 - The **Recommendations** tab flags subscriptions worth reviewing (e.g. stale or unlinked). **Suggest regex** asks the configured LLM to draft an include/exclude filter from a show's title.
 
-Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_PATH` env var controls where the generated config is written on the SFTP server.
+Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_PATH` env var controls where the generated config is written on the SFTP server. The Feeds table shows the remote key ID directly and set/unset checkmarks (full value on hover) for URL, default locations, and regex hints, so long paths/URLs don't clutter the table.
 
 ![RSS Subscriptions tab](screenshots/rss-subscriptions-tab.png)
 ![RSS Recommendations tab](screenshots/rss-recommendations-tab.png)
@@ -296,6 +301,10 @@ Resolve them from the Data Quality tab by linking each orphan to the correct epi
 
 ![Data Quality tab](screenshots/data-quality-tab.png)
 
+### Missing Episodes tab
+
+A library-wide list of episodes with no tracked file, on its own tab (Shows page → **Data**). Filterable by content type, status, genre, language, minimum missing-episode count, and watchlist-only, with a **Clear filters** button; filter state persists independently from the Library tab's own filter bar.
+
 ---
 
 ## Real-time progress
@@ -303,6 +312,8 @@ Resolve them from the Data Quality tab by linking each orphan to the correct epi
 Every background task streams progress to the browser via WebSocket. The Tasks page shows live progress bars, current file being processed, and a full per-item event log — every file or directory processed emits an event, success or failure, for every task type (scan, download, match, route, sync, import, backfill_show_metadata).
 
 The Tasks page list has two independent size controls: **Per page** controls how many task cards are fetched per page; **Max records** caps the total number of tasks reachable across all pages combined (useful for keeping a long-running instance's task history browsable without paging through everything ever run).
+
+A completed, failed, or cancelled task card has a **Delete** pill button (`DELETE /api/tasks/{id}`) to remove it from the list; a pending or running task must be cancelled first.
 
 The WebSocket endpoint is `ws://host/ws` — the frontend connects automatically and reconnects with exponential backoff on disconnection.
 
