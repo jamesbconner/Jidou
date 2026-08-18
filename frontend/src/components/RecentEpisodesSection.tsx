@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { useRecentEpisodes, useDashboardGenres, type RecentSort } from '@/hooks/useDashboard'
+import { useAppSettings } from '@/hooks/useSettings'
 import { CardCarousel } from '@/components/CardCarousel'
 import { RecentEpisodeCard } from '@/components/RecentEpisodeCard'
 import { DashboardSectionControls } from '@/components/DashboardSectionControls'
@@ -27,6 +28,8 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
   )
   const { data: episodes = [], isLoading, isError } = useRecentEpisodes(prefs)
   const { data: genreOptions = [] } = useDashboardGenres()
+  const { data: appSettings } = useAppSettings()
+  const preferPosters = appSettings?.recent_episodes_prefer_posters ?? false
 
   // Memoized so CardCarousel's children reference only changes when the
   // actual result set or sort changes — not on every unrelated parent
@@ -38,10 +41,11 @@ export function RecentEpisodesSection({ onCardClick }: Props) {
           key={episode.id}
           episode={episode}
           sort={prefs.sort}
+          preferPosters={preferPosters}
           onClick={(clicked) => onCardClick(clicked, prefs.sort)}
         />
       )),
-    [episodes, prefs.sort, onCardClick],
+    [episodes, prefs.sort, preferPosters, onCardClick],
   )
 
   return (

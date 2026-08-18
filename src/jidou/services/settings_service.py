@@ -17,6 +17,7 @@ CALENDAR_ENABLED = "dashboard.calendar_enabled"
 DISCOVER_ENABLED = "dashboard.discover_enabled"
 RECENT_EPISODES_ENABLED = "dashboard.recent_episodes_enabled"
 RECENT_MOVIES_ENABLED = "dashboard.recent_movies_enabled"
+RECENT_EPISODES_PREFER_POSTERS = "dashboard.recent_episodes_prefer_posters"
 
 _DEFAULTS: dict[str, Any] = {
     SHOW_ADULT_CONTENT: False,
@@ -24,6 +25,7 @@ _DEFAULTS: dict[str, Any] = {
     DISCOVER_ENABLED: True,
     RECENT_EPISODES_ENABLED: True,
     RECENT_MOVIES_ENABLED: True,
+    RECENT_EPISODES_PREFER_POSTERS: False,
 }
 
 

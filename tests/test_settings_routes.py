@@ -39,6 +39,7 @@ class TestGetSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
         finally:
             app.dependency_overrides.clear()
@@ -61,6 +62,7 @@ class TestGetSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
         finally:
             app.dependency_overrides.clear()
@@ -83,6 +85,7 @@ class TestGetSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
         finally:
             app.dependency_overrides.clear()
@@ -105,6 +108,7 @@ class TestGetSettings:
                 "discover_enabled": False,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
         finally:
             app.dependency_overrides.clear()
@@ -127,6 +131,7 @@ class TestGetSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
         finally:
             app.dependency_overrides.clear()
@@ -149,6 +154,30 @@ class TestGetSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
+                "recent_episodes_prefer_posters": False,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_returns_stored_recent_episodes_prefer_posters_value(self) -> None:
+        """GET /settings reflects a previously stored recent_episodes_prefer_posters=True."""
+        row = MagicMock()
+        row.key = "dashboard.recent_episodes_prefer_posters"
+        row.value = True
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            resp = TestClient(app).get("/api/settings")
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "discover_enabled": True,
+                "recent_episodes_enabled": True,
+                "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -180,6 +209,7 @@ class TestUpdateSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
             # First execute() call is the upsert; second is the re-fetch in get_all_settings.
             assert session.execute.await_count == 2
@@ -211,6 +241,7 @@ class TestUpdateSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
             assert session.execute.await_count == 2
         finally:
@@ -241,6 +272,7 @@ class TestUpdateSettings:
                 "discover_enabled": False,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
             assert session.execute.await_count == 2
         finally:
@@ -271,6 +303,7 @@ class TestUpdateSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
             assert session.execute.await_count == 2
         finally:
@@ -301,6 +334,40 @@ class TestUpdateSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
+                "recent_episodes_prefer_posters": False,
+            }
+            assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_updates_recent_episodes_prefer_posters(self) -> None:
+        """PATCH /settings with recent_episodes_prefer_posters applies the update."""
+        row = MagicMock()
+        row.key = "dashboard.recent_episodes_prefer_posters"
+        row.value = True
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = [row]
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None, result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch(
+                "/api/settings", json={"recent_episodes_prefer_posters": True}
+            )
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "show_adult_content": False,
+                "calendar_enabled": True,
+                "discover_enabled": True,
+                "recent_episodes_enabled": True,
+                "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": True,
             }
             assert session.execute.await_count == 2
         finally:
@@ -325,6 +392,7 @@ class TestUpdateSettings:
                 "discover_enabled": True,
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
+                "recent_episodes_prefer_posters": False,
             }
             # Only the get_all_settings read — no upsert executed.
             assert session.execute.await_count == 1

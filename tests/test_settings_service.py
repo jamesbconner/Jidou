@@ -8,6 +8,7 @@ from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     DISCOVER_ENABLED,
     RECENT_EPISODES_ENABLED,
+    RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
     SHOW_ADULT_CONTENT,
     get_all_settings,
@@ -104,6 +105,7 @@ class TestGetAllSettings:
             DISCOVER_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,
+            RECENT_EPISODES_PREFER_POSTERS: False,
         }
 
     @pytest.mark.asyncio
@@ -125,4 +127,5 @@ class TestGetAllSettings:
             DISCOVER_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,
+            RECENT_EPISODES_PREFER_POSTERS: False,
         }

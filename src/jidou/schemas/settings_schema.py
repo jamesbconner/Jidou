@@ -21,6 +21,12 @@ class AppSettingsRead(BaseModel):
     recent_movies_enabled: bool = Field(
         description="Whether the dashboard's Recently Added Movies carousel is shown",
     )
+    recent_episodes_prefer_posters: bool = Field(
+        description=(
+            "Whether the Recently Added Episodes carousel always shows the show poster "
+            "instead of the episode still, for visual consistency across cards"
+        ),
+    )
 
 
 class AppSettingsPatch(BaseModel):
@@ -31,3 +37,4 @@ class AppSettingsPatch(BaseModel):
     discover_enabled: bool | None = None
     recent_episodes_enabled: bool | None = None
     recent_movies_enabled: bool | None = None
+    recent_episodes_prefer_posters: bool | None = None
