@@ -7,16 +7,28 @@ const TMDB_IMG = '/api/images/w300'
 interface Props {
   episode: RecentEpisodeItem
   sort: RecentSort
+  preferPosters: boolean
   onClick: (episode: RecentEpisodeItem) => void
 }
 
 /** A single episode card in the dashboard's "Recently Added Episodes" carousel. */
-export function RecentEpisodeCard({ episode, sort, onClick }: Props) {
-  const image = episode.still_path ?? episode.show.poster_path
+export function RecentEpisodeCard({ episode, sort, preferPosters, onClick }: Props) {
+  // With preferPosters on, every card uses the show poster (falling back to
+  // the still only when no poster exists) so the carousel reads as visually
+  // uniform, at the cost of episode-specific artwork for shows that have it.
+  const image = preferPosters
+    ? (episode.show.poster_path ?? episode.still_path)
+    : (episode.still_path ?? episode.show.poster_path)
   // Episode stills are 16:9 (backdrop-style); the poster fallback is 2:3 —
   // genuinely different source aspect ratios, so the box has to match
   // whichever one is actually being shown rather than a single fixed value.
-  const imageAspectClass = episode.still_path ? 'aspect-video' : 'aspect-[2/3]'
+  // preferPosters pins the box to the poster ratio regardless of which image
+  // ends up rendered, which is the whole point of the "uniform" setting.
+  const imageAspectClass = preferPosters
+    ? 'aspect-[2/3]'
+    : episode.still_path
+      ? 'aspect-video'
+      : 'aspect-[2/3]'
   // Show whichever date the current sort actually orders by, rather than
   // always preferring file_tracked_at — with "release" sort selected, the
   // list is ordered by air_date, so the card should reflect that.

@@ -1019,6 +1019,9 @@ export interface paths {
          *         status: Filter by file status (``discovered``, ``downloaded``, etc.).
          *         show_id: Filter by matched show ID.
          *         search: Case-insensitive substring match on ``original_filename``.
+         *         show_ignored: When *status* is unset, include ``ignored`` files in the
+         *             unfiltered result. Has no effect when *status* is explicitly
+         *             provided — an explicit filter always wins.
          *         limit: Maximum results to return (1-1000, default 50).
          *         offset: Number of results to skip for pagination.
          *         response: FastAPI response object used to set ``X-Total-Count`` header.
@@ -2714,6 +2717,8 @@ export interface components {
             recent_episodes_enabled?: boolean | null;
             /** Recent Movies Enabled */
             recent_movies_enabled?: boolean | null;
+            /** Recent Episodes Prefer Posters */
+            recent_episodes_prefer_posters?: boolean | null;
         };
         /**
          * AppSettingsRead
@@ -2745,6 +2750,11 @@ export interface components {
              * @description Whether the dashboard's Recently Added Movies carousel is shown
              */
             recent_movies_enabled: boolean;
+            /**
+             * Recent Episodes Prefer Posters
+             * @description Whether the Recently Added Episodes carousel always shows the show poster instead of the episode still, for visual consistency across cards
+             */
+            recent_episodes_prefer_posters: boolean;
         };
         /**
          * AssignImportRequest
@@ -5435,6 +5445,7 @@ export interface operations {
                 status?: string | null;
                 show_id?: number | null;
                 search?: string | null;
+                show_ignored?: boolean;
                 limit?: number;
                 offset?: number;
             };

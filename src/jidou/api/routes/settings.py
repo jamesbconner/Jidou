@@ -11,6 +11,7 @@ from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     DISCOVER_ENABLED,
     RECENT_EPISODES_ENABLED,
+    RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
     SHOW_ADULT_CONTENT,
     get_all_settings,
@@ -30,6 +31,7 @@ def _to_read_model(values: dict[str, object]) -> AppSettingsRead:
         discover_enabled=bool(values[DISCOVER_ENABLED]),
         recent_episodes_enabled=bool(values[RECENT_EPISODES_ENABLED]),
         recent_movies_enabled=bool(values[RECENT_MOVIES_ENABLED]),
+        recent_episodes_prefer_posters=bool(values[RECENT_EPISODES_PREFER_POSTERS]),
     )
 
 
@@ -85,6 +87,12 @@ async def update_settings(
 
     if "recent_movies_enabled" in payload.model_fields_set:
         await set_setting(db_session, RECENT_MOVIES_ENABLED, payload.recent_movies_enabled)
+        await db_session.flush()
+
+    if "recent_episodes_prefer_posters" in payload.model_fields_set:
+        await set_setting(
+            db_session, RECENT_EPISODES_PREFER_POSTERS, payload.recent_episodes_prefer_posters
+        )
         await db_session.flush()
 
     values = await get_all_settings(db_session)
