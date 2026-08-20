@@ -131,9 +131,6 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
           <span className="text-gray-300">—</span>
         )}
       </td>
-      <td className="px-4 py-2 text-gray-400 text-xs">
-        {new Date(entry.created_at).toLocaleDateString()}
-      </td>
       <td className="px-4 py-2 text-right">
         <button
           onClick={() => onDelete(entry.id)}
@@ -506,7 +503,6 @@ export default function Watchlist() {
                 <th className="px-4 py-2 text-left">Show</th>
                 <th className="px-4 py-2 text-left">Status</th>
                 <th className="px-4 py-2 text-left">Up Next</th>
-                <th className="px-4 py-2 text-left">Added</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
