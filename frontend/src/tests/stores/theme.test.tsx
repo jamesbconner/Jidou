@@ -22,6 +22,7 @@ describe('ThemeProvider / useColorScheme', () => {
     expect(result.current.colorScheme).toBe('dark')
     expect(JSON.parse(window.localStorage.getItem('jidou.colorScheme')!)).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.style.colorScheme).toBe('dark')
   })
 
   test('toggling twice returns to light and removes the class', () => {

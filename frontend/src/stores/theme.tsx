@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, type ReactNode } from 'react'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 
 export type ColorScheme = 'light' | 'dark'
@@ -18,8 +18,14 @@ const ThemeContext = createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [colorScheme, setColorScheme] = useLocalStorageState<ColorScheme>('jidou.colorScheme', 'light')
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so the `dark` class and `color-scheme`
+  // land before the browser paints — otherwise consumers that read
+  // `colorScheme` directly (e.g. Dashboard's Recharts theming) re-render one
+  // frame before the CSS `dark:` variant activates, causing a visible flash
+  // on every toggle.
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', colorScheme === 'dark')
+    document.documentElement.style.colorScheme = colorScheme
   }, [colorScheme])
 
   function toggleColorScheme() {
