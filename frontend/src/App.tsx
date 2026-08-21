@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { WsConnectionProvider } from '@/stores/wsConnection'
+import { ThemeProvider } from '@/stores/theme'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
 import Dashboard from '@/pages/Dashboard'
@@ -27,26 +28,28 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WsConnectionProvider>
-        <BrowserRouter>
-          <ErrorBoundary>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/shows" element={<Shows />} />
-                <Route path="/discover" element={<Discover />} />
-                <Route path="/shows/:id" element={<ShowDetail />} />
-                <Route path="/files" element={<Files />} />
-                <Route path="/watchlist" element={<Watchlist />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/tasks" element={<Tasks />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/rss" element={<RSS />} />
-              </Route>
-            </Routes>
-          </ErrorBoundary>
-        </BrowserRouter>
-      </WsConnectionProvider>
+      <ThemeProvider>
+        <WsConnectionProvider>
+          <BrowserRouter>
+            <ErrorBoundary>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/shows" element={<Shows />} />
+                  <Route path="/discover" element={<Discover />} />
+                  <Route path="/shows/:id" element={<ShowDetail />} />
+                  <Route path="/files" element={<Files />} />
+                  <Route path="/watchlist" element={<Watchlist />} />
+                  <Route path="/calendar" element={<Calendar />} />
+                  <Route path="/tasks" element={<Tasks />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/rss" element={<RSS />} />
+                </Route>
+              </Routes>
+            </ErrorBoundary>
+          </BrowserRouter>
+        </WsConnectionProvider>
+      </ThemeProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )

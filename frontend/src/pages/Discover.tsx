@@ -84,18 +84,18 @@ export default function Discover() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Discover</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold dark:text-gray-100">Discover</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Recommendations based on shows you&apos;re watching, filled out with what&apos;s trending.
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       ) : isError ? (
-        <p className="text-red-500 text-sm">Failed to load recommendations.</p>
+        <p className="text-red-500 dark:text-red-400 text-sm">Failed to load recommendations.</p>
       ) : results.length === 0 ? (
-        <p className="text-gray-500 text-sm">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
           No recommendations available right now — try adding a few shows to your watchlist first.
         </p>
       ) : (
@@ -116,10 +116,10 @@ export default function Discover() {
                   onCardClick={() => setDetailResult(r)}
                 />
                 {issue?.kind === 'failed' && (
-                  <p className="text-[11px] text-red-500 mt-1">Failed to add — try again.</p>
+                  <p className="text-[11px] text-red-500 dark:text-red-400 mt-1">Failed to add — try again.</p>
                 )}
                 {issue?.kind === 'partial' && (
-                  <p className="text-[11px] text-amber-500 mt-1">{issue.message}</p>
+                  <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1">{issue.message}</p>
                 )}
               </div>
             )

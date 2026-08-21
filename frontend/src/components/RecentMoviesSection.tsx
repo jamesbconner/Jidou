@@ -47,7 +47,7 @@ export function RecentMoviesSection({ onCardClick }: Props) {
   return (
     <Card as="section" padding="md" className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold">Recently Added Movies</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recently Added Movies</h2>
         <DashboardSectionControls
           sort={prefs.sort}
           onSortChange={(sort) => setPrefs({ ...prefs, sort })}
@@ -59,10 +59,10 @@ export function RecentMoviesSection({ onCardClick }: Props) {
         />
       </div>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
-      {isError && <p className="text-sm text-red-500">Failed to load recently added movies.</p>}
+      {isLoading && <p className="text-sm text-gray-400 dark:text-gray-500">Loading…</p>}
+      {isError && <p className="text-sm text-red-500 dark:text-red-400">Failed to load recently added movies.</p>}
       {!isLoading && !isError && movies.length === 0 && (
-        <p className="text-sm text-gray-400">No recently added movies match these filters.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500">No recently added movies match these filters.</p>
       )}
       {movies.length > 0 && <CardCarousel>{cards}</CardCarousel>}
     </Card>

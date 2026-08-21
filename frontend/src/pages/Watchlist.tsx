@@ -80,15 +80,15 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   }
 
   return (
-    <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50">
+    <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50 dark:hover:bg-gray-800">
       <td
         {...(dragEnabled ? listeners : {})}
-        className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing' : 'text-gray-300 cursor-not-allowed'}`}
+        className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
         <GripIcon />
       </td>
-      <td className="px-4 py-2 text-gray-400 text-xs">{index + 1}</td>
+      <td className="px-4 py-2 text-gray-400 dark:text-gray-500 text-xs">{index + 1}</td>
       <td className="px-2 py-2 w-48">
         {entry.show.backdrop_path ? (
           <img
@@ -98,7 +98,7 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
             loading="lazy"
           />
         ) : (
-          <div className="w-48 aspect-video bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-[10px]">
+          <div className="w-48 aspect-video bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500 text-[10px]">
             No image
           </div>
         )}
@@ -106,11 +106,11 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
       <td className="px-4 py-2">
         <Link
           to={`/shows/${entry.show_id}`}
-          className="font-medium hover:underline text-blue-700"
+          className="font-medium hover:underline text-blue-700 dark:text-blue-400"
         >
           {entry.show.title}
         </Link>
-        <span className="block text-xs text-gray-400">TMDB #{entry.show.tmdb_id}</span>
+        <span className="block text-xs text-gray-400 dark:text-gray-500">TMDB #{entry.show.tmdb_id}</span>
       </td>
       <td className="px-4 py-2">
         <WatchlistStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
@@ -118,24 +118,24 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
       <td className="px-4 py-2">
         {entry.next_up ? (
           <>
-            <span className="block font-medium">
+            <span className="block font-medium dark:text-gray-200">
               S{String(entry.next_up.season_number).padStart(2, '0')}E
               {String(entry.next_up.episode_number).padStart(2, '0')}
               {entry.next_up.file_tracked && ' ✓'}
             </span>
             {entry.next_up.air_date && (
-              <span className="block text-xs text-gray-400">{entry.next_up.air_date}</span>
+              <span className="block text-xs text-gray-400 dark:text-gray-500">{entry.next_up.air_date}</span>
             )}
           </>
         ) : (
-          <span className="text-gray-300">—</span>
+          <span className="text-gray-300 dark:text-gray-700">—</span>
         )}
       </td>
       <td className="px-4 py-2 text-right">
         <button
           onClick={() => onDelete(entry.id)}
           disabled={isDeletePending}
-          className="text-xs text-red-500 hover:underline disabled:opacity-50"
+          className="text-xs text-red-500 dark:text-red-400 hover:underline disabled:opacity-50"
         >
           Remove
         </button>
@@ -298,11 +298,11 @@ export default function Watchlist() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold mr-auto">Watchlist</h1>
+        <h1 className="text-2xl font-bold mr-auto dark:text-gray-100">Watchlist</h1>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as WatchlistStatus | '')}
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
         >
           <option value="">All statuses</option>
           {STATUS_OPTIONS.map((s) => (
@@ -311,13 +311,13 @@ export default function Watchlist() {
         </select>
         <button
           onClick={() => setSearchModalOpen(true)}
-          className="border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+          className="border rounded-lg px-3 py-2 text-sm text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56 dark:text-gray-500 dark:hover:bg-gray-800"
         >
           Search shows to add…
         </button>
       </div>
 
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         Keep track of shows you want to watch, are currently watching, or have finished.
       </p>
 
@@ -331,10 +331,10 @@ export default function Watchlist() {
           className="max-h-[80vh] flex flex-col"
         >
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-semibold">Add to Watchlist</h3>
+              <h3 className="font-semibold dark:text-gray-100">Add to Watchlist</h3>
               <button
                 onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
-                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
+                className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none"
                 aria-label="Close"
               >
                 ✕
@@ -344,7 +344,7 @@ export default function Watchlist() {
             {/* Library / TMDB toggle */}
             <div className="px-5 pt-4">
               <div className="flex items-center justify-center gap-3 text-sm">
-                <span className={searchMode === 'library' ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                <span className={searchMode === 'library' ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>
                   Library
                 </span>
                 <button
@@ -354,7 +354,7 @@ export default function Watchlist() {
                   aria-label="Toggle between library and TMDB search"
                   onClick={() => setSearchMode((m) => (m === 'library' ? 'tmdb' : 'library'))}
                   className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                    searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300'
+                    searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
                   }`}
                 >
                   <span
@@ -363,7 +363,7 @@ export default function Watchlist() {
                     }`}
                   />
                 </button>
-                <span className={searchMode === 'tmdb' ? 'font-medium text-gray-900' : 'text-gray-400'}>
+                <span className={searchMode === 'tmdb' ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>
                   TMDB
                 </span>
               </div>
@@ -376,16 +376,16 @@ export default function Watchlist() {
                 placeholder={searchMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
             <div className="overflow-y-auto flex-1 p-5">
               {searchQuery.trim().length < 2 ? (
-                <p className="text-sm text-gray-400">Type at least 2 characters to search.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search.</p>
               ) : searchMode === 'tmdb' && (tmdbLoading || debouncedQuery !== searchQuery) ? (
-                <p className="text-sm text-gray-400">Searching…</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
               ) : !hasResults ? (
-                <p className="text-sm text-gray-400">No results.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No results.</p>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {searchMode === 'library' ? (
@@ -397,7 +397,7 @@ export default function Watchlist() {
                             {s.poster_path ? (
                               <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
                             ) : (
-                              <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                              <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">No image</div>
                             )}
                             {wlStatus && (
                               <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
@@ -406,11 +406,11 @@ export default function Watchlist() {
                             )}
                           </div>
                           <div className="p-2 flex flex-col flex-1">
-                            <p className="text-xs font-medium line-clamp-2 flex-1">{s.title}</p>
+                            <p className="text-xs font-medium line-clamp-2 flex-1 dark:text-gray-200">{s.title}</p>
                             {wlStatus ? (
                               <Link
                                 to={`/shows/${s.id}`}
-                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/40"
                               >
                                 View in Library
                               </Link>
@@ -441,7 +441,7 @@ export default function Watchlist() {
                             {r.poster_path ? (
                               <img src={`${TMDB_IMG}${r.poster_path}`} alt={r.name ?? r.title} className="w-full aspect-[2/3] object-cover" loading="lazy" />
                             ) : (
-                              <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No image</div>
+                              <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">No image</div>
                             )}
                             {wlStatus && (
                               <span className={`absolute top-1 right-1 text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_COLOR[wlStatus]}`}>
@@ -450,11 +450,11 @@ export default function Watchlist() {
                             )}
                           </div>
                           <div className="p-2 flex flex-col flex-1">
-                            <p className="text-xs font-medium line-clamp-2 flex-1">{r.name ?? r.title}</p>
+                            <p className="text-xs font-medium line-clamp-2 flex-1 dark:text-gray-200">{r.name ?? r.title}</p>
                             {wlStatus && libraryShow ? (
                               <Link
                                 to={`/shows/${libraryShow.id}`}
-                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+                                className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 dark:hover:bg-green-900/40"
                               >
                                 View in Library
                               </Link>
@@ -482,20 +482,20 @@ export default function Watchlist() {
       )}
 
       {reorderError && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 dark:text-red-400 dark:bg-red-950/40 dark:border-red-800">
           Reorder failed: {reorderError}
         </p>
       )}
 
       {/* Entries table */}
       {isLoading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="text-gray-500 text-sm">No watchlist entries yet.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">No watchlist entries yet.</p>
       ) : (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
               <tr>
                 <th className="px-2 py-2 w-6" />
                 <th className="px-4 py-2 text-left w-8">#</th>

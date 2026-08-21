@@ -76,15 +76,15 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
   )
 
   return (
     <Modal onClose={onClose} tone="light" className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">{isEdit ? 'Edit Feed' : 'New Feed'}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{isEdit ? 'Edit Feed' : 'New Feed'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
         </div>
 
         <div className="overflow-y-auto p-5 space-y-4">
@@ -112,9 +112,9 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
               onChange={(e) => set('regex_exclude_hint', e.target.value)}
               disabled={draft.no_exclude_needed}
               placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*"
-              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 disabled:text-gray-400"
+              className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400"
             />
-            <label className="flex items-center gap-2 text-xs text-gray-600 mt-1.5 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={draft.no_exclude_needed}
@@ -138,12 +138,12 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
           </label>
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
           <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           <button
             onClick={handleSave}
             disabled={isPending || !draft.name.trim() || !draft.url.trim()}
-            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
           >
             {isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
           </button>

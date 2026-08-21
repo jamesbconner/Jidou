@@ -10,7 +10,7 @@ function SetIndicator({ value, unsetTitle }: { value: string | null | undefined;
   return (
     <span
       title={isSet ? value : unsetTitle}
-      className={isSet ? 'text-green-600' : 'text-gray-300'}
+      className={isSet ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-600'}
       aria-label={isSet ? `Set: ${value}` : unsetTitle}
     >
       {isSet ? '✓' : '—'}
@@ -32,7 +32,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
       <div className="flex justify-end mb-2">
         <button
           onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
+          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500"
         >
           + New Feed
         </button>
@@ -40,7 +40,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+          <thead className="bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400 uppercase">
             <tr>
               <th className="px-3 py-2 w-12">Key</th>
               <th className="px-3 py-2">Name</th>
@@ -53,12 +53,12 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
               <th className="px-3 py-2 w-24"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {feeds.map((f) => (
-              <tr key={f.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 font-mono text-xs text-gray-500">{f.remote_key ?? '—'}</td>
-                <td className="px-3 py-2 font-medium">
-                  <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 hover:underline text-left">
+              <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-900">
+                <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">{f.remote_key ?? '—'}</td>
+                <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                  <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline text-left">
                     {f.name}
                   </button>
                 </td>
@@ -89,16 +89,16 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
                     aria-pressed={f.active}
                   >
                     {f.active
-                      ? <Badge color="bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400">active</Badge>
-                      : <Badge color="bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
+                      ? <Badge color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 hover:ring-1 hover:ring-green-400">active</Badge>
+                      : <Badge color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
                   </button>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex gap-2">
-                    <button onClick={() => setEditFeed(f)} className="text-xs text-gray-500 hover:underline">Edit</button>
+                    <button onClick={() => setEditFeed(f)} className="text-xs text-gray-500 dark:text-gray-400 hover:underline">Edit</button>
                     <button
                       onClick={() => { if (confirm(`Delete feed "${f.name}"?`)) del.mutate(f.id) }}
-                      className="text-xs text-red-400 hover:underline"
+                      className="text-xs text-red-400 dark:text-red-400 hover:underline"
                     >
                       Delete
                     </button>
@@ -109,7 +109,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
           </tbody>
         </table>
         {feeds.length === 0 && (
-          <p className="text-center text-gray-400 py-8 text-sm">No feeds. Run an import or create one manually.</p>
+          <p className="text-center text-gray-400 dark:text-gray-500 py-8 text-sm">No feeds. Run an import or create one manually.</p>
         )}
       </div>
     </>

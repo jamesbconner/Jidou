@@ -15,7 +15,7 @@ export function WatchedToggle({ watched, onToggle, disabled = false }: Props) {
       onClick={onToggle}
       disabled={disabled}
       className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait ${
-        watched ? 'bg-green-500' : 'bg-gray-300'
+        watched ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'
       }`}
     >
       <span

@@ -47,7 +47,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
       <button
         onClick={() => onPageChange(0)}
         disabled={page === 0}
-        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
         title="First page"
       >
         «
@@ -55,12 +55,12 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
       <button
         onClick={() => onPageChange(Math.max(0, page - 1))}
         disabled={page === 0}
-        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
         title="Previous page"
       >
         ‹
       </button>
-      <span className="flex items-center gap-1 text-gray-600">
+      <span className="flex items-center gap-1 text-gray-600 dark:text-gray-300">
         Page
         <input
           type="number"
@@ -71,14 +71,14 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
           onBlur={commitJump}
           onKeyDown={handleKeyDown}
           aria-label="Go to page"
-          className="w-14 border rounded px-1 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-14 border rounded px-1 py-0.5 text-center dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         of {totalPages}
       </span>
       <button
         onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
         disabled={page >= totalPages - 1}
-        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
         title="Next page"
       >
         ›
@@ -86,7 +86,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
       <button
         onClick={() => onPageChange(totalPages - 1)}
         disabled={page >= totalPages - 1}
-        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+        className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
         title="Last page"
       >
         »

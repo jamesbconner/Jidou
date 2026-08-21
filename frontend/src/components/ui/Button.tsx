@@ -24,8 +24,8 @@ const SIZE: Record<ButtonSize, string> = {
 const VARIANT: Record<ButtonTone, Record<ButtonVariant, string>> = {
   light: {
     primary: 'bg-blue-600 text-white hover:bg-blue-700',
-    secondary: 'border border-gray-300 text-gray-700 hover:bg-gray-50',
-    danger: 'border border-red-300 text-red-600 hover:bg-red-50',
+    secondary: 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800',
+    danger: 'border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40',
   },
   dark: {
     primary: 'bg-indigo-600 text-white hover:bg-indigo-500',

@@ -59,12 +59,12 @@ export function AliasModal({ show, onClose }: Props) {
     <Modal onClose={onClose} tone="light" ariaLabel={`Manage aliases for ${show.title}`} className="flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h2 className="font-semibold text-gray-900 truncate">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
             Manage Aliases — {show.title}
           </h2>
           <button
             onClick={onClose}
-            className="ml-2 text-gray-400 hover:text-gray-600"
+            className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
             aria-label="Close"
           >
             ✕
@@ -76,44 +76,44 @@ export function AliasModal({ show, onClose }: Props) {
           {/* TMDB source */}
           <section>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">TMDB</h3>
-              <span className="text-xs text-gray-400">Read-only</span>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">TMDB</h3>
+              <span className="text-xs text-gray-400 dark:text-gray-500">Read-only</span>
             </div>
             {tmdbAliases.length > 0 ? (
               <ul className="flex flex-wrap gap-1.5">
                 {tmdbAliases.map((a) => (
                   <li
                     key={a}
-                    className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs"
+                    className="px-2 py-0.5 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 rounded text-xs"
                   >
                     {a}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400 italic">None</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic">None</p>
             )}
           </section>
 
           {/* LLM source */}
           <section>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">LLM</h3>
-              <span className="text-xs text-gray-400">Read-only</span>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">LLM</h3>
+              <span className="text-xs text-gray-400 dark:text-gray-500">Read-only</span>
             </div>
             {llmAliases.length > 0 ? (
               <ul className="flex flex-wrap gap-1.5">
                 {llmAliases.map((a) => (
                   <li
                     key={a}
-                    className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs"
+                    className="px-2 py-0.5 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 rounded text-xs"
                   >
                     {a}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400 italic">None</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic">None</p>
             )}
           </section>
 
@@ -122,7 +122,7 @@ export function AliasModal({ show, onClose }: Props) {
             <button
               onClick={() => regenerate.mutate()}
               disabled={regenerate.isPending}
-              className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
             >
               {regenerate.isPending ? 'Regenerating…' : 'Regenerate TMDB + LLM'}
             </button>
@@ -135,9 +135,9 @@ export function AliasModal({ show, onClose }: Props) {
 
           {/* User source */}
           <section>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               User-defined
-              <span className="ml-1 text-xs font-normal text-gray-400">
+              <span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">
                 (persisted, never overwritten by regeneration)
               </span>
             </h3>
@@ -146,7 +146,7 @@ export function AliasModal({ show, onClose }: Props) {
                 {userAliases.map((a) => (
                   <li
                     key={a}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs"
+                    className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300 rounded text-xs"
                   >
                     {a}
                     <button
@@ -160,7 +160,7 @@ export function AliasModal({ show, onClose }: Props) {
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400 italic mb-2">None yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-2">None yet</p>
             )}
             <div className="flex gap-2">
               <input
@@ -169,11 +169,11 @@ export function AliasModal({ show, onClose }: Props) {
                 onChange={(e) => setNewAlias(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Add alias…"
-                className="flex-1 text-sm border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="flex-1 text-sm border rounded px-2 py-1 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
               <button
                 onClick={addAlias}
-                className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Add
               </button>

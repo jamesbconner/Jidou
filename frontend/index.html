@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jidou</title>
+    <script>
+      // Apply a saved dark-mode preference before paint, to avoid a flash of
+      // light mode for returning visitors. Kept in sync with the
+      // 'jidou.colorScheme' key read by ThemeProvider (src/stores/theme.tsx).
+      try {
+        if (JSON.parse(localStorage.getItem('jidou.colorScheme')) === 'dark') {
+          document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = 'dark'
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

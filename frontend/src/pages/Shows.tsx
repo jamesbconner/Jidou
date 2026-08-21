@@ -361,19 +361,19 @@ export default function Shows() {
     createShow.mutate(buildShowCreatePayload(r))
   }
 
-  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100'
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
       tab === t
         ? 'border-blue-600 text-blue-600'
-        : 'border-transparent text-gray-500 hover:text-gray-700'
+        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
     }`
 
   return (
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold mr-auto">Shows</h1>
+        <h1 className="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
         {tab === 'library' && activeFilterCount > 0 && (
           <Button onClick={clearFilters} variant="secondary" tone="light" size="sm">
             Clear filters ({activeFilterCount})
@@ -393,7 +393,7 @@ export default function Shows() {
         )}
         <button
           onClick={() => setTmdbModalOpen(true)}
-          className="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800"
         >
           Search shows…
         </button>
@@ -407,7 +407,7 @@ export default function Shows() {
         <button className={tabCls('data')} onClick={() => setTab('data')}>
           Data Quality
           {totalDqIssues > 0 && (
-            <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+            <span className="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">
               {totalDqIssues}
             </span>
           )}
@@ -415,7 +415,7 @@ export default function Shows() {
         <button className={tabCls('missing')} onClick={() => setTab('missing')}>
           Missing Episodes
           {totalMissingEpisodes > 0 && (
-            <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+            <span className="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">
               {totalMissingEpisodes}
             </span>
           )}
@@ -426,8 +426,8 @@ export default function Shows() {
         <>
           {/* Filter bar — shown only on library tab; modal overlay covers it on other tabs */}
           {tab === 'library' && (
-          <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
-            <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+          <div className="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
 
             <select value={filterContentType} onChange={(e) => setFilterContentType(e.target.value)} className={selectCls}>
               <option value="">All types</option>
@@ -473,7 +473,7 @@ export default function Shows() {
                 onChange={(e) => setFilterUpcoming(e.target.checked)}
                 className="rounded"
               />
-              <span className="text-gray-700">Upcoming episode</span>
+              <span className="text-gray-700 dark:text-gray-300">Upcoming episode</span>
             </label>
           </div>
           )}
@@ -482,8 +482,8 @@ export default function Shows() {
           {tmdbModalOpen && (
             <Modal onClose={closeModal} tone="light" maxWidth="2xl" closeOnBackdropClick className="max-h-[80vh] flex flex-col">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h3 className="font-semibold">Search Shows</h3>
-                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 text-lg leading-none" aria-label="Close">✕</button>
+                  <h3 className="font-semibold dark:text-gray-100">Search Shows</h3>
+                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none" aria-label="Close">✕</button>
                 </div>
 
                 {/* Library / TMDB pill toggle */}
@@ -494,7 +494,7 @@ export default function Shows() {
                         key={m}
                         onClick={() => switchModalMode(m)}
                         className={`flex-1 py-2 font-medium transition-colors ${
-                          modalMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                          modalMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
                         }`}
                       >
                         {m === 'library' ? 'Library' : 'TMDB'}
@@ -510,16 +510,16 @@ export default function Shows() {
                     placeholder={modalMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
                   />
                 </div>
 
                 <div className="overflow-y-auto flex-1 p-5">
                   {modalMode === 'library' ? (
                     query.trim().length < 2 ? (
-                      <p className="text-sm text-gray-400">Type at least 2 characters to search your library.</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
                     ) : librarySearchResults.length === 0 ? (
-                      <p className="text-sm text-gray-500">No shows found for &quot;{query}&quot;.</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No shows found for &quot;{query}&quot;.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {librarySearchResults.map((s) => (
@@ -527,16 +527,16 @@ export default function Shows() {
                             key={s.id}
                             to={`/shows/${s.id}`}
                             onClick={closeModal}
-                            className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-gray-50 transition-colors"
+                            className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                           >
                             {s.poster_path ? (
                               <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded flex-shrink-0" loading="lazy" />
                             ) : (
-                              <div className="w-8 h-12 bg-gray-100 rounded flex-shrink-0" />
+                              <div className="w-8 h-12 bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0" />
                             )}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{s.title}</p>
-                              <p className="text-xs text-gray-400">
+                              <p className="text-sm font-medium truncate dark:text-gray-100">{s.title}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500">
                                 {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
                               </p>
                             </div>
@@ -547,11 +547,11 @@ export default function Shows() {
                     )
                   ) : (
                     query.trim().length < 2 ? (
-                      <p className="text-sm text-gray-400">Type at least 2 characters to search TMDB.</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search TMDB.</p>
                     ) : tmdbSearching || debouncedQuery !== query ? (
-                      <p className="text-sm text-gray-400">Searching…</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
                     ) : !searchData || searchData.results.length === 0 ? (
-                      <p className="text-sm text-gray-500">No results for &quot;{debouncedQuery}&quot;.</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No results for &quot;{debouncedQuery}&quot;.</p>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {searchData.results.slice(0, 12).map((r) => {
@@ -578,13 +578,13 @@ export default function Shows() {
 
           {tab === 'library' && (
           <section>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
               {activeFilterCount > 0 ? `${filtered.length} of ${allShows.length} shows` : `${allShows.length} show${allShows.length !== 1 ? 's' : ''}`}
             </p>
             {isLoading ? (
-              <p className="text-gray-400 text-sm">Loading…</p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
             ) : filtered.length === 0 ? (
-              <p className="text-gray-500 text-sm">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
                 {allShows.length === 0 ? 'No shows in library yet. Search above to add one.' : 'No shows match the current filters.'}
               </p>
             ) : (
@@ -606,7 +606,7 @@ export default function Shows() {
       )}
 
       {tab === 'data' && isLoading && (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       )}
 
       {tab === 'data' && !isLoading && (
@@ -623,16 +623,16 @@ export default function Shows() {
                   onClick={() => setDqFilter(active ? null : c.key)}
                   className={`text-left rounded-lg border p-3 transition-colors ${
                     active
-                      ? 'border-amber-400 bg-amber-50'
+                      ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40'
                       : count > 0
-                        ? 'border-amber-200 bg-white hover:bg-amber-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                        ? 'border-amber-200 bg-white hover:bg-amber-50 dark:bg-gray-900 dark:hover:bg-amber-950/30'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <p className={`text-2xl font-bold ${count > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                  <p className={`text-2xl font-bold ${count > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
                     {count}
                   </p>
-                  <p className="text-xs text-gray-600 mt-0.5 leading-tight">{c.label}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">{c.label}</p>
                 </button>
               )
             })}
@@ -642,8 +642,8 @@ export default function Shows() {
           {dqFilter && (() => {
             const check = DQ_CHECKS.find((c) => c.key === dqFilter)!
             return (
-              <p className="text-xs text-gray-500 flex items-center gap-2">
-                <span className="font-medium text-gray-700">{check.label}:</span>
+              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{check.label}:</span>
                 {check.description}
                 <button onClick={() => setDqFilter(null)} className="ml-2 text-blue-600 hover:underline">
                   Show all issues
@@ -654,7 +654,7 @@ export default function Shows() {
 
           {/* Issue table */}
           {dqRows.length === 0 && orphans.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               {dqFilter
                 ? `No shows with this issue.`
                 : `No data quality issues found across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`}
@@ -662,7 +662,7 @@ export default function Shows() {
           ) : dqRows.length > 0 ? (
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="text-left text-xs text-gray-500 border-b">
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
                   <th className="pb-2 pr-4 font-medium">Title</th>
                   <th className="pb-2 font-medium">Issues</th>
                 </tr>
@@ -671,7 +671,7 @@ export default function Shows() {
                 {dqRows.map((s) => {
                   const issues = DQ_CHECKS.filter((c) => c.test(s))
                   return (
-                    <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="py-2 pr-4 whitespace-nowrap">
                         <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
                           {s.title}
@@ -684,7 +684,7 @@ export default function Shows() {
                               key={c.key}
                               title={c.description}
                               onClick={() => setDqFilter(c.key)}
-                              className="bg-amber-100 text-amber-700 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200"
+                              className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-900/70"
                             >
                               {c.label}
                             </button>
@@ -702,19 +702,19 @@ export default function Shows() {
           {orphans.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-700">Unresolved tracking records</h3>
-                <span className="bg-red-100 text-red-700 text-xs rounded-full px-1.5 py-0.5 font-medium">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Unresolved tracking records</h3>
+                <span className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs rounded-full px-1.5 py-0.5 font-medium">
                   {orphans.length}
                 </span>
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 These episodes could not be migrated during a show rematch because their season/episode
                 number has no match in the new TMDB entry. Select <strong>Manual Match</strong> to link
                 each file to the correct episode.
               </p>
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="text-left text-xs text-gray-500 border-b">
+                  <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
                     <th className="pb-2 pr-4 font-medium">Show</th>
                     <th className="pb-2 pr-4 font-medium">File</th>
                     <th className="pb-2 pr-4 font-medium">Old S/E</th>
@@ -730,16 +730,16 @@ export default function Shows() {
                         o.tracked_filename_display
                       : '—'
                     return (
-                      <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50">
+                      <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
                         <td className="py-2 pr-4 whitespace-nowrap">
                           <Link to={`/shows/${o.show_id}`} className="text-blue-600 hover:underline font-medium text-xs">
                             {o.show_title}
                           </Link>
                         </td>
-                        <td className="py-2 pr-4 font-mono text-xs text-gray-600 max-w-xs truncate">
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400 max-w-xs truncate">
                           {filename}
                         </td>
-                        <td className="py-2 pr-4 font-mono text-xs text-gray-500">{se}</td>
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-500 dark:text-gray-400">{se}</td>
                         <td className="py-2 pr-4">
                           <span className={`text-xs font-medium ${o.tracked_source === 'import' ? 'text-blue-600' : 'text-green-600'}`}>
                             {o.tracked_source === 'import' ? 'import' : 'download'}
@@ -764,14 +764,14 @@ export default function Shows() {
       )}
 
       {tab === 'missing' && missingTabLoading && (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       )}
 
       {tab === 'missing' && !missingTabLoading && (
         <section className="space-y-3">
           {showsWithMissingEpisodes.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
-              <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+            <div className="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
 
               <select value={missingFilterContentType} onChange={(e) => setMissingFilterContentType(e.target.value)} className={selectCls}>
                 <option value="">All types</option>
@@ -816,7 +816,7 @@ export default function Shows() {
                   onChange={(e) => setMissingFilterWatchlistOnly(e.target.checked)}
                   className="rounded"
                 />
-                <span className="text-gray-700">Watchlist only</span>
+                <span className="text-gray-700 dark:text-gray-300">Watchlist only</span>
               </label>
 
               <input
@@ -824,11 +824,11 @@ export default function Shows() {
                 placeholder="Filter by title…"
                 value={missingQuery}
                 onChange={(e) => setMissingQuery(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
           )}
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {showsWithMissingEpisodes.length === 0
               ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
               : missingEpisodeRows.length === 0
@@ -838,7 +838,7 @@ export default function Shows() {
           {missingEpisodeRows.length > 0 && (
             <Card className="overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
                   <tr>
                     <th className="px-4 py-2 text-left">Show</th>
                     <th className="px-4 py-2 text-left">Missing</th>
@@ -846,18 +846,18 @@ export default function Shows() {
                 </thead>
                 <tbody className="divide-y">
                   {missingEpisodeRows.map((s) => (
-                    <tr key={s.id} className="hover:bg-gray-50">
+                    <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="px-4 py-2">
                         <Link
                           to={`/shows/${s.id}`}
-                          className="font-medium hover:underline text-blue-700"
+                          className="font-medium hover:underline text-blue-700 dark:text-blue-400"
                         >
                           {s.title}
                         </Link>
-                        <span className="block text-xs text-gray-400">TMDB #{s.tmdb_id}</span>
+                        <span className="block text-xs text-gray-400 dark:text-gray-500">TMDB #{s.tmdb_id}</span>
                       </td>
                       <td className="px-4 py-2">
-                        <span className="bg-amber-100 text-amber-700 text-xs font-medium rounded-full px-2 py-0.5">
+                        <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium rounded-full px-2 py-0.5">
                           {s.missing_episode_count}
                         </span>
                       </td>

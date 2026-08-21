@@ -30,23 +30,23 @@ export function RecentShowCard({ show, sort, onClick }: Props) {
           loading="lazy"
         />
       ) : (
-        <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+        <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
           No image
         </div>
       )}
       <div className="p-2 space-y-1">
-        <p className="font-semibold text-sm line-clamp-2 leading-tight">{show.title}</p>
+        <p className="font-semibold text-sm line-clamp-2 leading-tight text-gray-900 dark:text-gray-100">{show.title}</p>
         <div className="flex items-center gap-1.5 flex-wrap">
           {show.content_type && (
-            <span className="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] uppercase tracking-wide bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
               {show.content_type}
             </span>
           )}
           {show.vote_average != null && (
-            <span className="text-xs text-gray-500">★ {show.vote_average.toFixed(1)}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">★ {show.vote_average.toFixed(1)}</span>
           )}
         </div>
-        <p className="text-xs text-gray-400">{date ?? '—'}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">{date ?? '—'}</p>
       </div>
     </Card>
   )

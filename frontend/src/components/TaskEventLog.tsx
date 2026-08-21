@@ -8,9 +8,9 @@ interface Props {
 }
 
 const LEVEL_STYLES: Record<TaskEvent['level'], string> = {
-  info: 'text-gray-500',
-  warn: 'text-amber-600',
-  error: 'text-red-600 font-medium',
+  info: 'text-gray-500 dark:text-gray-400',
+  warn: 'text-amber-600 dark:text-amber-400',
+  error: 'text-red-600 dark:text-red-400 font-medium',
 }
 
 const LEVEL_DOT: Record<TaskEvent['level'], string> = {
@@ -40,7 +40,7 @@ export function TaskEventLog({ events, live = false }: Props) {
 
   if (events.length === 0) {
     return (
-      <p className="text-xs text-gray-400 italic py-1">No events recorded yet.</p>
+      <p className="text-xs text-gray-400 dark:text-gray-500 italic py-1">No events recorded yet.</p>
     )
   }
 
@@ -48,13 +48,13 @@ export function TaskEventLog({ events, live = false }: Props) {
     <div ref={containerRef} className="max-h-64 overflow-y-auto text-xs font-mono space-y-0.5 pr-1">
       {events.map((ev, i) => (
         <div key={i} className="flex items-start gap-2">
-          <span className="text-gray-400 shrink-0 tabular-nums">{formatTs(ev.ts)}</span>
+          <span className="text-gray-400 dark:text-gray-500 shrink-0 tabular-nums">{formatTs(ev.ts)}</span>
           <span className={clsx('mt-1 w-1.5 h-1.5 rounded-full shrink-0', LEVEL_DOT[ev.level])} />
           <span className="break-words min-w-0">
             <span className={LEVEL_STYLES[ev.level]}>{ev.msg}</span>
             {typeof ev.ctx?.path === 'string' && (
               <span
-                className="block text-gray-400 text-[10px] pl-0 truncate"
+                className="block text-gray-400 dark:text-gray-500 text-[10px] pl-0 truncate"
                 title={ev.ctx.path}
               >
                 {ev.ctx.path}

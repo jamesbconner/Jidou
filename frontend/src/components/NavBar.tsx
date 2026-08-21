@@ -2,6 +2,7 @@ import { NavLink } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { ConnectionBadge } from './ConnectionBadge'
+import { ThemeToggle } from './ui/ThemeToggle'
 import { useAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
 import type { AppConfig } from '@/types/api'
@@ -37,7 +38,7 @@ export function NavBar() {
   links = [...links, ...BASE_LINKS.slice(4)]
 
   return (
-    <nav className="sticky top-0 z-40 bg-gray-900 text-white px-6 py-3 flex items-center gap-6">
+    <nav className="sticky top-0 z-40 bg-gray-900 dark:bg-gray-950 text-white px-6 py-3 flex items-center gap-6">
       <span className="font-bold text-lg tracking-tight">Jidou</span>
       <div className="flex gap-4 flex-1">
         {links.map(({ to, label, end }) => (
@@ -54,6 +55,7 @@ export function NavBar() {
         ))}
       </div>
       <ConnectionBadge />
+      <ThemeToggle />
     </nav>
   )
 }

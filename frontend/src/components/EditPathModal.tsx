@@ -51,11 +51,11 @@ export function EditPathModal({
 
   return (
     <Modal onClose={onClose} tone="light" className="p-6">
-        <h3 className="font-semibold mb-4">Edit Local Path</h3>
+        <h3 className="font-semibold mb-4 text-gray-900 dark:text-gray-100">Edit Local Path</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Content type — determines which volume base is used */}
           <div className="space-y-1">
-            <label className="text-sm text-gray-600">Content type</label>
+            <label className="text-sm text-gray-600 dark:text-gray-300">Content type</label>
             <div className="flex gap-4">
               {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
                 <label key={t} className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -75,16 +75,16 @@ export function EditPathModal({
 
           {/* Show folder name */}
           <div className="space-y-1">
-            <label className="text-sm text-gray-600">Show folder name</label>
+            <label className="text-sm text-gray-600 dark:text-gray-300">Show folder name</label>
             <input
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
-              className="border rounded px-3 py-2 text-sm w-full font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border rounded px-3 py-2 text-sm w-full font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Show Name"
               autoFocus
             />
             {hostPreview && (
-              <p className="text-xs text-gray-500 font-mono">{hostPreview}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{hostPreview}</p>
             )}
           </div>
 

@@ -99,8 +99,8 @@ export default function RSS() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">RSS</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RSS</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Manage YaRSS2 feeds and subscriptions. Import from or publish to the remote config file.
           </p>
         </div>
@@ -120,40 +120,40 @@ export default function RSS() {
             >
               {triggerPublish.isPending ? 'Dispatching…' : 'Publish to server'}
             </button>
-            <div className="w-px h-6 bg-gray-300 mx-1" />
+            <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1" />
             <button
               onClick={() => download.mutate()}
               disabled={download.isPending}
-              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               {download.isPending ? 'Downloading…' : 'Download'}
             </button>
           </div>
-          {importTask && <div className="text-right text-xs">Import: <TaskStatusBadge task={importTask} /></div>}
-          {publishTask && <div className="text-right text-xs">Publish: <TaskStatusBadge task={publishTask} /></div>}
+          {importTask && <div className="text-right text-xs dark:text-gray-300">Import: <TaskStatusBadge task={importTask} /></div>}
+          {publishTask && <div className="text-right text-xs dark:text-gray-300">Publish: <TaskStatusBadge task={publishTask} /></div>}
           {triggerImport.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-red-600 dark:text-red-400">
               Import failed to start: {(triggerImport.error as Error)?.message ?? 'Unknown error'}
             </p>
           )}
           {triggerPublish.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-red-600 dark:text-red-400">
               Publish failed to start: {(triggerPublish.error as Error)?.message ?? 'Unknown error'}
             </p>
           )}
           {download.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-red-600 dark:text-red-400">
               Download failed: {(download.error as Error)?.message ?? 'Unknown error'}
             </p>
           )}
-          <p className="text-xs text-gray-400">
-            Check the <Link to="/tasks" className="text-indigo-500 hover:underline">Tasks page</Link> for details.
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Check the <Link to="/tasks" className="text-indigo-500 dark:text-indigo-400 hover:underline">Tasks page</Link> for details.
           </p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 dark:border-gray-800">
         <nav className="-mb-px flex gap-6">
           {(['subscriptions', 'feeds', 'recommendations'] as const).map((t) => (
             <button
@@ -162,7 +162,7 @@ export default function RSS() {
               className={`pb-3 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t
                   ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:border-gray-700'
               }`}
             >
               {t === 'subscriptions'
@@ -184,12 +184,12 @@ export default function RSS() {
               value={nameSearch}
               onChange={(e) => setNameSearch(e.target.value)}
               placeholder="Search name…"
-              className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
             />
             <select
               value={enabledFilter}
               onChange={(e) => setEnabledFilter(e.target.value as typeof enabledFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">Any enabled</option>
               <option value="enabled">Enabled</option>
@@ -198,7 +198,7 @@ export default function RSS() {
             <select
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value as typeof activeFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">Any active</option>
               <option value="active">Active</option>
@@ -210,17 +210,17 @@ export default function RSS() {
                 const v = e.target.value
                 setFeedFilter(v === 'all' ? 'all' : v === 'unlinked' ? 'unlinked' : Number(v))
               }}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">All feeds</option>
               <option value="unlinked">Unlinked</option>
               {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
-            <span className="text-xs text-gray-400 ml-1">{filteredSubs.length} / {subs?.length ?? 0}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">{filteredSubs.length} / {subs?.length ?? 0}</span>
           </div>
 
           {isLoading ? (
-            <p className="text-sm text-gray-400">Loading subscriptions…</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">Loading subscriptions…</p>
           ) : (
             <div className="border rounded-lg p-3">
               <SubscriptionsTable subs={filteredSubs} feeds={feeds} />

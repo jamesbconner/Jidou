@@ -34,7 +34,7 @@ export function RecommendationsTab() {
     )
   }
 
-  if (isLoading) return <p className="text-sm text-gray-400 py-6">Loading recommendations…</p>
+  if (isLoading) return <p className="text-sm text-gray-400 dark:text-gray-500 py-6">Loading recommendations…</p>
 
   return (
     <section className="space-y-4">
@@ -55,11 +55,11 @@ export function RecommendationsTab() {
                 className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors ${
                   filter === f
                     ? f === 'deactivate'
-                      ? 'bg-amber-100 border-amber-400 text-amber-800'
+                      ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-300'
                       : f === 'activate'
-                      ? 'bg-green-100 border-green-400 text-green-800'
-                      : 'bg-indigo-100 border-indigo-400 text-indigo-800'
-                    : 'border-gray-300 text-gray-500 hover:border-gray-400'
+                      ? 'bg-green-100 border-green-400 text-green-800 dark:bg-green-950/40 dark:border-green-700 dark:text-green-300'
+                      : 'bg-indigo-100 border-indigo-400 text-indigo-800 dark:bg-indigo-950/40 dark:border-indigo-700 dark:text-indigo-300'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
                 }`}
               >
                 {label}
@@ -74,7 +74,7 @@ export function RecommendationsTab() {
           <button
             onClick={handleAcceptAll}
             disabled={visible.length === 0 || bulkPatch.isPending}
-            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
           >
             {bulkPatch.isPending ? 'Applying…' : `Accept all (${visible.length})`}
           </button>
@@ -82,17 +82,17 @@ export function RecommendationsTab() {
       </div>
 
       {recs.length === 0 ? (
-        <div className="border rounded-lg p-8 text-center text-gray-400 text-sm">
+        <div className="border rounded-lg p-8 text-center text-gray-400 dark:text-gray-500 text-sm">
           No recommendations — all subscriptions match their show&apos;s current status.
         </div>
       ) : visible.length === 0 ? (
-        <div className="border rounded-lg p-8 text-center text-gray-400 text-sm">
+        <div className="border rounded-lg p-8 text-center text-gray-400 dark:text-gray-500 text-sm">
           No subscriptions match the current filter.
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+            <thead className="bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400 uppercase">
               <tr>
                 <th className="px-3 py-2">Subscription / Show</th>
                 <th className="px-3 py-2 w-32">TMDB Status</th>
@@ -101,38 +101,38 @@ export function RecommendationsTab() {
                 <th className="px-3 py-2 w-24"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {visible.map((rec) => (
-                <tr key={rec.id} className="hover:bg-gray-50">
+                <tr key={rec.id} className="hover:bg-gray-50 dark:hover:bg-gray-900">
                   <td className="px-3 py-2">
-                    <p className="font-medium">{rec.name}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{rec.name}</p>
                     {rec.show && (
                       <Link
                         to={`/shows/${rec.show.id}`}
-                        className="text-xs text-indigo-500 hover:underline"
+                        className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
                       >
                         {rec.show.title} ↗
                       </Link>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-600">
+                  <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
                     {rec.show?.status ?? '—'}
                   </td>
                   <td className="px-3 py-2">
                     {rec.active
-                      ? <Badge color="bg-green-100 text-green-700">active</Badge>
-                      : <Badge color="bg-gray-100 text-gray-500">inactive</Badge>}
+                      ? <Badge color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">active</Badge>
+                      : <Badge color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">inactive</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     {rec.recommendation === 'deactivate'
-                      ? <Badge color="bg-amber-100 text-amber-700">Deactivate</Badge>
-                      : <Badge color="bg-green-100 text-green-700">Activate</Badge>}
+                      ? <Badge color="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Deactivate</Badge>
+                      : <Badge color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Activate</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     <button
                       onClick={() => handleAcceptOne(rec)}
                       disabled={patch.isPending || bulkPatch.isPending}
-                      className="text-xs text-indigo-600 hover:underline disabled:opacity-50"
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
                     >
                       Accept
                     </button>

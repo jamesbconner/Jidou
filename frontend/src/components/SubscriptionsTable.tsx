@@ -23,7 +23,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
       <div className="flex justify-end mb-2">
         <button
           onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
+          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500"
         >
           + New Subscription
         </button>
@@ -31,7 +31,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+          <thead className="bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400 uppercase">
             <tr>
               <th className="px-3 py-2 w-16">Key</th>
               <th className="px-3 py-2">Name / Show</th>
@@ -40,24 +40,24 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
               <th className="px-3 py-2 w-36"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {subs.map((sub) => {
               const isStub = sub.remote_key === null && !sub.enabled_in_config
               return (
-                <tr key={sub.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-mono text-xs text-gray-500">
-                    {sub.remote_key ?? <Badge color="bg-yellow-100 text-yellow-700">stub</Badge>}
+                <tr key={sub.id} className="hover:bg-gray-50 dark:hover:bg-gray-900">
+                  <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {sub.remote_key ?? <Badge color="bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">stub</Badge>}
                   </td>
                   <td className="px-3 py-2">
                     <button
                       onClick={() => setEditSub(sub)}
-                      className="font-medium text-left hover:text-indigo-600 hover:underline"
+                      className="font-medium text-left text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
                       title="Edit subscription"
                     >
                       {sub.name}
                     </button>
                     {sub.show && (
-                      <Link to={`/shows/${sub.show.id}`} className="block text-xs text-indigo-500 hover:underline">
+                      <Link to={`/shows/${sub.show.id}`} className="block text-xs text-indigo-500 dark:text-indigo-400 hover:underline">
                         {sub.show.title}
                       </Link>
                     )}
@@ -65,7 +65,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                   <td className="px-3 py-2">
                     <button
                       onClick={() => patch.mutate({ id: sub.id, update: { enabled_in_config: !sub.enabled_in_config } })}
-                      className={`w-10 h-5 rounded-full transition-colors ${sub.enabled_in_config ? 'bg-green-500' : 'bg-gray-300'}`}
+                      className={`w-10 h-5 rounded-full transition-colors ${sub.enabled_in_config ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'}`}
                       title={sub.enabled_in_config
                         ? 'Enabled — included in published config. Click to disable.'
                         : 'Disabled — not included in published config. Click to enable.'}
@@ -81,7 +81,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                         title="Stubs are always inactive until promoted to a real subscription."
                         className="cursor-default"
                       >
-                        <Badge color="bg-gray-100 text-gray-400">inactive</Badge>
+                        <Badge color="bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">inactive</Badge>
                       </span>
                     ) : (
                       <button
@@ -93,15 +93,15 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                         aria-pressed={sub.active}
                       >
                         {sub.active
-                          ? <Badge color="bg-green-100 text-green-700 hover:ring-1 hover:ring-green-400">active</Badge>
-                          : <Badge color="bg-gray-100 text-gray-500 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
+                          ? <Badge color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 hover:ring-1 hover:ring-green-400">active</Badge>
+                          : <Badge color="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:ring-1 hover:ring-gray-400">inactive</Badge>}
                       </button>
                     )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-2 items-center">
-                      <button onClick={() => setEditSub(sub)} className="text-xs text-gray-500 hover:underline">Edit</button>
-                      <button onClick={() => setPreviewSub(sub)} className="text-xs text-gray-500 hover:underline">Preview</button>
+                      <button onClick={() => setEditSub(sub)} className="text-xs text-gray-500 dark:text-gray-400 hover:underline">Edit</button>
+                      <button onClick={() => setPreviewSub(sub)} className="text-xs text-gray-500 dark:text-gray-400 hover:underline">Preview</button>
                       {!sub.enabled_in_config && (
                         <button
                           onClick={() => { if (confirm(`Delete subscription "${sub.name}"?`)) del.mutate(sub.id) }}
@@ -118,7 +118,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
           </tbody>
         </table>
         {subs.length === 0 && (
-          <p className="text-center text-gray-400 py-8 text-sm">No subscriptions match the filter.</p>
+          <p className="text-center text-gray-400 dark:text-gray-500 py-8 text-sm">No subscriptions match the filter.</p>
         )}
       </div>
     </>

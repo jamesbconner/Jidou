@@ -61,7 +61,7 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
     return (
       <button
         onClick={() => { cancelRef.current = false; setValue(showId?.toString() ?? ''); setEditing(true) }}
-        className="text-gray-500 hover:text-blue-600 hover:underline text-left"
+        className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left"
         title="Click to assign show"
       >
         {showId ?? '—'}
@@ -80,7 +80,7 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
         if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') { cancelRef.current = true; setValue(showId?.toString() ?? ''); setEditing(false) }
       }}
-      className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
     />
   )
 }
@@ -143,12 +143,12 @@ function InlineEpisodePicker({
         <button
           onClick={() => { setSelectValue(episodeId?.toString() ?? ''); setError(null); setEditing(true) }}
           disabled={patch.isPending}
-          className="text-xs text-gray-500 hover:text-blue-600 hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
           title="Click to assign episode"
         >
           {label}
         </button>
-        {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+        {error && <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">{error}</p>}
       </div>
     )
   }
@@ -168,7 +168,7 @@ function InlineEpisodePicker({
           if (e.key === 'Escape') setEditing(false)
         }}
         disabled={patch.isPending}
-        className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs"
+        className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs dark:bg-gray-800 dark:text-gray-100"
       >
         <option value="">— clear —</option>
         {seasons.map((sn) => (
@@ -184,7 +184,7 @@ function InlineEpisodePicker({
           </optgroup>
         ))}
       </select>
-      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+      {error && <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">{error}</p>}
     </div>
   )
 }
@@ -291,30 +291,30 @@ export default function Files() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold mr-auto">Files</h1>
+        <h1 className="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search filenames…"
-          className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
         />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as FileStatus | '')}
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
         >
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>{s || 'All statuses'}</option>
           ))}
         </select>
         <div>
-          <label htmlFor="files-page-size" className="text-xs text-gray-500 mr-2">Per page</label>
+          <label htmlFor="files-page-size" className="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
           <select
             id="files-page-size"
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -322,12 +322,12 @@ export default function Files() {
           </select>
         </div>
         <div>
-          <label htmlFor="files-max-records" className="text-xs text-gray-500 mr-2">Max records</label>
+          <label htmlFor="files-max-records" className="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
           <select
             id="files-max-records"
             value={maxRecords === null ? 'all' : String(maxRecords)}
             onChange={(e) => setMaxRecords(e.target.value === 'all' ? null : Number(e.target.value))}
-            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {MAX_RECORDS_OPTIONS.map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -342,11 +342,11 @@ export default function Files() {
           aria-label={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
           title={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
           onClick={() => setShowIgnored(!showIgnored)}
-          className="flex items-center gap-2 text-sm text-gray-700"
+          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
         >
           <span
             className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-              showIgnored ? 'bg-blue-600' : 'bg-gray-300'
+              showIgnored ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
             }`}
           >
             <span
@@ -360,13 +360,13 @@ export default function Files() {
       </div>
 
       {isLoading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       ) : files.length === 0 ? (
-        <p className="text-gray-500 text-sm">No files found.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">No files found.</p>
       ) : (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
               <tr>
                 <th className="px-4 py-2 text-left">Filename</th>
                 <th className="px-4 py-2 text-left">Size</th>
@@ -378,25 +378,25 @@ export default function Files() {
             </thead>
             <tbody className="divide-y">
               {files.map((f) => (
-                <tr key={f.id} className="hover:bg-gray-50">
+                <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="px-4 py-2 font-mono text-xs max-w-xs">
-                    <div className="truncate" title={f.original_filename}>{f.original_filename}</div>
+                    <div className="truncate dark:text-gray-200" title={f.original_filename}>{f.original_filename}</div>
                     {f.parsed_show_name && f.status === 'unmatched' && (
                       <div className="text-zinc-400 truncate text-xs mt-0.5">
                         Parsed: {f.parsed_show_name}
                       </div>
                     )}
                     {f.error_message && (
-                      <div className="text-red-500 truncate mt-0.5" title={f.error_message}>
+                      <div className="text-red-500 dark:text-red-400 truncate mt-0.5" title={f.error_message}>
                         {f.error_message}
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-gray-500">{formatBytes(f.file_size)}</td>
+                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatBytes(f.file_size)}</td>
                   <td className="px-4 py-2">
                     <FileStatusBadge status={f.status} />
                   </td>
-                  <td className="px-4 py-2 text-gray-500 whitespace-nowrap">
+                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {new Date(f.created_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-2">
@@ -416,7 +416,7 @@ export default function Files() {
                             episode={f.episode}
                           />
                         ) : f.episode && (
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
                             {`S${pad2(f.episode.season_number)}E${pad2(f.episode.episode_number)} · ${f.episode.name}`}
                           </div>
                         )}
@@ -460,7 +460,7 @@ export default function Files() {
       )}
 
       {!isLoading && total > 0 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
+        <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
           <span>
             {maxRecords !== null && total > maxRecords
               ? `${maxRecords} of ${total} file${total !== 1 ? 's' : ''}`

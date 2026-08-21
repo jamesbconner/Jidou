@@ -31,8 +31,8 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
   return (
     <Modal onClose={onClose} tone="light" ariaLabel={title} className="flex flex-col max-h-[90vh]">
       <div className="flex items-center justify-between px-5 py-4 border-b">
-        <h2 className="font-semibold text-gray-900 truncate">{title}</h2>
-        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600" aria-label="Close">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</h2>
+        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Close">
           ✕
         </button>
       </div>
@@ -46,14 +46,14 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
               className="w-24 h-36 object-cover rounded shrink-0"
             />
           ) : (
-            <div className="w-24 h-36 shrink-0 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
+            <div className="w-24 h-36 shrink-0 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">
               No image
             </div>
           )}
           <div className="space-y-1.5 min-w-0">
-            <p className="font-semibold text-sm">{title}</p>
-            <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500">
-              <span className="uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+            <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">{title}</p>
+            <div className="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 dark:text-gray-500">
+              <span className="uppercase tracking-wide bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
                 {mediaType}
               </span>
               {result.vote_average != null && <span>★ {result.vote_average.toFixed(1)}</span>}
@@ -62,7 +62,7 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
           </div>
         </div>
 
-        {result.overview && <p className="text-sm text-gray-700">{result.overview}</p>}
+        {result.overview && <p className="text-sm text-gray-700 dark:text-gray-300">{result.overview}</p>}
 
         <div className="flex items-center gap-4">
           {inLibraryShowId != null && (

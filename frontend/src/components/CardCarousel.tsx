@@ -43,7 +43,7 @@ export function CardCarousel({ children }: Props) {
         <button
           onClick={() => scrollBy(-1)}
           aria-label="Scroll left"
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center text-gray-600 hover:bg-gray-100"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-gray-800 shadow flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           ‹
         </button>
@@ -59,7 +59,7 @@ export function CardCarousel({ children }: Props) {
         <button
           onClick={() => scrollBy(1)}
           aria-label="Scroll right"
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white shadow flex items-center justify-center text-gray-600 hover:bg-gray-100"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white dark:bg-gray-800 shadow flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
           ›
         </button>

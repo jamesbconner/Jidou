@@ -32,12 +32,12 @@ function TaskLogPanel({ task }: { task: TaskList }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-blue-500 hover:underline"
+        className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
       >
         {open ? 'Hide log' : `View log${events.length ? ` (${events.length})` : ''}`}
       </button>
       {open && (
-        <div className="mt-2 bg-gray-50 rounded p-2 border border-gray-100">
+        <div className="mt-2 bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
           <TaskEventLog events={events} live={isLive} />
         </div>
       )}
@@ -121,24 +121,24 @@ export default function Tasks() {
         <LiveTask key={t.id} taskId={t.id} />
       ))}
 
-      <h1 className="text-2xl font-bold">Tasks</h1>
+      <h1 className="text-2xl font-bold dark:text-gray-100">Tasks</h1>
 
       {/* Trigger panel */}
       <Card padding="md" className="space-y-3">
         <div className="flex items-end gap-4 flex-wrap">
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Task type</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Task type</label>
             <select
               value={taskType}
               onChange={(e) => setTaskType(e.target.value as TaskType)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
               {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm dark:text-gray-300">
             <input
               type="checkbox"
               checked={dryRun}
@@ -151,20 +151,20 @@ export default function Tasks() {
             Run
           </Button>
           {triggerTask.isError && (
-            <p className="text-red-600 text-xs">{(triggerTask.error as Error).message}</p>
+            <p className="text-red-600 dark:text-red-400 text-xs">{(triggerTask.error as Error).message}</p>
           )}
         </div>
-        <p className="text-xs text-gray-500">{TASK_DESCRIPTIONS[taskType]}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{TASK_DESCRIPTIONS[taskType]}</p>
       </Card>
 
       {/* List controls */}
       <div className="flex items-center gap-4 flex-wrap">
         <div>
-          <label className="text-xs text-gray-500 mr-2">Filter by type</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mr-2">Filter by type</label>
           <select
             value={filterType}
             onChange={(e) => handleFilterChange(e.target.value as TaskType | '')}
-            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t || 'All types'}</option>
@@ -172,11 +172,11 @@ export default function Tasks() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500 mr-2">Per page</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
           <select
             value={pageSize}
             onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -184,11 +184,11 @@ export default function Tasks() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500 mr-2">Max records</label>
+          <label className="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
           <select
             value={maxRecords === null ? 'all' : String(maxRecords)}
             onChange={(e) => handleMaxRecordsChange(e.target.value)}
-            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {[1, 5, 10, 25, 50, 100, 200, 500].map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -196,7 +196,7 @@ export default function Tasks() {
             <option value="all">All</option>
           </select>
         </div>
-        <span className="text-xs text-gray-500 ml-auto">
+        <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
           {total === undefined ? '—' : (
             maxRecords !== null && total > maxRecords
               ? `${maxRecords} of ${total} task${total !== 1 ? 's' : ''}`
@@ -208,9 +208,9 @@ export default function Tasks() {
 
       {/* Task list */}
       {isLoading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       ) : tasks.length === 0 ? (
-        <p className="text-gray-500 text-sm">No tasks found.</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">No tasks found.</p>
       ) : (
         <div className="space-y-2">
           {tasks.map((t) => (
@@ -224,7 +224,7 @@ export default function Tasks() {
                 }
                 onDelete={() => deleteTask.mutate(t.id)}
               />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 Started {new Date(t.created_at).toLocaleString()}
                 {t.completed_at && ` · Finished ${new Date(t.completed_at).toLocaleString()}`}
               </p>

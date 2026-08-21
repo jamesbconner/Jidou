@@ -1,5 +1,12 @@
 @import 'tailwindcss';
 
+/* Global dark mode toggle: activates any `dark:` utility whenever the
+   element is, or is inside, something carrying a `.dark` class (applied to
+   <html> by ThemeProvider in stores/theme.tsx). Overrides Tailwind v4's
+   default prefers-color-scheme-based behavior, since the app always
+   defaults to light and switches only via the manual ThemeToggle. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* v4 changed the default border/divide color from gray-200 to currentColor
    (see https://tailwindcss.com/docs/upgrade-guide#default-border-color) —
    this is the official compat rule to preserve the old default, since this
@@ -14,6 +21,13 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentColor);
   }
+  .dark *,
+  .dark ::after,
+  .dark ::before,
+  .dark ::backdrop,
+  .dark ::file-selector-button {
+    border-color: var(--color-gray-700, currentColor);
+  }
 }
 
 @layer components {
@@ -24,9 +38,11 @@
 
   /* Modal panel shells — pick one per tone, current call sites split roughly
      evenly between the light "management UI" look and the dark "file ops"
-     look, so both are first-class rather than one being a special case. */
+     look, so both are first-class rather than one being a special case.
+     .panel-dark is intentionally always-dark regardless of the global color
+     scheme, so it gets no dark: variant here. */
   .panel-light {
-    @apply bg-white rounded-lg shadow-xl;
+    @apply bg-white dark:bg-gray-900 rounded-lg shadow-xl;
   }
   .panel-dark {
     @apply bg-zinc-900 rounded-lg shadow-xl;
@@ -34,7 +50,7 @@
 
   /* Card/panel wrapper used throughout the dashboard, tables, and grids. */
   .card {
-    @apply bg-white rounded-lg shadow;
+    @apply bg-white dark:bg-gray-900 rounded-lg shadow;
   }
 
   /* Shape shared by every button variant; color comes from Button.tsx. */

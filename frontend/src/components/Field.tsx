@@ -2,9 +2,9 @@
 export function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{label}</label>
       {children}
-      {note && <p className="text-xs text-gray-400 mt-0.5">{note}</p>}
+      {note && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{note}</p>}
     </div>
   )
 }
