@@ -335,6 +335,7 @@ export interface ServiceHealth {
   error?: string
   provider?: string
   model?: string
+  alembic_version?: string | null
 }
 
 export interface HealthCheck {

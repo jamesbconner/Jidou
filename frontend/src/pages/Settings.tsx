@@ -697,8 +697,8 @@ function ServiceRow({
   test: TestMutation | null
 }) {
   let detail = svc
-    ? svc.latency_ms != null
-      ? `${svc.latency_ms} ms`
+    ? svc.ok && svc.latency_ms != null
+      ? `${svc.latency_ms} ms${svc.alembic_version ? ` · rev ${svc.alembic_version}` : ''}`
       : svc.model
         ? `${svc.provider} / ${svc.model}`
         : svc.error ?? (svc.configured === false ? 'not configured' : '')

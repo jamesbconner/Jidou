@@ -236,6 +236,17 @@ async def system_health(
     try:
         await db_session.execute(text("SELECT 1"))
         results["database"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
+
+        # Surface the applied migration revision so a stale schema after a deploy
+        # is visible here instead of only showing up as a downstream 500.
+        try:
+            version_result = await db_session.execute(
+                text("SELECT version_num FROM alembic_version LIMIT 1")
+            )
+            results["database"]["alembic_version"] = version_result.scalar_one_or_none()
+        except Exception as exc:
+            logger.warning("Could not read alembic_version: %s", exc)
+            results["database"]["alembic_version"] = None
     except Exception as exc:
         results["database"] = {
             "ok": False,
