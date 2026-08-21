@@ -174,6 +174,7 @@ def test_health_returns_healthy_true_when_all_pass() -> None:
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one.return_value = 1
+        result.scalar_one_or_none.return_value = "abc123def456"
         session.execute = AsyncMock(return_value=result)
         yield session
 
@@ -194,6 +195,72 @@ def test_health_returns_healthy_true_when_all_pass() -> None:
         body = response.json()
         assert "healthy" in body
         assert "services" in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_database_includes_alembic_version() -> None:
+    """GET /api/admin/health reports the current alembic revision for the database."""
+    from jidou.database import get_session
+
+    async def _ok_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = "abc123def456"
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _ok_session
+    try:
+        with patch("jidou.api.routes.admin.settings") as mock_settings:
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            response = TestClient(app).get("/api/admin/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["services"]["database"]["ok"] is True
+        assert body["services"]["database"]["alembic_version"] == "abc123def456"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
+    """A failed alembic_version lookup must not make the reachable database unhealthy.
+
+    Also verifies the session is rolled back after the failed statement — Postgres
+    aborts the transaction on error, and get_session's unconditional commit() on
+    teardown would otherwise fail even though this handler reports success.
+    """
+    from jidou.database import get_session
+
+    sessions: list[AsyncMock] = []
+
+    async def _partial_session() -> AsyncMock:
+        session = AsyncMock()
+        ok_result = MagicMock()
+
+        async def _execute(*args: object, **kwargs: object) -> MagicMock:
+            query = str(args[0]) if args else ""
+            if "alembic_version" in query:
+                raise RuntimeError('relation "alembic_version" does not exist')
+            return ok_result
+
+        session.execute = _execute
+        sessions.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _partial_session
+    try:
+        with patch("jidou.api.routes.admin.settings") as mock_settings:
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            response = TestClient(app).get("/api/admin/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["services"]["database"]["ok"] is True
+        assert body["services"]["database"]["alembic_version"] is None
+        assert body["healthy"] is True
+        sessions[0].rollback.assert_called_once()
     finally:
         app.dependency_overrides.clear()
 
@@ -229,6 +296,7 @@ def test_health_redis_not_configured_does_not_make_unhealthy() -> None:
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one.return_value = 1
+        result.scalar_one_or_none.return_value = "abc123def456"
         session.execute = AsyncMock(return_value=result)
         yield session
 
