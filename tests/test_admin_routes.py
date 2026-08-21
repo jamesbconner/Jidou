@@ -225,8 +225,15 @@ def test_health_database_includes_alembic_version() -> None:
 
 
 def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
-    """A failed alembic_version lookup must not make the reachable database unhealthy."""
+    """A failed alembic_version lookup must not make the reachable database unhealthy.
+
+    Also verifies the session is rolled back after the failed statement — Postgres
+    aborts the transaction on error, and get_session's unconditional commit() on
+    teardown would otherwise fail even though this handler reports success.
+    """
     from jidou.database import get_session
+
+    sessions: list[AsyncMock] = []
 
     async def _partial_session() -> AsyncMock:
         session = AsyncMock()
@@ -239,6 +246,7 @@ def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
             return ok_result
 
         session.execute = _execute
+        sessions.append(session)
         yield session
 
     app.dependency_overrides[get_session] = _partial_session
@@ -252,6 +260,7 @@ def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
         assert body["services"]["database"]["ok"] is True
         assert body["services"]["database"]["alembic_version"] is None
         assert body["healthy"] is True
+        sessions[0].rollback.assert_called_once()
     finally:
         app.dependency_overrides.clear()
 

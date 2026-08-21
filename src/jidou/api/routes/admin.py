@@ -246,6 +246,7 @@ async def system_health(
             results["database"]["alembic_version"] = version_result.scalar_one_or_none()
         except Exception as exc:
             logger.warning("Could not read alembic_version: %s", exc)
+            await db_session.rollback()
             results["database"]["alembic_version"] = None
     except Exception as exc:
         results["database"] = {
