@@ -48,8 +48,8 @@ export function ShowRematchModal({
   return (
     <Modal onClose={onClose} tone="light" maxWidth="2xl" className="p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Change TMDB Match</h3>
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">Change TMDB Match</h3>
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
             Cancel
           </button>
         </div>
@@ -59,10 +59,10 @@ export function ShowRematchModal({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
-          className="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded px-3 py-2 text-sm w-full dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         {rematch.isError && (
-          <p className="text-xs text-red-600">{(rematch.error as Error).message}</p>
+          <p className="text-xs text-red-600 dark:text-red-400">{(rematch.error as Error).message}</p>
         )}
         {debouncedQuery.length >= 2 && searchData && searchData.results.length > 0 && (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
@@ -71,7 +71,7 @@ export function ShowRematchModal({
                 key={`${r.media_type ?? 'unknown'}-${r.id}`}
                 onClick={() => handlePick(r)}
                 disabled={rematch.isPending || r.id === currentTmdbId}
-                className="text-left bg-white rounded shadow overflow-hidden hover:ring-2 hover:ring-blue-400 disabled:opacity-40 transition border"
+                className="text-left bg-white dark:bg-gray-800 rounded shadow overflow-hidden hover:ring-2 hover:ring-blue-400 disabled:opacity-40 transition border dark:border-gray-700"
               >
                 {r.poster_path ? (
                   <img
@@ -81,14 +81,14 @@ export function ShowRematchModal({
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                  <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">
                     No image
                   </div>
                 )}
                 <div className="p-1">
-                  <p className="text-xs line-clamp-2 leading-tight">{r.name ?? r.title}</p>
+                  <p className="text-xs line-clamp-2 leading-tight text-gray-900 dark:text-gray-100">{r.name ?? r.title}</p>
                   {r.id === currentTmdbId && (
-                    <p className="text-xs text-green-600 font-medium">Current</p>
+                    <p className="text-xs text-green-600 dark:text-green-400 font-medium">Current</p>
                   )}
                 </div>
               </button>
@@ -96,7 +96,7 @@ export function ShowRematchModal({
           </div>
         )}
         {rematch.isPending && (
-          <p className="text-xs text-gray-500">Re-matching… episodes are being synced.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Re-matching… episodes are being synced.</p>
         )}
       {pendingPick && (
         <ConfirmDialog

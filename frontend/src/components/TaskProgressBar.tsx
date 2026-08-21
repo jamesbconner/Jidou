@@ -90,15 +90,15 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
     <div className="space-y-1">
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
-          <span className="font-medium capitalize">{task.task_type}</span>
-          {task.dry_run && <Badge color="bg-amber-100 text-amber-700">dry run</Badge>}
+          <span className="font-medium capitalize text-gray-900 dark:text-gray-100">{task.task_type}</span>
+          {task.dry_run && <Badge color="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">dry run</Badge>}
         </div>
         <div className="flex items-center gap-2">
           <TaskStatusBadge status={task.status} />
           {(task.status === 'pending' || task.status === 'running') && onCancel && (
             <button
               onClick={onCancel}
-              className="text-xs text-red-600 hover:underline"
+              className="text-xs text-red-600 dark:text-red-400 hover:underline"
             >
               Cancel
             </button>
@@ -106,7 +106,7 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
           {task.status !== 'pending' && task.status !== 'running' && onDelete && (
             <button
               onClick={onDelete}
-              className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-600 hover:bg-red-100"
+              className="rounded-full border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40"
             >
               Delete
             </button>
@@ -115,7 +115,7 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
       </div>
 
       {task.progress_total > 0 && (
-        <div className="w-full bg-gray-200 rounded-full h-1.5">
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
           <div
             className={clsx(
               'h-1.5 rounded-full transition-all duration-300',
@@ -129,14 +129,14 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
       )}
 
       {task.progress_message && (
-        <p className="text-xs text-gray-500 truncate">{task.progress_message}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{task.progress_message}</p>
       )}
 
       {stats.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-0.5 pt-0.5">
           {stats.map((st, i) => (
-            <span key={i} className="text-xs text-gray-500">
-              <span className={clsx('font-semibold', st.highlight ? 'text-gray-800' : 'text-gray-600')}>
+            <span key={i} className="text-xs text-gray-500 dark:text-gray-400">
+              <span className={clsx('font-semibold', st.highlight ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-300')}>
                 {st.value}
               </span>
               {st.label && ` ${st.label}`}

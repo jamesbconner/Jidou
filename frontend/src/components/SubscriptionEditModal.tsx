@@ -10,9 +10,9 @@ import { Button } from '@/components/ui/Button'
 function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{label}</label>
       {children}
-      {note && <p className="text-xs text-gray-400 mt-0.5">{note}</p>}
+      {note && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{note}</p>}
     </div>
   )
 }
@@ -32,39 +32,39 @@ function RegexSuggestModal({
   return (
     <Modal onClose={onClose} tone="light" overlayClassName="z-[60]">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-base font-semibold">Suggest Regex via LLM</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Suggest Regex via LLM</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
         </div>
         <div className="p-4 space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
             Generate regex patterns for <strong>{sub.name}</strong> using an LLM.
           </p>
           {suggest.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-red-600 dark:text-red-400">
               {suggest.error instanceof Error ? suggest.error.message : 'Suggestion failed. Check LLM configuration.'}
             </p>
           )}
           {result ? (
             <div className="space-y-2">
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Include</p>
-                <code className="block bg-gray-50 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_include || '(empty)'}</code>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Include</p>
+                <code className="block bg-gray-50 dark:bg-gray-900 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_include || '(empty)'}</code>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Exclude</p>
-                <code className="block bg-gray-50 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_exclude || '(empty)'}</code>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Exclude</p>
+                <code className="block bg-gray-50 dark:bg-gray-900 border rounded px-2 py-1.5 text-xs font-mono break-all">{result.regex_exclude || '(empty)'}</code>
               </div>
             </div>
           ) : (
-            !suggest.isError && <p className="text-sm text-gray-400 italic">Click Suggest to generate patterns.</p>
+            !suggest.isError && <p className="text-sm text-gray-400 dark:text-gray-500 italic">Click Suggest to generate patterns.</p>
           )}
         </div>
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
           <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           {result && (
             <button
               onClick={() => { onApply(result.regex_include, result.regex_exclude); onClose() }}
-              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700"
+              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 dark:hover:bg-green-500"
             >
               Apply
             </button>
@@ -72,7 +72,7 @@ function RegexSuggestModal({
           <button
             onClick={() => suggest.mutate(undefined, { onSuccess: (r) => setResult(r) })}
             disabled={suggest.isPending}
-            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
           >
             {suggest.isPending ? 'Generating…' : result ? 'Re-suggest' : 'Suggest'}
           </button>
@@ -178,7 +178,7 @@ export function SubscriptionEditModal({
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
   )
 
@@ -187,7 +187,7 @@ export function SubscriptionEditModal({
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
   )
 
@@ -202,8 +202,8 @@ export function SubscriptionEditModal({
       )}
       <Modal onClose={onClose} tone="light" maxWidth="2xl" className="flex flex-col max-h-[90vh]">
           <div className="flex items-start justify-between p-5 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Subscription</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
           </div>
 
           <div className="overflow-y-auto p-5 space-y-4">
@@ -213,7 +213,7 @@ export function SubscriptionEditModal({
                 <select
                   value={draft.feed_id ?? ''}
                   onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
-                  className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 >
                   <option value="">— None —</option>
                   {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -227,7 +227,7 @@ export function SubscriptionEditModal({
                   <div className="flex items-center gap-2">
                     <Link
                       to={`/shows/${linkedShow.id}`}
-                      className="text-sm text-indigo-600 hover:underline"
+                      className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
                       onClick={onClose}
                     >
                       {linkedShow.title} ↗
@@ -235,7 +235,7 @@ export function SubscriptionEditModal({
                     <button
                       type="button"
                       onClick={() => { set('show_id', null); setShowSearch(''); setShowPickerOpen(false) }}
-                      className="text-xs text-red-500 hover:text-red-700"
+                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400"
                     >
                       Remove link
                     </button>
@@ -247,16 +247,16 @@ export function SubscriptionEditModal({
                     onChange={(e) => { setShowSearch(e.target.value); setShowPickerOpen(true) }}
                     onFocus={() => setShowPickerOpen(true)}
                     placeholder="Search library shows…"
-                    className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 )}
                 {showPickerOpen && showSearchResults.length > 0 && (
-                  <ul className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg max-h-48 overflow-y-auto text-sm">
+                  <ul className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg max-h-48 overflow-y-auto text-sm">
                     {showSearchResults.map((s) => (
                       <li key={s.id}>
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50"
+                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 dark:text-gray-200"
                           onClick={() => {
                             set('show_id', s.id)
                             setShowSearch('')
@@ -274,23 +274,23 @@ export function SubscriptionEditModal({
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-600">Regex Patterns</span>
-                <button onClick={() => setShowSuggest(true)} className="text-xs text-indigo-500 hover:underline">
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Regex Patterns</span>
+                <button onClick={() => setShowSuggest(true)} className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline">
                   Suggest via LLM
                 </button>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include</label>
                 {monoInput('regex_include', 'e.g. 1080p|720p')}
-                <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 cursor-pointer">
                   <input type="checkbox" checked={draft.regex_include_ignorecase} onChange={(e) => set('regex_include_ignorecase', e.target.checked)} className="rounded" />
                   Case-insensitive
                 </label>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude</label>
                 {monoInput('regex_exclude', 'e.g. FRENCH|GERMAN')}
-                <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 cursor-pointer">
                   <input type="checkbox" checked={draft.regex_exclude_ignorecase} onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)} className="rounded" />
                   Case-insensitive
                 </label>
@@ -306,14 +306,14 @@ export function SubscriptionEditModal({
               <Field label="Label">{textInput('label', 'e.g. TV')}</Field>
               <div className="flex flex-col gap-2 justify-end pb-1">
                 <label
-                  className="flex items-center gap-2 text-sm cursor-pointer"
+                  className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
                   title="Included in the published YaRSS2 config. Stubs are excluded until explicitly enabled."
                 >
                   <input type="checkbox" checked={draft.enabled_in_config} onChange={(e) => set('enabled_in_config', e.target.checked)} className="rounded" />
                   Enabled in config
                 </label>
                 <label
-                  className={`flex items-center gap-2 text-sm ${isStub ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 ${isStub ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   title={isStub ? 'Stubs are always inactive until promoted to a real subscription.' : 'Jidou controls this flag. Active subscriptions are treated as live by the downloader.'}
                 >
                   <input
@@ -327,20 +327,20 @@ export function SubscriptionEditModal({
                 </label>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Remote Key</p>
-                <p className="text-sm font-mono">{sub.remote_key ?? <span className="text-yellow-600">new (stub)</span>}</p>
-                <p className="text-xs font-medium text-gray-500 mt-2 mb-1">Last Match</p>
-                <p className="text-sm text-gray-600">{sub.last_match ?? '—'}</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Remote Key</p>
+                <p className="text-sm font-mono text-gray-900 dark:text-gray-100">{sub.remote_key ?? <span className="text-yellow-600 dark:text-yellow-400">new (stub)</span>}</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-2 mb-1">Last Match</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300">{sub.last_match ?? '—'}</p>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+          <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
             <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
             <button
               onClick={handleSave}
               disabled={patch.isPending}
-              className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
             >
               {patch.isPending ? 'Saving…' : 'Save'}
             </button>

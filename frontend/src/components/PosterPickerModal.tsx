@@ -40,20 +40,20 @@ export function PosterPickerModal({ show, onClose }: Props) {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b">
-        <h2 className="font-semibold text-gray-900 truncate">Choose Poster — {show.title}</h2>
-        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600" aria-label="Close">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">Choose Poster — {show.title}</h2>
+        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Close">
           ✕
         </button>
       </div>
 
       {/* Body */}
       <div className="overflow-y-auto flex-1 px-5 py-4">
-        {isLoading && <p className="text-sm text-gray-500">Loading posters…</p>}
+        {isLoading && <p className="text-sm text-gray-500 dark:text-gray-400">Loading posters…</p>}
         {isError && (
-          <p className="text-sm text-red-600">Failed to load posters — check server logs.</p>
+          <p className="text-sm text-red-600 dark:text-red-400">Failed to load posters — check server logs.</p>
         )}
         {posters && posters.length === 0 && (
-          <p className="text-sm text-gray-400 italic">No alternate posters available for this show.</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 italic">No alternate posters available for this show.</p>
         )}
         {posters && posters.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -67,7 +67,7 @@ export function PosterPickerModal({ show, onClose }: Props) {
                     <img
                       src={`${TMDB_THUMB}${p.file_path}`}
                       alt={`${show.title} poster option`}
-                      className="w-full aspect-[2/3] object-cover rounded-lg border"
+                      className="w-full aspect-[2/3] object-cover rounded-lg border dark:border-gray-700"
                       loading="lazy"
                     />
                     {(isActiveList || isActiveDetail) && (
@@ -89,14 +89,14 @@ export function PosterPickerModal({ show, onClose }: Props) {
                     <button
                       onClick={() => select(p.file_path, 'list')}
                       disabled={isActiveList || (patchShow.isPending && isPendingThis)}
-                      className="flex-1 text-xs border rounded px-1.5 py-1 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-default"
+                      className="flex-1 text-xs border rounded px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-default"
                     >
                       {isPendingThis && pending?.target === 'list' ? '…' : 'Use for Shows'}
                     </button>
                     <button
                       onClick={() => select(p.file_path, 'detail')}
                       disabled={isActiveDetail || (patchShow.isPending && isPendingThis)}
-                      className="flex-1 text-xs border rounded px-1.5 py-1 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-default"
+                      className="flex-1 text-xs border rounded px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-default"
                     >
                       {isPendingThis && pending?.target === 'detail' ? '…' : 'Use for Details'}
                     </button>

@@ -55,7 +55,7 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
               loading="lazy"
             />
           ) : (
-            <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
               No image
             </div>
           )}
@@ -112,10 +112,10 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
         />
       </div>
       <div className="p-3">
-        <Link to={`/shows/${show.id}`} className="font-semibold text-sm hover:underline line-clamp-2">
+        <Link to={`/shows/${show.id}`} className="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2">
           {show.title}
         </Link>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           {show.release_date?.slice(0, 4) ?? '—'} · {show.media_type}
           {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
         </p>

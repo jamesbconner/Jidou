@@ -78,8 +78,8 @@ function WatchlistToggleButton({
       disabled={pending}
       className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
         inWatchlist
-          ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
-          : 'text-gray-600 hover:bg-gray-50'
+          ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40'
+          : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
       }`}
     >
       {pending ? '…' : inWatchlist ? 'Remove From Watchlist' : 'Add To Watchlist'}
@@ -105,7 +105,7 @@ function QueuePositionSelect({
     return (
       <>
         <Badge
-          color="bg-gray-100 text-gray-700"
+          color="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
           onClick={() => {
             setError(null)
             setEditing(true)
@@ -115,7 +115,7 @@ function QueuePositionSelect({
           Queue #{index + 1}
         </Badge>
         {error && (
-          <span className="text-xs text-red-600" title={error}>
+          <span className="text-xs text-red-600 dark:text-red-400" title={error}>
             Reorder failed
           </span>
         )}
@@ -246,8 +246,8 @@ export default function ShowDetail() {
     }
   }
 
-  if (isLoading) return <p className="text-gray-400">Loading…</p>
-  if (!show) return <p className="text-red-500">Show not found.</p>
+  if (isLoading) return <p className="text-gray-400 dark:text-gray-500">Loading…</p>
+  if (!show) return <p className="text-red-500 dark:text-red-400">Show not found.</p>
 
   const bySeason: Record<number, typeof episodes> = {}
   for (const ep of episodes) {
@@ -339,8 +339,8 @@ export default function ShowDetail() {
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold">{show.title}</h1>
-              <p className="text-gray-500 text-sm mt-1">
+              <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
                 {show.release_date?.slice(0, 4)}
                 {show.release_date && ' · '}
                 {show.media_type}
@@ -350,12 +350,12 @@ export default function ShowDetail() {
                   href={tmdbUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-blue-500 hover:underline"
+                  className="text-blue-500 dark:text-blue-400 hover:underline"
                 >
                   TMDB #{show.tmdb_id}
                 </a>
                 {show.content_type && (
-                  <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded">
+                  <span className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 text-xs px-1.5 py-0.5 rounded">
                     {show.content_type}
                   </span>
                 )}
@@ -372,8 +372,8 @@ export default function ShowDetail() {
                     disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
                     className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
                       allWatched
-                        ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/40'
+                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
                     }`}
                   >
                     {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
@@ -390,8 +390,8 @@ export default function ShowDetail() {
                     disabled={patchShow.isPending}
                     className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
                       !show.track_missing_episodes
-                        ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40'
+                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
                     }`}
                   >
                     {show.track_missing_episodes ? 'Ignore Missing Eps' : 'Track Missing Eps'}
@@ -405,7 +405,7 @@ export default function ShowDetail() {
                 )}
               </div>
               {show.overview && (
-                <p className="text-sm text-gray-600 mt-2 max-w-xl">{show.overview}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-xl">{show.overview}</p>
               )}
               {!isMovie && (
                 <WatchedProgressBar
@@ -416,11 +416,11 @@ export default function ShowDetail() {
                 />
               )}
               {isMovie ? (
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                   {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                   {trackedCount} / {episodes.length} episodes tracked
                 </p>
               )}
@@ -436,8 +436,8 @@ export default function ShowDetail() {
                 disabled={ensureRssStub.isPending}
                 className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
                   existingRssSub
-                    ? 'border-green-300 text-green-700 hover:bg-green-50'
-                    : 'hover:bg-gray-50'
+                    ? 'border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                 }`}
               >
                 {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
@@ -466,33 +466,33 @@ export default function ShowDetail() {
 
       {/* Local path */}
       <Card as="section" padding="md">
-        <h2 className="font-semibold mb-1">Local path</h2>
+        <h2 className="font-semibold mb-1 dark:text-gray-100">Local path</h2>
         {show.local_path ? (
           <div className="flex items-start justify-between gap-4">
-            <p className="font-mono text-sm text-gray-700 break-all flex-1">
+            <p className="font-mono text-sm text-gray-700 dark:text-gray-300 break-all flex-1">
               {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
             </p>
             <button
               onClick={() => setPathModalOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 flex-shrink-0"
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
             >
               Edit Path
             </button>
           </div>
         ) : (
-          <p className="text-sm text-gray-400 italic">Not set</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 italic">Not set</p>
         )}
-        {updatePaths.isSuccess && <p className="text-xs text-green-600 mt-1">Saved.</p>}
+        {updatePaths.isSuccess && <p className="text-xs text-green-600 dark:text-green-400 mt-1">Saved.</p>}
       </Card>
 
       {/* Movie file / Episodes */}
       {isMovie ? (
         <Card as="section" padding="md">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Movie file</h2>
+            <h2 className="font-semibold dark:text-gray-100">Movie file</h2>
             <button
               onClick={() => setScanLocalMovieFileOpen(true)}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Scan Local Files
             </button>
@@ -504,14 +504,14 @@ export default function ShowDetail() {
                   key={f.id}
                   className="flex items-center justify-between px-3 py-2 text-sm gap-3"
                 >
-                  <span className="font-mono text-xs text-gray-600 truncate">
+                  <span className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
                     {f.original_filename}
                   </span>
                   <div className="flex items-center gap-3 shrink-0">
                     {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                       <button
                         onClick={() => setFixMovieFileOpen(true)}
-                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
                       >
                         Fix Match
                       </button>
@@ -521,7 +521,7 @@ export default function ShowDetail() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 italic">
+            <p className="text-sm text-gray-400 dark:text-gray-500 italic">
               No file linked yet. Use Scan Local Files to link one from this movie&apos;s local
               path.
             </p>
@@ -536,7 +536,7 @@ export default function ShowDetail() {
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                   episodesTab === 'episodes'
                     ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
                 }`}
               >
                 Episodes ({episodes.length})
@@ -546,12 +546,12 @@ export default function ShowDetail() {
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                   episodesTab === 'missing'
                     ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
                 }`}
               >
                 Missing Episodes
                 {missingCount > 0 && (
-                  <span className="ml-2 bg-amber-100 text-amber-700 text-xs rounded-full px-1.5 py-0.5">
+                  <span className="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">
                     {missingCount}
                   </span>
                 )}
@@ -560,23 +560,23 @@ export default function ShowDetail() {
             {episodesTab === 'episodes' && (
               <div className="flex gap-2 flex-wrap items-center">
                 {syncEpisodes.isSuccess && (
-                  <span className="text-xs text-green-600">Episodes synced</span>
+                  <span className="text-xs text-green-600 dark:text-green-400">Episodes synced</span>
                 )}
                 {syncEpisodes.isError && (
-                  <span className="text-xs text-red-600">
+                  <span className="text-xs text-red-600 dark:text-red-400">
                     {(syncEpisodes.error as Error).message}
                   </span>
                 )}
                 <button
                   onClick={() => syncEpisodes.mutate(showId)}
                   disabled={syncEpisodes.isPending}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
                 >
                   {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
                 </button>
                 <button
                   onClick={() => setScanLocalFilesOpen(true)}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   Scan Local Files
                 </button>
@@ -588,7 +588,7 @@ export default function ShowDetail() {
           ) : (
             <>
           {beginRematch.isError && (
-            <p className="text-xs text-red-500 mb-2">{(beginRematch.error as Error).message}</p>
+            <p className="text-xs text-red-500 dark:text-red-400 mb-2">{(beginRematch.error as Error).message}</p>
           )}
           {Object.entries(bySeason)
             .sort(([a], [b]) => Number(a) - Number(b))
@@ -599,7 +599,7 @@ export default function ShowDetail() {
               const seasonAllWatched = seasonWatched === eps.length
               return (
                 <details key={season} className="mb-2">
-                  <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2">
+                  <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2 dark:text-gray-100">
                     <span onClick={(e) => e.preventDefault()}>
                       <WatchedToggle
                         watched={seasonAllWatched}
@@ -617,10 +617,10 @@ export default function ShowDetail() {
                       Season {season} ({eps.length} episodes)
                     </span>
                     {seasonTracked > 0 && (
-                      <span className="text-xs text-green-600">{seasonTracked} tracked</span>
+                      <span className="text-xs text-green-600 dark:text-green-400">{seasonTracked} tracked</span>
                     )}
                     {seasonWatched > 0 && (
-                      <span className="text-xs text-gray-500">{seasonWatched} watched</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{seasonWatched} watched</span>
                     )}
                   </summary>
                   <div className="mt-2 divide-y border rounded-lg">
@@ -629,17 +629,17 @@ export default function ShowDetail() {
                       .map((ep) => {
                         const header = (
                           <>
-                            <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
+                            <span className="text-gray-400 dark:text-gray-500 mr-2">{ep.episode_number}.</span>
                             {ep.name}
                             {ep.air_date && (
-                              <span className="text-gray-400 ml-2 text-xs">{ep.air_date}</span>
+                              <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{ep.air_date}</span>
                             )}
                           </>
                         )
                         return (
                         <div
                           key={ep.id}
-                          className="flex items-start justify-between px-3 py-2 text-sm gap-3"
+                          className="flex items-start justify-between px-3 py-2 text-sm gap-3 dark:text-gray-200"
                         >
                           <div className="flex items-start gap-2 min-w-0">
                             <WatchedToggle
@@ -656,7 +656,7 @@ export default function ShowDetail() {
                               {ep.overview ? (
                                 <details>
                                   <summary className="cursor-pointer list-none">{header}</summary>
-                                  <p className="text-xs text-gray-500 mt-1">{ep.overview}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ep.overview}</p>
                                 </details>
                               ) : (
                                 header
@@ -666,14 +666,14 @@ export default function ShowDetail() {
                                   ? ep.backing_files.map((bf) => (
                                       <div
                                         key={bf.id}
-                                        className="text-xs text-gray-400 font-mono mt-0.5"
+                                        className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5"
                                       >
                                         {bf.filename.replace(/\\/g, '/').split('/').pop() ??
                                           bf.filename}
                                       </div>
                                     ))
                                   : ep.tracked_filename_display && (
-                                      <div className="text-xs text-gray-400 font-mono mt-0.5">
+                                      <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">
                                         {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
                                           ep.tracked_filename_display}
                                       </div>
@@ -691,14 +691,14 @@ export default function ShowDetail() {
                             <div className="shrink-0 flex items-center gap-2">
                               <button
                                 onClick={() => setLinkFileEp(ep)}
-                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
                               >
                                 Match File
                               </button>
                               {hasImportEps && (
                                 <button
                                   onClick={() => handleEpisodeFixEps(ep)}
-                                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
                                 >
                                   Fix Eps
                                 </button>

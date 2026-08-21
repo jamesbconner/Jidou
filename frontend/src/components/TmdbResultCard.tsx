@@ -51,7 +51,7 @@ export function TmdbResultCard({
             loading="lazy"
           />
         ) : (
-          <div className="w-full aspect-[2/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+          <div className="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">
             No image
           </div>
         )}
@@ -62,8 +62,8 @@ export function TmdbResultCard({
         )}
       </div>
       <div className="p-2 flex flex-col flex-1">
-        <p className="text-xs font-medium line-clamp-2 flex-1">{result.name ?? result.title}</p>
-        {subtitle && <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">{subtitle}</p>}
+        <p className="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">{result.name ?? result.title}</p>
+        {subtitle && <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{subtitle}</p>}
         {inLibrary && inLibraryShowId ? (
           <Link
             to={`/shows/${inLibraryShowId}`}
@@ -71,7 +71,7 @@ export function TmdbResultCard({
               e.stopPropagation()
               onNavigate?.()
             }}
-            className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 rounded px-2 py-1 hover:bg-green-100"
+            className="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 rounded px-2 py-1 hover:bg-green-100 dark:hover:bg-green-900/40"
           >
             View in Library
           </Link>

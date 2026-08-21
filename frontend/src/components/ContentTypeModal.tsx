@@ -25,13 +25,13 @@ export function ContentTypeModal({
 
   return (
     <Modal onClose={onClose} tone="light" maxWidth="sm" className="p-6">
-        <h3 className="font-semibold mb-4">Set Content Type</h3>
+        <h3 className="font-semibold mb-4 text-gray-900 dark:text-gray-100">Set Content Type</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <select
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
-            className="border rounded px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border rounded px-3 py-2 text-sm w-full dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">— clear —</option>
             <option value="anime">anime</option>
@@ -39,7 +39,7 @@ export function ContentTypeModal({
             <option value="movie">movie</option>
           </select>
           {error && (
-            <p className="text-xs text-red-600">{error.message}</p>
+            <p className="text-xs text-red-600 dark:text-red-400">{error.message}</p>
           )}
           <div className="flex gap-2 justify-end">
             <Button type="button" onClick={onClose} disabled={isPending} variant="secondary" tone="light" size="md">

@@ -6,6 +6,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api } from '@/api/client'
+import { useColorScheme } from '@/stores/theme'
 import { useAppSettings } from '@/hooks/useSettings'
 import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
@@ -60,16 +61,18 @@ function StatCard({ label, value, sub, tooltip, alert = false }: StatCardProps) 
     <Card
       padding="md"
       title={tooltip}
-      className={clsx('cursor-default', alert && 'bg-red-50 border border-red-200')}
+      className={clsx('cursor-default', alert && 'bg-red-50 border border-red-200 dark:bg-red-950/40 dark:border-red-800')}
     >
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className={`text-2xl font-bold ${alert ? 'text-red-600' : ''}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
+      <p className={`text-2xl font-bold ${alert ? 'text-red-600 dark:text-red-400' : 'dark:text-gray-100'}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
     </Card>
   )
 }
 
 export default function Dashboard() {
+  const { colorScheme } = useColorScheme()
+  const isDark = colorScheme === 'dark'
   const { data: activeTasks = [] } = useActiveTasks()
   const { data: appSettings } = useAppSettings()
   const cancelTask = useCancelTask()
@@ -122,7 +125,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       {activeTasks.map((t) => <LiveTask key={t.id} taskId={t.id} />)}
 
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <h1 className="text-2xl font-bold dark:text-gray-100">Dashboard</h1>
 
       {/* Stat cards */}
       {stats && (
@@ -169,19 +172,23 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Files added — bar chart */}
         <Card padding="md">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">Episodes Tracked (past 30 days)</h2>
+          <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Episodes Tracked (past 30 days)</h2>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={timelineData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10 }}
+                tick={{ fontSize: 10, fill: isDark ? '#9ca3af' : undefined }}
                 interval={6}
                 tickLine={false}
                 axisLine={false}
               />
-              <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: isDark ? '#9ca3af' : undefined }} tickLine={false} axisLine={false} />
               <Tooltip
-                contentStyle={{ fontSize: 12 }}
+                contentStyle={
+                  isDark
+                    ? { fontSize: 12, background: '#1f2937', border: '1px solid #374151', color: '#f3f4f6' }
+                    : { fontSize: 12 }
+                }
                 formatter={(v) => [v, 'Files']}
               />
               <Bar dataKey="count" fill="#3b82f6" radius={[2, 2, 0, 0]} />
@@ -191,9 +198,9 @@ export default function Dashboard() {
 
         {/* Pipeline status — donut */}
         <Card padding="md">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">Pipeline Status</h2>
+          <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Pipeline Status</h2>
           {pipelineStatus.length === 0 ? (
-            <p className="text-sm text-gray-400 mt-12 text-center">No files in the system yet.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-12 text-center">No files in the system yet.</p>
           ) : (
             <div className="flex items-center gap-4">
               <ResponsiveContainer width="50%" height={180}>
@@ -211,7 +218,11 @@ export default function Dashboard() {
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{ fontSize: 12 }}
+                    contentStyle={
+                      isDark
+                        ? { fontSize: 12, background: '#1f2937', border: '1px solid #374151', color: '#f3f4f6' }
+                        : { fontSize: 12 }
+                    }
                     formatter={(v, name) => [v, name]}
                   />
                 </PieChart>
@@ -223,8 +234,8 @@ export default function Dashboard() {
                       className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
                       style={{ background: STATUS_COLOURS[entry.status] ?? '#94a3b8' }}
                     />
-                    <span className="capitalize text-gray-600 flex-1">{entry.status}</span>
-                    <span className="font-medium text-gray-800">{entry.count}</span>
+                    <span className="capitalize text-gray-600 dark:text-gray-300 flex-1">{entry.status}</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-100">{entry.count}</span>
                   </li>
                 ))}
               </ul>
@@ -244,9 +255,9 @@ export default function Dashboard() {
 
       {/* Active tasks */}
       <section>
-        <h2 className="text-lg font-semibold mb-3">Active Tasks</h2>
+        <h2 className="text-lg font-semibold mb-3 dark:text-gray-100">Active Tasks</h2>
         {activeTasks.length === 0 ? (
-          <p className="text-gray-500 text-sm">No active tasks.</p>
+          <p className="text-gray-500 dark:text-gray-500 text-sm">No active tasks.</p>
         ) : (
           <div className="space-y-3">
             {activeTasks.map((t) => (

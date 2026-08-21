@@ -33,7 +33,7 @@ export function TrackedBadges({
     return (
       <button
         onClick={() => onFixEps()}
-        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 shrink-0"
+        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/60 shrink-0"
       >
         Fix Eps
       </button>

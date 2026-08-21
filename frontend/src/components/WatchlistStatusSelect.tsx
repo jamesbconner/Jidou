@@ -28,7 +28,7 @@ export function WatchlistStatusSelect({ id, current }: Props) {
           {STATUS_LABEL[current]}
         </Badge>
         {error && (
-          <span className="text-xs text-red-600" title={error}>
+          <span className="text-xs text-red-600 dark:text-red-400" title={error}>
             Update failed
           </span>
         )}
@@ -54,7 +54,7 @@ export function WatchlistStatusSelect({ id, current }: Props) {
         }
       }}
       onBlur={() => setEditing(false)}
-      className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="text-xs border rounded px-1 py-0.5 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       {STATUS_OPTIONS.map((s) => (
         <option key={s} value={s}>

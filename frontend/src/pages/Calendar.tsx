@@ -63,7 +63,7 @@ function EpisodeCell({ episode }: { episode: CalendarEpisode }) {
   return (
     <Link
       to={`/shows/${episode.show_id}`}
-      className="flex items-start gap-2 bg-white rounded-lg shadow-sm p-2 hover:shadow transition-shadow"
+      className="flex items-start gap-2 bg-white dark:bg-gray-900 rounded-lg shadow-sm p-2 hover:shadow transition-shadow"
     >
       {episode.poster_path ? (
         <img
@@ -73,11 +73,11 @@ function EpisodeCell({ episode }: { episode: CalendarEpisode }) {
           loading="lazy"
         />
       ) : (
-        <div className="w-8 h-12 bg-gray-100 rounded flex-shrink-0" />
+        <div className="w-8 h-12 bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0" />
       )}
       <div className="min-w-0">
-        <p className="text-xs font-semibold line-clamp-2">{episode.show_title}</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs font-semibold line-clamp-2 dark:text-gray-100">{episode.show_title}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           S{String(episode.season_number).padStart(2, '0')}E
           {String(episode.episode_number).padStart(2, '0')}
         </p>
@@ -171,27 +171,27 @@ export default function Calendar() {
     setFilters(DEFAULT_CALENDAR_FILTERS)
   }
 
-  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100'
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold mr-auto">Calendar</h1>
+        <h1 className="text-2xl font-bold mr-auto dark:text-gray-100">Calendar</h1>
         <button
           onClick={() => setRangeStart((s) => addDays(s, -rangeSettings.rangeLength))}
-          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-gray-800"
         >
           ← Prev
         </button>
         <button
           onClick={() => setRangeStart(computeRangeStart(new Date(), rangeSettings))}
-          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-gray-800"
         >
           Today
         </button>
         <button
           onClick={() => setRangeStart((s) => addDays(s, rangeSettings.rangeLength))}
-          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-gray-800"
         >
           Next →
         </button>
@@ -199,7 +199,7 @@ export default function Calendar() {
 
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Range</span>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Range</span>
           <SegmentedControl
             aria-label="Range length"
             options={RANGE_LENGTH_OPTIONS}
@@ -208,7 +208,7 @@ export default function Calendar() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Anchor</span>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Anchor</span>
           <SegmentedControl
             aria-label="Anchor mode"
             options={ANCHOR_MODE_OPTIONS.map((o) => ({
@@ -225,7 +225,7 @@ export default function Calendar() {
         </div>
         {rangeSettings.anchorMode === 'week-start' && (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500">Week begins</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Week begins</span>
             <SegmentedControl
               aria-label="Week start day"
               options={WEEK_START_DAY_OPTIONS}
@@ -236,15 +236,15 @@ export default function Calendar() {
         )}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap bg-gray-50 border rounded-lg px-4 py-3">
-        <span className="text-xs font-medium text-gray-500 shrink-0">Filter</span>
+      <div className="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
 
         <input
           type="search"
           placeholder="Search shows…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="border rounded px-2 py-1 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border rounded px-2 py-1 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
         />
 
         <select value={filterContentType} onChange={(e) => setFilterContentType(e.target.value)} className={selectCls}>
@@ -268,19 +268,19 @@ export default function Calendar() {
         )}
       </div>
 
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         {start} – {end}
         {activeFilterCount > 0 && ` · ${filtered.length} of ${episodes.length} episodes`}
       </p>
 
       {isError ? (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-red-600 dark:text-red-400">
           Failed to load the calendar{error instanceof Error ? `: ${error.message}` : ''}.
         </p>
       ) : isLoading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500">Loading…</p>
       ) : activeFilterCount > 0 && filtered.length === 0 ? (
-        <p className="text-sm text-gray-500">No episodes in this range match the current filters.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">No episodes in this range match the current filters.</p>
       ) : (
         <div className={GRID_COLS_CLASS[rangeSettings.rangeLength]}>
           {days.map((day) => {
@@ -291,14 +291,14 @@ export default function Calendar() {
               <div key={iso} className="space-y-2">
                 <div
                   className={`text-xs font-semibold px-2 py-1 rounded ${
-                    isToday ? 'bg-blue-500 text-white' : 'text-gray-500'
+                    isToday ? 'bg-blue-500 text-white' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   {dayLabel(day)} {day.getMonth() + 1}/{day.getDate()}
                 </div>
                 <div className="space-y-2">
                   {dayEpisodes.length === 0 ? (
-                    <p className="text-xs text-gray-300 px-2">—</p>
+                    <p className="text-xs text-gray-300 dark:text-gray-700 px-2">—</p>
                   ) : (
                     dayEpisodes.map((ep) => <EpisodeCell key={ep.episode_id} episode={ep} />)
                   )}

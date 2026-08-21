@@ -63,7 +63,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
   )
 
@@ -72,15 +72,15 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
   )
 
   return (
     <Modal onClose={onClose} tone="light" maxWidth="2xl" className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">New Subscription</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">New Subscription</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
         </div>
 
         <div className="overflow-y-auto p-5 space-y-4">
@@ -90,7 +90,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
               <select
                 value={draft.feed_id ?? ''}
                 onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
-                className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 <option value="">— None —</option>
                 {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -99,19 +99,19 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
           </div>
 
           <div className="space-y-3">
-            <span className="text-xs font-medium text-gray-600">Regex Patterns</span>
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Regex Patterns</span>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Include</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include</label>
               {monoInput('regex_include', 'e.g. 1080p|720p')}
-              <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 cursor-pointer">
                 <input type="checkbox" checked={draft.regex_include_ignorecase} onChange={(e) => set('regex_include_ignorecase', e.target.checked)} className="rounded" />
                 Case-insensitive
               </label>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Exclude</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude</label>
               {monoInput('regex_exclude', 'e.g. FRENCH|GERMAN')}
-              <label className="flex items-center gap-2 text-xs text-gray-500 mt-1 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 cursor-pointer">
                 <input type="checkbox" checked={draft.regex_exclude_ignorecase} onChange={(e) => set('regex_exclude_ignorecase', e.target.checked)} className="rounded" />
                 Case-insensitive
               </label>
@@ -126,11 +126,11 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
           <div className="grid grid-cols-2 gap-4">
             <Field label="Label">{textInput('label', 'e.g. TV')}</Field>
             <div className="flex flex-col gap-2 justify-end pb-1">
-              <label className="flex items-center gap-2 text-sm cursor-pointer" title="Included in the published YaRSS2 config.">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer" title="Included in the published YaRSS2 config.">
                 <input type="checkbox" checked={draft.enabled_in_config} onChange={(e) => set('enabled_in_config', e.target.checked)} className="rounded" />
                 Enabled in config
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader.">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer" title="Jidou controls this flag. Active subscriptions are treated as live by the downloader.">
                 <input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} className="rounded" />
                 Active
               </label>
@@ -138,12 +138,12 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
           <Button onClick={onClose} variant="secondary" tone="light" size="md">Cancel</Button>
           <button
             onClick={handleCreate}
             disabled={create.isPending || !draft.name.trim()}
-            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
           >
             {create.isPending ? 'Creating…' : 'Create'}
           </button>

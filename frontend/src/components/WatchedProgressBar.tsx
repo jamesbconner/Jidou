@@ -12,7 +12,7 @@ export function WatchedProgressBar({
   total,
   showLabel = false,
   className = '',
-  trackClassName = 'h-1.5 w-full overflow-hidden rounded-full bg-gray-200',
+  trackClassName = 'h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700',
   barClassName = 'h-full rounded-full bg-green-500',
 }: Props) {
   if (total === 0) return null
@@ -21,7 +21,7 @@ export function WatchedProgressBar({
   return (
     <div className={className}>
       {showLabel && (
-        <p className="text-xs text-gray-500 mb-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
           {watched} / {total} watched
         </p>
       )}
