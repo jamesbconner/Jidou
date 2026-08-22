@@ -41,6 +41,7 @@ function episode(over: Partial<EpisodeList>): EpisodeList {
     episode_number: 1,
     name: 'Episode',
     file_tracked: false,
+    tracked_source: null,
     watched: false,
     backing_files: [],
     tracked_filename_display: null,
