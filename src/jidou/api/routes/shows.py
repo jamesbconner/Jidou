@@ -1327,6 +1327,84 @@ async def begin_episode_rematch(
     return backing
 
 
+async def _detach_episode_tracking(db_session: AsyncSession, ep: Episode) -> None:
+    """Unlink every ``DownloadedFile`` backing *ep* and clear its tracking fields.
+
+    The single place that can fully unlink an episode regardless of how it's
+    tracked — unlike ``PATCH /files/{id}`` (only reaches download-backed
+    episodes, one file at a time) or ``assign-import``'s displacement branch
+    (only clears an import-tracked episode as a side effect of handing its
+    filename to a different episode). Used by both the ``replace`` branch of
+    ``link-file`` and the standalone clear-tracking endpoint below.
+
+    Real (non-synthetic) backing files are reset to ``UNMATCHED`` so they
+    resurface on the Files page for manual re-triage, mirroring the status
+    change the frontend's "Clear assignment" already makes via
+    ``PATCH /files/{id}``. Synthetic-import rows are deleted outright rather
+    than orphaned: they're pure display markers (see
+    ``create_synthetic_import_file``), not real downloaded data, and merely
+    clearing ``episode_id`` on one would leave it permanently stuck — still
+    keyed to this show, so ``scan-local-files``'s existing-path dedup check
+    (by ``show_id``, not ``episode_id``) would hide the file from every
+    future scan, and ``create_synthetic_import_file``'s remote_path-keyed
+    idempotency would hand back this same stale, still-unlinked row instead
+    of creating a fresh one on a later ``link-file`` call. Deleting it lets
+    the file be rediscovered at its unchanged on-disk path and re-linked
+    with a fresh, correctly-linked row.
+
+    Args:
+        db_session: Active async DB session.
+        ep: Episode ORM object to detach and clear tracking on, in place.
+    """
+    backing_stmt = select(DownloadedFile).where(DownloadedFile.episode_id == ep.id)
+    for backing_file in (await db_session.execute(backing_stmt)).scalars().all():
+        if backing_file.remote_path.startswith("synthetic-import://"):
+            await db_session.delete(backing_file)
+        else:
+            backing_file.episode_id = None
+            backing_file.matched_by = None
+            backing_file.status = FileStatus.UNMATCHED
+    clear_episode_tracking(ep)
+
+
+@router.delete("/{show_id}/episodes/{episode_id}/tracking", response_model=EpisodeList)
+async def clear_episode_file_tracking(
+    show_id: int,
+    episode_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Episode:
+    """Unlink an episode from whatever file currently tracks it.
+
+    Works uniformly for download-backed episodes (nulls the backing
+    ``DownloadedFile.episode_id``) and import-tracked episodes (nulls the
+    synthetic ``DownloadedFile.episode_id`` and the ``Episode`` tracking
+    fields) — see ``_detach_episode_tracking``. Gives import-tracked episodes
+    a way to be freed that doesn't exist today: ``assign-import`` can only
+    clear one as a side effect of handing its filename to a different
+    episode, and only when such a filename exists in the show's import pool.
+
+    Args:
+        show_id: Database primary key of the show.
+        episode_id: Database primary key of the episode.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Episode` record, now untracked.
+
+    Raises:
+        HTTPException: 404 if the show or episode is not found.
+        HTTPException: 422 if the episode is not currently tracked.
+    """
+    ep = await _get_episode_or_404(db_session, show_id, episode_id)
+    if not ep.file_tracked:
+        raise HTTPException(status_code=422, detail="Episode is not tracked")
+    await _detach_episode_tracking(db_session, ep)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(ep)
+    return ep
+
+
 @router.post(
     "/{show_id}/episodes/{episode_id}/assign-import",
     status_code=200,
@@ -1446,7 +1524,7 @@ async def link_episode_file(
     payload: LinkFileRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DownloadedFile:
-    """Manually link an on-disk file path to an untracked episode.
+    """Manually link an on-disk file path to an episode.
 
     For files that already sit at their final library location but were never
     downloaded or path-imported by Jidou, so no ``DownloadedFile`` row exists
@@ -1465,7 +1543,16 @@ async def link_episode_file(
         payload: Contains ``path`` — the absolute on-disk path of the file,
             as returned verbatim by ``scan-local-files`` (may be
             percent-encoded via :mod:`~jidou.services.path_transport` if the
-            filename contains non-UTF-8 bytes).
+            filename contains non-UTF-8 bytes) — and ``replace``: when True
+            and the episode is already tracked, whatever currently tracks it
+            (a download-backed ``DownloadedFile`` or an import-tracked
+            filename) is unlinked first via ``_detach_episode_tracking``,
+            instead of raising 422. Handles the "file got moved/consolidated
+            into the correct season directory after the episode was already
+            tracked from its old location" case that neither ``begin-rematch``
+            (only changes which file a fixed row points to, never its path)
+            nor ``assign-import`` (can only reassign among already-imported
+            filenames) can resolve.
         db_session: DB session (injected).
 
     Returns:
@@ -1473,8 +1560,8 @@ async def link_episode_file(
 
     Raises:
         HTTPException: 404 if the show or episode is not found.
-        HTTPException: 422 if the episode is already tracked, or *path* does
-            not point to an existing file.
+        HTTPException: 422 if the episode is already tracked and *replace* is
+            False, or *path* does not point to an existing file.
     """
     show_stmt = select(Show).where(Show.id == show_id)
     show = (await db_session.execute(show_stmt)).scalar_one_or_none()
@@ -1496,12 +1583,15 @@ async def link_episode_file(
         raise HTTPException(status_code=404, detail="Episode not found")
 
     if ep.file_tracked:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Episode is already tracked. Use begin-rematch or assign-import to reassign it."
-            ),
-        )
+        if not payload.replace:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Episode is already tracked. Use begin-rematch or assign-import "
+                    "to reassign it, or pass replace=true to overwrite."
+                ),
+            )
+        await _detach_episode_tracking(db_session, ep)
 
     # payload.path is the (possibly percent-encoded, see path_transport)
     # value echoed back verbatim from a scan-local-files response; decode it
@@ -1571,8 +1661,9 @@ async def scan_show_local_files(
     - ``unmatched``: no episode could be resolved.
     - ``conflict``: the proposed episode is already tracked by a different
       file, or was already claimed by an earlier row in this scan (e.g. a
-      duplicate file) — confirming would need ``link-file``'s existing 422
-      guard overridden by picking a different episode first.
+      duplicate file) — confirming needs either picking a different episode,
+      or passing ``replace=true`` to ``link-file`` to unlink whatever
+      currently tracks the proposed episode first.
 
     Args:
         show_id: Database primary key of the show.

@@ -68,19 +68,41 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
     setSelections((prev) => ({ ...prev, [path]: value }))
   }
 
-  function rowIsActionable(row: ScannedFileMatch): boolean {
+  // The normal case: the selected episode is untracked, so a plain link-file
+  // call (no replace) succeeds.
+  function rowIsSimpleLink(row: ScannedFileMatch): boolean {
     const selected = selections[row.path]
     if (!selected) return false
     const ep = episodeById.get(Number(selected))
     return ep != null && !ep.file_tracked
   }
 
+  // The selected episode is already tracked (by a stale file location after
+  // a move/season-consolidation, or by something else entirely) — linking
+  // here requires replace=true, which unlinks whatever currently tracks it.
+  function rowNeedsReplace(row: ScannedFileMatch): boolean {
+    const selected = selections[row.path]
+    if (!selected) return false
+    const ep = episodeById.get(Number(selected))
+    return ep != null && ep.file_tracked
+  }
+
+  function rowIsActionable(row: ScannedFileMatch): boolean {
+    return rowIsSimpleLink(row) || rowNeedsReplace(row)
+  }
+
   async function linkRow(row: ScannedFileMatch) {
     const selected = selections[row.path]
     if (!selected) return
+    const replace = rowNeedsReplace(row)
     setPendingPaths((prev) => new Set(prev).add(row.path))
     try {
-      await linkFile.mutateAsync({ showId, episodeId: Number(selected), path: row.path })
+      await linkFile.mutateAsync({
+        showId,
+        episodeId: Number(selected),
+        path: row.path,
+        replace,
+      })
       setOutcomes((prev) => ({ ...prev, [row.path]: { kind: 'linked' } }))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to link'
@@ -95,8 +117,12 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
   }
 
   async function handleConfirmAll() {
+    // Bulk-confirm only ever does plain (non-replace) links — replacing an
+    // already-tracked episode unlinks whatever it currently points to, which
+    // is destructive enough to require an explicit per-row action instead of
+    // being swept into a one-click batch.
     const rows = (scan.data ?? []).filter(
-      (row) => outcomes[row.path]?.kind !== 'linked' && rowIsActionable(row),
+      (row) => outcomes[row.path]?.kind !== 'linked' && rowIsSimpleLink(row),
     )
     setBulkPending(true)
     try {
@@ -117,7 +143,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
 
   const rows = scan.data ?? []
   const actionableCount = rows.filter(
-    (row) => outcomes[row.path]?.kind !== 'linked' && rowIsActionable(row),
+    (row) => outcomes[row.path]?.kind !== 'linked' && rowIsSimpleLink(row),
   ).length
 
   return (
@@ -153,6 +179,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
             const isPending = pendingPaths.has(row.path)
             const selected = selections[row.path] ?? ''
             const selectedEp = selected ? episodeById.get(Number(selected)) : undefined
+            const needsReplace = rowNeedsReplace(row)
             const actionable = rowIsActionable(row) && outcome?.kind !== 'linked'
 
             return (
@@ -214,15 +241,20 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                     <button
                       onClick={() => linkRow(row)}
                       disabled={!actionable || isPending}
-                      className="shrink-0 px-2.5 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className={`shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                        needsReplace
+                          ? 'bg-amber-700 hover:bg-amber-600'
+                          : 'bg-indigo-600 hover:bg-indigo-500'
+                      }`}
                     >
-                      {isPending ? 'Linking…' : 'Link'}
+                      {isPending ? 'Linking…' : needsReplace ? 'Link (replace)' : 'Link'}
                     </button>
                   </div>
                 )}
                 {selectedEp && selectedEp.file_tracked && outcome?.kind !== 'linked' && (
                   <p className="text-[11px] text-amber-500">
-                    This episode is already tracked — pick a different one to link this file.
+                    This episode is already tracked — &quot;Link (replace)&quot; unlinks its
+                    current file first, or pick a different episode instead.
                   </p>
                 )}
                 {outcome?.kind === 'failed' && (

@@ -89,11 +89,12 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | GET | `/api/shows/calendar` | Episodes airing in a date range, across all shows, with computed `tracked`/`missing`/`upcoming` status |
 | GET | `/api/shows/{id}/episodes` | List episodes for a show |
 | POST | `/api/shows/{show_id}/scan-local-files` | Read-only: scan the show's own local directory and propose episode matches for files found there |
-| POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an untracked episode |
+| POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an episode; `replace=true` unlinks whatever currently tracks it first instead of 422ing |
 | POST | `/api/shows/{show_id}/scan-local-movie-file` | Movie counterpart to `scan-local-files`: non-recursive, no episode to resolve against — every file not already linked to *any* show is `matched` |
 | POST | `/api/shows/{show_id}/link-movie-file` | Manually link an on-disk file path to a movie; `replace=true` unlinks the movie's existing file first instead of 422ing |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/begin-rematch` | Prepare a tracked episode's backing file for re-matching (download-backed episodes only) |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/assign-import` | Reassign a path-imported episode's tracked filename to a different episode, atomically |
+| DELETE | `/api/shows/{show_id}/episodes/{episode_id}/tracking` | Unlink an episode from whatever file currently tracks it (download-backed or import-tracked) |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/watched` | Mark a single episode watched |
 | DELETE | `/api/shows/{show_id}/episodes/{episode_id}/watched` | Clear the watched flag on a single episode |
 | POST | `/api/shows/{show_id}/episodes/watched` | Mark every episode in a show (or one season) watched |
@@ -107,9 +108,9 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 
 **`POST /shows/{show_id}/episodes/{episode_id}/link-file` request body:**
 ```json
-{ "path": "/data/media/tv/Breaking Bad/Season 01/episode.mkv" }
+{ "path": "/data/media/tv/Breaking Bad/Season 01/episode.mkv", "replace": false }
 ```
-`path` may be percent-encoded (see [non-UTF-8 filenames](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes)) if it came verbatim from a `scan-local-files` response.
+`path` may be percent-encoded (see [non-UTF-8 filenames](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes)) if it came verbatim from a `scan-local-files` response. `replace` defaults to `false`; set `true` to unlink whatever currently tracks the episode (download-backed or import-tracked) before linking *path* in its place, instead of getting a 422.
 
 **`POST /shows/{show_id}/scan-local-files` response — one entry per file found:**
 ```json
@@ -119,7 +120,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
   "status": "matched"
 }
 ```
-`status` is `matched` (untracked episode, ready to confirm via `link-file`), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file).
+`status` is `matched` (untracked episode, ready to confirm via `link-file`), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file or claimed by an earlier row in this scan — confirm via `link-file` with `replace=true`, or pick a different episode).
 
 **`POST /shows/{show_id}/scan-local-movie-file` query parameters:**
 

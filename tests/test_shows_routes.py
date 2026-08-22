@@ -3299,6 +3299,210 @@ def test_link_file_with_percent_encoded_non_utf8_path(tmp_path: Path) -> None:
         app.dependency_overrides.clear()
 
 
+def test_link_file_replace_detaches_old_backing_file_and_links_new_path(tmp_path: Path) -> None:
+    """replace=true unlinks the episode's old backing file, then links the new path.
+
+    Covers the season-directory-consolidation case: a file already tracking an
+    episode gets moved on disk, scan-local-files reports the new location as
+    'conflict', and replace=true is how the user resolves it in one call
+    instead of a Fix Eps + rescan round trip.
+    """
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import FileStatus
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+
+    old_file = MagicMock()
+    old_file.episode_id = ep.id
+    old_file.matched_by = "manual"
+    old_file.remote_path = "sftp://remote/old/season-dir/ep01.mkv"
+    old_file.status = FileStatus.ROUTED
+
+    real_file = tmp_path / "ep01-correct-season.mkv"
+    real_file.write_text("data")
+    raw_path = str(real_file)
+    linked = _make_linked_file(show_id=1, episode_id=10, raw_path=raw_path)
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        backing_result = MagicMock()
+        backing_result.scalars.return_value.all.return_value = [old_file]
+        dedup_result = MagicMock()
+        dedup_result.scalar_one_or_none.return_value = None
+        refetch_result = MagicMock()
+        refetch_result.scalar_one.return_value = linked
+        session.execute = AsyncMock(
+            side_effect=[show_result, ep_result, backing_result, dedup_result, refetch_result]
+        )
+        nested_ctx = AsyncMock()
+        nested_ctx.__aenter__.return_value = None
+        nested_ctx.__aexit__.return_value = False
+        session.begin_nested = MagicMock(return_value=nested_ctx)
+        session.add = MagicMock()
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": raw_path, "replace": True},
+        )
+        assert response.status_code == 200
+        assert old_file.episode_id is None
+        assert old_file.matched_by is None
+        assert old_file.status == FileStatus.UNMATCHED
+        assert ep.file_tracked is True
+        assert ep.tracked_source == "import"
+        assert ep.tracked_filename == raw_path
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/shows/{show_id}/episodes/{episode_id}/tracking
+# ---------------------------------------------------------------------------
+
+
+def test_clear_episode_tracking_returns_404_when_show_missing() -> None:
+    """Returns 404 when the show does not exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _two_query_session(None, None)
+    try:
+        response = TestClient(app).delete("/api/shows/9999/episodes/1/tracking")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_tracking_returns_404_when_episode_missing() -> None:
+    """Returns 404 when the episode does not exist."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    app.dependency_overrides[get_session] = _two_query_session(show, None)
+    try:
+        response = TestClient(app).delete("/api/shows/1/episodes/9999/tracking")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_tracking_returns_422_when_not_tracked() -> None:
+    """Returns 422 when the episode has no tracking to clear."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    app.dependency_overrides[get_session] = _two_query_session(show, ep)
+    try:
+        response = TestClient(app).delete("/api/shows/1/episodes/10/tracking")
+        assert response.status_code == 422
+        assert "not tracked" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_tracking_detaches_download_backed_file() -> None:
+    """Clears episode tracking and resets its real backing file to unmatched."""
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import FileStatus
+
+    show = _make_show(id=1)
+    ep = _make_tracked_episode(id=10, show_id=1)
+
+    backing_file = MagicMock()
+    backing_file.episode_id = ep.id
+    backing_file.matched_by = "heuristic"
+    backing_file.remote_path = "sftp://remote/show/ep01.mkv"
+    backing_file.status = FileStatus.ROUTED
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        backing_result = MagicMock()
+        backing_result.scalars.return_value.all.return_value = [backing_file]
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, backing_result])
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).delete("/api/shows/1/episodes/10/tracking")
+        assert response.status_code == 200
+        assert ep.file_tracked is False
+        assert ep.tracked_filename is None
+        assert ep.tracked_source is None
+        assert backing_file.episode_id is None
+        assert backing_file.matched_by is None
+        assert backing_file.status == FileStatus.UNMATCHED
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_clear_episode_tracking_deletes_synthetic_file_instead_of_orphaning_it() -> None:
+    """Clearing an import-tracked episode deletes its synthetic file row outright.
+
+    Regression test (Bugbot finding on PR #540): merely nulling episode_id
+    left the synthetic row permanently stuck -- still keyed to the show, so
+    scan-local-files' existing-path dedup check (by show_id, not episode_id)
+    would hide the file from every future scan, and
+    create_synthetic_import_file's remote_path-keyed idempotency would hand
+    back the same stale, still-unlinked row on a later link-file call instead
+    of creating a fresh one. Deleting it lets the file be rediscovered and
+    re-linked normally.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    ep = _make_episode(id=10, show_id=1)
+    ep.file_tracked = True
+    ep.tracked_filename = "/media/show/ep01.mkv"
+    ep.tracked_source = "import"
+
+    synthetic_file = MagicMock()
+    synthetic_file.episode_id = ep.id
+    synthetic_file.remote_path = "synthetic-import:///media/show/ep01.mkv"
+
+    captured: list[AsyncMock] = []
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        backing_result = MagicMock()
+        backing_result.scalars.return_value.all.return_value = [synthetic_file]
+        session.execute = AsyncMock(side_effect=[show_result, ep_result, backing_result])
+        session.delete = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.refresh = AsyncMock()
+        captured.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).delete("/api/shows/1/episodes/10/tracking")
+        assert response.status_code == 200
+        assert ep.file_tracked is False
+        captured[0].delete.assert_called_once_with(synthetic_file)
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # GET /api/shows/discover
 # ---------------------------------------------------------------------------

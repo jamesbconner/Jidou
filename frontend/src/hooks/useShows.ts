@@ -259,6 +259,17 @@ export function useAssignImportEpisode() {
   })
 }
 
+export function useClearEpisodeTracking() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
+      api.delete<EpisodeList>(`/shows/${showId}/episodes/${episodeId}/tracking`),
+    onSuccess: (_data, { showId }) => {
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    },
+  })
+}
+
 // A show-list card's watched-progress overlay reads ShowList.watched_episode_count,
 // so every watched mutation must also invalidate showKeys.all, not just the
 // per-show episode list.
