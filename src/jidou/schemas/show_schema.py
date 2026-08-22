@@ -182,20 +182,23 @@ class AssignImportRequest(BaseModel):
 
 
 class LinkFileRequest(BaseModel):
-    """Payload for manually linking an on-disk file path to an untracked episode."""
+    """Payload for manually linking an on-disk file path to an episode.
+
+    ``replace`` mirrors ``LinkMovieFileRequest``: when the target episode is
+    already tracked, pass ``replace=True`` to unlink whatever currently
+    tracks it (see ``_detach_episode_tracking``) and link *path* in its
+    place, instead of getting a 422.
+    """
 
     path: str
+    replace: bool = False
 
 
 class LinkMovieFileRequest(LinkFileRequest):
     """Payload for linking (or replacing) a movie's on-disk file.
 
-    ``replace`` is movie-specific -- a TV episode's ``link-file`` endpoint
-    always targets an untracked episode slot, so there's nothing to replace
-    there. See ``POST /shows/{show_id}/link-movie-file``.
+    See ``POST /shows/{show_id}/link-movie-file``.
     """
-
-    replace: bool = False
 
 
 class ScannedFileMatch(BaseModel):

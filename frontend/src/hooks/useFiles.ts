@@ -114,11 +114,17 @@ export function useLinkEpisodeFile() {
       showId,
       episodeId,
       path,
+      replace,
     }: {
       showId: number
       episodeId: number
       path: string
-    }) => api.post<FileRead>(`/shows/${showId}/episodes/${episodeId}/link-file`, { path }),
+      replace?: boolean
+    }) =>
+      api.post<FileRead>(`/shows/${showId}/episodes/${episodeId}/link-file`, {
+        path,
+        ...(replace ? { replace: true } : {}),
+      }),
     onSuccess: (_data, { showId }) => {
       qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
       qc.invalidateQueries({ queryKey: fileKeys.all })

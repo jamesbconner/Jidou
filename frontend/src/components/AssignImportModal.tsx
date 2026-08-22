@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useShowEpisodes } from '@/hooks/useShows'
-import { useAssignImportEpisode } from '@/hooks/useShows'
+import { useAssignImportEpisode, useClearEpisodeTracking } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import type { EpisodeList } from '@/types/api'
@@ -22,6 +22,7 @@ interface Props {
 export function AssignImportModal({ showId, episode, onClose }: Props) {
   const { data: episodes = [] } = useShowEpisodes(showId)
   const assign = useAssignImportEpisode()
+  const clearTracking = useClearEpisodeTracking()
   const [selected, setSelected] = useState('')
 
   const filePool = useMemo(() => {
@@ -44,6 +45,10 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
   function handleSave() {
     if (!selected) return
     assign.mutate({ showId, episodeId: episode.id, filename: selected }, { onSuccess: onClose })
+  }
+
+  function handleClear() {
+    clearTracking.mutate({ showId, episodeId: episode.id }, { onSuccess: onClose })
   }
 
   return (
@@ -96,15 +101,31 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
               {assign.error instanceof Error ? assign.error.message : 'Assignment failed'}
             </div>
           )}
+          {clearTracking.isError && (
+            <div className="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">
+              {clearTracking.error instanceof Error
+                ? clearTracking.error.message
+                : 'Failed to clear assignment'}
+            </div>
+          )}
         </div>
 
-        <div className="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
-          <Button onClick={onClose} disabled={assign.isPending} variant="secondary" tone="dark" size="sm">
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={!selected || assign.isPending} variant="primary" tone="dark" size="sm">
-            {assign.isPending ? 'Saving…' : 'Save'}
-          </Button>
+        <div className="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+          <button
+            onClick={handleClear}
+            disabled={clearTracking.isPending || assign.isPending || !currentFilename}
+            className="text-xs text-zinc-400 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {clearTracking.isPending ? 'Clearing…' : 'Clear assignment'}
+          </button>
+          <div className="flex gap-2">
+            <Button onClick={onClose} disabled={assign.isPending || clearTracking.isPending} variant="secondary" tone="dark" size="sm">
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={!selected || assign.isPending || clearTracking.isPending} variant="primary" tone="dark" size="sm">
+              {assign.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
         </div>
     </Modal>
   )
