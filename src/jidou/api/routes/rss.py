@@ -18,6 +18,7 @@ from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 from jidou.schemas.rss_schema import (
+    RssConfigDiff,
     RssFeedCreate,
     RssFeedRead,
     RssFeedUpdate,
@@ -31,7 +32,11 @@ from jidou.schemas.rss_schema import (
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.llm_service import LLMService
 from jidou.services.progress import TaskDispatchError, enqueue_task
-from jidou.services.rss_config import fill_missing_yarss2_defaults, parse_rss_config
+from jidou.services.rss_config import (
+    diff_rss_config,
+    fill_missing_yarss2_defaults,
+    parse_rss_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -694,6 +699,60 @@ async def download_config(
         content=composed.encode("utf-8"),
         media_type="application/octet-stream",
         headers={"Content-Disposition": 'attachment; filename="yarss2.conf"'},
+    )
+
+
+@router.get("/diff", response_model=RssConfigDiff)
+async def diff_config(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RssConfigDiff:
+    """Diff the current DB-composed config against the last stored snapshot.
+
+    Answers "what would change if I published right now?" without touching
+    the remote server. Composes the current DB state the same way
+    :meth:`RssPublishOrchestrator.compose_config` (and therefore a real
+    publish) would, then diffs it against the most recent snapshot — the
+    last config Jidou actually saw on the remote server, whether from an
+    explicit import or the pre-publish reconciliation step of a prior
+    publish.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        :class:`RssConfigDiff` with unified diff lines and a reference to
+        the snapshot the diff was taken against.
+
+    Raises:
+        HTTPException: 404 if no snapshot exists (run an import first).
+        HTTPException: 500 if the latest snapshot cannot be parsed.
+    """
+    snapshot_stmt = select(RssConfigSnapshot).order_by(RssConfigSnapshot.created_at.desc()).limit(1)
+    snapshot = (await db_session.execute(snapshot_stmt)).scalar_one_or_none()
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404, detail="No config snapshot found — run an import first"
+        )
+
+    try:
+        header, old_body = parse_rss_config(snapshot.raw_content)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse latest snapshot: {exc}"
+        ) from exc
+
+    orchestrator = RssPublishOrchestrator(db_session, None, "", dry_run=True)
+    composed, _result = await orchestrator.compose_config(header, old_body, upload=False)
+    new_header, new_body = parse_rss_config(composed)
+
+    diff_lines = diff_rss_config(header, old_body, new_header, new_body)
+
+    return RssConfigDiff(
+        snapshot_id=snapshot.id,
+        snapshot_type=snapshot.snapshot_type,
+        snapshot_created_at=snapshot.created_at,
+        has_changes=bool(diff_lines),
+        diff=diff_lines,
     )
 
 

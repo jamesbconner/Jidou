@@ -175,6 +175,25 @@ class RssSubscriptionBulkPatchItem(BaseModel):
     active: bool
 
 
+class RssConfigDiff(BaseModel):
+    """Unified diff between the current DB-composed config and the last snapshot.
+
+    Attributes:
+        snapshot_id: Primary key of the snapshot the diff was taken against.
+        snapshot_type: ``"import"`` or ``"pre_publish"``.
+        snapshot_created_at: When that snapshot was captured.
+        has_changes: Whether the diff is non-empty.
+        diff: Unified diff lines; empty if the composed config is identical
+            to the snapshot.
+    """
+
+    snapshot_id: int
+    snapshot_type: str
+    snapshot_created_at: datetime
+    has_changes: bool
+    diff: list[str]
+
+
 class RssRegexSuggestion(BaseModel):
     """LLM-generated regex suggestion for an RSS subscription filter.
 

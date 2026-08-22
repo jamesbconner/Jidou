@@ -10,6 +10,7 @@ from jidou.services.rss_config import (
     ReconcileDelta,
     compose_rss_config,
     compute_subscription_deltas,
+    diff_rss_config,
     extract_max_subscription_key,
     fill_missing_yarss2_defaults,
     parse_rss_config,
@@ -301,3 +302,48 @@ class TestFillMissingYarss2Defaults:
         result = fill_missing_yarss2_defaults({"some_future_yarss2_field": "x"})
         assert result["some_future_yarss2_field"] == "x"
         assert result["auto_managed"] == YARSS2_SUBSCRIPTION_DEFAULTS["auto_managed"]
+
+
+# ---------------------------------------------------------------------------
+# diff_rss_config
+# ---------------------------------------------------------------------------
+
+
+class TestDiffRssConfig:
+    def test_identical_configs_produce_empty_diff(self) -> None:
+        """Two equivalent configs (even with different dict key order) diff as empty."""
+        header, body = parse_rss_config(_RAW)
+        reordered_body = dict(reversed(list(body.items())))
+        assert diff_rss_config(header, body, header, reordered_body) == []
+
+    def test_changed_field_appears_in_diff(self) -> None:
+        """A changed field shows up as a +/- pair in the unified diff."""
+        header, body = parse_rss_config(_RAW)
+        new_body = json.loads(json.dumps(body))
+        new_body["subscriptions"]["0"]["regex_include"] = ".*2160p.*"
+
+        diff = diff_rss_config(header, body, header, new_body)
+
+        assert any(line.startswith("-") and ".*1080p.*" in line for line in diff)
+        assert any(line.startswith("+") and ".*2160p.*" in line for line in diff)
+
+    def test_added_subscription_appears_in_diff(self) -> None:
+        """A newly added subscription key shows up as added lines."""
+        header, body = parse_rss_config(_RAW)
+        new_body = json.loads(json.dumps(body))
+        new_body["subscriptions"]["2"] = {"name": "New Show", "active": True}
+
+        diff = diff_rss_config(header, body, header, new_body)
+
+        assert any("+" in line and "New Show" in line for line in diff)
+
+    def test_diff_uses_fromfile_tofile_labels(self) -> None:
+        """The unified diff header labels the two sides for UI display."""
+        header, body = parse_rss_config(_RAW)
+        new_body = json.loads(json.dumps(body))
+        new_body["general"]["update_interval"] = 60
+
+        diff = diff_rss_config(header, body, header, new_body)
+
+        assert diff[0] == "--- last_upload"
+        assert diff[1] == "+++ current"

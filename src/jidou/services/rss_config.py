@@ -9,6 +9,7 @@ All functions are pure (no I/O) and fully unit-testable.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -134,6 +135,65 @@ def compose_rss_config(header: dict[str, object], body: dict[str, object]) -> st
         A string with both objects concatenated.
     """
     return json.dumps(header, separators=(",", ":")) + json.dumps(body, separators=(",", ":"))
+
+
+def _pretty_rss_config(header: dict[str, object], body: dict[str, object]) -> str:
+    """Render header + body as indented, key-sorted JSON for human-readable diffing.
+
+    The on-disk format (see :func:`compose_rss_config`) is compact JSON with
+    no whitespace, which would diff as a single noisy line. This is only
+    used to build diff input, never round-tripped back through
+    :func:`parse_rss_config`.
+
+    Args:
+        header: The small metadata dict.
+        body: The main config dict.
+
+    Returns:
+        Multi-line pretty-printed text.
+    """
+    return (
+        json.dumps(header, indent=2, sort_keys=True)
+        + "\n"
+        + json.dumps(body, indent=2, sort_keys=True)
+    )
+
+
+def diff_rss_config(
+    old_header: dict[str, object],
+    old_body: dict[str, object],
+    new_header: dict[str, object],
+    new_body: dict[str, object],
+) -> list[str]:
+    """Return a unified diff between two parsed YaRSS2 configs.
+
+    Both sides are pretty-printed via :func:`_pretty_rss_config` before
+    diffing so the result reads as a per-field diff instead of dumping two
+    giant single lines.
+
+    Args:
+        old_header: Header block of the "before" config (e.g. from the last
+            stored snapshot).
+        old_body: Body block of the "before" config.
+        new_header: Header block of the "after" config (e.g. freshly
+            composed from the current DB state).
+        new_body: Body block of the "after" config.
+
+    Returns:
+        Unified diff lines (no trailing newlines on each entry); empty if
+        the two configs are equivalent.
+    """
+    old_text = _pretty_rss_config(old_header, old_body)
+    new_text = _pretty_rss_config(new_header, new_body)
+    return list(
+        difflib.unified_diff(
+            old_text.splitlines(),
+            new_text.splitlines(),
+            fromfile="last_upload",
+            tofile="current",
+            lineterm="",
+        )
+    )
 
 
 def extract_max_subscription_key(body: dict[str, object]) -> int:

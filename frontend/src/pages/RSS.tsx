@@ -9,10 +9,12 @@ import {
   useTriggerRssImport,
   useTriggerRssPublish,
   useRssDownload,
+  useRssDiff,
 } from '@/hooks/useRss'
 import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
 import { RecommendationsTab } from '@/components/RecommendationsTab'
+import { RssDiffModal } from '@/components/RssDiffModal'
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -50,6 +52,7 @@ export default function RSS() {
   const triggerImport = useTriggerRssImport()
   const triggerPublish = useTriggerRssPublish()
   const download = useRssDownload()
+  const diff = useRssDiff()
 
   const { data: importTask } = useQuery({
     queryKey: ['tasks', importTaskId],
@@ -128,6 +131,13 @@ export default function RSS() {
             >
               {download.isPending ? 'Downloading…' : 'Download'}
             </button>
+            <button
+              onClick={() => diff.mutate()}
+              disabled={diff.isPending}
+              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              {diff.isPending ? 'Comparing…' : 'Diff'}
+            </button>
           </div>
           {importTask && <div className="text-right text-xs dark:text-gray-300">Import: <TaskStatusBadge task={importTask} /></div>}
           {publishTask && <div className="text-right text-xs dark:text-gray-300">Publish: <TaskStatusBadge task={publishTask} /></div>}
@@ -144,6 +154,11 @@ export default function RSS() {
           {download.isError && (
             <p className="text-xs text-red-600 dark:text-red-400">
               Download failed: {(download.error as Error)?.message ?? 'Unknown error'}
+            </p>
+          )}
+          {diff.isError && (
+            <p className="text-xs text-red-600 dark:text-red-400">
+              Diff failed: {(diff.error as Error)?.message ?? 'Unknown error'}
             </p>
           )}
           <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -238,6 +253,8 @@ export default function RSS() {
       )}
 
       {tab === 'recommendations' && <RecommendationsTab />}
+
+      {diff.data && <RssDiffModal diff={diff.data} onClose={() => diff.reset()} />}
     </div>
   )
 }

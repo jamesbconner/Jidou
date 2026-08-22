@@ -281,6 +281,7 @@ Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tr
 | POST | `/api/rss/subscriptions/{id}/suggest-regex` | LLM-assisted include/exclude regex suggestion |
 | GET | `/api/rss/subscriptions/{id}/preview` | Preview the YaRSS2 dict Jidou would publish for one subscription |
 | GET | `/api/rss/download` | Compose and download the current DB state as a YaRSS2 config file |
+| GET | `/api/rss/diff` | Unified diff between the current DB-composed config and the last stored snapshot |
 | GET | `/api/rss/snapshots` | List recent published config snapshots, most recent first |
 | GET | `/api/rss/snapshots/{id}` | Get one snapshot including its full raw content |
 | POST | `/api/rss/import` | Background task: download the remote YaRSS2 config and reconcile it into the DB |

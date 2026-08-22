@@ -1662,3 +1662,157 @@ def test_get_snapshot_404() -> None:
         assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/rss/diff
+# ---------------------------------------------------------------------------
+
+
+def test_diff_config_no_snapshot_returns_404() -> None:
+    """GET /diff with no stored snapshot returns 404."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        r = TestClient(app).get("/api/rss/diff")
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_diff_config_unparseable_snapshot_returns_500() -> None:
+    """GET /diff with a corrupt stored snapshot returns 500."""
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+
+    bad_snapshot = MagicMock(spec=RssConfigSnapshot)
+    bad_snapshot.raw_content = "not valid json at all"
+
+    app.dependency_overrides[get_session] = _session_override(single=bad_snapshot)
+    try:
+        r = TestClient(app).get("/api/rss/diff")
+        assert r.status_code == 500
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_diff_config_no_changes_returns_empty_diff() -> None:
+    """GET /diff reports has_changes=False when the DB matches the last snapshot exactly.
+
+    No subscriptions are involved here — ``build_sub_dict`` always fills in
+    the full set of YaRSS2 torrent-option defaults, so a subscription with no
+    ``extra_config`` would never byte-for-byte match a hand-written minimal
+    snapshot fixture. Feeds have no such defaults-filling, so they're enough
+    to exercise the "nothing changed" path without that mismatch.
+    """
+    import json
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+
+    header = {"file": 1, "format": 1}
+    body: dict[str, object] = {
+        "cookies": {},
+        "general": {"update_interval": 30},
+        "rssfeeds": {"0": {"name": "ShowRSS", "url": "https://showrss.info/feed", "active": True}},
+        "subscriptions": {},
+    }
+    raw = json.dumps(header, separators=(",", ":")) + json.dumps(body, separators=(",", ":"))
+
+    snapshot = MagicMock(spec=RssConfigSnapshot)
+    snapshot.id = 3
+    snapshot.snapshot_type = "pre_publish"
+    snapshot.created_at = _now()
+    snapshot.raw_content = raw
+
+    feed = _make_feed(id=1, remote_key="0", name="ShowRSS", url="https://showrss.info/feed")
+
+    snapshot_result = MagicMock()
+    snapshot_result.scalar_one_or_none.return_value = snapshot
+    ref_feed_ids_result = MagicMock()
+    ref_feed_ids_result.scalars.return_value.all.return_value = []
+    feeds_result = MagicMock()
+    feeds_result.scalars.return_value.all.return_value = [feed]
+    keys_result = MagicMock()
+    keys_result.scalars.return_value.all.return_value = []
+    subs_result = MagicMock()
+    subs_result.scalars.return_value.all.return_value = []
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[
+            snapshot_result,
+            ref_feed_ids_result,
+            feeds_result,
+            keys_result,
+            subs_result,
+        ]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/diff")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["snapshot_id"] == 3
+        assert data["snapshot_type"] == "pre_publish"
+        assert data["has_changes"] is False
+        assert data["diff"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_diff_config_reports_changed_field() -> None:
+    """GET /diff surfaces a DB-side change as a non-empty unified diff."""
+    import json
+
+    from jidou.database import get_session
+    from jidou.models.rss import RssConfigSnapshot
+
+    header = {"file": 1, "format": 1}
+    body: dict[str, object] = {
+        "cookies": {},
+        "general": {},
+        "rssfeeds": {"0": {"name": "Old Name", "url": "https://old.example/feed", "active": True}},
+        "subscriptions": {},
+    }
+    raw = json.dumps(header, separators=(",", ":")) + json.dumps(body, separators=(",", ":"))
+
+    snapshot = MagicMock(spec=RssConfigSnapshot)
+    snapshot.id = 9
+    snapshot.snapshot_type = "import"
+    snapshot.created_at = _now()
+    snapshot.raw_content = raw
+
+    # Renamed in the DB since the last snapshot was taken.
+    feed = _make_feed(id=1, remote_key="0", name="New Name", url="https://old.example/feed")
+
+    snapshot_result = MagicMock()
+    snapshot_result.scalar_one_or_none.return_value = snapshot
+    ref_feed_ids_result = MagicMock()
+    ref_feed_ids_result.scalars.return_value.all.return_value = []
+    feeds_result = MagicMock()
+    feeds_result.scalars.return_value.all.return_value = [feed]
+    keys_result = MagicMock()
+    keys_result.scalars.return_value.all.return_value = []
+    subs_result = MagicMock()
+    subs_result.scalars.return_value.all.return_value = []
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[
+            snapshot_result,
+            ref_feed_ids_result,
+            feeds_result,
+            keys_result,
+            subs_result,
+        ]
+    )
+    try:
+        r = TestClient(app).get("/api/rss/diff")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["snapshot_id"] == 9
+        assert data["has_changes"] is True
+        diff_text = "\n".join(data["diff"])
+        assert "Old Name" in diff_text
+        assert "New Name" in diff_text
+    finally:
+        app.dependency_overrides.clear()

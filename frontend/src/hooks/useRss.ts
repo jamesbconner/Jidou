@@ -10,6 +10,7 @@ import type {
   RssSubscriptionRecommendation,
   RssSubscriptionBulkPatchItem,
   RssRegexSuggestion,
+  RssConfigDiff,
   TaskRead,
 } from '@/types/api'
 
@@ -155,6 +156,12 @@ export function useRssDownload() {
       a.click()
       URL.revokeObjectURL(url)
     },
+  })
+}
+
+export function useRssDiff() {
+  return useMutation({
+    mutationFn: () => api.get<RssConfigDiff>('/rss/diff'),
   })
 }
 

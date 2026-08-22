@@ -308,6 +308,8 @@ export type RssSubscriptionRecommendation = components['schemas']['RssSubscripti
 
 export type RssSubscriptionBulkPatchItem = components['schemas']['RssSubscriptionBulkPatchItem']
 
+export type RssConfigDiff = components['schemas']['RssConfigDiff']
+
 export interface ConnectionTestResult {
   ok: boolean
   error?: string
