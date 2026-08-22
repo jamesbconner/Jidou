@@ -713,8 +713,9 @@ async def diff_config(
     :meth:`RssPublishOrchestrator.compose_config` (and therefore a real
     publish) would, then diffs it against the most recent snapshot — the
     last config Jidou actually saw on the remote server, whether from an
-    explicit import or the pre-publish reconciliation step of a prior
-    publish.
+    explicit import, the pre-publish reconciliation step of a prior publish,
+    or (most commonly) the ``post_publish`` snapshot :meth:`RssPublishOrchestrator.run`
+    stores of exactly what it just uploaded.
 
     Args:
         db_session: DB session (injected).
