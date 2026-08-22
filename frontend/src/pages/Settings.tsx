@@ -563,7 +563,7 @@ export default function Settings() {
                   {cacheStats.count} / {cacheStats.maxsize} entries · TTL {cacheStats.ttl_seconds}s
                 </p>
                 {cacheStats.entries.length > 0 && (
-                  <details open className="text-xs">
+                  <details className="text-xs">
                     <summary className="cursor-pointer text-gray-500 dark:text-gray-400 mb-1">
                       {cacheStats.entries.length} active {cacheStats.entries.length === 1 ? 'entry' : 'entries'}
                     </summary>
