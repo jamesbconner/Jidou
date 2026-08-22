@@ -503,7 +503,15 @@ class RssPublishOrchestrator:
         if mv_loc is not None:
             sub_dict["move_completed"] = mv_loc
 
+        # A stale rssfeed_key can survive in extra_config from a prior real
+        # config round-trip after the subscription is unlinked or its feed
+        # loses its remote_key -- popped rather than left dangling, since
+        # YaRSS2 synthesizes a "Dummy Feed" placeholder for any subscription
+        # whose rssfeed_key doesn't resolve, which Jidou's next import would
+        # then faithfully re-create as a real (bogus) RssFeed row.
         if sub.feed is not None and sub.feed.remote_key is not None:
             sub_dict["rssfeed_key"] = sub.feed.remote_key
+        else:
+            sub_dict.pop("rssfeed_key", None)
 
         return sub_dict

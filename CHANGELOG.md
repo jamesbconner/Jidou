@@ -32,6 +32,9 @@ Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by are
 - New **Diff** button on the RSS page (next to Download) answers "what would change if I published right now?" without touching the remote server — `GET /api/rss/diff` composes the current DB state via the same `RssPublishOrchestrator.compose_config` a real publish uses, then unified-diffs it against the most recent stored snapshot. Both sides are pretty-printed before diffing since the on-disk format is single-line compact JSON.
 - Bugbot catch: `run()` now stores a `post_publish` snapshot of exactly what it just uploaded. Without it, the latest snapshot right after a publish was still the `pre_publish` state from *before* that publish, so the diff (and `/rss/download`'s "latest snapshot" lookup) kept comparing against stale state and re-surfaced the just-published changes as still pending.
 
+### RSS dummy-feed reappearing after deletion
+- Fixed a bug where a stray "Dummy Feed (error in config was detected)…" feed (YaRSS2's own placeholder for a subscription referencing a nonexistent feed key) kept reappearing after being deleted in Jidou. `build_sub_dict` only ever *set* a subscription's `rssfeed_key` when it had a currently-linked feed with a remote_key — it never cleared a stale one already sitting in `extra_config` from an earlier real config round-trip, so an unlinked (or re-linked to a not-yet-published) subscription kept republishing a dangling reference. YaRSS2 synthesizes the dummy-feed placeholder for any such broken reference, and Jidou's next import faithfully re-created it as a real feed row. `build_sub_dict` now pops any stale `rssfeed_key` when the subscription has no currently-valid feed link.
+
 ### Tasks page
 - New **Delete** pill button on completed/failed/cancelled task cards (`DELETE /api/tasks/{id}`, blocked while a task is pending/running — cancel first).
 
