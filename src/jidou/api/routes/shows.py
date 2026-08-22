@@ -1340,10 +1340,17 @@ async def _detach_episode_tracking(db_session: AsyncSession, ep: Episode) -> Non
     Real (non-synthetic) backing files are reset to ``UNMATCHED`` so they
     resurface on the Files page for manual re-triage, mirroring the status
     change the frontend's "Clear assignment" already makes via
-    ``PATCH /files/{id}``. Synthetic-import rows are display-only and always
-    ``ROUTED``, so their status is left alone — only ``episode_id`` and
-    ``matched_by`` are cleared, so a later scan-local-files/link-file pass
-    doesn't see the filename as still claimed by this episode.
+    ``PATCH /files/{id}``. Synthetic-import rows are deleted outright rather
+    than orphaned: they're pure display markers (see
+    ``create_synthetic_import_file``), not real downloaded data, and merely
+    clearing ``episode_id`` on one would leave it permanently stuck — still
+    keyed to this show, so ``scan-local-files``'s existing-path dedup check
+    (by ``show_id``, not ``episode_id``) would hide the file from every
+    future scan, and ``create_synthetic_import_file``'s remote_path-keyed
+    idempotency would hand back this same stale, still-unlinked row instead
+    of creating a fresh one on a later ``link-file`` call. Deleting it lets
+    the file be rediscovered at its unchanged on-disk path and re-linked
+    with a fresh, correctly-linked row.
 
     Args:
         db_session: Active async DB session.
@@ -1351,9 +1358,11 @@ async def _detach_episode_tracking(db_session: AsyncSession, ep: Episode) -> Non
     """
     backing_stmt = select(DownloadedFile).where(DownloadedFile.episode_id == ep.id)
     for backing_file in (await db_session.execute(backing_stmt)).scalars().all():
-        backing_file.episode_id = None
-        backing_file.matched_by = None
-        if not backing_file.remote_path.startswith("synthetic-import://"):
+        if backing_file.remote_path.startswith("synthetic-import://"):
+            await db_session.delete(backing_file)
+        else:
+            backing_file.episode_id = None
+            backing_file.matched_by = None
             backing_file.status = FileStatus.UNMATCHED
     clear_episode_tracking(ep)
 

@@ -3451,11 +3451,19 @@ def test_clear_episode_tracking_detaches_download_backed_file() -> None:
         app.dependency_overrides.clear()
 
 
-def test_clear_episode_tracking_leaves_synthetic_file_status_untouched() -> None:
-    """Clearing an import-tracked episode nulls the synthetic file's episode_id
-    but leaves its display-only ROUTED status alone."""
+def test_clear_episode_tracking_deletes_synthetic_file_instead_of_orphaning_it() -> None:
+    """Clearing an import-tracked episode deletes its synthetic file row outright.
+
+    Regression test (Bugbot finding on PR #540): merely nulling episode_id
+    left the synthetic row permanently stuck -- still keyed to the show, so
+    scan-local-files' existing-path dedup check (by show_id, not episode_id)
+    would hide the file from every future scan, and
+    create_synthetic_import_file's remote_path-keyed idempotency would hand
+    back the same stale, still-unlinked row on a later link-file call instead
+    of creating a fresh one. Deleting it lets the file be rediscovered and
+    re-linked normally.
+    """
     from jidou.database import get_session
-    from jidou.models.downloaded_file import FileStatus
 
     show = _make_show(id=1)
     ep = _make_episode(id=10, show_id=1)
@@ -3465,9 +3473,9 @@ def test_clear_episode_tracking_leaves_synthetic_file_status_untouched() -> None
 
     synthetic_file = MagicMock()
     synthetic_file.episode_id = ep.id
-    synthetic_file.matched_by = None
     synthetic_file.remote_path = "synthetic-import:///media/show/ep01.mkv"
-    synthetic_file.status = FileStatus.ROUTED
+
+    captured: list[AsyncMock] = []
 
     async def _session() -> AsyncMock:
         session = AsyncMock()
@@ -3478,9 +3486,11 @@ def test_clear_episode_tracking_leaves_synthetic_file_status_untouched() -> None
         backing_result = MagicMock()
         backing_result.scalars.return_value.all.return_value = [synthetic_file]
         session.execute = AsyncMock(side_effect=[show_result, ep_result, backing_result])
+        session.delete = AsyncMock()
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         session.refresh = AsyncMock()
+        captured.append(session)
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -3488,9 +3498,7 @@ def test_clear_episode_tracking_leaves_synthetic_file_status_untouched() -> None
         response = TestClient(app).delete("/api/shows/1/episodes/10/tracking")
         assert response.status_code == 200
         assert ep.file_tracked is False
-        assert synthetic_file.episode_id is None
-        assert synthetic_file.matched_by is None
-        assert synthetic_file.status == FileStatus.ROUTED
+        captured[0].delete.assert_called_once_with(synthetic_file)
     finally:
         app.dependency_overrides.clear()
 
