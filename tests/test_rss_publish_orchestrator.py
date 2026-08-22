@@ -218,6 +218,76 @@ async def test_publish_uploads_backup_and_config() -> None:
     assert not result.errors
 
 
+@pytest.mark.asyncio
+async def test_publish_stores_post_publish_snapshot_of_uploaded_content() -> None:
+    """Live run: a post_publish snapshot of exactly the uploaded bytes is stored.
+
+    Regression coverage for the Bugbot finding that GET /rss/diff (and
+    /rss/download) baselined against the latest snapshot, but that row was
+    always the pre_publish state from *before* this publish's own changes —
+    the composed upload itself was never snapshotted, so a diff taken right
+    after a successful publish would still show it as pending.
+    """
+    from jidou.models.rss import RssConfigSnapshot
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=False)
+        result = await orc.run()
+
+    uploaded_content = sftp.upload_bytes.call_args_list[1][0][0].decode("utf-8")
+
+    added_snapshots = [
+        call.args[0]
+        for call in session.add.call_args_list
+        if isinstance(call.args[0], RssConfigSnapshot)
+    ]
+    assert len(added_snapshots) == 1
+    assert added_snapshots[0].snapshot_type == "post_publish"
+    assert added_snapshots[0].raw_content == uploaded_content
+    assert not result.errors
+
+
+@pytest.mark.asyncio
+async def test_publish_dry_run_does_not_store_post_publish_snapshot() -> None:
+    """dry_run=True: no post_publish snapshot is added since nothing was uploaded."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    with patch(
+        "jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator"
+    ) as mock_orc_cls:
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        mock_orc_cls.return_value = mock_orc
+
+        orc = RssPublishOrchestrator(session, sftp, "/remote/yarss2.conf", dry_run=True)
+        await orc.run()
+
+    session.add.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Deluge stop/restart bookend
 # ---------------------------------------------------------------------------

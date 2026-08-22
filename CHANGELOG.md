@@ -28,6 +28,10 @@ Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by are
 ### RSS Feeds table
 - URL, default locations, regex hints, and remote key now show as compact set/unset checkmarks (full value on hover) instead of cluttering the table — except the remote key ID, which reverted back to showing the number directly since a checkmark didn't convey a value useful for cross-referencing the remote YaRSS2 config. Regex hints are now visible in the table for the first time (previously edit-modal only).
 
+### RSS config diff
+- New **Diff** button on the RSS page (next to Download) answers "what would change if I published right now?" without touching the remote server — `GET /api/rss/diff` composes the current DB state via the same `RssPublishOrchestrator.compose_config` a real publish uses, then unified-diffs it against the most recent stored snapshot. Both sides are pretty-printed before diffing since the on-disk format is single-line compact JSON.
+- Bugbot catch: `run()` now stores a `post_publish` snapshot of exactly what it just uploaded. Without it, the latest snapshot right after a publish was still the `pre_publish` state from *before* that publish, so the diff (and `/rss/download`'s "latest snapshot" lookup) kept comparing against stale state and re-surfaced the just-published changes as still pending.
+
 ### Tasks page
 - New **Delete** pill button on completed/failed/cancelled task cards (`DELETE /api/tasks/{id}`, blocked while a task is pending/running — cancel first).
 

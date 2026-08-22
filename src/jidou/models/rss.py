@@ -114,7 +114,8 @@ class RssConfigSnapshot(TimestampMixin, Base):
     __tablename__ = "rss_config_snapshots"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    snapshot_type: Mapped[str] = mapped_column(String(32))  # "import" | "pre_publish"
+    # "import" | "pre_publish" | "post_publish"
+    snapshot_type: Mapped[str] = mapped_column(String(32))
     raw_content: Mapped[str] = mapped_column(Text)
 
     def __repr__(self) -> str:

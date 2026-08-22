@@ -750,6 +750,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/episodes/{episode_id}/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Episode File Tracking
+         * @description Unlink an episode from whatever file currently tracks it.
+         *
+         *     Works uniformly for download-backed episodes (nulls the backing
+         *     ``DownloadedFile.episode_id``) and import-tracked episodes (nulls the
+         *     synthetic ``DownloadedFile.episode_id`` and the ``Episode`` tracking
+         *     fields) — see ``_detach_episode_tracking``. Gives import-tracked episodes
+         *     a way to be freed that doesn't exist today: ``assign-import`` can only
+         *     clear one as a side effect of handing its filename to a different
+         *     episode, and only when such a filename exists in the show's import pool.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         episode_id: Database primary key of the episode.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Episode` record, now untracked.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show or episode is not found.
+         *         HTTPException: 422 if the episode is not currently tracked.
+         */
+        delete: operations["clear_episode_file_tracking_api_shows__show_id__episodes__episode_id__tracking_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/episodes/{episode_id}/assign-import": {
         parameters: {
             query?: never;
@@ -806,7 +846,7 @@ export interface paths {
         put?: never;
         /**
          * Link Episode File
-         * @description Manually link an on-disk file path to an untracked episode.
+         * @description Manually link an on-disk file path to an episode.
          *
          *     For files that already sit at their final library location but were never
          *     downloaded or path-imported by Jidou, so no ``DownloadedFile`` row exists
@@ -825,7 +865,16 @@ export interface paths {
          *         payload: Contains ``path`` — the absolute on-disk path of the file,
          *             as returned verbatim by ``scan-local-files`` (may be
          *             percent-encoded via :mod:`~jidou.services.path_transport` if the
-         *             filename contains non-UTF-8 bytes).
+         *             filename contains non-UTF-8 bytes) — and ``replace``: when True
+         *             and the episode is already tracked, whatever currently tracks it
+         *             (a download-backed ``DownloadedFile`` or an import-tracked
+         *             filename) is unlinked first via ``_detach_episode_tracking``,
+         *             instead of raising 422. Handles the "file got moved/consolidated
+         *             into the correct season directory after the episode was already
+         *             tracked from its old location" case that neither ``begin-rematch``
+         *             (only changes which file a fixed row points to, never its path)
+         *             nor ``assign-import`` (can only reassign among already-imported
+         *             filenames) can resolve.
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -833,8 +882,8 @@ export interface paths {
          *
          *     Raises:
          *         HTTPException: 404 if the show or episode is not found.
-         *         HTTPException: 422 if the episode is already tracked, or *path* does
-         *             not point to an existing file.
+         *         HTTPException: 422 if the episode is already tracked and *replace* is
+         *             False, or *path* does not point to an existing file.
          */
         post: operations["link_episode_file_api_shows__show_id__episodes__episode_id__link_file_post"];
         delete?: never;
@@ -877,8 +926,9 @@ export interface paths {
          *     - ``unmatched``: no episode could be resolved.
          *     - ``conflict``: the proposed episode is already tracked by a different
          *       file, or was already claimed by an earlier row in this scan (e.g. a
-         *       duplicate file) — confirming would need ``link-file``'s existing 422
-         *       guard overridden by picking a different episode first.
+         *       duplicate file) — confirming needs either picking a different episode,
+         *       or passing ``replace=true`` to ``link-file`` to unlink whatever
+         *       currently tracks the proposed episode first.
          *
          *     Args:
          *         show_id: Database primary key of the show.
@@ -2397,6 +2447,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rss/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Config
+         * @description Diff the current DB-composed config against the last stored snapshot.
+         *
+         *     Answers "what would change if I published right now?" without touching
+         *     the remote server. Composes the current DB state the same way
+         *     :meth:`RssPublishOrchestrator.compose_config` (and therefore a real
+         *     publish) would, then diffs it against the most recent snapshot — the
+         *     last config Jidou actually saw on the remote server, whether from an
+         *     explicit import or the pre-publish reconciliation step of a prior
+         *     publish.
+         *
+         *     Args:
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         :class:`RssConfigDiff` with unified diff lines and a reference to
+         *         the snapshot the diff was taken against.
+         *
+         *     Raises:
+         *         HTTPException: 404 if no snapshot exists (run an import first).
+         *         HTTPException: 500 if the latest snapshot cannot be parsed.
+         */
+        get: operations["diff_config_api_rss_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rss/subscriptions/{sub_id}/preview": {
         parameters: {
             query?: never;
@@ -3137,19 +3226,27 @@ export interface components {
         };
         /**
          * LinkFileRequest
-         * @description Payload for manually linking an on-disk file path to an untracked episode.
+         * @description Payload for manually linking an on-disk file path to an episode.
+         *
+         *     ``replace`` mirrors ``LinkMovieFileRequest``: when the target episode is
+         *     already tracked, pass ``replace=True`` to unlink whatever currently
+         *     tracks it (see ``_detach_episode_tracking``) and link *path* in its
+         *     place, instead of getting a 422.
          */
         LinkFileRequest: {
             /** Path */
             path: string;
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
         };
         /**
          * LinkMovieFileRequest
          * @description Payload for linking (or replacing) a movie's on-disk file.
          *
-         *     ``replace`` is movie-specific -- a TV episode's ``link-file`` endpoint
-         *     always targets an untracked episode slot, so there's nothing to replace
-         *     there. See ``POST /shows/{show_id}/link-movie-file``.
+         *     See ``POST /shows/{show_id}/link-movie-file``.
          */
         LinkMovieFileRequest: {
             /** Path */
@@ -3318,6 +3415,33 @@ export interface components {
              * @default true
              */
             preserve_tracking: boolean;
+        };
+        /**
+         * RssConfigDiff
+         * @description Unified diff between the current DB-composed config and the last snapshot.
+         *
+         *     Attributes:
+         *         snapshot_id: Primary key of the snapshot the diff was taken against.
+         *         snapshot_type: ``"import"`` or ``"pre_publish"``.
+         *         snapshot_created_at: When that snapshot was captured.
+         *         has_changes: Whether the diff is non-empty.
+         *         diff: Unified diff lines; empty if the composed config is identical
+         *             to the snapshot.
+         */
+        RssConfigDiff: {
+            /** Snapshot Id */
+            snapshot_id: number;
+            /** Snapshot Type */
+            snapshot_type: string;
+            /**
+             * Snapshot Created At
+             * Format: date-time
+             */
+            snapshot_created_at: string;
+            /** Has Changes */
+            has_changes: boolean;
+            /** Diff */
+            diff: string[];
         };
         /**
          * RssFeedCreate
@@ -5242,6 +5366,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_episode_file_tracking_api_shows__show_id__episodes__episode_id__tracking_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+                episode_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeList"];
                 };
             };
             /** @description Validation Error */
@@ -7211,6 +7369,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_config_api_rss_diff_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RssConfigDiff"];
                 };
             };
             /** @description Validation Error */

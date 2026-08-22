@@ -13,6 +13,11 @@ Run sequence:
    - download_location / move_completed fall back to feed defaults when not set on the sub.
 6. Assemble new body preserving all non-managed sections from old_body verbatim.
 7. compose_rss_config(header, new_body) → upload via sftp.upload_bytes().
+8. Store a "post_publish" snapshot of the uploaded content — without this, the
+   latest snapshot after a publish would still be the pre-publish one from step 1,
+   making GET /rss/diff (and /rss/download's "latest snapshot" lookup) compare
+   against the state that existed *before* this publish instead of what's now
+   actually on the remote.
 """
 
 import asyncio
@@ -26,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from jidou.models.rss import RssFeed, RssSubscription
+from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.orchestrators.rss_import_orchestrator import (
     RssImportOrchestrator,
     _default_on_event,
@@ -224,16 +229,26 @@ class RssPublishOrchestrator:
             result.subscriptions_published = compose_result.subscriptions_published
             result.new_keys_assigned = compose_result.new_keys_assigned
 
-            # 8. Upload
+            # 8. Upload, then snapshot exactly what was uploaded. Without this,
+            # the latest RssConfigSnapshot row would remain the pre_publish one
+            # from step 1 — the remote state from *before* this publish — so
+            # GET /rss/diff and /rss/download's "latest snapshot" lookup would
+            # keep comparing against stale state and re-surface this publish's
+            # changes as still pending.
             if not self._dry_run:
                 await self._sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
+                snapshot = RssConfigSnapshot(snapshot_type="post_publish", raw_content=composed)
+                self._session.add(snapshot)
+                await self._session.flush()
+                result.snapshot_id = snapshot.id
                 await self._on_event(
                     "info",
                     (
                         f"Published config to {self._remote_path} — "
                         f"{result.feeds_published} feeds, "
                         f"{result.subscriptions_published} subscriptions "
-                        f"({result.new_keys_assigned} new keys assigned)"
+                        f"({result.new_keys_assigned} new keys assigned); "
+                        f"stored post-publish snapshot id={snapshot.id}"
                     ),
                     None,
                 )
