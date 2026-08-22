@@ -646,7 +646,13 @@ async def test_run_copy_succeeds_but_delete_fails_marks_routed_with_warning(
 
 @pytest.mark.asyncio
 async def test_run_episode_tracking_set_via_episode_id(tmp_path: Path) -> None:
-    """After routing, episode tracking fields are set via file.episode_id."""
+    """After routing, episode tracking fields are set via file.episode_id.
+
+    tracked_filename must be the full routed local_path, not the bare
+    filename — a media player needs a real path to open, and local_path is
+    already set on the file by the time tracking is recorded (regression
+    test: this previously used file.original_filename unconditionally).
+    """
     staging = tmp_path / "ep.mkv"
     staging.write_bytes(b"v")
 
@@ -659,7 +665,7 @@ async def test_run_episode_tracking_set_via_episode_id(tmp_path: Path) -> None:
     await orch.run()
 
     assert ep.file_tracked is True
-    assert ep.tracked_filename == "ep.mkv"
+    assert ep.tracked_filename == str(tmp_path / "show" / "Season 01" / "ep.mkv")
     assert ep.tracked_source == "match"
     assert ep.file_tracked_at is not None
 

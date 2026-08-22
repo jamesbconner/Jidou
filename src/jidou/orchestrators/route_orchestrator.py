@@ -172,7 +172,10 @@ class RouteOrchestrator:
             )
             return
 
-        mark_episode_tracked(ep, file.original_filename, "match")
+        # local_path is already the final routed path by this point (set just
+        # above in run(), before this is called) — falling back to
+        # original_filename only covers the case where routing left it unset.
+        mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
 
     async def run(
         self,
