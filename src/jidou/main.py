@@ -140,7 +140,8 @@ def main() -> None:
     import uvicorn
 
     logger.info("Starting %s on port 8192", settings.app_name)
-    uvicorn.run("jidou.main:app", host="0.0.0.0", port=8192, reload=settings.debug)  # nosec B104 — intentional: container listens on all interfaces, network isolation via Docker
+    # Intentional: container listens on all interfaces, network isolation via Docker.
+    uvicorn.run("jidou.main:app", host="0.0.0.0", port=8192, reload=settings.debug)  # nosec B104
 
 
 if __name__ == "__main__":

@@ -1074,6 +1074,54 @@ def test_build_sub_dict_extra_config_overrides_defaults() -> None:
     assert result["auto_managed"] == "Yes"
 
 
+def test_build_sub_dict_clears_stale_rssfeed_key_when_unlinked() -> None:
+    """A stale rssfeed_key round-tripped via extra_config is dropped once unlinked.
+
+    Regression test: publishing a subscription that still carries an old
+    rssfeed_key in extra_config after being unlinked from its feed used to
+    round-trip that dangling key straight into the published config. YaRSS2
+    then synthesizes a "Dummy Feed" placeholder for the unresolved key, which
+    Jidou's next import faithfully recreates as a real (bogus) RssFeed row.
+    """
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    sub = _make_sub(feed=None, extra_config={"rssfeed_key": "9999"})
+
+    result = RssPublishOrchestrator.build_sub_dict(sub, "1")
+
+    assert "rssfeed_key" not in result
+
+
+def test_build_sub_dict_clears_stale_rssfeed_key_when_feed_has_no_remote_key() -> None:
+    """A stale rssfeed_key is also dropped when the linked feed has no remote_key.
+
+    Covers a feed created manually in Jidou (never published, so
+    remote_key=None) that a previously-imported subscription got reassigned
+    to -- the old rssfeed_key from that subscription's extra_config must not
+    survive into the new publish.
+    """
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    unpublished_feed = _make_feed(remote_key=None)
+    sub = _make_sub(feed=unpublished_feed, extra_config={"rssfeed_key": "9999"})
+
+    result = RssPublishOrchestrator.build_sub_dict(sub, "1")
+
+    assert "rssfeed_key" not in result
+
+
+def test_build_sub_dict_replaces_stale_rssfeed_key_with_current_feed_key() -> None:
+    """A stale rssfeed_key in extra_config is overwritten, not merely left, when reassigned."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    new_feed = _make_feed(remote_key="f7")
+    sub = _make_sub(feed=new_feed, extra_config={"rssfeed_key": "9999"})
+
+    result = RssPublishOrchestrator.build_sub_dict(sub, "1")
+
+    assert result["rssfeed_key"] == "f7"
+
+
 # ---------------------------------------------------------------------------
 # _build_feeds_dict — skip inactive unreferenced feed + skip no remote_key
 # ---------------------------------------------------------------------------
