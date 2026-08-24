@@ -187,4 +187,38 @@ describe('Watchlist page', () => {
       expect(deleteCalls).toHaveLength(1)
     })
   })
+
+  test('clicking a row opens the show preview modal', async () => {
+    mockWatchlistAndShows(entries)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+
+    // Click a non-interactive cell (the row index) rather than the title
+    // link or any control, since those stop propagation deliberately.
+    fireEvent.click(screen.getByText('1'))
+    expect(await screen.findByText('View Full Show Page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Show Alpha' })).toBeInTheDocument()
+  })
+
+  test('clicking the show title link navigates without opening the preview modal', async () => {
+    mockWatchlistAndShows(entries)
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Show Alpha')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Show Alpha'))
+    expect(screen.queryByText('View Full Show Page')).not.toBeInTheDocument()
+  })
+
+  test('clicking Remove does not open the preview modal', async () => {
+    mockWatchlistAndShows(entries)
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse(entries))
+      .mockResolvedValueOnce(mockResponse(null, 204))
+
+    render(<Watchlist />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getAllByText('Remove')).toHaveLength(2))
+
+    fireEvent.click(screen.getAllByText('Remove')[0])
+    expect(screen.queryByText('View Full Show Page')).not.toBeInTheDocument()
+  })
 })
