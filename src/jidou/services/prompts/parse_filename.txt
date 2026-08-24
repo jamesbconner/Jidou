@@ -32,7 +32,7 @@ Hard rules:
          "Silent Witch - Chinmoku no Majo no Kakushigoto"
        "Ichi no Baka - S02E07 - Neko-chan vs. Usagi-dono ..." → show_name is "Ichi no Baka"
    - Hyphenated honorifics (-san, -kun, -chan, -sama, -dono, -sensei, -senpai, -kohei) are
-     always part of show_name when attached to a word.
+     always part of show_name when attached to a word, unless the word is in brackets.
 
 4) season:
    - Set only when explicitly present: "S02", "S2", "Season 2", "II", or "2nd Season".
