@@ -21,6 +21,7 @@ import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hook
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
+import { ShowPreviewModal } from '@/components/ShowPreviewModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -58,9 +59,10 @@ interface SortableRowProps {
   onDelete: (id: number) => void
   isDeletePending: boolean
   dragEnabled: boolean
+  onSelect: (entry: WatchlistRead) => void
 }
 
-function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: SortableRowProps) {
+function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled, onSelect }: SortableRowProps) {
   const {
     attributes,
     listeners,
@@ -80,9 +82,16 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
   }
 
   return (
-    <tr ref={setNodeRef} style={style} {...attributes} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+    <tr
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      onClick={() => onSelect(entry)}
+      className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+    >
       <td
         {...(dragEnabled ? listeners : {})}
+        onClick={(e) => e.stopPropagation()}
         className={`px-2 py-2 ${dragEnabled ? 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing' : 'text-gray-300 dark:text-gray-700 cursor-not-allowed'}`}
         title={dragEnabled ? 'Drag to reorder' : 'Clear status filter to reorder'}
       >
@@ -106,13 +115,14 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
       <td className="px-4 py-2">
         <Link
           to={`/shows/${entry.show_id}`}
+          onClick={(e) => e.stopPropagation()}
           className="font-medium hover:underline text-blue-700 dark:text-blue-400"
         >
           {entry.show.title}
         </Link>
         <span className="block text-xs text-gray-400 dark:text-gray-500">TMDB #{entry.show.tmdb_id}</span>
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
         <WatchlistStatusSelect id={entry.id} current={entry.status as WatchlistStatus} />
       </td>
       <td className="px-4 py-2">
@@ -133,7 +143,10 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled }: S
       </td>
       <td className="px-4 py-2 text-right">
         <button
-          onClick={() => onDelete(entry.id)}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(entry.id)
+          }}
           disabled={isDeletePending}
           className="text-xs text-red-500 dark:text-red-400 hover:underline disabled:opacity-50"
         >
@@ -156,6 +169,7 @@ export default function Watchlist() {
   const [pendingTmdbIds, setPendingTmdbIds] = useState<Set<number>>(new Set())
   const [orderedEntries, setOrderedEntries] = useState<WatchlistRead[]>([])
   const [reorderError, setReorderError] = useState<string | null>(null)
+  const [previewEntry, setPreviewEntry] = useState<WatchlistRead | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -517,6 +531,7 @@ export default function Watchlist() {
                       onDelete={(id) => deleteEntry.mutate(id)}
                       isDeletePending={deleteEntry.isPending}
                       dragEnabled={dragEnabled}
+                      onSelect={setPreviewEntry}
                     />
                   ))}
                 </tbody>
@@ -524,6 +539,10 @@ export default function Watchlist() {
             </DndContext>
           </table>
         </Card>
+      )}
+
+      {previewEntry && (
+        <ShowPreviewModal entry={previewEntry} onClose={() => setPreviewEntry(null)} />
       )}
     </div>
   )
