@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
@@ -5,16 +6,22 @@ import { WsConnectionProvider } from '@/stores/wsConnection'
 import { ThemeProvider } from '@/stores/theme'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Layout } from '@/components/Layout'
-import Dashboard from '@/pages/Dashboard'
-import Shows from '@/pages/Shows'
-import Discover from '@/pages/Discover'
-import ShowDetail from '@/pages/ShowDetail'
-import Files from '@/pages/Files'
-import Watchlist from '@/pages/Watchlist'
-import Tasks from '@/pages/Tasks'
-import Settings from '@/pages/Settings'
-import RSS from '@/pages/RSS'
-import Calendar from '@/pages/Calendar'
+
+// Lazy-loaded per route so each page ships in its own chunk instead of one
+// bundle carrying all 10 pages regardless of which one is visited. Layout
+// (nav bar + page frame) stays a static import since it's shared chrome that
+// should never itself show a loading state -- see Layout.tsx's Suspense
+// boundary around just the <Outlet />.
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const Shows = lazy(() => import('@/pages/Shows'))
+const Discover = lazy(() => import('@/pages/Discover'))
+const ShowDetail = lazy(() => import('@/pages/ShowDetail'))
+const Files = lazy(() => import('@/pages/Files'))
+const Watchlist = lazy(() => import('@/pages/Watchlist'))
+const Tasks = lazy(() => import('@/pages/Tasks'))
+const Settings = lazy(() => import('@/pages/Settings'))
+const RSS = lazy(() => import('@/pages/RSS'))
+const Calendar = lazy(() => import('@/pages/Calendar'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
