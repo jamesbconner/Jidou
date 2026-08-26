@@ -118,7 +118,7 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
           <div
             className={clsx(
-              'h-1.5 rounded-full transition-all duration-300',
+              'h-1.5 rounded-full transition-[width,background-color] duration-300',
               task.status === 'completed' ? 'bg-green-500' :
               task.status === 'failed' ? 'bg-red-500' :
               'bg-blue-500',
