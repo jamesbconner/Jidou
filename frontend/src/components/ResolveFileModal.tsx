@@ -168,7 +168,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
             {!isLoading && !(suggestionsError && !customSearch) && displayResults.length === 0 && (
               <div className="text-xs text-zinc-500 py-2">No results found.</div>
             )}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {displayResults.map((r) => (
                 <button
                   key={`${r.tmdb_id}-${r.media_type}`}

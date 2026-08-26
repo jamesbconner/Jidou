@@ -88,12 +88,12 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         </div>
 
         <div className="overflow-y-auto p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Name *">{textInput('name', 'e.g. ShowRSS')}</Field>
             <Field label="Remote Key" note="YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.">{textInput('remote_key', 'e.g. 1')}</Field>
           </div>
           <Field label="URL *">{textInput('url', 'https://…')}</Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Default Download Location" note="Used by subscriptions that don't override it.">{textInput('default_download_location')}</Field>
             <Field label="Default Move Completed" note="Used by subscriptions that don't override it.">{textInput('default_move_completed')}</Field>
           </div>
