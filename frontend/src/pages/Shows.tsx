@@ -11,6 +11,7 @@ import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
@@ -483,7 +484,7 @@ export default function Shows() {
             <Modal onClose={closeModal} tone="light" maxWidth="2xl" closeOnBackdropClick className="max-h-[80vh] flex flex-col">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
                   <h3 className="font-semibold dark:text-gray-100">Search Shows</h3>
-                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none" aria-label="Close">✕</button>
+                  <ModalCloseButton onClose={closeModal} />
                 </div>
 
                 {/* Library / TMDB pill toggle */}

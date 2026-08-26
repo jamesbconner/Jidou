@@ -1,6 +1,7 @@
 import { useState, KeyboardEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import { useUpdateShowAliases, useRegenerateShowAliases } from '@/hooks/useShows'
 import type { ShowRead } from '@/types/api'
 
@@ -62,13 +63,7 @@ export function AliasModal({ show, onClose }: Props) {
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
             Manage Aliases — {show.title}
           </h2>
-          <button
-            onClick={onClose}
-            className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          <ModalCloseButton onClose={onClose} className="ml-2" />
         </div>
 
         {/* Body */}

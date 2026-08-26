@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import { useShowPosters, usePatchShow } from '@/hooks/useShows'
 import type { ShowRead } from '@/types/api'
 
@@ -41,9 +42,7 @@ export function PosterPickerModal({ show, onClose }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">Choose Poster — {show.title}</h2>
-        <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Close">
-          ✕
-        </button>
+        <ModalCloseButton onClose={onClose} className="ml-2" />
       </div>
 
       {/* Body */}
