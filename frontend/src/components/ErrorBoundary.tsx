@@ -8,7 +8,13 @@ interface State { hasError: boolean; message: string }
 // new deploy, or a transient network blip) throws the exact same cached
 // rejection -- the boundary's Retry button can reset its own state, but
 // can't make the same lazy component re-fetch. Only a hard reload does.
-const CHUNK_LOAD_ERROR = /dynamically imported module/i
+//
+// The error message is browser-specific, not a shared error type/code:
+// Chrome/Edge say "Failed to fetch dynamically imported module", Firefox
+// says "error loading dynamically imported module", and Safari says
+// "Importing a module script failed" -- none share a common substring, so
+// this has to match all three phrasings individually.
+const CHUNK_LOAD_ERROR = /dynamically imported module|importing a module script failed/i
 const RELOAD_GUARD_KEY = 'jidou.chunkLoadReloadAt'
 const RELOAD_GUARD_WINDOW_MS = 10_000
 

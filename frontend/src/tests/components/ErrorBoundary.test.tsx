@@ -48,10 +48,14 @@ describe('ErrorBoundary', () => {
     expect(reload).not.toHaveBeenCalled()
   })
 
-  test('auto-reloads once on a chunk-load error', () => {
+  test.each([
+    ['Chrome/Edge', 'Failed to fetch dynamically imported module: http://localhost/assets/Settings.js'],
+    ['Firefox', 'error loading dynamically imported module'],
+    ['Safari', 'Importing a module script failed'],
+  ])('auto-reloads once on a %s chunk-load error', (_browser, message) => {
     render(
       <ErrorBoundary>
-        <Boom message="Failed to fetch dynamically imported module: http://localhost/assets/Settings.js" />
+        <Boom message={message} />
       </ErrorBoundary>,
     )
     expect(reload).toHaveBeenCalledTimes(1)
