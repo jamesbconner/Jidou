@@ -25,6 +25,7 @@ import { ShowPreviewModal } from '@/components/ShowPreviewModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import { STATUS_COLOR, STATUS_LABEL, STATUS_OPTIONS } from '@/utils/watchlistStatus'
 import type { WatchlistStatus, WatchlistRead, ShowList, TmdbResult } from '@/types/api'
 
@@ -346,13 +347,7 @@ export default function Watchlist() {
         >
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-semibold dark:text-gray-100">Add to Watchlist</h3>
-              <button
-                onClick={() => { setSearchModalOpen(false); setSearchQuery('') }}
-                className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none"
-                aria-label="Close"
-              >
-                ✕
-              </button>
+              <ModalCloseButton onClose={() => { setSearchModalOpen(false); setSearchQuery('') }} />
             </div>
 
             {/* Library / TMDB toggle */}

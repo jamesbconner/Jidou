@@ -71,6 +71,11 @@ Thumbs.db
 # -----------------------------------------------------------
 .claude/
 graphify-out/
+.agents/
+.impeccable/
+PRODUCT.md
+DESIGN.md
+skills-lock.json
 
 # -----------------------------------------------------------
 # Local debug / scratch scripts (not for commit)

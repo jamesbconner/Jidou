@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { Modal } from '@/components/ui/Modal'
+import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import type { RecentSort } from '@/hooks/useDashboard'
 import type { RecentShowItem, RecentEpisodeItem } from '@/types/api'
 
@@ -47,9 +48,7 @@ export function MediaDetailModal({ item, onClose }: Props) {
     <Modal onClose={onClose} tone="light" ariaLabel={title} className="flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</h2>
-          <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Close">
-            ✕
-          </button>
+          <ModalCloseButton onClose={onClose} leftGap />
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
