@@ -207,7 +207,7 @@ export function SubscriptionEditModal({
           </div>
 
           <div className="overflow-y-auto p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Name">{textInput('name')}</Field>
               <Field label="RSS Feed">
                 <select
@@ -297,12 +297,12 @@ export function SubscriptionEditModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Download Location" note="Leave blank to use feed default">{textInput('download_location', 'Override feed default')}</Field>
               <Field label="Move Completed" note="Leave blank to use feed default">{textInput('move_completed', 'Override feed default')}</Field>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field label="Label">{textInput('label', 'e.g. TV')}</Field>
               <div className="flex flex-col gap-2 justify-end pb-1">
                 <label
