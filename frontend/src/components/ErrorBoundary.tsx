@@ -3,6 +3,21 @@ import { Component, type ReactNode, type ErrorInfo } from 'react'
 interface Props { children: ReactNode }
 interface State { hasError: boolean; message: string }
 
+// React.lazy() caches a rejected dynamic import() on the component reference
+// itself, so re-rendering it after a failed chunk load (stale hash from a
+// new deploy, or a transient network blip) throws the exact same cached
+// rejection -- the boundary's Retry button can reset its own state, but
+// can't make the same lazy component re-fetch. Only a hard reload does.
+const CHUNK_LOAD_ERROR = /dynamically imported module/i
+const RELOAD_GUARD_KEY = 'jidou.chunkLoadReloadAt'
+const RELOAD_GUARD_WINDOW_MS = 10_000
+
+function shouldAutoReload(err: Error): boolean {
+  if (!CHUNK_LOAD_ERROR.test(err.message)) return false
+  const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) ?? 0)
+  return Date.now() - last > RELOAD_GUARD_WINDOW_MS
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, message: '' }
 
@@ -12,6 +27,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.error('Uncaught error:', err, info)
+
+    // Auto-reload once for a genuine chunk-load failure -- picks up the new
+    // deploy's asset manifest instead of leaving a long-lived tab stuck.
+    // Guarded by a short time window (not a permanent per-session flag) so a
+    // reload that doesn't fix it (a real network outage, not a stale chunk)
+    // falls through to the normal error UI instead of loop-reloading, while
+    // a later, unrelated failure still gets its own fresh reload attempt.
+    if (shouldAutoReload(err)) {
+      sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()))
+      window.location.reload()
+    }
   }
 
   render() {
