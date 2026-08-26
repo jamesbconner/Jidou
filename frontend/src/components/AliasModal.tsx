@@ -63,7 +63,7 @@ export function AliasModal({ show, onClose }: Props) {
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
             Manage Aliases — {show.title}
           </h2>
-          <ModalCloseButton onClose={onClose} className="ml-2" />
+          <ModalCloseButton onClose={onClose} leftGap />
         </div>
 
         {/* Body */}

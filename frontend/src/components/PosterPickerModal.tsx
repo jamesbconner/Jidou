@@ -42,7 +42,7 @@ export function PosterPickerModal({ show, onClose }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">Choose Poster — {show.title}</h2>
-        <ModalCloseButton onClose={onClose} className="ml-2" />
+        <ModalCloseButton onClose={onClose} leftGap />
       </div>
 
       {/* Body */}
