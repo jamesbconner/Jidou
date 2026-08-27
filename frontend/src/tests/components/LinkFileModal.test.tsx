@@ -70,8 +70,8 @@ function file(over: Partial<FileRead>): FileRead {
   } as FileRead
 }
 
-describe('LinkFileModal — combined unmatched + imported pool', () => {
-  test('lists both unmatched files and imported filenames as separate groups', async () => {
+describe('LinkFileModal — combined existing-file + imported pool', () => {
+  test('lists orphaned routed files alongside imported filenames, but excludes in-flight files', async () => {
     const target = episode({ id: 10 })
     const otherEp = episode({
       id: 11,
@@ -80,14 +80,26 @@ describe('LinkFileModal — combined unmatched + imported pool', () => {
       tracked_filename: '/media/show/ep02.mkv',
       tracked_source: 'import',
     })
-    const unmatchedFile = file({ id: 100, original_filename: '/media/show/s01e08-real.mkv' })
+    // Displaced by a mis-route: stays 'routed', episode_id cleared — this is
+    // the case the dropdown previously failed to surface.
+    const routedFile = file({
+      id: 100,
+      original_filename: '/media/show/s01e08-real.mkv',
+      status: 'routed',
+    })
+    // Still mid-transfer — must never appear as pickable.
+    const downloadingFile = file({
+      id: 101,
+      original_filename: '/media/show/in-flight.mkv',
+      status: 'downloading',
+    })
 
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/config')) return mockResponse({})
-      if (url.includes('/shows/1/episodes')) return mockResponse([target, otherEp])
-      if (url.includes('/files') && url.includes('status=unmatched')) {
-        return mockResponse([unmatchedFile])
+      if (url.endsWith('/shows/1/episodes')) return mockResponse([target, otherEp])
+      if (url.includes('/files') && url.includes('show_id=1')) {
+        return mockResponse([routedFile, downloadingFile])
       }
       return mockResponse(null)
     })
@@ -102,28 +114,33 @@ describe('LinkFileModal — combined unmatched + imported pool', () => {
       { wrapper: makeWrapper() },
     )
 
-    expect(await screen.findByText('s01e08-real.mkv')).toBeInTheDocument()
+    expect(await screen.findByText(/s01e08-real\.mkv/)).toBeInTheDocument()
     expect(screen.getByText(/ep02\.mkv/)).toBeInTheDocument()
-    expect(document.querySelector('optgroup[label="Unmatched"]')).not.toBeNull()
+    expect(screen.queryByText(/in-flight\.mkv/)).not.toBeInTheDocument()
+    expect(document.querySelector('optgroup[label="Existing files"]')).not.toBeNull()
     expect(document.querySelector('optgroup[label="Imported"]')).not.toBeNull()
   })
 
-  test('picking an unmatched file PATCHes the file with the target episode', async () => {
+  test('picking an orphaned routed file PATCHes it onto the target episode', async () => {
     const target = episode({ id: 10 })
-    const unmatchedFile = file({ id: 100, original_filename: '/media/show/s01e08-real.mkv' })
+    const routedFile = file({
+      id: 100,
+      original_filename: '/media/show/s01e08-real.mkv',
+      status: 'routed',
+    })
     const onClose = vi.fn()
     let patchBody: unknown = null
 
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url.includes('/config')) return mockResponse({})
-      if (url.includes('/shows/1/episodes')) return mockResponse([target])
-      if (url.includes('/files') && url.includes('status=unmatched')) {
-        return mockResponse([unmatchedFile])
+      if (url.endsWith('/shows/1/episodes')) return mockResponse([target])
+      if (url.includes('/files') && url.includes('show_id=1')) {
+        return mockResponse([routedFile])
       }
       if (url.endsWith('/files/100') && init?.method === 'PATCH') {
         patchBody = JSON.parse(String(init.body))
-        return mockResponse({ ...unmatchedFile, episode_id: target.id, status: 'matched' })
+        return mockResponse({ ...routedFile, episode_id: target.id, status: 'matched' })
       }
       return mockResponse(null)
     })
@@ -139,8 +156,8 @@ describe('LinkFileModal — combined unmatched + imported pool', () => {
     )
 
     const select = await screen.findByRole('combobox')
-    await screen.findByRole('option', { name: 's01e08-real.mkv' })
-    fireEvent.change(select, { target: { value: 'u:100' } })
+    await screen.findByRole('option', { name: /s01e08-real\.mkv/ })
+    fireEvent.change(select, { target: { value: 'e:100' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -171,7 +188,7 @@ describe('LinkFileModal — combined unmatched + imported pool', () => {
       }
       if (url.includes('/config')) return mockResponse({})
       if (url.endsWith('/shows/1/episodes')) return mockResponse([target, otherEp])
-      if (url.includes('/files') && url.includes('status=unmatched')) {
+      if (url.includes('/files') && url.includes('show_id=1')) {
         return mockResponse([])
       }
       return mockResponse(null)

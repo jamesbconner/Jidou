@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useUnmatchedFilesForShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
+import { useFilesByShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
 import { parseContainerPath } from '@/utils/paths'
-import type { AppConfig, ContentType, EpisodeList, FileRead } from '@/types/api'
+import type { AppConfig, ContentType, EpisodeList, FileRead, FileStatus } from '@/types/api'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -23,8 +23,20 @@ interface Props {
   onClose: () => void
 }
 
-const UNMATCHED_PREFIX = 'u:'
+const EXISTING_PREFIX = 'e:'
 const IMPORTED_PREFIX = 'i:'
+
+// Files mid-transfer or otherwise not real, matchable content — excluded
+// from the reassignment pool regardless of which episode (if any) they
+// currently track.
+const UNAVAILABLE_STATUSES = new Set<FileStatus>([
+  'discovered',
+  'downloading',
+  'pending',
+  'routing',
+  'ignored',
+  'seeded',
+])
 
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
   const qc = useQueryClient()
@@ -33,12 +45,24 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [relativePath, setRelativePath] = useState('')
 
-  const { data: unmatchedFiles = [], isLoading: filesLoading } = useUnmatchedFilesForShow(showId)
+  const { data: showFiles = [], isLoading: filesLoading } = useFilesByShow(showId)
   const { data: episodes = [] } = useShowEpisodes(showId)
 
+  // Any real file for the show that isn't currently backing an episode —
+  // covers files displaced by a mis-route (which keep their prior status,
+  // e.g. 'routed', rather than resetting to 'unmatched') alongside files
+  // that never matched in the first place.
+  const availableFiles = useMemo(
+    () =>
+      showFiles
+        .filter((f) => f.episode_id === null && !UNAVAILABLE_STATUSES.has(f.status))
+        .sort((a, b) => a.original_filename.localeCompare(b.original_filename)),
+    [showFiles],
+  )
+
   // Filenames tracked via path-import have no DownloadedFile row, so they
-  // can't come from useUnmatchedFilesForShow — pulled separately from the
-  // show's other episodes, same pool AssignImportModal draws from.
+  // can't come from useFilesByShow — pulled separately from the show's
+  // other episodes, same pool AssignImportModal draws from.
   const importPool = useMemo(() => {
     return episodes
       .filter((ep) => ep.tracked_filename && ep.tracked_source === 'import')
@@ -95,8 +119,8 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
 
   function handleSave() {
     if (mode === 'existing') {
-      if (selected.startsWith(UNMATCHED_PREFIX)) {
-        linkExisting.mutate(Number(selected.slice(UNMATCHED_PREFIX.length)))
+      if (selected.startsWith(EXISTING_PREFIX)) {
+        linkExisting.mutate(Number(selected.slice(EXISTING_PREFIX.length)))
       } else if (selected.startsWith(IMPORTED_PREFIX)) {
         assignImport.mutate(
           { showId, episodeId: episode.id, filename: selected.slice(IMPORTED_PREFIX.length) },
@@ -164,11 +188,11 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                 className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
               >
                 <option value="">— pick a file —</option>
-                {unmatchedFiles.length > 0 && (
-                  <optgroup label="Unmatched">
-                    {unmatchedFiles.map((f) => (
-                      <option key={f.id} value={`${UNMATCHED_PREFIX}${f.id}`}>
-                        {basename(f.original_filename)}
+                {availableFiles.length > 0 && (
+                  <optgroup label="Existing files">
+                    {availableFiles.map((f) => (
+                      <option key={f.id} value={`${EXISTING_PREFIX}${f.id}`}>
+                        {basename(f.original_filename)} ({f.status})
                       </option>
                     ))}
                   </optgroup>
@@ -183,7 +207,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                   </optgroup>
                 )}
               </select>
-              {!filesLoading && unmatchedFiles.length === 0 && importPool.length === 0 && (
+              {!filesLoading && availableFiles.length === 0 && importPool.length === 0 && (
                 <p className="text-xs text-zinc-500">No files available to link for this show.</p>
               )}
             </div>
