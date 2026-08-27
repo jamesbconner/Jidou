@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUnmatchedFilesForShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
-import { showKeys } from '@/hooks/useShows'
+import { showKeys, useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
@@ -23,14 +23,32 @@ interface Props {
   onClose: () => void
 }
 
+const UNMATCHED_PREFIX = 'u:'
+const IMPORTED_PREFIX = 'i:'
+
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
   const qc = useQueryClient()
   const [mode, setMode] = useState<'existing' | 'path'>('existing')
-  const [selectedFileId, setSelectedFileId] = useState('')
+  const [selected, setSelected] = useState('')
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [relativePath, setRelativePath] = useState('')
 
   const { data: unmatchedFiles = [], isLoading: filesLoading } = useUnmatchedFilesForShow(showId)
+  const { data: episodes = [] } = useShowEpisodes(showId)
+
+  // Filenames tracked via path-import have no DownloadedFile row, so they
+  // can't come from useUnmatchedFilesForShow — pulled separately from the
+  // show's other episodes, same pool AssignImportModal draws from.
+  const importPool = useMemo(() => {
+    return episodes
+      .filter((ep) => ep.tracked_filename && ep.tracked_source === 'import')
+      .map((ep) => ({
+        filename: ep.tracked_filename!,
+        displayName: ep.tracked_filename_display ?? ep.tracked_filename!,
+        label: `S${pad2(ep.season_number)}E${pad2(ep.episode_number)} · ${ep.name}`,
+      }))
+      .sort((a, b) => a.filename.localeCompare(b.filename))
+  }, [episodes])
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -73,11 +91,18 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   })
 
   const linkPath = useLinkEpisodeFile()
+  const assignImport = useAssignImportEpisode()
 
   function handleSave() {
     if (mode === 'existing') {
-      if (!selectedFileId) return
-      linkExisting.mutate(Number(selectedFileId))
+      if (selected.startsWith(UNMATCHED_PREFIX)) {
+        linkExisting.mutate(Number(selected.slice(UNMATCHED_PREFIX.length)))
+      } else if (selected.startsWith(IMPORTED_PREFIX)) {
+        assignImport.mutate(
+          { showId, episodeId: episode.id, filename: selected.slice(IMPORTED_PREFIX.length) },
+          { onSuccess: onClose },
+        )
+      }
     } else {
       if (!fullPath) return
       linkPath.mutate(
@@ -87,9 +112,9 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
     }
   }
 
-  const pending = linkExisting.isPending || linkPath.isPending
-  const error = linkExisting.error ?? linkPath.error
-  const canSave = mode === 'existing' ? !!selectedFileId : !!fullPath
+  const pending = linkExisting.isPending || linkPath.isPending || assignImport.isPending
+  const error = linkExisting.error ?? linkPath.error ?? assignImport.error
+  const canSave = mode === 'existing' ? !!selected : !!fullPath
 
   return (
     <Modal onClose={onClose} tone="dark" labelledBy="link-file-title" className="flex flex-col max-h-[90vh]">
@@ -113,7 +138,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                   : 'border-zinc-600 text-zinc-300 hover:bg-zinc-700'
               }`}
             >
-              Pick unmatched file
+              Pick existing file
             </button>
             <button
               onClick={() => setMode('path')}
@@ -130,23 +155,36 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
           {mode === 'existing' ? (
             <div className="space-y-1.5">
               <div className="text-xs text-zinc-400">
-                Select an unmatched file already tracked for this show
+                Select a file available for this show
               </div>
               <select
-                value={selectedFileId}
-                onChange={(e) => setSelectedFileId(e.target.value)}
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
                 disabled={pending || filesLoading}
                 className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
               >
                 <option value="">— pick a file —</option>
-                {unmatchedFiles.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {basename(f.original_filename)}
-                  </option>
-                ))}
+                {unmatchedFiles.length > 0 && (
+                  <optgroup label="Unmatched">
+                    {unmatchedFiles.map((f) => (
+                      <option key={f.id} value={`${UNMATCHED_PREFIX}${f.id}`}>
+                        {basename(f.original_filename)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {importPool.length > 0 && (
+                  <optgroup label="Imported">
+                    {importPool.map((f) => (
+                      <option key={f.filename} value={`${IMPORTED_PREFIX}${f.filename}`}>
+                        {basename(f.displayName)} (currently: {f.label})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
-              {!filesLoading && unmatchedFiles.length === 0 && (
-                <p className="text-xs text-zinc-500">No unmatched files found for this show.</p>
+              {!filesLoading && unmatchedFiles.length === 0 && importPool.length === 0 && (
+                <p className="text-xs text-zinc-500">No files available to link for this show.</p>
               )}
             </div>
           ) : (

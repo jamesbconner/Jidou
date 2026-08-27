@@ -264,7 +264,6 @@ export default function ShowDetail() {
       ).reduce((sum, s) => sum + s.missing.length, 0)
     : 0
   const allWatched = episodes.length > 0 && watchedCount === episodes.length
-  const hasImportEps = episodes.some((e) => e.tracked_source === 'import')
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
@@ -695,14 +694,6 @@ export default function ShowDetail() {
                               >
                                 Match File
                               </button>
-                              {hasImportEps && (
-                                <button
-                                  onClick={() => handleEpisodeFixEps(ep)}
-                                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
-                                >
-                                  Fix Eps
-                                </button>
-                              )}
                             </div>
                           )}
                         </div>
