@@ -56,13 +56,6 @@ export function useFilesByShow(showId: number, enabled = true) {
   })
 }
 
-export function useUnmatchedFilesForShow(showId: number) {
-  return useQuery({
-    queryKey: [...fileKeys.all, 'unmatched-for-show', showId] as const,
-    queryFn: () => api.get<FileRead[]>(`/files?status=unmatched&show_id=${showId}&limit=1000`),
-  })
-}
-
 export function useFile(id: number) {
   return useQuery({
     queryKey: fileKeys.detail(id),
