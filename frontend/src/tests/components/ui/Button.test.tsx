@@ -13,7 +13,7 @@ describe('Button', () => {
 
   test('applies primary variant classes', () => {
     render(<Button variant="primary">Confirm</Button>)
-    expect(screen.getByText('Confirm')).toHaveClass('bg-blue-600')
+    expect(screen.getByText('Confirm')).toHaveClass('bg-[var(--color-verdant-600)]')
   })
 
   test('applies dark tone danger classes', () => {
@@ -22,7 +22,7 @@ describe('Button', () => {
         Delete
       </Button>,
     )
-    expect(screen.getByText('Delete')).toHaveClass('bg-red-600')
+    expect(screen.getByText('Delete')).toHaveClass('bg-[var(--color-ember-600)]')
   })
 
   test('respects disabled prop', () => {

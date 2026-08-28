@@ -1,5 +1,78 @@
 @import 'tailwindcss';
 
+/* Stone & Pine palette — replaces Tailwind's default gray scale with a warm
+   neutral, and adds verdant (primary/success, pine green), haze (secondary/
+   informational, dusty blue), and ember (danger/attention, muted coral) as
+   brand accents. Overriding --color-gray-* reskins every existing
+   bg-gray-*/text-gray-*/border-gray-* utility and the border-color compat
+   rule below with no per-component changes. The 200/400/800/950 stops in
+   verdant/haze/ember are interpolated between the picked 50/100/300/500/
+   600/700 anchors, not independently chosen.
+
+   IMPORTANT: verdant/haze/ember live in a plain :root block below, not in
+   this @theme block, and are referenced only via arbitrary-value syntax,
+   e.g. bg-[var(--color-verdant-500)]. On the tailwindcss and
+   at-tailwindcss-vite 4.3.3 packages used here, a custom color added to
+   @theme alongside other theme changes can silently end up with its utility
+   classes generated but its underlying --color-* definition missing from
+   the stylesheet actually served to the page (a plain curl of this file
+   shows the definition; the live page does not) -- the class resolves to a
+   transparent no-op with no console error. A plain :root declaration is
+   ordinary CSS with no Tailwind theme processing, so it does not hit that
+   path. Confirmed by reproduction; do not move these into @theme or use the
+   named utility form without retesting a cold dev server start first. */
+@theme {
+  --color-gray-50: #faf9f7;
+  --color-gray-100: #f1efeb;
+  --color-gray-200: #e3dfd8;
+  --color-gray-300: #cdc6ba;
+  --color-gray-400: #a9a093;
+  --color-gray-500: #857b6d;
+  --color-gray-600: #665d52;
+  --color-gray-700: #4b443c;
+  --color-gray-800: #332e28;
+  --color-gray-900: #201c18;
+  --color-gray-950: #14110e;
+}
+
+:root {
+  --color-verdant-50: #eef5ee;
+  --color-verdant-100: #d9ead9;
+  --color-verdant-200: #c7dfc8;
+  --color-verdant-300: #96c199;
+  --color-verdant-400: #72ac79;
+  --color-verdant-500: #4f8f58;
+  --color-verdant-600: #3d7345;
+  --color-verdant-700: #2f5a36;
+  --color-verdant-800: #24452a;
+  --color-verdant-900: #1b341f;
+  --color-verdant-950: #0f1f12;
+
+  --color-haze-50: #eff3f7;
+  --color-haze-100: #dce6ef;
+  --color-haze-200: #c3d5e3;
+  --color-haze-300: #9bb6cc;
+  --color-haze-400: #7ba0bc;
+  --color-haze-500: #5d84a3;
+  --color-haze-600: #486a84;
+  --color-haze-700: #385267;
+  --color-haze-800: #2a3f4f;
+  --color-haze-900: #1e2d39;
+  --color-haze-950: #141f27;
+
+  --color-ember-50: #f8ecea;
+  --color-ember-100: #f1d9d6;
+  --color-ember-200: #e5beb9;
+  --color-ember-300: #dca8a2;
+  --color-ember-400: #ce8680;
+  --color-ember-500: #c0665f;
+  --color-ember-600: #a8524b;
+  --color-ember-700: #874039;
+  --color-ember-800: #6b332e;
+  --color-ember-900: #532724;
+  --color-ember-950: #3a1b19;
+}
+
 /* Global dark mode toggle: activates any `dark:` utility whenever the
    element is, or is inside, something carrying a `.dark` class (applied to
    <html> by ThemeProvider in stores/theme.tsx). Overrides Tailwind v4's
