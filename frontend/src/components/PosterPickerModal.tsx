@@ -72,7 +72,7 @@ export function PosterPickerModal({ show, onClose }: Props) {
                     {(isActiveList || isActiveDetail) && (
                       <div className="absolute top-1 left-1 flex flex-col gap-1">
                         {isActiveList && (
-                          <span className="bg-blue-500 text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow">
+                          <span className="bg-[var(--color-ocean-500)] text-white text-[10px] font-medium px-1.5 py-0.5 rounded shadow">
                             Shows page
                           </span>
                         )}

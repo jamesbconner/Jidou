@@ -32,7 +32,7 @@ function TaskLogPanel({ task }: { task: TaskList }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-blue-500 dark:text-blue-400 hover:underline"
+        className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
       >
         {open ? 'Hide log' : `View log${events.length ? ` (${events.length})` : ''}`}
       </button>

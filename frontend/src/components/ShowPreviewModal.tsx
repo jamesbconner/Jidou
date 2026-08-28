@@ -69,7 +69,7 @@ export function ShowPreviewModal({ entry, onClose }: Props) {
                 href={tmdbUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-blue-500 dark:text-blue-400 hover:underline"
+                className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
               >
                 TMDB #{entry.show.tmdb_id}
               </a>
@@ -112,7 +112,7 @@ export function ShowPreviewModal({ entry, onClose }: Props) {
         </Button>
         <Link
           to={`/shows/${entry.show_id}`}
-          className="btn px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700"
+          className="btn px-4 py-2 text-sm bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]"
         >
           View Full Show Page
         </Link>

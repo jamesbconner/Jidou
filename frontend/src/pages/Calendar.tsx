@@ -291,7 +291,7 @@ export default function Calendar() {
               <div key={iso} className="space-y-2">
                 <div
                   className={`text-xs font-semibold px-2 py-1 rounded ${
-                    isToday ? 'bg-blue-500 text-white' : 'text-gray-500 dark:text-gray-400'
+                    isToday ? 'bg-[var(--color-ocean-500)] text-white' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   {dayLabel(day)} {day.getMonth() + 1}/{day.getDate()}

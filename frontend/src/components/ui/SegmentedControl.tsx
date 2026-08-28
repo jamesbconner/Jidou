@@ -51,7 +51,7 @@ export function SegmentedControl<T extends string | number>({
               'rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500',
               SIZE[size],
               active
-                ? 'bg-blue-600 text-white border-blue-600'
+                ? 'bg-[var(--color-ocean-600)] text-white border-[var(--color-ocean-600)]'
                 : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800',
               option.disabled && 'opacity-50 cursor-not-allowed hover:bg-transparent',
             )}

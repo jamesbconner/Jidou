@@ -71,7 +71,7 @@ export function ShowCard({ show, watchlistEntryId, onWatchlistToggle, watchlistP
             disabled={watchlistPending}
             className={`absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait ${
               inWatchlist
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                ? 'bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]'
                 : 'bg-black/40 text-white hover:bg-black/60'
             }`}
             title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}

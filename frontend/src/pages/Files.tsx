@@ -61,7 +61,7 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
     return (
       <button
         onClick={() => { cancelRef.current = false; setValue(showId?.toString() ?? ''); setEditing(true) }}
-        className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left"
+        className="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left"
         title="Click to assign show"
       >
         {showId ?? '—'}
@@ -143,7 +143,7 @@ function InlineEpisodePicker({
         <button
           onClick={() => { setSelectValue(episodeId?.toString() ?? ''); setError(null); setEditing(true) }}
           disabled={patch.isPending}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
           title="Click to assign episode"
         >
           {label}
@@ -346,7 +346,7 @@ export default function Files() {
         >
           <span
             className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-              showIgnored ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+              showIgnored ? 'bg-[var(--color-ocean-600)]' : 'bg-gray-300 dark:bg-gray-700'
             }`}
           >
             <span
@@ -438,7 +438,7 @@ export default function Files() {
                       !['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                         <button
                           onClick={() => setRematchFile(f)}
-                          className="text-xs text-blue-600 hover:underline"
+                          className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
                         >
                           Fix Show
                         </button>
@@ -446,7 +446,7 @@ export default function Files() {
                     {f.show_id != null && ['matched', 'routed'].includes(f.status) && (
                       <button
                         onClick={() => setFixEpsFile(f)}
-                        className="text-xs text-blue-600 hover:underline"
+                        className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
                       >
                         Fix Eps
                       </button>

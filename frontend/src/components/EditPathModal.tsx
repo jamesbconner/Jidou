@@ -65,7 +65,7 @@ export function EditPathModal({
                     value={t}
                     checked={contentType === t}
                     onChange={() => setContentType(t)}
-                    className="accent-blue-600"
+                    className="accent-[var(--color-ocean-600)]"
                   />
                   {t.charAt(0).toUpperCase() + t.slice(1)}
                 </label>
