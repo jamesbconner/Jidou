@@ -13,7 +13,7 @@ describe('Button', () => {
 
   test('applies primary variant classes', () => {
     render(<Button variant="primary">Confirm</Button>)
-    expect(screen.getByText('Confirm')).toHaveClass('bg-[var(--color-verdant-600)]')
+    expect(screen.getByText('Confirm')).toHaveClass('bg-[var(--color-ocean-600)]')
   })
 
   test('applies dark tone danger classes', () => {

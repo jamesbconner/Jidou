@@ -1,17 +1,17 @@
 @import 'tailwindcss';
 
-/* Stone & Pine palette — replaces Tailwind's default gray scale with a warm
-   neutral, and adds verdant (primary/success, pine green), haze (secondary/
-   informational, dusty blue), and ember (danger/attention, muted coral) as
-   brand accents. Overriding --color-gray-* reskins every existing
-   bg-gray-*/text-gray-*/border-gray-* utility and the border-color compat
-   rule below with no per-component changes. The 200/400/800/950 stops in
-   verdant/haze/ember are interpolated between the picked 50/100/300/500/
-   600/700 anchors, not independently chosen.
+/* Graphite Tide palette — replaces Tailwind's default gray scale with a
+   blue-black graphite neutral, and adds ocean (primary/success, saturated
+   blue), seafoam (secondary/informational, blue-green), and ember (danger/
+   attention, vivid amber) as brand accents. Overriding --color-gray-*
+   reskins every existing bg-gray-*/text-gray-*/border-gray-* utility and the
+   border-color compat rule below with no per-component changes. The 200/400/
+   800/900/950 stops in ocean/seafoam/ember are interpolated between the
+   picked 50/100/300/500/600/700 anchors, not independently chosen.
 
-   IMPORTANT: verdant/haze/ember live in a plain :root block below, not in
+   IMPORTANT: ocean/seafoam/ember live in a plain :root block below, not in
    this @theme block, and are referenced only via arbitrary-value syntax,
-   e.g. bg-[var(--color-verdant-500)]. On the tailwindcss and
+   e.g. bg-[var(--color-ocean-500)]. On the tailwindcss and
    at-tailwindcss-vite 4.3.3 packages used here, a custom color added to
    @theme alongside other theme changes can silently end up with its utility
    classes generated but its underlying --color-* definition missing from
@@ -22,55 +22,55 @@
    path. Confirmed by reproduction; do not move these into @theme or use the
    named utility form without retesting a cold dev server start first. */
 @theme {
-  --color-gray-50: #faf9f7;
-  --color-gray-100: #f1efeb;
-  --color-gray-200: #e3dfd8;
-  --color-gray-300: #cdc6ba;
-  --color-gray-400: #a9a093;
-  --color-gray-500: #857b6d;
-  --color-gray-600: #665d52;
-  --color-gray-700: #4b443c;
-  --color-gray-800: #332e28;
-  --color-gray-900: #201c18;
-  --color-gray-950: #14110e;
+  --color-gray-50: #f5f7f9;
+  --color-gray-100: #e9edf1;
+  --color-gray-200: #d3dae1;
+  --color-gray-300: #afbac6;
+  --color-gray-400: #808f9e;
+  --color-gray-500: #5c6c7c;
+  --color-gray-600: #445261;
+  --color-gray-700: #303c49;
+  --color-gray-800: #202a35;
+  --color-gray-900: #121922;
+  --color-gray-950: #0a0f15;
 }
 
 :root {
-  --color-verdant-50: #eef5ee;
-  --color-verdant-100: #d9ead9;
-  --color-verdant-200: #c7dfc8;
-  --color-verdant-300: #96c199;
-  --color-verdant-400: #72ac79;
-  --color-verdant-500: #4f8f58;
-  --color-verdant-600: #3d7345;
-  --color-verdant-700: #2f5a36;
-  --color-verdant-800: #24452a;
-  --color-verdant-900: #1b341f;
-  --color-verdant-950: #0f1f12;
+  --color-ocean-50: #e9f3fb;
+  --color-ocean-100: #cce5f5;
+  --color-ocean-200: #a3d0ec;
+  --color-ocean-300: #74b4e3;
+  --color-ocean-400: #4b9ad3;
+  --color-ocean-500: #1d80c4;
+  --color-ocean-600: #1868a0;
+  --color-ocean-700: #14527e;
+  --color-ocean-800: #103f60;
+  --color-ocean-900: #0c2f48;
+  --color-ocean-950: #081f30;
 
-  --color-haze-50: #eff3f7;
-  --color-haze-100: #dce6ef;
-  --color-haze-200: #c3d5e3;
-  --color-haze-300: #9bb6cc;
-  --color-haze-400: #7ba0bc;
-  --color-haze-500: #5d84a3;
-  --color-haze-600: #486a84;
-  --color-haze-700: #385267;
-  --color-haze-800: #2a3f4f;
-  --color-haze-900: #1e2d39;
-  --color-haze-950: #141f27;
+  --color-seafoam-50: #e9f9f3;
+  --color-seafoam-100: #ccf0e2;
+  --color-seafoam-200: #9fe2c8;
+  --color-seafoam-300: #78d2af;
+  --color-seafoam-400: #4dbd92;
+  --color-seafoam-500: #22a87a;
+  --color-seafoam-600: #1b8a64;
+  --color-seafoam-700: #156d4f;
+  --color-seafoam-800: #10543d;
+  --color-seafoam-900: #0c3d2d;
+  --color-seafoam-950: #08281e;
 
-  --color-ember-50: #f8ecea;
-  --color-ember-100: #f1d9d6;
-  --color-ember-200: #e5beb9;
-  --color-ember-300: #dca8a2;
-  --color-ember-400: #ce8680;
-  --color-ember-500: #c0665f;
-  --color-ember-600: #a8524b;
-  --color-ember-700: #874039;
-  --color-ember-800: #6b332e;
-  --color-ember-900: #532724;
-  --color-ember-950: #3a1b19;
+  --color-ember-50: #fdf2e7;
+  --color-ember-100: #fbe4cc;
+  --color-ember-200: #f7cda0;
+  --color-ember-300: #f0b173;
+  --color-ember-400: #e89d58;
+  --color-ember-500: #e08a3c;
+  --color-ember-600: #c06f2a;
+  --color-ember-700: #96541f;
+  --color-ember-800: #6e3d16;
+  --color-ember-900: #4a2a10;
+  --color-ember-950: #2e1a0a;
 }
 
 /* Global dark mode toggle: activates any `dark:` utility whenever the
