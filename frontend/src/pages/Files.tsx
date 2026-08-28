@@ -404,7 +404,7 @@ export default function Files() {
                       <div className="space-y-0.5">
                         <Link
                           to={`/shows/${f.show.id}`}
-                          className="text-sm font-medium text-indigo-400 hover:underline"
+                          className="text-sm font-medium text-[var(--color-ocean-400)] hover:underline"
                         >
                           {f.show.title}
                         </Link>
@@ -429,7 +429,7 @@ export default function Files() {
                     {f.status === 'unmatched' && f.show_id == null && (
                       <button
                         onClick={() => setResolveFile(f)}
-                        className="text-xs text-indigo-600 hover:underline"
+                        className="text-xs text-[var(--color-ocean-600)] hover:underline"
                       >
                         Resolve
                       </button>

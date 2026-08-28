@@ -40,7 +40,7 @@ export function TmdbResultCard({
   return (
     <Card
       onClick={onCardClick}
-      className={`h-full flex flex-col overflow-hidden border${inLibrary ? ' ring-2 ring-green-400' : ''}${onCardClick ? ' cursor-pointer hover:ring-2 hover:ring-indigo-400 transition-shadow' : ''}`}
+      className={`h-full flex flex-col overflow-hidden border${inLibrary ? ' ring-2 ring-green-400' : ''}${onCardClick ? ' cursor-pointer hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow' : ''}`}
     >
       <div className="relative">
         {result.poster_path ? (

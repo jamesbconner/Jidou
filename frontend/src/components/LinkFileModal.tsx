@@ -158,7 +158,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
               onClick={() => setMode('existing')}
               className={`px-3 py-1.5 rounded border ${
                 mode === 'existing'
-                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  ? 'bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white'
                   : 'border-zinc-600 text-zinc-300 hover:bg-zinc-700'
               }`}
             >
@@ -168,7 +168,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
               onClick={() => setMode('path')}
               className={`px-3 py-1.5 rounded border ${
                 mode === 'path'
-                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  ? 'bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white'
                   : 'border-zinc-600 text-zinc-300 hover:bg-zinc-700'
               }`}
             >
@@ -185,7 +185,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
                 disabled={pending || filesLoading}
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
               >
                 <option value="">— pick a file —</option>
                 {availableFiles.length > 0 && (
@@ -225,7 +225,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                         checked={contentType === t}
                         onChange={() => setContentType(t)}
                         disabled={pending}
-                        className="accent-indigo-600"
+                        className="accent-[var(--color-ocean-600)]"
                       />
                       {t.charAt(0).toUpperCase() + t.slice(1)}
                     </label>
@@ -242,7 +242,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                   onChange={(e) => setRelativePath(e.target.value)}
                   disabled={pending}
                   placeholder="Show Name/Season 01/show.s01e01.mkv"
-                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
                   autoFocus
                 />
                 {fullPath && (

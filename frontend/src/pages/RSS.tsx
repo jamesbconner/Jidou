@@ -119,7 +119,7 @@ export default function RSS() {
             <button
               onClick={() => triggerPublish.mutate(undefined, { onSuccess: (t) => setPublishTaskId(t.id) })}
               disabled={triggerPublish.isPending}
-              className="px-4 py-2 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="px-4 py-2 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] disabled:opacity-50"
             >
               {triggerPublish.isPending ? 'Dispatching…' : 'Publish to server'}
             </button>
@@ -162,7 +162,7 @@ export default function RSS() {
             </p>
           )}
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Check the <Link to="/tasks" className="text-indigo-500 dark:text-indigo-400 hover:underline">Tasks page</Link> for details.
+            Check the <Link to="/tasks" className="text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">Tasks page</Link> for details.
           </p>
         </div>
       </div>
@@ -199,12 +199,12 @@ export default function RSS() {
               value={nameSearch}
               onChange={(e) => setNameSearch(e.target.value)}
               placeholder="Search name…"
-              className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
+              className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
             />
             <select
               value={enabledFilter}
               onChange={(e) => setEnabledFilter(e.target.value as typeof enabledFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">Any enabled</option>
               <option value="enabled">Enabled</option>
@@ -213,7 +213,7 @@ export default function RSS() {
             <select
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value as typeof activeFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">Any active</option>
               <option value="active">Active</option>
@@ -225,7 +225,7 @@ export default function RSS() {
                 const v = e.target.value
                 setFeedFilter(v === 'all' ? 'all' : v === 'unlinked' ? 'unlinked' : Number(v))
               }}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-gray-800 dark:text-gray-100"
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
             >
               <option value="all">All feeds</option>
               <option value="unlinked">Unlinked</option>

@@ -23,7 +23,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
       <div className="flex justify-end mb-2">
         <button
           onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500"
+          className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)]"
         >
           + New Subscription
         </button>

@@ -20,7 +20,7 @@ export function RecentShowCard({ show, sort, onClick }: Props) {
     <Card
       as="button"
       onClick={() => onClick(show)}
-      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
+      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow"
     >
       {show.poster_path ? (
         <img

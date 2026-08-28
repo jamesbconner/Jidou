@@ -130,12 +130,12 @@ export function ScanLocalMovieFileModal({ showId, onClose, replace = false }: Pr
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
               placeholder="/data/media/movies/Movie Title (2024).mkv"
-              className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+              className="flex-1 min-w-0 bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
             />
             <button
               onClick={linkManualPath}
               disabled={!manualPath.trim() || anyPending || hasLinkedAny}
-              className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+              className="px-3 py-1.5 text-xs rounded bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
             >
               {pendingPaths.has(manualKey) ? 'Linking…' : 'Link path'}
             </button>
@@ -194,7 +194,7 @@ export function ScanLocalMovieFileModal({ showId, onClose, replace = false }: Pr
                     outcome?.kind === 'linked'
                       ? 'bg-green-900/40 text-green-400'
                       : actionable
-                        ? 'bg-indigo-900/40 text-indigo-400'
+                        ? 'bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]'
                         : 'bg-amber-900/40 text-amber-400'
                   }`}
                 >
@@ -210,7 +210,7 @@ export function ScanLocalMovieFileModal({ showId, onClose, replace = false }: Pr
                   <button
                     onClick={() => linkRow(row)}
                     disabled={!actionable || isPending}
-                    className="px-2.5 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="px-2.5 py-1 text-xs rounded bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     {isPending ? 'Linking…' : 'Link'}
                   </button>

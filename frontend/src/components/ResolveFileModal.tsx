@@ -136,7 +136,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                     setCustomSearch(true)
                     setSearchQuery(file.parsed_show_name ?? '')
                   }}
-                  className="text-xs text-indigo-400 hover:text-indigo-300"
+                  className="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]"
                 >
                   refine search
                 </button>
@@ -148,7 +148,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search TMDB..."
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
               />
             )}
           </div>
@@ -175,7 +175,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                   onClick={() => selectSuggestion(r)}
                   className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
                     selected?.tmdb_id === r.tmdb_id && selected?.media_type === r.media_type
-                      ? 'border-indigo-500 bg-indigo-950/50'
+                      ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
                       : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
                   }`}
                 >
@@ -222,7 +222,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                         value={t}
                         checked={contentType === t}
                         onChange={() => setContentType(t)}
-                        className="accent-indigo-500"
+                        className="accent-[var(--color-ocean-500)]"
                       />
                       {t.charAt(0).toUpperCase() + t.slice(1)}
                     </label>
@@ -238,7 +238,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
                   value={folderName}
                   onChange={(e) => setFolderName(e.target.value)}
                   placeholder="Show Name"
-                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
                 />
                 {config && folderName.trim() && (
                   <div className="text-xs text-zinc-500 font-mono">

@@ -331,7 +331,7 @@ export default function Settings() {
                   href="/docs"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1 bg-indigo-50 text-indigo-600 text-sm rounded border border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800 dark:hover:bg-indigo-900/40"
+                  className="px-3 py-1 bg-[var(--color-ocean-50)] text-[var(--color-ocean-600)] text-sm rounded border border-[var(--color-ocean-200)] hover:bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] dark:border-[var(--color-ocean-800)] dark:hover:bg-[var(--color-ocean-900)]/40"
                 >
                   API Docs →
                 </a>
@@ -380,7 +380,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ show_adult_content: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
@@ -398,7 +398,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ calendar_enabled: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
@@ -416,7 +416,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ discover_enabled: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
@@ -434,7 +434,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ recent_episodes_enabled: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
@@ -452,7 +452,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ recent_movies_enabled: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
@@ -472,7 +472,7 @@ export default function Settings() {
                 onChange={(e) =>
                   updateAppSettings.mutate({ recent_episodes_prefer_posters: e.target.checked })
                 }
-                className="h-4 w-4 shrink-0 accent-indigo-600"
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
           </Card>

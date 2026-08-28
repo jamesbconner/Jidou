@@ -32,7 +32,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
       <div className="flex justify-end mb-2">
         <button
           onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500"
+          className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)]"
         >
           + New Feed
         </button>
@@ -58,7 +58,7 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
               <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-900">
                 <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">{f.remote_key ?? '—'}</td>
                 <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                  <button onClick={() => setEditFeed(f)} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline text-left">
+                  <button onClick={() => setEditFeed(f)} className="hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left">
                     {f.name}
                   </button>
                 </td>

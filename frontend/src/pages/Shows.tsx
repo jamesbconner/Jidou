@@ -749,7 +749,7 @@ export default function Shows() {
                         <td className="py-2">
                           <button
                             onClick={() => setResolvingOrphan(o)}
-                            className="text-xs bg-indigo-600 text-white rounded px-2 py-0.5 hover:bg-indigo-500 transition-colors"
+                            className="text-xs bg-[var(--color-ocean-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ocean-500)] transition-colors"
                           >
                             Manual Match
                           </button>

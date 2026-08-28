@@ -79,7 +79,7 @@ export function MediaDetailModal({ item, onClose }: Props) {
               {genres && genres.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {genres.map((g) => (
-                    <span key={g.id} className="text-[10px] bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300 px-1.5 py-0.5 rounded">
+                    <span key={g.id} className="text-[10px] bg-[var(--color-ocean-50)] text-[var(--color-ocean-600)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] px-1.5 py-0.5 rounded">
                       {g.name}
                     </span>
                   ))}
@@ -93,7 +93,7 @@ export function MediaDetailModal({ item, onClose }: Props) {
           <Link
             to={`/shows/${showId}`}
             onClick={onClose}
-            className="inline-block text-sm text-indigo-600 hover:underline"
+            className="inline-block text-sm text-[var(--color-ocean-600)] hover:underline"
           >
             View show →
           </Link>

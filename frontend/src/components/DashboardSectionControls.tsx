@@ -20,7 +20,7 @@ interface Props {
 }
 
 const selectCls =
-  'border rounded px-2 py-1 text-xs dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400'
+  'border rounded px-2 py-1 text-xs dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]'
 
 /** Shared sort/genre/content-type/card-count control row for a dashboard carousel section. */
 export function DashboardSectionControls({
