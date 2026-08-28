@@ -72,7 +72,7 @@ function RegexSuggestModal({
           <button
             onClick={() => suggest.mutate(undefined, { onSuccess: (r) => setResult(r) })}
             disabled={suggest.isPending}
-            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
           >
             {suggest.isPending ? 'Generating…' : result ? 'Re-suggest' : 'Suggest'}
           </button>
@@ -178,7 +178,7 @@ export function SubscriptionEditModal({
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
     />
   )
 
@@ -187,7 +187,7 @@ export function SubscriptionEditModal({
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
     />
   )
 
@@ -213,7 +213,7 @@ export function SubscriptionEditModal({
                 <select
                   value={draft.feed_id ?? ''}
                   onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
-                  className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
                 >
                   <option value="">— None —</option>
                   {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -227,7 +227,7 @@ export function SubscriptionEditModal({
                   <div className="flex items-center gap-2">
                     <Link
                       to={`/shows/${linkedShow.id}`}
-                      className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                      className="text-sm text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
                       onClick={onClose}
                     >
                       {linkedShow.title} ↗
@@ -247,7 +247,7 @@ export function SubscriptionEditModal({
                     onChange={(e) => { setShowSearch(e.target.value); setShowPickerOpen(true) }}
                     onFocus={() => setShowPickerOpen(true)}
                     placeholder="Search library shows…"
-                    className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
                   />
                 )}
                 {showPickerOpen && showSearchResults.length > 0 && (
@@ -256,7 +256,7 @@ export function SubscriptionEditModal({
                       <li key={s.id}>
                         <button
                           type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 dark:text-gray-200"
+                          className="w-full text-left px-3 py-1.5 hover:bg-[var(--color-ocean-50)] dark:hover:bg-[var(--color-ocean-950)]/40 dark:text-gray-200"
                           onClick={() => {
                             set('show_id', s.id)
                             setShowSearch('')
@@ -275,7 +275,7 @@ export function SubscriptionEditModal({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Regex Patterns</span>
-                <button onClick={() => setShowSuggest(true)} className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline">
+                <button onClick={() => setShowSuggest(true)} className="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">
                   Suggest via LLM
                 </button>
               </div>
@@ -340,7 +340,7 @@ export function SubscriptionEditModal({
             <button
               onClick={handleSave}
               disabled={patch.isPending}
-              className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
+              className="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
             >
               {patch.isPending ? 'Saving…' : 'Save'}
             </button>

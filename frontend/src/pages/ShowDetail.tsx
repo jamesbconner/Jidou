@@ -78,7 +78,7 @@ function WatchlistToggleButton({
       disabled={pending}
       className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
         inWatchlist
-          ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40'
+          ? 'border-[var(--color-ocean-300)] text-[var(--color-ocean-700)] bg-[var(--color-ocean-50)] hover:bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/40'
           : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
       }`}
     >
@@ -322,7 +322,7 @@ export default function ShowDetail() {
 
   return (
     <div className="space-y-8">
-      <Link to="/shows" className="text-sm text-blue-600 hover:underline">
+      <Link to="/shows" className="text-sm text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
         ← Back to Shows
       </Link>
 
@@ -349,7 +349,7 @@ export default function ShowDetail() {
                   href={tmdbUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-blue-500 dark:text-blue-400 hover:underline"
+                  className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
                 >
                   TMDB #{show.tmdb_id}
                 </a>
@@ -510,7 +510,7 @@ export default function ShowDetail() {
                     {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                       <button
                         onClick={() => setFixMovieFileOpen(true)}
-                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
+                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
                       >
                         Fix Match
                       </button>
@@ -534,7 +534,7 @@ export default function ShowDetail() {
                 onClick={() => setEpisodesTab('episodes')}
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                   episodesTab === 'episodes'
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
                     : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
                 }`}
               >
@@ -544,7 +544,7 @@ export default function ShowDetail() {
                 onClick={() => setEpisodesTab('missing')}
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                   episodesTab === 'missing'
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
                     : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
                 }`}
               >
@@ -690,7 +690,7 @@ export default function ShowDetail() {
                             <div className="shrink-0 flex items-center gap-2">
                               <button
                                 onClick={() => setLinkFileEp(ep)}
-                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/70"
+                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
                               >
                                 Match File
                               </button>

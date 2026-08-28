@@ -10,7 +10,7 @@ interface Props {
 function diffLineClass(line: string): string {
   if (line.startsWith('+') && !line.startsWith('+++')) return 'text-green-400 bg-green-950/40'
   if (line.startsWith('-') && !line.startsWith('---')) return 'text-red-400 bg-red-950/40'
-  if (line.startsWith('@@')) return 'text-indigo-400'
+  if (line.startsWith('@@')) return 'text-[var(--color-ocean-400)]'
   return 'text-zinc-400'
 }
 

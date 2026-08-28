@@ -117,7 +117,7 @@ function SortableRow({ entry, index, onDelete, isDeletePending, dragEnabled, onS
         <Link
           to={`/shows/${entry.show_id}`}
           onClick={(e) => e.stopPropagation()}
-          className="font-medium hover:underline text-blue-700 dark:text-blue-400"
+          className="font-medium hover:underline text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)]"
         >
           {entry.show.title}
         </Link>
@@ -363,7 +363,7 @@ export default function Watchlist() {
                   aria-label="Toggle between library and TMDB search"
                   onClick={() => setSearchMode((m) => (m === 'library' ? 'tmdb' : 'library'))}
                   className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                    searchMode === 'tmdb' ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+                    searchMode === 'tmdb' ? 'bg-[var(--color-ocean-600)]' : 'bg-gray-300 dark:bg-gray-700'
                   }`}
                 >
                   <span

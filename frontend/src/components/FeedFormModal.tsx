@@ -76,7 +76,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
     />
   )
 
@@ -112,7 +112,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
               onChange={(e) => set('regex_exclude_hint', e.target.value)}
               disabled={draft.no_exclude_needed}
               placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*"
-              className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400"
+              className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400"
             />
             <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
               <input
@@ -143,7 +143,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
           <button
             onClick={handleSave}
             disabled={isPending || !draft.name.trim() || !draft.url.trim()}
-            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
           >
             {isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
           </button>

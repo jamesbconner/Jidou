@@ -58,7 +58,7 @@ export function RecommendationsTab() {
                       ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-300'
                       : f === 'activate'
                       ? 'bg-green-100 border-green-400 text-green-800 dark:bg-green-950/40 dark:border-green-700 dark:text-green-300'
-                      : 'bg-indigo-100 border-indigo-400 text-indigo-800 dark:bg-indigo-950/40 dark:border-indigo-700 dark:text-indigo-300'
+                      : 'bg-[var(--color-ocean-100)] border-[var(--color-ocean-400)] text-[var(--color-ocean-800)] dark:bg-[var(--color-ocean-950)]/40 dark:border-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)]'
                     : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
                 }`}
               >
@@ -74,7 +74,7 @@ export function RecommendationsTab() {
           <button
             onClick={handleAcceptAll}
             disabled={visible.length === 0 || bulkPatch.isPending}
-            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
+            className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
           >
             {bulkPatch.isPending ? 'Applying…' : `Accept all (${visible.length})`}
           </button>
@@ -109,7 +109,7 @@ export function RecommendationsTab() {
                     {rec.show && (
                       <Link
                         to={`/shows/${rec.show.id}`}
-                        className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline"
+                        className="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline"
                       >
                         {rec.show.title} ↗
                       </Link>
@@ -132,7 +132,7 @@ export function RecommendationsTab() {
                     <button
                       onClick={() => handleAcceptOne(rec)}
                       disabled={patch.isPending || bulkPatch.isPending}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+                      className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline disabled:opacity-50"
                     >
                       Accept
                     </button>

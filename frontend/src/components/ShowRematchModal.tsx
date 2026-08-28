@@ -71,7 +71,7 @@ export function ShowRematchModal({
                 key={`${r.media_type ?? 'unknown'}-${r.id}`}
                 onClick={() => handlePick(r)}
                 disabled={rematch.isPending || r.id === currentTmdbId}
-                className="text-left bg-white dark:bg-gray-800 rounded shadow overflow-hidden hover:ring-2 hover:ring-blue-400 disabled:opacity-40 transition border dark:border-gray-700"
+                className="text-left bg-white dark:bg-gray-800 rounded shadow overflow-hidden hover:ring-2 hover:ring-[var(--color-ocean-400)] disabled:opacity-40 transition border dark:border-gray-700"
               >
                 {r.poster_path ? (
                   <img

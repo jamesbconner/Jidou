@@ -171,7 +171,7 @@ export function RematchModal({ file, onClose }: Props) {
                 key={m}
                 onClick={() => switchMode(m)}
                 className={`flex-1 text-xs py-1.5 rounded transition-colors font-medium ${
-                  mode === m ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                  mode === m ? 'bg-[var(--color-ocean-600)] text-white' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 {m === 'library' ? 'Library' : 'TMDB'}
@@ -185,7 +185,7 @@ export function RematchModal({ file, onClose }: Props) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={mode === 'library' ? 'Search your library…' : 'Search TMDB…'}
-            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
             autoFocus
           />
 
@@ -198,7 +198,7 @@ export function RematchModal({ file, onClose }: Props) {
                   onClick={() => setSelectedLibraryShow(s)}
                   className={`w-full text-left px-3 py-2 rounded border text-xs transition-colors ${
                     selectedLibraryShow?.id === s.id
-                      ? 'border-indigo-500 bg-indigo-950/50'
+                      ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
                       : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
                   }`}
                 >
@@ -240,7 +240,7 @@ export function RematchModal({ file, onClose }: Props) {
                       onClick={() => selectTmdb(r)}
                       className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
                         selectedTmdb?.id === r.id && selectedTmdb?.media_type === r.media_type
-                          ? 'border-indigo-500 bg-indigo-950/50'
+                          ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
                           : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
                       }`}
                     >
@@ -296,7 +296,7 @@ export function RematchModal({ file, onClose }: Props) {
                                   value={t}
                                   checked={contentType === t}
                                   onChange={() => setContentType(t)}
-                                  className="accent-indigo-500"
+                                  className="accent-[var(--color-ocean-500)]"
                                 />
                                 {t.charAt(0).toUpperCase() + t.slice(1)}
                               </label>
@@ -310,7 +310,7 @@ export function RematchModal({ file, onClose }: Props) {
                             value={folderName}
                             onChange={(e) => setFolderName(e.target.value)}
                             placeholder="Show Name"
-                            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                            className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
                           />
                           {config && folderName.trim() && (
                             <div className="text-xs text-zinc-500 font-mono">

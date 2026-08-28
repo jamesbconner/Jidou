@@ -23,7 +23,7 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
       <div className="flex justify-end mb-2">
         <button
           onClick={() => setCreateOpen(true)}
-          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500"
+          className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)]"
         >
           + New Subscription
         </button>
@@ -51,13 +51,16 @@ export function SubscriptionsTable({ subs, feeds }: { subs: RssSubscriptionRead[
                   <td className="px-3 py-2">
                     <button
                       onClick={() => setEditSub(sub)}
-                      className="font-medium text-left text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
+                      className="font-medium text-left text-gray-900 dark:text-gray-100 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline"
                       title="Edit subscription"
                     >
                       {sub.name}
                     </button>
                     {sub.show && (
-                      <Link to={`/shows/${sub.show.id}`} className="block text-xs text-indigo-500 dark:text-indigo-400 hover:underline">
+                      <Link
+                        to={`/shows/${sub.show.id}`}
+                        className="block text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
+                      >
                         {sub.show.title}
                       </Link>
                     )}

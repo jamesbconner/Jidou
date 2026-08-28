@@ -81,7 +81,7 @@ export function AssignImportModal({ showId, episode, onClose }: Props) {
               value={selected}
               onChange={(e) => setSelected(e.target.value)}
               disabled={assign.isPending}
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
             >
               <option value="">— pick a file —</option>
               {filePool.map((f) => (

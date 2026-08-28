@@ -366,7 +366,7 @@ export default function Shows() {
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
       tab === t
-        ? 'border-blue-600 text-blue-600'
+        ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
     }`
 
@@ -495,7 +495,7 @@ export default function Shows() {
                         key={m}
                         onClick={() => switchModalMode(m)}
                         className={`flex-1 py-2 font-medium transition-colors ${
-                          modalMode === m ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                          modalMode === m ? 'bg-[var(--color-ocean-600)] text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
                         }`}
                       >
                         {m === 'library' ? 'Library' : 'TMDB'}
@@ -541,7 +541,7 @@ export default function Shows() {
                                 {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
                               </p>
                             </div>
-                            <span className="text-xs text-blue-600 shrink-0">View →</span>
+                            <span className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] shrink-0">View →</span>
                           </Link>
                         ))}
                       </div>
@@ -646,7 +646,7 @@ export default function Shows() {
               <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
                 <span className="font-medium text-gray-700 dark:text-gray-300">{check.label}:</span>
                 {check.description}
-                <button onClick={() => setDqFilter(null)} className="ml-2 text-blue-600 hover:underline">
+                <button onClick={() => setDqFilter(null)} className="ml-2 text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
                   Show all issues
                 </button>
               </p>
@@ -674,7 +674,7 @@ export default function Shows() {
                   return (
                     <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="py-2 pr-4 whitespace-nowrap">
-                        <Link to={`/shows/${s.id}`} className="text-blue-600 hover:underline font-medium">
+                        <Link to={`/shows/${s.id}`} className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium">
                           {s.title}
                         </Link>
                       </td>
@@ -733,7 +733,7 @@ export default function Shows() {
                     return (
                       <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
                         <td className="py-2 pr-4 whitespace-nowrap">
-                          <Link to={`/shows/${o.show_id}`} className="text-blue-600 hover:underline font-medium text-xs">
+                          <Link to={`/shows/${o.show_id}`} className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium text-xs">
                             {o.show_title}
                           </Link>
                         </td>
@@ -749,7 +749,7 @@ export default function Shows() {
                         <td className="py-2">
                           <button
                             onClick={() => setResolvingOrphan(o)}
-                            className="text-xs bg-indigo-600 text-white rounded px-2 py-0.5 hover:bg-indigo-500 transition-colors"
+                            className="text-xs bg-[var(--color-ocean-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ocean-500)] transition-colors"
                           >
                             Manual Match
                           </button>
@@ -851,7 +851,7 @@ export default function Shows() {
                       <td className="px-4 py-2">
                         <Link
                           to={`/shows/${s.id}`}
-                          className="font-medium hover:underline text-blue-700 dark:text-blue-400"
+                          className="font-medium hover:underline text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)]"
                         >
                           {s.title}
                         </Link>

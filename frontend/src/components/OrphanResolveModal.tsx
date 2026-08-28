@@ -115,7 +115,7 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter episodes…"
-              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
               autoFocus
             />
           </div>
@@ -135,7 +135,7 @@ export function OrphanResolveModal({ orphan, onClose }: Props) {
                   onClick={() => setSelectedEpisode(ep)}
                   className={`w-full text-left px-3 py-2 rounded border text-xs transition-colors ${
                     selected
-                      ? 'border-indigo-500 bg-indigo-950/50'
+                      ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
                       : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
                   }`}
                 >

@@ -68,7 +68,7 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
             <Link
               to={`/shows/${inLibraryShowId}`}
               onClick={onNavigate ?? onClose}
-              className="inline-block text-sm text-indigo-600 hover:underline"
+              className="inline-block text-sm text-[var(--color-ocean-600)] hover:underline"
             >
               View show →
             </Link>
@@ -77,7 +77,7 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
             href={tmdbUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-block text-sm text-indigo-600 hover:underline"
+            className="inline-block text-sm text-[var(--color-ocean-600)] hover:underline"
           >
             View on TMDB →
           </a>

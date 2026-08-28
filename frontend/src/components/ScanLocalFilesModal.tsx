@@ -202,7 +202,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                       outcome?.kind === 'linked'
                         ? 'bg-green-900/40 text-green-400'
                         : row.status === 'matched'
-                          ? 'bg-indigo-900/40 text-indigo-400'
+                          ? 'bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]'
                           : row.status === 'conflict'
                             ? 'bg-amber-900/40 text-amber-400'
                             : 'bg-zinc-700 text-zinc-400'
@@ -222,7 +222,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                       value={selected}
                       onChange={(e) => handleSelectChange(row.path, e.target.value)}
                       disabled={isPending}
-                      className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                      className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
                     >
                       <option value="">— select episode —</option>
                       {seasons.map((sn) => (
@@ -244,7 +244,7 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
                       className={`shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
                         needsReplace
                           ? 'bg-amber-700 hover:bg-amber-600'
-                          : 'bg-indigo-600 hover:bg-indigo-500'
+                          : 'bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]'
                       }`}
                     >
                       {isPending ? 'Linking…' : needsReplace ? 'Link (replace)' : 'Link'}

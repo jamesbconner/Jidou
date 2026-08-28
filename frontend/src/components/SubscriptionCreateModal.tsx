@@ -63,7 +63,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
     />
   )
 
@@ -72,7 +72,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
       value={draft[key] as string}
       onChange={(e) => set(key, e.target.value)}
       placeholder={placeholder}
-      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      className="w-full border rounded px-2 py-1.5 text-sm font-mono dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
     />
   )
 
@@ -90,7 +90,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
               <select
                 value={draft.feed_id ?? ''}
                 onChange={(e) => set('feed_id', e.target.value ? Number(e.target.value) : null)}
-                className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]"
               >
                 <option value="">— None —</option>
                 {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -143,7 +143,7 @@ export function SubscriptionCreateModal({ feeds, onClose }: { feeds: RssFeedRead
           <button
             onClick={handleCreate}
             disabled={create.isPending || !draft.name.trim()}
-            className="px-4 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
           >
             {create.isPending ? 'Creating…' : 'Create'}
           </button>

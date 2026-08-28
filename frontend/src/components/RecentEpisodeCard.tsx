@@ -38,7 +38,7 @@ export function RecentEpisodeCard({ episode, sort, preferPosters, onClick }: Pro
     <Card
       as="button"
       onClick={() => onClick(episode)}
-      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-indigo-400 transition-shadow"
+      className="w-40 shrink-0 snap-start overflow-hidden text-left hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow"
     >
       {image ? (
         <img
