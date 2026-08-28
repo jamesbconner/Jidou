@@ -176,7 +176,7 @@ export default function RSS() {
               onClick={() => setTab(t)}
               className={`pb-3 text-sm font-medium capitalize border-b-2 transition-colors ${
                 tab === t
-                  ? 'border-indigo-600 text-indigo-600'
+                  ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:border-gray-700'
               }`}
             >
