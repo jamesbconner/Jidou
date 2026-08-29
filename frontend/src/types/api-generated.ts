@@ -199,8 +199,11 @@ export interface paths {
          *             episode has aired for ``missing_episode_count``. Defaults to the
          *             server's current date; overridable so a client on a different
          *             timezone doesn't disagree with the server about "today".
-         *             ``missing_episode_count`` is reported as 0 for shows with
-         *             ``track_missing_episodes=False``, regardless of actual gaps.
+         *             ``missing_episode_count`` and ``missing_full_season_count`` are
+         *             reported as 0 for shows with ``track_missing_episodes=False``,
+         *             regardless of actual gaps. ``missing_full_season_count`` counts
+         *             seasons (excluding season 0/specials) where every aired episode
+         *             is untracked.
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -2463,8 +2466,9 @@ export interface paths {
          *     :meth:`RssPublishOrchestrator.compose_config` (and therefore a real
          *     publish) would, then diffs it against the most recent snapshot — the
          *     last config Jidou actually saw on the remote server, whether from an
-         *     explicit import or the pre-publish reconciliation step of a prior
-         *     publish.
+         *     explicit import, the pre-publish reconciliation step of a prior publish,
+         *     or (most commonly) the ``post_publish`` snapshot :meth:`RssPublishOrchestrator.run`
+         *     stores of exactly what it just uploaded.
          *
          *     Args:
          *         db_session: DB session (injected).
@@ -4030,6 +4034,11 @@ export interface components {
              * @default 0
              */
             missing_episode_count: number;
+            /**
+             * Missing Full Season Count
+             * @default 0
+             */
+            missing_full_season_count: number;
             /**
              * Has Active Rss Subscription
              * @default false
