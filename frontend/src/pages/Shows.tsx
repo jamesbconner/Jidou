@@ -44,6 +44,8 @@ interface MissingFilterState {
   filterGenre: string
   filterLanguage: string
   filterMinMissing: string
+  filterFullSeasonMissing: string
+  filterMaxOwned: string
   filterWatchlistOnly: boolean
 }
 
@@ -53,6 +55,8 @@ const DEFAULT_MISSING_FILTERS: MissingFilterState = {
   filterGenre: '',
   filterLanguage: '',
   filterMinMissing: '',
+  filterFullSeasonMissing: '',
+  filterMaxOwned: '',
   filterWatchlistOnly: false,
 }
 
@@ -123,6 +127,8 @@ function applyMissingFilters(
   genre: string,
   language: string,
   minMissing: string,
+  fullSeasonMissing: string,
+  maxOwned: string,
   watchlistOnly: boolean,
   watchlistByShowId: Map<number, number>,
 ): ShowList[] {
@@ -136,7 +142,12 @@ function applyMissingFilters(
 
     if (language && s.original_language !== language) return false
 
-    if (minMissing && s.missing_episode_count < Number(minMissing)) return false
+    if (minMissing === 'eq1') { if (s.missing_episode_count !== 1) return false }
+    else if (minMissing && s.missing_episode_count < Number(minMissing)) return false
+
+    if (fullSeasonMissing && s.missing_full_season_count < Number(fullSeasonMissing)) return false
+
+    if (maxOwned && s.matched_file_count > Number(maxOwned)) return false
 
     if (watchlistOnly && !watchlistByShowId.has(s.id)) return false
 
@@ -185,6 +196,8 @@ export default function Shows() {
     filterGenre: missingFilterGenre,
     filterLanguage: missingFilterLanguage,
     filterMinMissing,
+    filterFullSeasonMissing,
+    filterMaxOwned,
     filterWatchlistOnly: missingFilterWatchlistOnly,
   } = missingFilters
   const setMissingFilterContentType = (v: string) => setMissingFilters({ ...missingFilters, filterContentType: v })
@@ -192,6 +205,8 @@ export default function Shows() {
   const setMissingFilterGenre = (v: string) => setMissingFilters({ ...missingFilters, filterGenre: v })
   const setMissingFilterLanguage = (v: string) => setMissingFilters({ ...missingFilters, filterLanguage: v })
   const setFilterMinMissing = (v: string) => setMissingFilters({ ...missingFilters, filterMinMissing: v })
+  const setFilterFullSeasonMissing = (v: string) => setMissingFilters({ ...missingFilters, filterFullSeasonMissing: v })
+  const setFilterMaxOwned = (v: string) => setMissingFilters({ ...missingFilters, filterMaxOwned: v })
   const setMissingFilterWatchlistOnly = (v: boolean) => setMissingFilters({ ...missingFilters, filterWatchlistOnly: v })
 
   const debouncedQuery = useDebounce(query, 300)
@@ -304,12 +319,15 @@ export default function Shows() {
       missingFilterGenre,
       missingFilterLanguage,
       filterMinMissing,
+      filterFullSeasonMissing,
+      filterMaxOwned,
       missingFilterWatchlistOnly,
       watchlistByShowId,
     ),
     [
       showsWithMissingEpisodes, missingFilterContentType, missingFilterStatus, missingFilterGenre,
-      missingFilterLanguage, filterMinMissing, missingFilterWatchlistOnly, watchlistByShowId,
+      missingFilterLanguage, filterMinMissing, filterFullSeasonMissing, filterMaxOwned,
+      missingFilterWatchlistOnly, watchlistByShowId,
     ],
   )
 
@@ -329,7 +347,8 @@ export default function Shows() {
   ].filter(Boolean).length + (filterUpcoming ? 1 : 0)
 
   const activeMissingFilterCount = [
-    missingFilterContentType, missingFilterStatus, missingFilterGenre, missingFilterLanguage, filterMinMissing,
+    missingFilterContentType, missingFilterStatus, missingFilterGenre, missingFilterLanguage,
+    filterMinMissing, filterFullSeasonMissing, filterMaxOwned,
   ].filter(Boolean).length + (missingFilterWatchlistOnly ? 1 : 0)
 
   function clearFilters() {
@@ -805,9 +824,22 @@ export default function Shows() {
 
               <select value={filterMinMissing} onChange={(e) => setFilterMinMissing(e.target.value)} className={selectCls}>
                 <option value="">Any missing</option>
+                <option value="eq1">Exactly 1 missing</option>
                 <option value="2">2+ missing</option>
                 <option value="5">5+ missing</option>
                 <option value="10">10+ missing</option>
+              </select>
+
+              <select value={filterFullSeasonMissing} onChange={(e) => setFilterFullSeasonMissing(e.target.value)} className={selectCls}>
+                <option value="">Any</option>
+                <option value="1">Missing a whole season</option>
+              </select>
+
+              <select value={filterMaxOwned} onChange={(e) => setFilterMaxOwned(e.target.value)} className={selectCls}>
+                <option value="">Any owned</option>
+                <option value="1">≤1 owned</option>
+                <option value="2">≤2 owned</option>
+                <option value="3">≤3 owned</option>
               </select>
 
               <label className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -861,6 +893,11 @@ export default function Shows() {
                         <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium rounded-full px-2 py-0.5">
                           {s.missing_episode_count}
                         </span>
+                        {s.missing_full_season_count > 0 && (
+                          <span className="ml-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-xs font-medium rounded-full px-2 py-0.5">
+                            {s.missing_full_season_count} season{s.missing_full_season_count !== 1 ? 's' : ''} missing
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -118,6 +118,7 @@ def _session_override(
     has_active_rss: bool = False,
     watched_count: int = 0,
     missing_count: int = 0,
+    full_season_count: int = 0,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -133,9 +134,11 @@ def _session_override(
         result.scalar_one_or_none.return_value = single
         result.scalars.return_value.all.return_value = items
         # list_shows returns (show, ep_count, watched_ep_count, file_count,
-        # missing_ep_count, has_active_rss) tuples via .all()
+        # missing_ep_count, missing_full_season_count, has_active_rss) tuples
+        # via .all()
         result.all.return_value = [
-            (item, 0, watched_count, 0, missing_count, has_active_rss) for item in items
+            (item, 0, watched_count, 0, missing_count, full_season_count, has_active_rss)
+            for item in items
         ]
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock()
@@ -232,6 +235,34 @@ def test_list_shows_surfaces_missing_episode_count() -> None:
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json()[0]["missing_episode_count"] == 5
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_missing_full_season_count() -> None:
+    """missing_full_season_count reflects the correlated season-aggregation subquery."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], full_season_count=2)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["missing_full_season_count"] == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_zeroes_missing_full_season_count_when_tracking_disabled() -> None:
+    """A show with track_missing_episodes=False always reports missing_full_season_count=0."""
+    from jidou.database import get_session
+
+    show = _make_show(track_missing_episodes=False)
+    app.dependency_overrides[get_session] = _session_override(many=[show], full_season_count=2)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["missing_full_season_count"] == 0
     finally:
         app.dependency_overrides.clear()
 

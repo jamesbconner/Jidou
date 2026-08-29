@@ -360,8 +360,11 @@ async def list_shows(
             episode has aired for ``missing_episode_count``. Defaults to the
             server's current date; overridable so a client on a different
             timezone doesn't disagree with the server about "today".
-            ``missing_episode_count`` is reported as 0 for shows with
-            ``track_missing_episodes=False``, regardless of actual gaps.
+            ``missing_episode_count`` and ``missing_full_season_count`` are
+            reported as 0 for shows with ``track_missing_episodes=False``,
+            regardless of actual gaps. ``missing_full_season_count`` counts
+            seasons (excluding season 0/specials) where every aired episode
+            is untracked.
         db_session: DB session (injected).
 
     Returns:
@@ -396,6 +399,32 @@ async def list_shows(
         .correlate(Show)
         .scalar_subquery()
     )
+    # Per-season aired/missing counts, correlated to the outer Show and
+    # excluding season 0 (specials). A season with aired_count == missing_count
+    # (and aired_count > 0) is fully aired but has no local files at all.
+    season_stats_sq = (
+        select(
+            Episode.season_number,
+            func.count(Episode.id).filter(Episode.air_date < today).label("aired_count"),
+            func.count(Episode.id)
+            .filter(Episode.air_date < today, Episode.file_tracked.is_(False))
+            .label("missing_count"),
+        )
+        .where(Episode.show_id == Show.id, Episode.season_number != 0)
+        .correlate(Show)
+        .group_by(Episode.season_number)
+        .subquery()
+    )
+    missing_full_season_sq = (
+        select(func.count())
+        .select_from(season_stats_sq)
+        .where(
+            season_stats_sq.c.aired_count == season_stats_sq.c.missing_count,
+            season_stats_sq.c.aired_count > 0,
+        )
+        .correlate(Show)
+        .scalar_subquery()
+    )
     active_rss_sq = (
         select(RssSubscription.id)
         .where(
@@ -413,6 +442,7 @@ async def list_shows(
             watched_ep_count_sq.label("watched_episode_count"),
             file_count_sq.label("matched_file_count"),
             missing_ep_count_sq.label("missing_episode_count"),
+            missing_full_season_sq.label("missing_full_season_count"),
             active_rss_sq.label("has_active_rss_subscription"),
         )
         .order_by(_SORT_MAP[sort])
@@ -421,12 +451,23 @@ async def list_shows(
     )
     rows = (await db_session.execute(stmt)).all()
     shows: list[ShowList] = []
-    for show, ep_count, watched_ep_count, file_count, missing_ep_count, has_active_rss in rows:
+    for (
+        show,
+        ep_count,
+        watched_ep_count,
+        file_count,
+        missing_ep_count,
+        missing_full_season_count,
+        has_active_rss,
+    ) in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
         data.watched_episode_count = watched_ep_count
         data.matched_file_count = file_count
         data.missing_episode_count = missing_ep_count if show.track_missing_episodes else 0
+        data.missing_full_season_count = (
+            missing_full_season_count if show.track_missing_episodes else 0
+        )
         data.has_active_rss_subscription = has_active_rss
         shows.append(data)
     return shows

@@ -22,6 +22,7 @@ function makeShow(overrides: Partial<ShowList> = {}): ShowList {
     watched_episode_count: 0,
     matched_file_count: 10,
     missing_episode_count: 0,
+    missing_full_season_count: 0,
     has_active_rss_subscription: false,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -202,6 +203,64 @@ describe('Shows page — Missing Episodes tab', () => {
     fireEvent.change(screen.getByDisplayValue('Any missing'), { target: { value: '10' } })
     expect(screen.getByText('Many Missing')).toBeInTheDocument()
     expect(screen.queryByText('Few Missing')).not.toBeInTheDocument()
+  })
+
+  test('filters the list to shows missing exactly 1 episode', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'One Missing', missing_episode_count: 1 }),
+      makeShow({ id: 2, title: 'Two Missing', missing_episode_count: 2 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('One Missing')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('Any missing'), { target: { value: 'eq1' } })
+    expect(screen.getByText('One Missing')).toBeInTheDocument()
+    expect(screen.queryByText('Two Missing')).not.toBeInTheDocument()
+  })
+
+  test('filters the list to shows missing a whole season', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Whole Season Gone', missing_episode_count: 12, missing_full_season_count: 1 }),
+      makeShow({ id: 2, title: 'Scattered Gaps', missing_episode_count: 4, missing_full_season_count: 0 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Whole Season Gone')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('Any'), { target: { value: '1' } })
+    expect(screen.getByText('Whole Season Gone')).toBeInTheDocument()
+    expect(screen.queryByText('Scattered Gaps')).not.toBeInTheDocument()
+  })
+
+  test('filters the list by max episodes owned', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Barely Started', missing_episode_count: 8, matched_file_count: 1 }),
+      makeShow({ id: 2, title: 'Well Stocked', missing_episode_count: 2, matched_file_count: 10 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Barely Started')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('Any owned'), { target: { value: '2' } })
+    expect(screen.getByText('Barely Started')).toBeInTheDocument()
+    expect(screen.queryByText('Well Stocked')).not.toBeInTheDocument()
+  })
+
+  test('Clear filters resets the new missing-episode filters', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'One Missing', missing_episode_count: 1, missing_full_season_count: 1, matched_file_count: 1 }),
+      makeShow({ id: 2, title: 'Everything Else', missing_episode_count: 4, missing_full_season_count: 0, matched_file_count: 10 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('One Missing')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('Any missing'), { target: { value: 'eq1' } })
+    fireEvent.change(screen.getByDisplayValue('Any'), { target: { value: '1' } })
+    fireEvent.change(screen.getByDisplayValue('Any owned'), { target: { value: '1' } })
+    expect(screen.getByText(/Clear filters \(3\)/)).toBeInTheDocument()
+    expect(screen.queryByText('Everything Else')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear filters/ }))
+    expect(screen.getByText('Everything Else')).toBeInTheDocument()
+    expect(screen.getByText('One Missing')).toBeInTheDocument()
   })
 
   test('filters the list to watchlist-only shows', async () => {
