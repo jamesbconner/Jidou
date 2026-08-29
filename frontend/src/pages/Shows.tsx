@@ -874,7 +874,8 @@ export default function Shows() {
                 <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
                   <tr>
                     <th className="px-4 py-2 text-left">Show</th>
-                    <th className="px-4 py-2 text-left">Missing</th>
+                    <th className="px-4 py-2 text-left">Episodes</th>
+                    <th className="px-4 py-2 text-left">Seasons</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -893,10 +894,14 @@ export default function Shows() {
                         <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium rounded-full px-2 py-0.5">
                           {s.missing_episode_count}
                         </span>
-                        {s.missing_full_season_count > 0 && (
-                          <span className="ml-1.5 bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-xs font-medium rounded-full px-2 py-0.5">
-                            {s.missing_full_season_count} season{s.missing_full_season_count !== 1 ? 's' : ''} missing
+                      </td>
+                      <td className="px-4 py-2">
+                        {s.missing_full_season_count > 0 ? (
+                          <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-xs font-medium rounded-full px-2 py-0.5">
+                            {s.missing_full_season_count}
                           </span>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
                       </td>
                     </tr>
