@@ -58,8 +58,10 @@ def _flatten_episode_group(detail: dict[str, Any]) -> list[dict[str, Any]]:
 
     Returns:
         Episode dicts (TMDB's own fields plus overridden ``season_number``/
-        ``episode_number``), in insertion order. Specials (native
-        ``season_number == 0``) are excluded, consistent with
+        ``episode_number``, and an added ``absolute_episode_number`` running
+        across the whole group regardless of sub-group boundary), in
+        insertion order. Specials (native ``season_number == 0``) are
+        excluded, consistent with
         :func:`~jidou.services.episode_group_mapping._extract_sub_groups`.
     """
     flattened: list[dict[str, Any]] = []
@@ -67,6 +69,7 @@ def _flatten_episode_group(detail: dict[str, Any]) -> list[dict[str, Any]]:
         (g for g in detail.get("groups", []) if g.get("order") is not None),
         key=lambda g: g["order"],
     )
+    absolute_number = 0
     for sub_group in sub_groups:
         season_number = sub_group["order"]
         episodes = [
@@ -74,8 +77,14 @@ def _flatten_episode_group(detail: dict[str, Any]) -> list[dict[str, Any]]:
         ]
         episodes.sort(key=lambda ep: ep.get("order", 0))
         for position, ep_data in enumerate(episodes, start=1):
+            absolute_number += 1
             flattened.append(
-                {**ep_data, "season_number": season_number, "episode_number": position}
+                {
+                    **ep_data,
+                    "season_number": season_number,
+                    "episode_number": position,
+                    "absolute_episode_number": absolute_number,
+                }
             )
     return flattened
 
@@ -94,6 +103,29 @@ def _parse_air_date(raw_date: str | None) -> date | None:
     with contextlib.suppress(ValueError):
         return date.fromisoformat(raw_date)
     return None
+
+
+def _update_last_air_date(show: Show, episodes: Iterable[Episode]) -> None:
+    """Set show.last_air_date from the newest already-aired episode in *episodes*.
+
+    Leaves *show* untouched if none of *episodes* have aired yet -- a show
+    with no aired episodes in the synced set (e.g. unreleased, or every
+    episode already accounted for elsewhere) must not have a previously
+    known last_air_date clobbered with nothing. The Shows-page "Recently
+    Aired" sort reads this column directly, so every path that touches a
+    show's episode set (native sync, active-group refresh, or a full group
+    apply) must keep it current.
+
+    Args:
+        show: Show ORM object to update in place.
+        episodes: Episode rows to consider.
+    """
+    today = date.today()
+    aired_dates = [
+        ep.air_date for ep in episodes if ep.air_date is not None and ep.air_date <= today
+    ]
+    if aired_dates:
+        show.last_air_date = max(aired_dates).isoformat()
 
 
 class TMDBOrchestrator:
@@ -205,14 +237,7 @@ class TMDBOrchestrator:
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
 
-        today = date.today()
-        aired_dates = [
-            ep.air_date
-            for ep in episodes_by_key.values()
-            if ep.air_date is not None and ep.air_date <= today
-        ]
-        if aired_dates:
-            show.last_air_date = max(aired_dates).isoformat()
+        _update_last_air_date(show, episodes_by_key.values())
 
         await self._apply_episode_group_map(show, episodes_by_key.values())
         await self.session.flush()
@@ -244,13 +269,22 @@ class TMDBOrchestrator:
 
         Returns:
             TMDBSyncResult with upsert/skip counts.
+
+        Raises:
+            ValueError: If ``show.active_episode_group_id`` is unset -- callers
+                (currently only :meth:`sync_show_episodes`) must check this first.
         """
-        assert show.active_episode_group_id is not None
+        if show.active_episode_group_id is None:
+            raise ValueError(
+                f"_refresh_active_group_episodes called on show id={show.id} with no "
+                "active_episode_group_id set"
+            )
         detail = await self.tmdb.get_episode_group(show.active_episode_group_id)
         flattened = _flatten_episode_group(detail)
 
         episodes_upserted = 0
         episodes_skipped = 0
+        touched: list[Episode] = []
         for ep_data in flattened:
             tmdb_ep_id: int | None = ep_data.get("id")
             if not tmdb_ep_id:
@@ -269,27 +303,31 @@ class TMDBOrchestrator:
                 existing.runtime = ep_data.get("runtime")
                 existing.episode_type = ep_data.get("episode_type")
                 existing.still_path = ep_data.get("still_path")
+                existing.absolute_episode_number = ep_data.get("absolute_episode_number")
+                touched.append(existing)
                 episodes_skipped += 1
             else:
-                self.session.add(
-                    Episode(
-                        show_id=show.id,
-                        tmdb_id=tmdb_ep_id,
-                        season_number=ep_data["season_number"],
-                        episode_number=ep_data["episode_number"],
-                        name=ep_data.get("name", ""),
-                        overview=ep_data.get("overview"),
-                        air_date=air_date,
-                        runtime=ep_data.get("runtime"),
-                        episode_type=ep_data.get("episode_type"),
-                        still_path=ep_data.get("still_path"),
-                    )
+                new_ep = Episode(
+                    show_id=show.id,
+                    tmdb_id=tmdb_ep_id,
+                    season_number=ep_data["season_number"],
+                    episode_number=ep_data["episode_number"],
+                    name=ep_data.get("name", ""),
+                    overview=ep_data.get("overview"),
+                    air_date=air_date,
+                    runtime=ep_data.get("runtime"),
+                    episode_type=ep_data.get("episode_type"),
+                    still_path=ep_data.get("still_path"),
+                    absolute_episode_number=ep_data.get("absolute_episode_number"),
                 )
+                self.session.add(new_ep)
+                touched.append(new_ep)
                 episodes_upserted += 1
 
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
         show.active_episode_group_name = detail.get("name")
+        _update_last_air_date(show, touched)
         await self.session.flush()
         return TMDBSyncResult(
             shows_synced=1,
@@ -348,26 +386,29 @@ class TMDBOrchestrator:
         )
         await self.session.flush()
 
+        new_episodes: list[Episode] = []
         for ep_data in flattened:
-            self.session.add(
-                Episode(
-                    show_id=show.id,
-                    tmdb_id=ep_data["id"],
-                    season_number=ep_data["season_number"],
-                    episode_number=ep_data["episode_number"],
-                    name=ep_data.get("name", ""),
-                    overview=ep_data.get("overview"),
-                    air_date=_parse_air_date(ep_data.get("air_date")),
-                    runtime=ep_data.get("runtime"),
-                    episode_type=ep_data.get("episode_type"),
-                    still_path=ep_data.get("still_path"),
-                )
+            new_ep = Episode(
+                show_id=show.id,
+                tmdb_id=ep_data["id"],
+                season_number=ep_data["season_number"],
+                episode_number=ep_data["episode_number"],
+                name=ep_data.get("name", ""),
+                overview=ep_data.get("overview"),
+                air_date=_parse_air_date(ep_data.get("air_date")),
+                runtime=ep_data.get("runtime"),
+                episode_type=ep_data.get("episode_type"),
+                still_path=ep_data.get("still_path"),
+                absolute_episode_number=ep_data.get("absolute_episode_number"),
             )
+            self.session.add(new_ep)
+            new_episodes.append(new_ep)
 
         show.active_episode_group_id = group_id
         show.active_episode_group_name = detail.get("name")
         show.episode_group_map = None
         show.cached = True
+        _update_last_air_date(show, new_episodes)
 
         await self.session.flush()
 
@@ -386,14 +427,20 @@ class TMDBOrchestrator:
         )
 
     async def _orphan_tracked_episodes(self, show_id: int) -> int:
-        """Persist every tracked episode's state as an OrphanedTrackingRecord before a purge.
+        """Persist every tracked or watched episode as an OrphanedTrackingRecord before a purge.
 
         Mirrors the "unrecoverable" branch of
         ``ShowRematchOrchestrator._restore_tracking_and_relink``: a
         DownloadedFile-backed match keeps its ``downloaded_file_id`` (so the
         file, still on disk, can be manually relinked via the Data Quality
         surface); a filename-only import (no DownloadedFile row) is recorded
-        without one.
+        without one. Also catches watched-only episodes (``watched=True`` but
+        ``file_tracked=False``) -- a plain ``file_tracked`` filter would drop
+        watch history for those with no record at all, since
+        ``OrphanedTrackingRecord`` has no separate "watched" flag; being
+        recorded (rather than silently vanishing) at least surfaces the loss
+        via the Data Quality surface even though watch state itself can't be
+        automatically restored on resolution.
 
         Args:
             show_id: DB primary key of the show whose tracked episodes are
@@ -402,7 +449,10 @@ class TMDBOrchestrator:
         Returns:
             Number of ``OrphanedTrackingRecord`` rows created.
         """
-        stmt = select(Episode).where(Episode.show_id == show_id, Episode.file_tracked.is_(True))
+        stmt = select(Episode).where(
+            Episode.show_id == show_id,
+            (Episode.file_tracked.is_(True)) | (Episode.watched.is_(True)),
+        )
         tracked = (await self.session.execute(stmt)).scalars().all()
         if not tracked:
             return 0
@@ -450,6 +500,15 @@ class TMDBOrchestrator:
         """Ensure a show's episode_group_map is populated if episodes exist.
 
         No-op when:
+        - ``show.active_episode_group_id`` is set. The type-6/2 auto-pick
+          remap this backfills is only meaningful for translating a
+          filename's declared season/episode into TMDB's *native*
+          numbering -- once a manual group is applied, ``Episode.season_
+          number``/``episode_number`` are that group's own numbering, and
+          rebuilding a remap against the (now-irrelevant) native structure
+          would let file-matching resolve a declared season/episode to
+          whatever episode happens to occupy that native (season, episode)
+          pair, which is no longer the applied catalog at all.
         - ``show.episode_group_map`` is already set (even ``{}`` meaning
           "checked, nothing found" — see :func:`to_storage_map`).
         - The show has no episodes yet (a full :meth:`sync_show_episodes`
@@ -462,6 +521,8 @@ class TMDBOrchestrator:
         Args:
             show: Show ORM object to check and potentially backfill.
         """
+        if show.active_episode_group_id is not None:
+            return
         if show.episode_group_map is not None:
             return
 

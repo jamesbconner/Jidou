@@ -56,9 +56,9 @@ export function EpisodeGroupPickerModal({ show, onClose }: Props) {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Switch this show&apos;s episode list to an alternate TMDB grouping — e.g. a
           combined-episode broadcast order. Applying a grouping replaces the current episode
-          list: tracked/watched status on removed episodes is preserved as a resolvable Data
-          Quality record, and affected files will need to be relinked via &quot;Scan Local
-          Files&quot;.
+          list: tracked/watched episodes are recorded as resolvable Data Quality entries so
+          matched files can be relinked via &quot;Scan Local Files&quot;, but watched history
+          itself cannot be automatically restored on the new episodes.
         </p>
 
         {applyGroup.isError && (
@@ -123,7 +123,7 @@ export function EpisodeGroupPickerModal({ show, onClose }: Props) {
       {pending && (
         <ConfirmDialog
           title="Apply alternate episode grouping?"
-          description={`Switch to "${pending.name}"? This replaces the show's episode list. Tracked/watched status on removed episodes will need to be resolved via Data Quality, and affected files will need rescanning.`}
+          description={`Switch to "${pending.name}"? This replaces the show's episode list. Tracked/watched episodes will need to be resolved via Data Quality -- watched history cannot be automatically restored, and affected files will need rescanning.`}
           confirmLabel="Apply"
           onConfirm={handleConfirmApply}
           onCancel={() => setPending(null)}

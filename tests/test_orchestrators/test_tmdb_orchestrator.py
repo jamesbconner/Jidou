@@ -545,6 +545,52 @@ class TestSyncEpisodeGroupMap:
         assert show.episode_group_map == {"6": {"1": {"1": [1, 1]}}}
 
 
+class TestEnsureEpisodeGroupMap:
+    """Tests for the best-effort backfill gate used by file-matching callers."""
+
+    async def test_noops_when_a_manual_group_is_active(self):
+        """Bugbot-caught regression: the type-6/2 auto-pick remap this
+        backfills only makes sense against TMDB's *native* season/episode
+        numbering. Once a manual group is applied, Episode.season_number/
+        episode_number are that group's own numbering -- rebuilding a remap
+        against the native structure would let file-matching resolve a
+        declared season/episode to whatever episode happens to occupy that
+        native (season, episode) pair, which is no longer the applied
+        catalog at all.
+        """
+        session = AsyncMock()
+        show = _make_show()
+        show.active_episode_group_id = "us-broadcast-id"
+        show.episode_group_map = None
+        tmdb = AsyncMock()
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.ensure_episode_group_map(show)
+
+        session.execute.assert_not_called()
+        tmdb.get_episode_groups.assert_not_called()
+        tmdb.get_episode_group.assert_not_called()
+        assert show.episode_group_map is None
+
+    async def test_backfills_when_no_group_is_active_and_map_is_unset(self):
+        eps_result = MagicMock()
+        eps_result.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=3)  # ep_count precondition check
+        session.execute = AsyncMock(return_value=eps_result)
+
+        show = _make_show()
+        show.active_episode_group_id = None
+        show.episode_groups = []
+        show.episode_group_map = None
+        tmdb = AsyncMock()
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.ensure_episode_group_map(show)
+
+        assert show.episode_group_map == {}
+
+
 async def test_sync_all_shows_excludes_movies_from_the_query():
     """Movies have no TMDB /tv/{id} season structure -- the query sync_all_shows
     issues must filter them out rather than 404ing sync_show_episodes on every one.
@@ -820,20 +866,31 @@ def test_flatten_episode_group_renumbers_by_sub_group_order_and_excludes_special
     """
     flattened = _flatten_episode_group(_US_BROADCAST_GROUP_DETAIL)
 
-    assert [(e["season_number"], e["episode_number"], e["id"]) for e in flattened] == [
-        (1, 1, 501),
-        (1, 2, 502),
+    assert [
+        (e["season_number"], e["episode_number"], e["absolute_episode_number"], e["id"])
+        for e in flattened
+    ] == [
+        (1, 1, 1, 501),
+        (1, 2, 2, 502),
     ]
 
 
 def _make_tracked_episode(
-    *, id=1, season_number=1, episode_number=1, tracked_filename="ep.mkv", tracked_source="match"
+    *,
+    id=1,
+    season_number=1,
+    episode_number=1,
+    tracked_filename="ep.mkv",
+    tracked_source="match",
+    file_tracked=True,
+    watched=False,
 ):
     ep = MagicMock()
     ep.id = id
     ep.season_number = season_number
     ep.episode_number = episode_number
-    ep.file_tracked = True
+    ep.file_tracked = file_tracked
+    ep.watched = watched
     ep.tracked_filename = tracked_filename
     ep.tracked_source = tracked_source
     return ep
@@ -980,6 +1037,88 @@ class TestApplyEpisodeGroup:
         assert orphan.downloaded_file_id is None
         assert orphan.tracked_source == "match"
 
+    async def test_orphans_watched_only_episode_with_no_file_tracked(self):
+        """Bugbot-caught regression: a watched-but-untracked episode has no
+        DownloadedFile to relink, but must still be recorded -- otherwise
+        watch history vanishes with no trace at all.
+        """
+        watched_only = _make_tracked_episode(
+            id=13, tracked_filename=None, tracked_source=None, file_tracked=False, watched=True
+        )
+        session = _make_apply_session(tracked_episodes=[watched_only], downloaded_files=[])
+        show = _make_show()
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=_US_BROADCAST_GROUP_DETAIL)
+
+        orch = TMDBOrchestrator(session, tmdb)
+        result = await orch.apply_episode_group(show, "us-broadcast-id")
+
+        assert result.orphaned_file_count == 1
+        orphan = next(
+            call.args[0]
+            for call in session.add.call_args_list
+            if isinstance(call.args[0], OrphanedTrackingRecord)
+        )
+        assert orphan.downloaded_file_id is None
+
+    async def test_sets_absolute_episode_number_on_new_episodes(self):
+        session = _make_apply_session()
+        show = _make_show()
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=_US_BROADCAST_GROUP_DETAIL)
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.apply_episode_group(show, "us-broadcast-id")
+
+        added = {
+            call.args[0].tmdb_id: call.args[0]
+            for call in session.add.call_args_list
+            if isinstance(call.args[0], Episode)
+        }
+        assert added[501].absolute_episode_number == 1
+        assert added[502].absolute_episode_number == 2
+
+    async def test_updates_last_air_date_from_newest_aired_group_episode(self):
+        yesterday = date.today() - timedelta(days=1)
+        last_week = date.today() - timedelta(days=7)
+        detail = {
+            "id": "us-broadcast-id",
+            "name": "US Broadcast Order",
+            "groups": [
+                {
+                    "name": "Season 1",
+                    "order": 1,
+                    "episodes": [
+                        {
+                            "id": 501,
+                            "season_number": 1,
+                            "episode_number": 1,
+                            "order": 0,
+                            "name": "Ep1",
+                            "air_date": last_week.isoformat(),
+                        },
+                        {
+                            "id": 502,
+                            "season_number": 1,
+                            "episode_number": 2,
+                            "order": 1,
+                            "name": "Ep2",
+                            "air_date": yesterday.isoformat(),
+                        },
+                    ],
+                }
+            ],
+        }
+        session = _make_apply_session()
+        show = _make_show(last_air_date=None)
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=detail)
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch.apply_episode_group(show, "us-broadcast-id")
+
+        assert show.last_air_date == yesterday.isoformat()
+
 
 class TestSyncShowEpisodesWithActiveGroup:
     """Tests for sync_show_episodes' branch to the non-destructive group refresh."""
@@ -1015,4 +1154,62 @@ class TestSyncShowEpisodesWithActiveGroup:
         assert result.episodes_skipped == 2
         assert result.episodes_upserted == 0
         assert existing.season_number == 1
+        assert existing.episode_number == 2
+        assert existing.absolute_episode_number == 2
         session.add.assert_not_called()
+
+    async def test_refresh_updates_last_air_date_from_newest_aired_group_episode(self):
+        yesterday = date.today() - timedelta(days=1)
+        last_week = date.today() - timedelta(days=7)
+        detail = {
+            "id": "us-broadcast-id",
+            "name": "US Broadcast Order",
+            "groups": [
+                {
+                    "name": "Season 1",
+                    "order": 1,
+                    "episodes": [
+                        {
+                            "id": 501,
+                            "season_number": 1,
+                            "episode_number": 1,
+                            "order": 0,
+                            "name": "Ep1",
+                            "air_date": last_week.isoformat(),
+                        },
+                        {
+                            "id": 502,
+                            "season_number": 1,
+                            "episode_number": 2,
+                            "order": 1,
+                            "name": "Ep2",
+                            "air_date": yesterday.isoformat(),
+                        },
+                    ],
+                }
+            ],
+        }
+        session = _make_session(existing_episode=None)
+        show = _make_show(last_air_date=None)
+        show.active_episode_group_id = "us-broadcast-id"
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=detail)
+
+        orch = TMDBOrchestrator(session, tmdb)
+        await orch._refresh_active_group_episodes(show)
+
+        assert show.last_air_date == yesterday.isoformat()
+
+    async def test_refresh_raises_if_no_active_group_is_set(self):
+        """Guards against calling this directly on a show with no active
+        group -- callers must check active_episode_group_id first.
+        """
+        session = _make_session(existing_episode=None)
+        show = _make_show()
+        show.active_episode_group_id = None
+        tmdb = AsyncMock()
+
+        orch = TMDBOrchestrator(session, tmdb)
+        with pytest.raises(ValueError, match="active_episode_group_id"):
+            await orch._refresh_active_group_episodes(show)
+        tmdb.get_episode_group.assert_not_called()
