@@ -1117,6 +1117,7 @@ async def apply_episode_group(
         episodes_added=apply_result.episodes_added,
         episodes_removed=apply_result.episodes_removed,
         orphaned_file_count=apply_result.orphaned_file_count,
+        orphaned_watched_count=apply_result.orphaned_watched_count,
     )
 
 

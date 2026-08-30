@@ -2113,7 +2113,10 @@ def test_apply_episode_group_returns_updated_episodes_and_counts() -> None:
         with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.apply_episode_group = AsyncMock(
                 return_value=EpisodeGroupApplyResult(
-                    episodes_added=12, episodes_removed=24, orphaned_file_count=3
+                    episodes_added=12,
+                    episodes_removed=24,
+                    orphaned_file_count=3,
+                    orphaned_watched_count=1,
                 )
             )
             response = TestClient(app).post("/api/shows/1/episode-groups/us-broadcast-id/apply")
@@ -2122,6 +2125,7 @@ def test_apply_episode_group_returns_updated_episodes_and_counts() -> None:
         assert body["episodes_added"] == 12
         assert body["episodes_removed"] == 24
         assert body["orphaned_file_count"] == 3
+        assert body["orphaned_watched_count"] == 1
         assert len(body["episodes"]) == 1
     finally:
         app.dependency_overrides.clear()

@@ -15,6 +15,7 @@ interface ApplySummary {
   episodes_added: number
   episodes_removed: number
   orphaned_file_count: number
+  orphaned_watched_count: number
 }
 
 export function EpisodeGroupPickerModal({ show, onClose }: Props) {
@@ -31,6 +32,7 @@ export function EpisodeGroupPickerModal({ show, onClose }: Props) {
           episodes_added: data.episodes_added,
           episodes_removed: data.episodes_removed,
           orphaned_file_count: data.orphaned_file_count,
+          orphaned_watched_count: data.orphaned_watched_count,
         })
       },
     })
@@ -72,6 +74,9 @@ export function EpisodeGroupPickerModal({ show, onClose }: Props) {
             added, {applied.episodes_removed} removed
             {applied.orphaned_file_count > 0
               ? `, ${applied.orphaned_file_count} file${applied.orphaned_file_count === 1 ? '' : 's'} need rescanning`
+              : ''}
+            {applied.orphaned_watched_count > 0
+              ? `, ${applied.orphaned_watched_count} watched episode${applied.orphaned_watched_count === 1 ? '' : 's'} lost watch history`
               : ''}
             .
           </p>

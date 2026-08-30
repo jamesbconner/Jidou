@@ -129,18 +129,21 @@ class EpisodeGroupSummary(BaseModel):
 class EpisodeGroupApplyResponse(BaseModel):
     """Response for applying an alternate episode grouping to a show.
 
-    ``orphaned_file_count`` reflects tracking state that could not carry over
-    the switch -- the new episodes are unrelated database rows even when
-    their season/episode numbers happen to coincide with the old ones, so
-    every previously tracked episode is persisted as an
+    Tracking state that could not carry over the switch -- the new episodes
+    are unrelated database rows even when their season/episode numbers
+    happen to coincide with the old ones -- is persisted as an
     ``OrphanedTrackingRecord`` for manual resolution via the Data Quality
     surface, the same mechanism used after a show rematch.
+    ``orphaned_file_count`` and ``orphaned_watched_count`` are reported
+    separately so a client doesn't tell the user "N files need rescanning"
+    when some of those N were watched-only episodes with no file at all.
     """
 
     episodes: list[EpisodeList]
     episodes_added: int
     episodes_removed: int
     orphaned_file_count: int
+    orphaned_watched_count: int
 
 
 class ShowPaths(BaseModel):

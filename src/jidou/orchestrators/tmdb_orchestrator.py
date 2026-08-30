@@ -41,6 +41,7 @@ class EpisodeGroupApplyResult:
     episodes_added: int
     episodes_removed: int
     orphaned_file_count: int
+    orphaned_watched_count: int
 
 
 def _flatten_episode_group(detail: dict[str, Any]) -> list[dict[str, Any]]:
@@ -374,7 +375,7 @@ class TMDBOrchestrator:
         detail = await self.tmdb.get_episode_group(group_id)
         flattened = _flatten_episode_group(detail)
 
-        orphaned_file_count = await self._orphan_tracked_episodes(show.id)
+        orphaned_file_count, orphaned_watched_count = await self._orphan_tracked_episodes(show.id)
         episodes_removed = (
             await self.session.scalar(
                 select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
@@ -413,20 +414,23 @@ class TMDBOrchestrator:
         await self.session.flush()
 
         logger.info(
-            "Applied episode_group %s to show id=%d: %d removed, %d added, %d file(s) orphaned",
+            "Applied episode_group %s to show id=%d: %d removed, %d added, "
+            "%d file(s) orphaned, %d watched-only episode(s) orphaned",
             group_id,
             show.id,
             episodes_removed,
             len(flattened),
             orphaned_file_count,
+            orphaned_watched_count,
         )
         return EpisodeGroupApplyResult(
             episodes_added=len(flattened),
             episodes_removed=episodes_removed,
             orphaned_file_count=orphaned_file_count,
+            orphaned_watched_count=orphaned_watched_count,
         )
 
-    async def _orphan_tracked_episodes(self, show_id: int) -> int:
+    async def _orphan_tracked_episodes(self, show_id: int) -> tuple[int, int]:
         """Persist every tracked or watched episode as an OrphanedTrackingRecord before a purge.
 
         Mirrors the "unrecoverable" branch of
@@ -447,7 +451,9 @@ class TMDBOrchestrator:
                 about to be deleted.
 
         Returns:
-            Number of ``OrphanedTrackingRecord`` rows created.
+            ``(file_count, watched_only_count)`` -- kept separate (rather
+            than one combined total) so callers don't tell the user "N files
+            need rescanning" when some of those N never had a file at all.
         """
         stmt = select(Episode).where(
             Episode.show_id == show_id,
@@ -455,7 +461,7 @@ class TMDBOrchestrator:
         )
         tracked = (await self.session.execute(stmt)).scalars().all()
         if not tracked:
-            return 0
+            return 0, 0
 
         file_stmt = select(DownloadedFile).where(
             DownloadedFile.episode_id.in_([ep.id for ep in tracked])
@@ -464,8 +470,14 @@ class TMDBOrchestrator:
             f.episode_id: f for f in (await self.session.execute(file_stmt)).scalars().all()
         }
 
+        file_count = 0
+        watched_only_count = 0
         for ep in tracked:
             backing_file = files_by_episode_id.get(ep.id)
+            if ep.file_tracked:
+                file_count += 1
+            else:
+                watched_only_count += 1
             self.session.add(
                 OrphanedTrackingRecord(
                     show_id=show_id,
@@ -476,7 +488,7 @@ class TMDBOrchestrator:
                     downloaded_file_id=backing_file.id if backing_file else None,
                 )
             )
-        return len(tracked)
+        return file_count, watched_only_count
 
     async def sync_episode_group_map(self, show: Show) -> None:
         """Backfill episode_group_map/absolute_episode_number for an already-synced show.

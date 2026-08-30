@@ -955,6 +955,7 @@ class TestApplyEpisodeGroup:
         assert result.episodes_added == 2
         assert result.episodes_removed == 24
         assert result.orphaned_file_count == 0
+        assert result.orphaned_watched_count == 0
         added = {
             call.args[0].tmdb_id: call.args[0]
             for call in session.add.call_args_list
@@ -1003,6 +1004,7 @@ class TestApplyEpisodeGroup:
         result = await orch.apply_episode_group(show, "us-broadcast-id")
 
         assert result.orphaned_file_count == 1
+        assert result.orphaned_watched_count == 0
         orphans = [
             call.args[0]
             for call in session.add.call_args_list
@@ -1029,6 +1031,7 @@ class TestApplyEpisodeGroup:
         result = await orch.apply_episode_group(show, "us-broadcast-id")
 
         assert result.orphaned_file_count == 1
+        assert result.orphaned_watched_count == 0
         orphan = next(
             call.args[0]
             for call in session.add.call_args_list
@@ -1053,7 +1056,8 @@ class TestApplyEpisodeGroup:
         orch = TMDBOrchestrator(session, tmdb)
         result = await orch.apply_episode_group(show, "us-broadcast-id")
 
-        assert result.orphaned_file_count == 1
+        assert result.orphaned_file_count == 0
+        assert result.orphaned_watched_count == 1
         orphan = next(
             call.args[0]
             for call in session.add.call_args_list

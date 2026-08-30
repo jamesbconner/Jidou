@@ -99,7 +99,13 @@ describe('EpisodeGroupPickerModal', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(mockResponse(groups))
       .mockResolvedValueOnce(
-        mockResponse({ episodes: [], episodes_added: 12, episodes_removed: 24, orphaned_file_count: 3 }),
+        mockResponse({
+          episodes: [],
+          episodes_added: 12,
+          episodes_removed: 24,
+          orphaned_file_count: 3,
+          orphaned_watched_count: 1,
+        }),
       )
     render(<EpisodeGroupPickerModal show={show} onClose={vi.fn()} />, { wrapper: makeWrapper() })
     await waitFor(() => expect(screen.getByText('Apply')).toBeInTheDocument())
@@ -118,7 +124,11 @@ describe('EpisodeGroupPickerModal', () => {
       expect(postCall![0]).toBe('/api/shows/1/episode-groups/group-a/apply')
     })
     await waitFor(() =>
-      expect(screen.getByText(/Applied: 12 episodes added, 24 removed/)).toBeInTheDocument(),
+      expect(
+        screen.getByText(
+          /Applied: 12 episodes added, 24 removed, 3 files need rescanning, 1 watched episode lost watch history/,
+        ),
+      ).toBeInTheDocument(),
     )
   })
 
