@@ -166,6 +166,15 @@ async def test_flush_cache_cleared_count_matches_populated_cache() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _mock_celery_ping(ok: bool = True) -> MagicMock:
+    """Return a celery_app-shaped mock whose control.inspect().ping() is deterministic."""
+    mock_celery = MagicMock()
+    mock_celery.control.inspect.return_value.ping.return_value = (
+        {"worker1@host": {"ok": "pong"}} if ok else None
+    )
+    return mock_celery
+
+
 def test_health_returns_healthy_true_when_all_pass() -> None:
     """GET /api/admin/health reports healthy=True when DB and Redis pass."""
     from jidou.database import get_session
@@ -187,14 +196,111 @@ def test_health_returns_healthy_true_when_all_pass() -> None:
         with (
             patch("jidou.api.routes.admin.settings") as mock_settings,
             patch("redis.asyncio.from_url", return_value=mock_r),
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
         ):
             mock_settings.redis_url = "redis://localhost:6379/0"
             mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
         assert response.status_code == 200
         body = response.json()
         assert "healthy" in body
         assert "services" in body
+        assert body["services"]["celery"]["ok"] is True
+        assert body["services"]["celery"]["workers"] == ["worker1@host"]
+        assert body["services"]["sftp"]["ok"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_celery_no_workers_respond_marks_unhealthy() -> None:
+    """GET /api/admin/health reports healthy=False when no Celery worker answers ping."""
+    from jidou.database import get_session
+
+    async def _ok_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = "abc123def456"
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _ok_session
+    try:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=False)),
+        ):
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
+            response = TestClient(app).get("/api/admin/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["services"]["celery"]["ok"] is False
+        assert body["services"]["celery"]["error"] == "No Celery workers responded to ping"
+        assert body["healthy"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_celery_inspect_raises_marks_unhealthy() -> None:
+    """GET /api/admin/health reports healthy=False when the Celery ping raises."""
+    from jidou.database import get_session
+
+    async def _ok_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = "abc123def456"
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    mock_celery = MagicMock()
+    mock_celery.control.inspect.side_effect = ConnectionError("broker unreachable")
+
+    app.dependency_overrides[get_session] = _ok_session
+    try:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", mock_celery),
+        ):
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
+            response = TestClient(app).get("/api/admin/health")
+        body = response.json()
+        assert body["services"]["celery"]["ok"] is False
+        assert "broker unreachable" in body["services"]["celery"]["error"]
+        assert body["healthy"] is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_health_sftp_not_configured_marks_unhealthy() -> None:
+    """GET /api/admin/health reports healthy=False when SFTP_HOST is unset."""
+    from jidou.database import get_session
+
+    async def _ok_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = "abc123def456"
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    app.dependency_overrides[get_session] = _ok_session
+    try:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
+        ):
+            mock_settings.redis_url = ""
+            mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = None
+            response = TestClient(app).get("/api/admin/health")
+        body = response.json()
+        assert body["services"]["sftp"]["ok"] is False
+        assert body["services"]["sftp"]["configured"] is False
+        assert body["services"]["sftp"]["error"] == "SFTP_HOST not set"
+        assert body["healthy"] is False
     finally:
         app.dependency_overrides.clear()
 
@@ -212,9 +318,13 @@ def test_health_database_includes_alembic_version() -> None:
 
     app.dependency_overrides[get_session] = _ok_session
     try:
-        with patch("jidou.api.routes.admin.settings") as mock_settings:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
+        ):
             mock_settings.redis_url = ""
             mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
         assert response.status_code == 200
         body = response.json()
@@ -251,9 +361,13 @@ def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
 
     app.dependency_overrides[get_session] = _partial_session
     try:
-        with patch("jidou.api.routes.admin.settings") as mock_settings:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
+        ):
             mock_settings.redis_url = ""
             mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
         assert response.status_code == 200
         body = response.json()
@@ -276,9 +390,13 @@ def test_health_returns_healthy_false_when_db_fails() -> None:
 
     app.dependency_overrides[get_session] = _failing_session
     try:
-        with patch("jidou.api.routes.admin.settings") as mock_settings:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
+        ):
             mock_settings.redis_url = ""
             mock_settings.tmdb_api_key = None
+            mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
         assert response.status_code == 200
         body = response.json()
@@ -302,9 +420,13 @@ def test_health_redis_not_configured_does_not_make_unhealthy() -> None:
 
     app.dependency_overrides[get_session] = _ok_session
     try:
-        with patch("jidou.api.routes.admin.settings") as mock_settings:
+        with (
+            patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
+        ):
             mock_settings.redis_url = ""
             mock_settings.tmdb_api_key = "set"
+            mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
         assert response.status_code == 200
         body = response.json()

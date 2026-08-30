@@ -54,7 +54,9 @@ function makeHealth(overrides: Partial<HealthCheck> = {}): HealthCheck {
     services: {
       database: { ok: true, latency_ms: 4.2, alembic_version: 'abc123def456' },
       redis: { ok: true, latency_ms: 1.1 },
+      celery: { ok: true, latency_ms: 12.5, workers: ['worker1@host'] },
       tmdb: { ok: true, configured: true },
+      sftp: { ok: true, configured: true },
       llm: { ok: true, configured: false },
     },
     ...overrides,

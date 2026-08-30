@@ -515,13 +515,18 @@ export default function Settings() {
               />
               <ServiceRow
                 label="SFTP"
-                svc={null}
+                svc={health?.services.sftp}
                 test={testSftp}
               />
               <ServiceRow
                 label="Redis"
                 svc={health?.services.redis}
                 test={testRedis}
+              />
+              <ServiceRow
+                label="Celery"
+                svc={health?.services.celery}
+                test={null}
               />
               {showLlm && (
                 <ServiceRow
