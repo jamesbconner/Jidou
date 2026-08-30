@@ -68,6 +68,12 @@ class Show(TimestampMixin, Base):
     # read it) -> 1-based position within that sub-group. Derived/cache data,
     # not user data -- always safe to drop and recompute on the next TMDB sync.
     episode_group_map: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    # Manual per-show override: when set, this TMDB episode_group's own
+    # structure replaces the native season/episode catalog entirely (see
+    # TMDBOrchestrator.apply_episode_group). None means "use TMDB's native
+    # season/episode structure" -- the default for every show.
+    active_episode_group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    active_episode_group_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # TMDB show status: "Returning Series", "Ended", "Cancelled", "Released", etc.
     status: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # TV only: whether the show is currently in production

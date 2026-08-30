@@ -68,6 +68,8 @@ def _make_show(
     s.external_ids = None
     s.episode_groups = None
     s.episode_group_map = None
+    s.active_episode_group_id = None
+    s.active_episode_group_name = None
     s.status = None
     s.in_production = None
     s.number_of_seasons = None
@@ -2007,6 +2009,145 @@ def test_sync_episodes_returns_404_when_show_not_found() -> None:
     try:
         response = TestClient(app).post("/api/shows/9999/sync-episodes")
         assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/shows/{show_id}/episode-groups
+# POST /api/shows/{show_id}/episode-groups/{group_id}/apply
+# ---------------------------------------------------------------------------
+
+
+def test_list_episode_groups_returns_summaries_with_active_flag() -> None:
+    """GET .../episode-groups flags the show's active_episode_group_id."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    show.active_episode_group_id = "group-b"
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_episode_groups = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "id": "group-a",
+                    "name": "Native",
+                    "type": 1,
+                    "episode_count": 24,
+                    "group_count": 1,
+                },
+                {
+                    "id": "group-b",
+                    "name": "US Broadcast",
+                    "type": 6,
+                    "episode_count": 12,
+                    "group_count": 1,
+                },
+            ]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/episode-groups")
+        assert response.status_code == 200
+        body = response.json()
+        by_id = {g["id"]: g for g in body}
+        assert by_id["group-a"]["is_active"] is False
+        assert by_id["group-b"]["is_active"] is True
+        assert by_id["group-b"]["episode_count"] == 12
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_episode_groups_returns_404_when_show_not_found() -> None:
+    """GET .../episode-groups returns 404 when show doesn't exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).get("/api/shows/9999/episode-groups")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_episode_groups_returns_422_for_movie() -> None:
+    """GET .../episode-groups rejects movies -- they have no TMDB episode_groups."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie")
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).get("/api/shows/1/episode-groups")
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_episode_group_returns_updated_episodes_and_counts() -> None:
+    """POST .../episode-groups/{id}/apply returns the new episode list plus diff counts."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.orchestrators.tmdb_orchestrator import EpisodeGroupApplyResult
+
+    show = _make_show(id=1)
+    episode = _make_episode(id=10, show_id=1)
+
+    async def _apply_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = [episode]
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    tmdb_mock = _make_tmdb_mock()
+    app.dependency_overrides[get_session] = _apply_session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.apply_episode_group = AsyncMock(
+                return_value=EpisodeGroupApplyResult(
+                    episodes_added=12, episodes_removed=24, orphaned_file_count=3
+                )
+            )
+            response = TestClient(app).post("/api/shows/1/episode-groups/us-broadcast-id/apply")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["episodes_added"] == 12
+        assert body["episodes_removed"] == 24
+        assert body["orphaned_file_count"] == 3
+        assert len(body["episodes"]) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_episode_group_returns_404_when_show_not_found() -> None:
+    """POST .../episode-groups/{id}/apply returns 404 when show doesn't exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).post("/api/shows/9999/episode-groups/some-id/apply")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_apply_episode_group_returns_422_for_movie() -> None:
+    """POST .../episode-groups/{id}/apply rejects movies."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, media_type="movie")
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).post("/api/shows/1/episode-groups/some-id/apply")
+        assert response.status_code == 422
     finally:
         app.dependency_overrides.clear()
 

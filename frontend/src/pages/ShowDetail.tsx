@@ -34,6 +34,7 @@ import { AliasModal } from '@/components/AliasModal'
 import { PosterPickerModal } from '@/components/PosterPickerModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
 import { ShowRematchModal } from '@/components/ShowRematchModal'
+import { EpisodeGroupPickerModal } from '@/components/EpisodeGroupPickerModal'
 import { ContentTypeModal } from '@/components/ContentTypeModal'
 import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
@@ -197,6 +198,7 @@ export default function ShowDetail() {
   const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
   const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
   const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
+  const [episodeGroupModalOpen, setEpisodeGroupModalOpen] = useState(false)
   const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
   const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
@@ -223,6 +225,7 @@ export default function ShowDetail() {
     setAssignImportEp(null)
     setLinkFileEp(null)
     setScanLocalFilesOpen(false)
+    setEpisodeGroupModalOpen(false)
     setScanLocalMovieFileOpen(false)
     setFixMovieFileOpen(false)
     setRssModalSub(null)
@@ -579,6 +582,12 @@ export default function ShowDetail() {
                 >
                   Scan Local Files
                 </button>
+                <button
+                  onClick={() => setEpisodeGroupModalOpen(true)}
+                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  {show.active_episode_group_id ? 'Change Episode Grouping' : 'Use Alternate Grouping'}
+                </button>
               </div>
             )}
           </div>
@@ -803,6 +812,9 @@ export default function ShowDetail() {
       )}
       {scanLocalFilesOpen && (
         <ScanLocalFilesModal showId={showId} onClose={() => setScanLocalFilesOpen(false)} />
+      )}
+      {episodeGroupModalOpen && (
+        <EpisodeGroupPickerModal show={show} onClose={() => setEpisodeGroupModalOpen(false)} />
       )}
       {scanLocalMovieFileOpen && (
         <ScanLocalMovieFileModal

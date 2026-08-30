@@ -27,6 +27,8 @@ from jidou.schemas.file_schema import EpisodeBrief, FileRead
 from jidou.schemas.rss_schema import RssSubscriptionRead
 from jidou.schemas.show_schema import (
     AssignImportRequest,
+    EpisodeGroupApplyResponse,
+    EpisodeGroupSummary,
     LinkFileRequest,
     LinkMovieFileRequest,
     PosterOption,
@@ -51,6 +53,7 @@ from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
+from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
 logger = logging.getLogger(__name__)
 
@@ -1013,6 +1016,108 @@ async def sync_episodes(
     )
     result = await db_session.execute(ep_stmt)
     return list(result.scalars().all())
+
+
+@router.get("/{show_id}/episode-groups", response_model=list[EpisodeGroupSummary])
+async def list_episode_groups(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> list[EpisodeGroupSummary]:
+    """List TMDB alternate episode groupings available for a show.
+
+    Always fetches fresh from TMDB (via the shared cache/rate-limiter in
+    ``TMDBService``) rather than trusting ``show.episode_groups``, since this
+    is a user-initiated "pick a group" action and that column may be stale
+    or never populated.
+
+    Args:
+        show_id: Database primary key of the show.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Available episode groups, each flagged with whether it's the show's
+        current ``active_episode_group_id``.
+
+    Raises:
+        HTTPException: 404 if the show is not found. 422 if the show is a
+            movie -- movies have no TMDB episode_groups.
+    """
+    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if show.media_type == "movie":
+        raise HTTPException(status_code=422, detail="Movies have no TMDB episode_groups")
+
+    groups = await fetch_episode_groups_list(tmdb, show.tmdb_id)
+    return [
+        EpisodeGroupSummary(
+            id=g["id"],
+            name=g.get("name", ""),
+            type=g.get("type", 0),
+            episode_count=g.get("episode_count", 0),
+            group_count=g.get("group_count", 0),
+            is_active=g["id"] == show.active_episode_group_id,
+        )
+        for g in groups
+        if g.get("id")
+    ]
+
+
+@router.post("/{show_id}/episode-groups/{group_id}/apply", response_model=EpisodeGroupApplyResponse)
+async def apply_episode_group(
+    show_id: int,
+    group_id: str,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> EpisodeGroupApplyResponse:
+    """Switch a show's episode catalog to a specific TMDB episode grouping.
+
+    Destructive: replaces every Episode row for the show with the group's
+    own episodes. See ``TMDBOrchestrator.apply_episode_group`` for the full
+    contract, including how previously tracked episodes are preserved as
+    ``OrphanedTrackingRecord`` entries for manual resolution.
+
+    Args:
+        show_id: Database primary key of the show.
+        group_id: TMDB episode_group ID, from ``GET .../episode-groups``.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        The updated episode list plus counts of what changed.
+
+    Raises:
+        HTTPException: 404 if the show is not found. 422 if the show is a
+            movie.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+    if show.media_type == "movie":
+        raise HTTPException(status_code=422, detail="Movies have no TMDB episode_groups")
+
+    orchestrator = TMDBOrchestrator(db_session, tmdb)
+    try:
+        apply_result = await orchestrator.apply_episode_group(show, group_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    ep_stmt = (
+        select(Episode)
+        .where(Episode.show_id == show_id)
+        .order_by(Episode.season_number, Episode.episode_number)
+    )
+    episodes = (await db_session.execute(ep_stmt)).scalars().all()
+    return EpisodeGroupApplyResponse(
+        episodes=[EpisodeList.model_validate(ep) for ep in episodes],
+        episodes_added=apply_result.episodes_added,
+        episodes_removed=apply_result.episodes_removed,
+        orphaned_file_count=apply_result.orphaned_file_count,
+    )
 
 
 @router.post("/{show_id}/rss-stub", response_model=RssSubscriptionRead)

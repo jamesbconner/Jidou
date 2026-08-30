@@ -5,12 +5,14 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
+from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
 from jidou.services.episode_group_mapping import (
     fetch_group_breakdowns,
@@ -30,6 +32,68 @@ class TMDBSyncResult:
     shows_synced: int
     episodes_upserted: int
     episodes_skipped: int
+
+
+@dataclass
+class EpisodeGroupApplyResult:
+    """Result of switching a show's episode catalog to a TMDB episode_group."""
+
+    episodes_added: int
+    episodes_removed: int
+    orphaned_file_count: int
+
+
+def _flatten_episode_group(detail: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten a TMDB episode_group detail into an ordered, renumbered episode list.
+
+    Sub-groups become seasons (using the sub-group's own ``order``); episodes
+    within a sub-group are renumbered 1..N by their own ``order`` field. This
+    treats the applied group as an authoritative structure in its own right --
+    unlike :func:`~jidou.services.episode_group_mapping.fetch_group_breakdowns`,
+    which only ever resolves (season, episode) pairs back to TMDB's native
+    numbering for file-matching remap purposes.
+
+    Args:
+        detail: Raw response from :meth:`TMDBService.get_episode_group`.
+
+    Returns:
+        Episode dicts (TMDB's own fields plus overridden ``season_number``/
+        ``episode_number``), in insertion order. Specials (native
+        ``season_number == 0``) are excluded, consistent with
+        :func:`~jidou.services.episode_group_mapping._extract_sub_groups`.
+    """
+    flattened: list[dict[str, Any]] = []
+    sub_groups = sorted(
+        (g for g in detail.get("groups", []) if g.get("order") is not None),
+        key=lambda g: g["order"],
+    )
+    for sub_group in sub_groups:
+        season_number = sub_group["order"]
+        episodes = [
+            ep for ep in sub_group.get("episodes", []) if (ep.get("season_number") or 0) > 0
+        ]
+        episodes.sort(key=lambda ep: ep.get("order", 0))
+        for position, ep_data in enumerate(episodes, start=1):
+            flattened.append(
+                {**ep_data, "season_number": season_number, "episode_number": position}
+            )
+    return flattened
+
+
+def _parse_air_date(raw_date: str | None) -> date | None:
+    """Parse a TMDB ``air_date`` string, tolerating malformed values.
+
+    Args:
+        raw_date: Raw ``air_date`` field from a TMDB episode object, or None.
+
+    Returns:
+        The parsed date, or None if *raw_date* is absent or unparseable.
+    """
+    if not raw_date:
+        return None
+    with contextlib.suppress(ValueError):
+        return date.fromisoformat(raw_date)
+    return None
 
 
 class TMDBOrchestrator:
@@ -78,6 +142,12 @@ class TMDBOrchestrator:
                 f"sync_show_episodes called on a movie (show id={show.id}): "
                 "movies have no TMDB /tv/{id}/season structure"
             )
+        if show.active_episode_group_id is not None:
+            # A manually applied episode_group (see apply_episode_group)
+            # replaces the native season/episode structure outright -- a
+            # routine sync must refresh *that* group's current data, not
+            # silently revert the show back to its native 24-episode catalog.
+            return await self._refresh_active_group_episodes(show)
         show_data = await self.tmdb.get_show_seasons(show.tmdb_id)
         seasons = [s for s in show_data.get("seasons", []) if s.get("season_number", 0) > 0]
 
@@ -103,12 +173,7 @@ class TMDBOrchestrator:
                 stmt = select(Episode).where(Episode.tmdb_id == tmdb_ep_id)
                 existing = (await self.session.execute(stmt)).scalar_one_or_none()
 
-                air_date: date | None = None
-                raw_date = ep_data.get("air_date")
-                if raw_date:
-                    with contextlib.suppress(ValueError):
-                        air_date = date.fromisoformat(raw_date)
-
+                air_date = _parse_air_date(ep_data.get("air_date"))
                 episode_num = ep_data.get("episode_number", 0)
 
                 if existing is not None:
@@ -163,6 +228,205 @@ class TMDBOrchestrator:
             episodes_upserted=episodes_upserted,
             episodes_skipped=episodes_skipped,
         )
+
+    async def _refresh_active_group_episodes(self, show: Show) -> TMDBSyncResult:
+        """Upsert-refresh episodes from a show's already-applied active_episode_group_id.
+
+        Non-destructive counterpart to :meth:`apply_episode_group`: called by
+        :meth:`sync_show_episodes` once a group is active, so a routine "Sync
+        Episodes" click just refreshes metadata (name/overview/air_date/etc.)
+        in place. Does not purge or renumber -- that one-time transition only
+        happens in :meth:`apply_episode_group`, when the group is first
+        chosen or changed.
+
+        Args:
+            show: Show ORM object whose ``active_episode_group_id`` is set.
+
+        Returns:
+            TMDBSyncResult with upsert/skip counts.
+        """
+        assert show.active_episode_group_id is not None
+        detail = await self.tmdb.get_episode_group(show.active_episode_group_id)
+        flattened = _flatten_episode_group(detail)
+
+        episodes_upserted = 0
+        episodes_skipped = 0
+        for ep_data in flattened:
+            tmdb_ep_id: int | None = ep_data.get("id")
+            if not tmdb_ep_id:
+                continue
+
+            stmt = select(Episode).where(Episode.tmdb_id == tmdb_ep_id)
+            existing = (await self.session.execute(stmt)).scalar_one_or_none()
+            air_date = _parse_air_date(ep_data.get("air_date"))
+
+            if existing is not None:
+                existing.season_number = ep_data["season_number"]
+                existing.episode_number = ep_data["episode_number"]
+                existing.name = ep_data.get("name", existing.name)
+                existing.overview = ep_data.get("overview")
+                existing.air_date = air_date
+                existing.runtime = ep_data.get("runtime")
+                existing.episode_type = ep_data.get("episode_type")
+                existing.still_path = ep_data.get("still_path")
+                episodes_skipped += 1
+            else:
+                self.session.add(
+                    Episode(
+                        show_id=show.id,
+                        tmdb_id=tmdb_ep_id,
+                        season_number=ep_data["season_number"],
+                        episode_number=ep_data["episode_number"],
+                        name=ep_data.get("name", ""),
+                        overview=ep_data.get("overview"),
+                        air_date=air_date,
+                        runtime=ep_data.get("runtime"),
+                        episode_type=ep_data.get("episode_type"),
+                        still_path=ep_data.get("still_path"),
+                    )
+                )
+                episodes_upserted += 1
+
+        if episodes_upserted + episodes_skipped > 0:
+            show.cached = True
+        show.active_episode_group_name = detail.get("name")
+        await self.session.flush()
+        return TMDBSyncResult(
+            shows_synced=1,
+            episodes_upserted=episodes_upserted,
+            episodes_skipped=episodes_skipped,
+        )
+
+    async def apply_episode_group(self, show: Show, group_id: str) -> EpisodeGroupApplyResult:
+        """Switch *show*'s episode catalog to a specific TMDB episode_group's structure.
+
+        Destructive: every existing Episode row for *show* is deleted and
+        replaced with the group's own episodes, renumbered by sub-group order
+        (see :func:`_flatten_episode_group`). Tracking state cannot be carried
+        over the switch -- the new rows are unrelated database records even
+        when their (season, episode) numbers happen to coincide with the old
+        ones -- so every previously tracked episode is persisted as an
+        ``OrphanedTrackingRecord`` (the same Data Quality mechanism used
+        after a show rematch, see ``ShowRematchOrchestrator``) rather than
+        silently dropped or mismatched to the wrong episode.
+
+        ``episode_group_map`` (the orthogonal type-6/2 auto-pick remap used
+        for file-matching) is reset to None, since it was computed against
+        the now-deleted native structure and would otherwise misresolve a
+        declared season/episode against episodes that no longer exist.
+
+        Args:
+            show: Show ORM object to switch.
+            group_id: TMDB episode_group ID (an entry's ``id`` field from
+                ``TMDBService.get_episode_groups``).
+
+        Returns:
+            Counts of the change, for the API response.
+
+        Raises:
+            ValueError: If *show* is a movie -- movies have no TMDB
+                episode_groups structure.
+        """
+        if show.media_type == "movie":
+            raise ValueError(
+                f"apply_episode_group called on a movie (show id={show.id}): "
+                "movies have no TMDB episode_groups"
+            )
+
+        detail = await self.tmdb.get_episode_group(group_id)
+        flattened = _flatten_episode_group(detail)
+
+        orphaned_file_count = await self._orphan_tracked_episodes(show.id)
+        episodes_removed = (
+            await self.session.scalar(
+                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
+            )
+            or 0
+        )
+        await self.session.execute(
+            Episode.__table__.delete().where(Episode.show_id == show.id)  # type: ignore[attr-defined]
+        )
+        await self.session.flush()
+
+        for ep_data in flattened:
+            self.session.add(
+                Episode(
+                    show_id=show.id,
+                    tmdb_id=ep_data["id"],
+                    season_number=ep_data["season_number"],
+                    episode_number=ep_data["episode_number"],
+                    name=ep_data.get("name", ""),
+                    overview=ep_data.get("overview"),
+                    air_date=_parse_air_date(ep_data.get("air_date")),
+                    runtime=ep_data.get("runtime"),
+                    episode_type=ep_data.get("episode_type"),
+                    still_path=ep_data.get("still_path"),
+                )
+            )
+
+        show.active_episode_group_id = group_id
+        show.active_episode_group_name = detail.get("name")
+        show.episode_group_map = None
+        show.cached = True
+
+        await self.session.flush()
+
+        logger.info(
+            "Applied episode_group %s to show id=%d: %d removed, %d added, %d file(s) orphaned",
+            group_id,
+            show.id,
+            episodes_removed,
+            len(flattened),
+            orphaned_file_count,
+        )
+        return EpisodeGroupApplyResult(
+            episodes_added=len(flattened),
+            episodes_removed=episodes_removed,
+            orphaned_file_count=orphaned_file_count,
+        )
+
+    async def _orphan_tracked_episodes(self, show_id: int) -> int:
+        """Persist every tracked episode's state as an OrphanedTrackingRecord before a purge.
+
+        Mirrors the "unrecoverable" branch of
+        ``ShowRematchOrchestrator._restore_tracking_and_relink``: a
+        DownloadedFile-backed match keeps its ``downloaded_file_id`` (so the
+        file, still on disk, can be manually relinked via the Data Quality
+        surface); a filename-only import (no DownloadedFile row) is recorded
+        without one.
+
+        Args:
+            show_id: DB primary key of the show whose tracked episodes are
+                about to be deleted.
+
+        Returns:
+            Number of ``OrphanedTrackingRecord`` rows created.
+        """
+        stmt = select(Episode).where(Episode.show_id == show_id, Episode.file_tracked.is_(True))
+        tracked = (await self.session.execute(stmt)).scalars().all()
+        if not tracked:
+            return 0
+
+        file_stmt = select(DownloadedFile).where(
+            DownloadedFile.episode_id.in_([ep.id for ep in tracked])
+        )
+        files_by_episode_id = {
+            f.episode_id: f for f in (await self.session.execute(file_stmt)).scalars().all()
+        }
+
+        for ep in tracked:
+            backing_file = files_by_episode_id.get(ep.id)
+            self.session.add(
+                OrphanedTrackingRecord(
+                    show_id=show_id,
+                    tracked_filename=ep.tracked_filename,
+                    tracked_source=ep.tracked_source or "match",
+                    old_season_number=ep.season_number,
+                    old_episode_number=ep.episode_number,
+                    downloaded_file_id=backing_file.id if backing_file else None,
+                )
+            )
+        return len(tracked)
 
     async def sync_episode_group_map(self, show: Show) -> None:
         """Backfill episode_group_map/absolute_episode_number for an already-synced show.
