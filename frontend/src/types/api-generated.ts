@@ -1823,8 +1823,9 @@ export interface paths {
          * System Health
          * @description Run a comprehensive system health check.
          *
-         *     Checks the database, Redis (if configured), and TMDB API key presence.
-         *     Each check reports ``ok``, ``latency_ms``, and an optional ``error`` field.
+         *     Checks the database, Redis (if configured), Celery worker liveness, and
+         *     TMDB/SFTP/LLM configuration presence. Each check reports ``ok`` and,
+         *     where applicable, ``latency_ms`` and an optional ``error`` field.
          *
          *     Args:
          *         db_session: DB session (injected).

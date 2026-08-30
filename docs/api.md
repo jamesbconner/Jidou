@@ -25,7 +25,7 @@ When the key is unset or empty, authentication is disabled entirely. The Docker 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Liveness check — returns `{"status": "ok"}` |
-| GET | `/api/admin/health` | Deep health check (DB, Redis, TMDB, LLM connectivity) |
+| GET | `/api/admin/health` | Deep health check (DB, Redis, Celery worker liveness, TMDB, SFTP, LLM) |
 | GET | `/api/admin/stats` | Row counts and DQ totals |
 | GET | `/api/admin/stats/files-timeline` | Files added per day (last 30 days) |
 | GET | `/api/admin/stats/pipeline-status` | File counts by status |

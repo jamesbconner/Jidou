@@ -1,5 +1,6 @@
 """API routes for admin operations: stats, cache, health."""
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
 from jidou.models.watchlist import WatchlistEntry
 from jidou.schemas.admin_schema import StatsResponse
+from jidou.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +222,9 @@ async def system_health(
 ) -> dict[str, Any]:
     """Run a comprehensive system health check.
 
-    Checks the database, Redis (if configured), and TMDB API key presence.
-    Each check reports ``ok``, ``latency_ms``, and an optional ``error`` field.
+    Checks the database, Redis (if configured), Celery worker liveness, and
+    TMDB/SFTP/LLM configuration presence. Each check reports ``ok`` and,
+    where applicable, ``latency_ms`` and an optional ``error`` field.
 
     Args:
         db_session: DB session (injected).
@@ -282,6 +285,28 @@ async def system_health(
         # An unconfigured optional service must not drag overall health to false.
         results["redis"] = {"ok": True, "configured": False}
 
+    # Celery worker liveness. A reachable Redis broker doesn't prove a worker is
+    # actually consuming tasks, so ping workers directly rather than relying on
+    # the Redis check above to stand in for worker health.
+    t0 = time.monotonic()
+    try:
+        pong = await asyncio.to_thread(celery_app.control.inspect(timeout=2.0).ping)
+        latency_ms = round((time.monotonic() - t0) * 1000, 1)
+        if pong:
+            results["celery"] = {"ok": True, "latency_ms": latency_ms, "workers": list(pong.keys())}
+        else:
+            results["celery"] = {
+                "ok": False,
+                "latency_ms": latency_ms,
+                "error": "No Celery workers responded to ping",
+            }
+    except Exception as exc:
+        results["celery"] = {
+            "ok": False,
+            "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+            "error": str(exc),
+        }
+
     # TMDB (config check only — no network call to avoid rate limit)
     results["tmdb"] = {
         "ok": bool(settings.tmdb_api_key),
@@ -289,6 +314,14 @@ async def system_health(
     }
     if not settings.tmdb_api_key:
         results["tmdb"]["error"] = "TMDB_API_KEY not set"
+
+    # SFTP (config check only — live test available via POST /config/test/sftp)
+    results["sftp"] = {
+        "ok": bool(settings.sftp_host),
+        "configured": bool(settings.sftp_host),
+    }
+    if not settings.sftp_host:
+        results["sftp"]["error"] = "SFTP_HOST not set"
 
     # LLM (config check only — live test available via POST /config/test/llm)
     llm_configured = settings.llm_provider.lower() != "none" and bool(settings.llm_model)

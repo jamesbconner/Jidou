@@ -24,6 +24,7 @@ def test_health_endpoint_structure() -> None:
     assert "postgres" in services
     assert "redis" in services
     assert "tmdb" in services
+    assert "sftp" in services
 
 
 def test_health_check_status_values() -> None:

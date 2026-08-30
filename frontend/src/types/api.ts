@@ -338,6 +338,7 @@ export interface ServiceHealth {
   provider?: string
   model?: string
   alembic_version?: string | null
+  workers?: string[]
 }
 
 export interface HealthCheck {
@@ -345,7 +346,9 @@ export interface HealthCheck {
   services: {
     database: ServiceHealth
     redis: ServiceHealth
+    celery: ServiceHealth
     tmdb: ServiceHealth
+    sftp: ServiceHealth
     llm: ServiceHealth
   }
 }

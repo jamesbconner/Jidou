@@ -60,6 +60,11 @@ async def health_check() -> JSONResponse:
         "status": "configured" if settings.tmdb_api_key else "not-configured",
     }
 
+    # Check SFTP host configured
+    services["sftp"] = {
+        "status": "configured" if settings.sftp_host else "not-configured",
+    }
+
     body = {
         "status": "healthy" if overall_healthy else "degraded",
         "timestamp": datetime.now(UTC).isoformat(),
