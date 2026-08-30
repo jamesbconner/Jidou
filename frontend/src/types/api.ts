@@ -79,6 +79,10 @@ export interface EpisodeRead extends EpisodeList {
   updated_at: string
 }
 
+export type EpisodeGroupSummary = components['schemas']['EpisodeGroupSummary']
+
+export type EpisodeGroupApplyResponse = components['schemas']['EpisodeGroupApplyResponse']
+
 // ─── Files ────────────────────────────────────────────────────────────────
 
 export type ShowBrief = components['schemas']['jidou__schemas__file_schema__ShowBrief']

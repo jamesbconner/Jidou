@@ -341,6 +341,28 @@ def test_apply_tmdb_metadata_clears_episode_group_map_on_tv_rematch() -> None:
     assert show.episode_group_map is None
 
 
+def test_apply_tmdb_metadata_clears_active_episode_group_on_rematch() -> None:
+    """Bugbot-caught regression: a manually applied episode_group belongs to
+    the OLD tmdb_id -- its episode ids don't exist under the new identity.
+    Left set, the next sync_show_episodes would try to rebuild the *old*
+    identity's group catalog onto the newly rematched show instead of
+    syncing the new native episode list.
+    """
+    session = MagicMock()
+    tmdb = MagicMock()
+    show = _make_show(tmdb_id=100, media_type="tv")
+    show.active_episode_group_id = "old-group-id"
+    show.active_episode_group_name = "Old Group"
+    payload = _make_payload(tmdb_id=200, media_type="tv")
+    data = _make_tmdb_data(title="Different Show")
+
+    orch = ShowRematchOrchestrator(session, tmdb)
+    orch._apply_tmdb_metadata(show, payload, data)
+
+    assert show.active_episode_group_id is None
+    assert show.active_episode_group_name is None
+
+
 def test_apply_tmdb_metadata_falls_back_to_existing_title() -> None:
     """When TMDB returns no name/title, the existing show title is preserved."""
     session = MagicMock()

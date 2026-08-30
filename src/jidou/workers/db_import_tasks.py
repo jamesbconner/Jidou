@@ -53,6 +53,8 @@ _SHOW_HANDLED_COLUMNS = frozenset(
         "external_ids",
         "episode_groups",
         "episode_group_map",
+        "active_episode_group_id",
+        "active_episode_group_name",
         "status",
         "in_production",
         "number_of_seasons",
@@ -353,6 +355,8 @@ def _build_show(row: dict[str, Any]) -> Show:
         external_ids=row.get("external_ids"),
         episode_groups=row.get("episode_groups"),
         episode_group_map=row.get("episode_group_map"),
+        active_episode_group_id=row.get("active_episode_group_id"),
+        active_episode_group_name=row.get("active_episode_group_name"),
         status=row.get("status"),
         in_production=row.get("in_production"),
         number_of_seasons=row.get("number_of_seasons"),
@@ -393,6 +397,10 @@ def _update_show(show: Show, row: dict[str, Any]) -> None:
     show.external_ids = row.get("external_ids", show.external_ids)
     show.episode_groups = row.get("episode_groups", show.episode_groups)
     show.episode_group_map = row.get("episode_group_map", show.episode_group_map)
+    show.active_episode_group_id = row.get("active_episode_group_id", show.active_episode_group_id)
+    show.active_episode_group_name = row.get(
+        "active_episode_group_name", show.active_episode_group_name
+    )
     show.status = row.get("status", show.status)
     show.in_production = row.get("in_production", show.in_production)
     show.number_of_seasons = row.get("number_of_seasons", show.number_of_seasons)

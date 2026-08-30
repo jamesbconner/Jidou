@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from jidou.models.show import ContentType
+from jidou.schemas.episode_schema import EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief
 
 
@@ -112,6 +113,39 @@ class PosterOption(BaseModel):
     iso_639_1: str | None = Field(default=None, description="Language code, or null for textless")
 
 
+class EpisodeGroupSummary(BaseModel):
+    """One TMDB episode_group available for a show, from ``get_episode_groups``."""
+
+    id: str
+    name: str
+    type: int
+    episode_count: int
+    group_count: int
+    is_active: bool = Field(
+        description="Whether this group is the show's current active_episode_group_id"
+    )
+
+
+class EpisodeGroupApplyResponse(BaseModel):
+    """Response for applying an alternate episode grouping to a show.
+
+    Tracking state that could not carry over the switch -- the new episodes
+    are unrelated database rows even when their season/episode numbers
+    happen to coincide with the old ones -- is persisted as an
+    ``OrphanedTrackingRecord`` for manual resolution via the Data Quality
+    surface, the same mechanism used after a show rematch.
+    ``orphaned_file_count`` and ``orphaned_watched_count`` are reported
+    separately so a client doesn't tell the user "N files need rescanning"
+    when some of those N were watched-only episodes with no file at all.
+    """
+
+    episodes: list[EpisodeList]
+    episodes_added: int
+    episodes_removed: int
+    orphaned_file_count: int
+    orphaned_watched_count: int
+
+
 class ShowPaths(BaseModel):
     """Payload for updating a show's local filesystem path."""
 
@@ -158,6 +192,8 @@ class ShowRead(BaseModel):
     external_ids: dict[str, object] | None = None
     episode_groups: list[dict[str, object]] | None = None
     episode_group_map: dict[str, object] | None = None
+    active_episode_group_id: str | None = None
+    active_episode_group_name: str | None = None
     status: str | None = None
     in_production: bool | None = None
     number_of_seasons: int | None = None

@@ -134,6 +134,14 @@ class ShowRematchOrchestrator:
         # failure" contract then correctly leaves this as "unknown" rather
         # than resurrecting the previous identity's stale map.
         show.episode_group_map = None
+        # Likewise, a manually applied episode_group (TMDBOrchestrator.
+        # apply_episode_group) belongs to the OLD tmdb_id -- its episode
+        # ids don't exist under the new identity at all. Left set, the next
+        # sync_show_episodes would try to rebuild the *old* identity's group
+        # catalog onto the newly rematched show instead of syncing the new
+        # native episode list.
+        show.active_episode_group_id = None
+        show.active_episode_group_name = None
 
     async def _snapshot_tracking(
         self,

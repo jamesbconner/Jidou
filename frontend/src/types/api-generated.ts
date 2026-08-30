@@ -550,6 +550,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/episode-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Episode Groups
+         * @description List TMDB alternate episode groupings available for a show.
+         *
+         *     Always fetches fresh from TMDB (via the shared cache/rate-limiter in
+         *     ``TMDBService``) rather than trusting ``show.episode_groups``, since this
+         *     is a user-initiated "pick a group" action and that column may be stale
+         *     or never populated.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         Available episode groups, each flagged with whether it's the show's
+         *         current ``active_episode_group_id``.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found. 422 if the show is a
+         *             movie -- movies have no TMDB episode_groups.
+         */
+        get: operations["list_episode_groups_api_shows__show_id__episode_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shows/{show_id}/episode-groups/{group_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Episode Group
+         * @description Switch a show's episode catalog to a specific TMDB episode grouping.
+         *
+         *     Destructive: replaces every Episode row for the show with the group's
+         *     own episodes. See ``TMDBOrchestrator.apply_episode_group`` for the full
+         *     contract, including how previously tracked episodes are preserved as
+         *     ``OrphanedTrackingRecord`` entries for manual resolution.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show.
+         *         group_id: TMDB episode_group ID, from ``GET .../episode-groups``.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         The updated episode list plus counts of what changed.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found. 422 if the show is a
+         *             movie.
+         */
+        post: operations["apply_episode_group_api_shows__show_id__episode_groups__group_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/rss-stub": {
         parameters: {
             query?: never;
@@ -3033,6 +3109,52 @@ export interface components {
             name: string;
         };
         /**
+         * EpisodeGroupApplyResponse
+         * @description Response for applying an alternate episode grouping to a show.
+         *
+         *     Tracking state that could not carry over the switch -- the new episodes
+         *     are unrelated database rows even when their season/episode numbers
+         *     happen to coincide with the old ones -- is persisted as an
+         *     ``OrphanedTrackingRecord`` for manual resolution via the Data Quality
+         *     surface, the same mechanism used after a show rematch.
+         *     ``orphaned_file_count`` and ``orphaned_watched_count`` are reported
+         *     separately so a client doesn't tell the user "N files need rescanning"
+         *     when some of those N were watched-only episodes with no file at all.
+         */
+        EpisodeGroupApplyResponse: {
+            /** Episodes */
+            episodes: components["schemas"]["EpisodeList"][];
+            /** Episodes Added */
+            episodes_added: number;
+            /** Episodes Removed */
+            episodes_removed: number;
+            /** Orphaned File Count */
+            orphaned_file_count: number;
+            /** Orphaned Watched Count */
+            orphaned_watched_count: number;
+        };
+        /**
+         * EpisodeGroupSummary
+         * @description One TMDB episode_group available for a show, from ``get_episode_groups``.
+         */
+        EpisodeGroupSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: number;
+            /** Episode Count */
+            episode_count: number;
+            /** Group Count */
+            group_count: number;
+            /**
+             * Is Active
+             * @description Whether this group is the show's current active_episode_group_id
+             */
+            is_active: boolean;
+        };
+        /**
          * EpisodeList
          * @description Slim episode record returned by list endpoints.
          */
@@ -4153,6 +4275,10 @@ export interface components {
             episode_group_map?: {
                 [key: string]: unknown;
             } | null;
+            /** Active Episode Group Id */
+            active_episode_group_id?: string | null;
+            /** Active Episode Group Name */
+            active_episode_group_name?: string | null;
             /** Status */
             status?: string | null;
             /** In Production */
@@ -5130,6 +5256,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EpisodeList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_episode_groups_api_shows__show_id__episode_groups_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeGroupSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_episode_group_api_shows__show_id__episode_groups__group_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeGroupApplyResponse"];
                 };
             };
             /** @description Validation Error */

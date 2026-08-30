@@ -9,6 +9,8 @@ import type {
   ShowPatch,
   ShowPaths,
   EpisodeList,
+  EpisodeGroupSummary,
+  EpisodeGroupApplyResponse,
   TmdbSearchResponse,
   DiscoverResult,
   ScannedFileMatch,
@@ -44,6 +46,7 @@ export const showKeys = {
     [...showKeys.all, 'list', sort ?? 'title_asc', limit ?? 500] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
+  episodeGroups: (id: number) => [...showKeys.all, 'episode-groups', id] as const,
   posters: (id: number) => [...showKeys.all, 'posters', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
@@ -68,6 +71,30 @@ export function useShowEpisodes(showId: number) {
   return useQuery({
     queryKey: showKeys.episodes(showId),
     queryFn: () => api.get<EpisodeList[]>(`/shows/${showId}/episodes`),
+  })
+}
+
+export function useEpisodeGroups(showId: number) {
+  return useQuery({
+    queryKey: showKeys.episodeGroups(showId),
+    queryFn: () => api.get<EpisodeGroupSummary[]>(`/shows/${showId}/episode-groups`),
+  })
+}
+
+export function useApplyEpisodeGroup(showId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (groupId: string) =>
+      api.post<EpisodeGroupApplyResponse>(`/shows/${showId}/episode-groups/${groupId}/apply`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
+      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+      qc.invalidateQueries({ queryKey: showKeys.episodeGroups(showId) })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+      // Episode count/tracking changed materially -- same cache-namespace
+      // gap as useRematchShow, which this mutation is functionally similar to.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
   })
 }
 
