@@ -121,6 +121,10 @@ def _session_override(
     watched_count: int = 0,
     missing_count: int = 0,
     full_season_count: int = 0,
+    aired_count: int = 0,
+    matched_ep_count: int = 0,
+    aired_season_count: int = 0,
+    matched_full_season_count: int = 0,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -136,10 +140,23 @@ def _session_override(
         result.scalar_one_or_none.return_value = single
         result.scalars.return_value.all.return_value = items
         # list_shows returns (show, ep_count, watched_ep_count, file_count,
-        # missing_ep_count, missing_full_season_count, has_active_rss) tuples
-        # via .all()
+        # missing_ep_count, missing_full_season_count, aired_ep_count,
+        # matched_ep_count, aired_season_count, matched_full_season_count,
+        # has_active_rss) tuples via .all()
         result.all.return_value = [
-            (item, 0, watched_count, 0, missing_count, full_season_count, has_active_rss)
+            (
+                item,
+                0,
+                watched_count,
+                0,
+                missing_count,
+                full_season_count,
+                aired_count,
+                matched_ep_count,
+                aired_season_count,
+                matched_full_season_count,
+                has_active_rss,
+            )
             for item in items
         ]
         session.execute = AsyncMock(return_value=result)
@@ -279,6 +296,92 @@ def test_list_shows_zeroes_missing_episode_count_when_tracking_disabled() -> Non
         response = TestClient(app).get("/api/shows")
         assert response.status_code == 200
         assert response.json()[0]["missing_episode_count"] == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_aired_episode_count() -> None:
+    """aired_episode_count reflects the correlated aired-count subquery per show."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], aired_count=12)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["aired_episode_count"] == 12
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_matched_episode_count() -> None:
+    """matched_episode_count reflects the correlated aired-and-tracked count subquery."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], matched_ep_count=9)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["matched_episode_count"] == 9
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_aired_season_count() -> None:
+    """aired_season_count reflects the correlated season-aggregation subquery."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show], aired_season_count=4)
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["aired_season_count"] == 4
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_matched_full_season_count() -> None:
+    """matched_full_season_count reflects the correlated season-aggregation subquery."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(
+        many=[show], matched_full_season_count=3
+    )
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["matched_full_season_count"] == 3
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_does_not_zero_aired_or_matched_counts_when_tracking_disabled() -> None:
+    """aired_*/matched_* counts stay populated even when track_missing_episodes=False.
+
+    Unlike missing_episode_count/missing_full_season_count, these are
+    informational totals, not part of the missing-tracking feature.
+    """
+    from jidou.database import get_session
+
+    show = _make_show(track_missing_episodes=False)
+    app.dependency_overrides[get_session] = _session_override(
+        many=[show],
+        aired_count=12,
+        matched_ep_count=9,
+        aired_season_count=4,
+        matched_full_season_count=3,
+    )
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        body = response.json()[0]
+        assert body["aired_episode_count"] == 12
+        assert body["matched_episode_count"] == 9
+        assert body["aired_season_count"] == 4
+        assert body["matched_full_season_count"] == 3
     finally:
         app.dependency_overrides.clear()
 
