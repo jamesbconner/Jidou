@@ -23,6 +23,10 @@ function makeShow(overrides: Partial<ShowList> = {}): ShowList {
     matched_file_count: 10,
     missing_episode_count: 0,
     missing_full_season_count: 0,
+    aired_episode_count: 10,
+    matched_episode_count: 10,
+    aired_season_count: 1,
+    matched_full_season_count: 1,
     has_active_rss_subscription: false,
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -216,6 +220,30 @@ describe('Shows page — Missing Episodes tab', () => {
     fireEvent.change(screen.getByDisplayValue('Any missing'), { target: { value: 'eq1' } })
     expect(screen.getByText('One Missing')).toBeInTheDocument()
     expect(screen.queryByText('Two Missing')).not.toBeInTheDocument()
+  })
+
+  test('shows total/matched episode and season counts alongside the missing counts', async () => {
+    mockShowsPage([
+      makeShow({
+        id: 1,
+        title: 'Partial Show',
+        missing_episode_count: 3,
+        missing_full_season_count: 0,
+        aired_episode_count: 12,
+        matched_episode_count: 9,
+        aired_season_count: 2,
+        matched_full_season_count: 1,
+      }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Partial Show')).toBeInTheDocument())
+
+    const row = screen.getByText('Partial Show').closest('tr')
+    expect(row).not.toBeNull()
+    expect(row!.textContent).toContain('12')
+    expect(row!.textContent).toContain('9')
+    expect(row!.textContent).toContain('2')
+    expect(row!.textContent).toContain('1')
   })
 
   test('filters the list to shows missing a whole season', async () => {

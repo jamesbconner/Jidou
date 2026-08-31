@@ -196,14 +196,24 @@ export interface paths {
          *             ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
          *             ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
          *         today: The caller's notion of "today", used to decide whether an
-         *             episode has aired for ``missing_episode_count``. Defaults to the
-         *             server's current date; overridable so a client on a different
-         *             timezone doesn't disagree with the server about "today".
+         *             episode has aired for ``missing_episode_count`` and the other
+         *             aired-only counts below. Defaults to the server's current date;
+         *             overridable so a client on a different timezone doesn't disagree
+         *             with the server about "today".
          *             ``missing_episode_count`` and ``missing_full_season_count`` are
          *             reported as 0 for shows with ``track_missing_episodes=False``,
          *             regardless of actual gaps. ``missing_full_season_count`` counts
          *             seasons (excluding season 0/specials) where every aired episode
          *             is untracked.
+         *             ``aired_episode_count`` and ``matched_episode_count`` are the
+         *             total aired episodes and the subset of those that are tracked,
+         *             respectively (``matched_episode_count + missing_episode_count
+         *             == aired_episode_count``, ignoring the ``track_missing_episodes``
+         *             zeroing above). ``aired_season_count`` and
+         *             ``matched_full_season_count`` are the season-level equivalents:
+         *             seasons with at least one aired episode, and the subset of those
+         *             fully tracked. Unlike the ``missing_*`` fields, these four are
+         *             always computed regardless of ``track_missing_episodes``.
          *         db_session: DB session (injected).
          *
          *     Returns:
@@ -4162,6 +4172,26 @@ export interface components {
              * @default 0
              */
             missing_full_season_count: number;
+            /**
+             * Aired Episode Count
+             * @default 0
+             */
+            aired_episode_count: number;
+            /**
+             * Matched Episode Count
+             * @default 0
+             */
+            matched_episode_count: number;
+            /**
+             * Aired Season Count
+             * @default 0
+             */
+            aired_season_count: number;
+            /**
+             * Matched Full Season Count
+             * @default 0
+             */
+            matched_full_season_count: number;
             /**
              * Has Active Rss Subscription
              * @default false

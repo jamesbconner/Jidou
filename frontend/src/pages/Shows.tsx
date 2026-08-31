@@ -875,7 +875,11 @@ export default function Shows() {
                   <tr>
                     <th className="px-4 py-2 text-left">Show</th>
                     <th className="px-4 py-2 text-left">Episodes</th>
+                    <th className="px-4 py-2 text-left">Total Episodes</th>
+                    <th className="px-4 py-2 text-left">Episodes Matched</th>
                     <th className="px-4 py-2 text-left">Seasons</th>
+                    <th className="px-4 py-2 text-left">Total Seasons</th>
+                    <th className="px-4 py-2 text-left">Seasons Matched</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -895,6 +899,12 @@ export default function Shows() {
                           {s.missing_episode_count}
                         </span>
                       </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                        {s.aired_episode_count}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                        {s.matched_episode_count}
+                      </td>
                       <td className="px-4 py-2">
                         {s.missing_full_season_count > 0 ? (
                           <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-xs font-medium rounded-full px-2 py-0.5">
@@ -903,6 +913,12 @@ export default function Shows() {
                         ) : (
                           <span className="text-gray-300 dark:text-gray-600">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                        {s.aired_season_count}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
+                        {s.matched_full_season_count}
                       </td>
                     </tr>
                   ))}

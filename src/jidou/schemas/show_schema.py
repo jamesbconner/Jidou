@@ -321,5 +321,11 @@ class ShowList(BaseModel):
     # is untracked. Reported as 0 when track_missing_episodes is False,
     # matching missing_episode_count.
     missing_full_season_count: int = 0
+    # Aired-only totals/matches, always computed regardless of
+    # track_missing_episodes (unlike the missing_* counts above).
+    aired_episode_count: int = 0
+    matched_episode_count: int = 0
+    aired_season_count: int = 0
+    matched_full_season_count: int = 0
     has_active_rss_subscription: bool = False
     created_at: datetime
