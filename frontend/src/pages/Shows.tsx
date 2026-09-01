@@ -874,12 +874,12 @@ export default function Shows() {
                 <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
                   <tr>
                     <th className="px-4 py-2 text-left">Show</th>
-                    <th className="px-4 py-2 text-left">Episodes</th>
-                    <th className="px-4 py-2 text-left">Total Episodes</th>
+                    <th className="px-4 py-2 text-left">Missing Episodes</th>
                     <th className="px-4 py-2 text-left">Episodes Matched</th>
-                    <th className="px-4 py-2 text-left">Seasons</th>
-                    <th className="px-4 py-2 text-left">Total Seasons</th>
+                    <th className="px-4 py-2 text-left">Total Episodes</th>
+                    <th className="px-4 py-2 text-left">Missing Seasons</th>
                     <th className="px-4 py-2 text-left">Seasons Matched</th>
+                    <th className="px-4 py-2 text-left">Total Seasons</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -900,10 +900,10 @@ export default function Shows() {
                         </span>
                       </td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.aired_episode_count}
+                        {s.matched_episode_count}
                       </td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.matched_episode_count}
+                        {s.aired_episode_count}
                       </td>
                       <td className="px-4 py-2">
                         {s.missing_full_season_count > 0 ? (
@@ -915,10 +915,10 @@ export default function Shows() {
                         )}
                       </td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.aired_season_count}
+                        {s.matched_full_season_count}
                       </td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.matched_full_season_count}
+                        {s.aired_season_count}
                       </td>
                     </tr>
                   ))}
