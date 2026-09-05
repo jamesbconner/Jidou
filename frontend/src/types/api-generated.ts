@@ -997,10 +997,20 @@ export interface paths {
          *     An alternative to bulk text-file import for episodes whose files are
          *     already sitting at their final on-disk location — e.g. picking up
          *     stragglers a prior import missed, or files that predate Jidou entirely.
-         *     Read-only: nothing is written. The same matching pipeline bulk path-import
-         *     uses (regex heuristics, episode_group remap, LLM fallback — see
+         *     The same matching pipeline bulk path-import uses (regex heuristics,
+         *     episode_group remap, LLM fallback — see
          *     :func:`~jidou.services.episode_file_matching.match_entry_to_episode`)
          *     resolves each file to a proposed episode.
+         *
+         *     Side effect: before building proposals, this also reconciles the show's
+         *     existing ``downloaded_files`` rows against disk — any row whose
+         *     ``local_path`` no longer exists (renamed/moved/deleted outside the app)
+         *     is flagged ``missing``, and any previously-flagged row found present
+         *     again is restored — see
+         *     :func:`~jidou.services.file_reconciliation.reconcile_local_file_existence`.
+         *     Aside from that status housekeeping, matching itself is read-only:
+         *     nothing is written until a proposal is confirmed via
+         *     ``link-file``.
          *
          *     Files whose path matches an already-recorded ``DownloadedFile`` for this
          *     show (a prior import or download — compared via
@@ -1175,6 +1185,37 @@ export interface paths {
         get: operations["list_files_api_files_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/verify-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Paths
+         * @description Check which of the given candidate paths currently exist on disk.
+         *
+         *     Pure filesystem check, no database access — used by pickers (e.g. the
+         *     "Pick existing file" match dropdown) to filter out stale candidates
+         *     whose backing file was renamed/moved/deleted outside the app, without
+         *     waiting for a Scan Local Files reconciliation pass to catch up.
+         *
+         *     Args:
+         *         payload: Candidate paths to check (max 500 per request).
+         *
+         *     Returns:
+         *         The subset of ``payload.paths`` that are real files right now.
+         */
+        post: operations["verify_paths_api_files_verify_paths_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3333,6 +3374,7 @@ export interface components {
          *
          *         routed ──► matched  (Fix Eps reassignment; triggers re-routing)
          *         * ──► error         (any unexpected failure at any stage)
+         *         * ──► missing ──► unmatched / matched  (local file vanishes, then reappears)
          *
          *     Transitions:
          *         discovered  → downloading   Download task picks up the file.
@@ -3349,13 +3391,20 @@ export interface components {
          *         routing     → error         File move fails (permissions, path missing, etc.).
          *         routed      → matched       Fix Eps reassignment clears routing and re-queues.
          *         *           → error         Unexpected exception at any stage.
+         *         *           → missing       ``local_path`` no longer exists on disk (e.g. renamed
+         *                                      or moved outside the app) — detected during a
+         *                                      Scan Local Files reconciliation pass; any settled
+         *                                      status can transition here except the in-flight
+         *                                      ones (discovered/downloading/pending/routing).
+         *         missing     → unmatched     File reappears at the same path and had no episode.
+         *         missing     → matched       File reappears at the same path and had an episode.
          *
          *     Note:
          *         ``pending`` is a legacy value; new records use ``discovered`` instead.
          *         ``ignored`` is terminal — no outbound transitions.
          * @enum {string}
          */
-        FileStatus: "discovered" | "downloading" | "downloaded" | "unmatched" | "matched" | "routing" | "routed" | "error" | "pending" | "seeded" | "ignored";
+        FileStatus: "discovered" | "downloading" | "downloaded" | "unmatched" | "matched" | "routing" | "routed" | "error" | "pending" | "seeded" | "ignored" | "missing";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4563,6 +4612,22 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VerifyPathsRequest
+         * @description Request body for checking which candidate paths still exist on disk.
+         */
+        VerifyPathsRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * VerifyPathsResponse
+         * @description Subset of the requested paths confirmed to exist on disk.
+         */
+        VerifyPathsResponse: {
+            /** Existing */
+            existing: string[];
         };
         /**
          * WatchlistCreate
@@ -5855,6 +5920,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_paths_api_files_verify_paths_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyPathsResponse"];
                 };
             };
             /** @description Validation Error */

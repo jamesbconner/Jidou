@@ -215,4 +215,57 @@ describe('LinkFileModal — combined existing-file + imported pool', () => {
       expect(onClose).toHaveBeenCalled()
     })
   })
+
+  test('filters out a candidate whose backing file no longer exists on disk', async () => {
+    const target = episode({ id: 10 })
+    const otherEp = episode({
+      id: 11,
+      episode_number: 2,
+      file_tracked: true,
+      tracked_filename: '/media/show/ep02.mkv',
+      tracked_source: 'import',
+    })
+    const realFile = file({
+      id: 100,
+      original_filename: '/media/show/real.mkv',
+      local_path: '/media/show/real.mkv',
+      status: 'unmatched',
+    })
+    const renamedAwayFile = file({
+      id: 101,
+      original_filename: '/media/show/renamed-away.mkv',
+      local_path: '/media/show/renamed-away.mkv',
+      status: 'unmatched',
+    })
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/files/verify-paths') && init?.method === 'POST') {
+        // Only the still-real file and the still-real imported path exist.
+        return mockResponse({ existing: ['/media/show/real.mkv', '/media/show/ep02.mkv'] })
+      }
+      if (url.includes('/config')) return mockResponse({})
+      if (url.endsWith('/shows/1/episodes')) return mockResponse([target, otherEp])
+      if (url.includes('/files') && url.includes('show_id=1')) {
+        return mockResponse([realFile, renamedAwayFile])
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(LinkFileModal, {
+        showId: 1,
+        showLocalPath: null,
+        episode: target,
+        onClose: vi.fn(),
+      }),
+      { wrapper: makeWrapper() },
+    )
+
+    expect(await screen.findByText(/real\.mkv/)).toBeInTheDocument()
+    expect(screen.getByText(/ep02\.mkv/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText(/renamed-away\.mkv/)).not.toBeInTheDocument()
+    })
+  })
 })

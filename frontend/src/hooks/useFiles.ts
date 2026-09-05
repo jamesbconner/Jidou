@@ -145,6 +145,20 @@ export function useLinkMovieFile() {
   })
 }
 
+/**
+ * Checks which of the given candidate paths still exist on disk — used to
+ * filter stale entries (renamed/moved/deleted outside the app) out of
+ * "pick existing file" pickers before a Scan Local Files reconciliation
+ * pass has had a chance to catch up.
+ */
+export function useVerifyPaths(paths: string[]) {
+  return useQuery({
+    queryKey: [...fileKeys.all, 'verify-paths', ...paths] as const,
+    queryFn: () => api.post<{ existing: string[] }>('/files/verify-paths', { paths }),
+    enabled: paths.length > 0,
+  })
+}
+
 export function useTmdbSuggestions(fileId: number | null) {
   return useQuery({
     queryKey: [...fileKeys.all, 'tmdb-suggestions', fileId] as const,

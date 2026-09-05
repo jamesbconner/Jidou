@@ -1,6 +1,8 @@
 """API routes for downloaded file management."""
 
+import asyncio
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -14,7 +16,13 @@ from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
 from jidou.models.episode import Episode
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
-from jidou.schemas.file_schema import FileMatchRequest, FilePatch, FileRead
+from jidou.schemas.file_schema import (
+    FileMatchRequest,
+    FilePatch,
+    FileRead,
+    VerifyPathsRequest,
+    VerifyPathsResponse,
+)
 from jidou.services.episode_tracking import (
     clear_if_unreferenced,
     dismiss_orphans_for_file,
@@ -95,6 +103,29 @@ async def list_files(
     )
     result = await db_session.execute(stmt)
     return list(result.scalars().all())
+
+
+@router.post("/verify-paths", response_model=VerifyPathsResponse)
+async def verify_paths(payload: VerifyPathsRequest) -> VerifyPathsResponse:
+    """Check which of the given candidate paths currently exist on disk.
+
+    Pure filesystem check, no database access — used by pickers (e.g. the
+    "Pick existing file" match dropdown) to filter out stale candidates
+    whose backing file was renamed/moved/deleted outside the app, without
+    waiting for a Scan Local Files reconciliation pass to catch up.
+
+    Args:
+        payload: Candidate paths to check (max 500 per request).
+
+    Returns:
+        The subset of ``payload.paths`` that are real files right now.
+    """
+    # Filesystem I/O is synchronous — run it off the event loop, same as the
+    # local-directory walk in the scan-local-files endpoint.
+    exists = await asyncio.to_thread(lambda: [Path(p).is_file() for p in payload.paths])
+    return VerifyPathsResponse(
+        existing=[p for p, ok in zip(payload.paths, exists, strict=True) if ok]
+    )
 
 
 @router.get("/unmatched", response_model=list[FileRead])

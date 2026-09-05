@@ -1,5 +1,6 @@
 """Tests for the /files API routes."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
@@ -1023,3 +1024,39 @@ def test_tmdb_suggestions_file_not_found_returns_404() -> None:
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/files/verify-paths
+# ---------------------------------------------------------------------------
+
+
+def test_verify_paths_returns_only_existing_paths(tmp_path: Path) -> None:
+    """Only paths that are real files on disk are echoed back."""
+    real_file = tmp_path / "real.mkv"
+    real_file.write_text("data")
+    missing_path = str(tmp_path / "gone.mkv")
+
+    response = TestClient(app).post(
+        "/api/files/verify-paths", json={"paths": [str(real_file), missing_path]}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"existing": [str(real_file)]}
+
+
+def test_verify_paths_empty_list_returns_empty_list() -> None:
+    """An empty candidate list returns an empty existing list, no filesystem work."""
+    response = TestClient(app).post("/api/files/verify-paths", json={"paths": []})
+
+    assert response.status_code == 200
+    assert response.json() == {"existing": []}
+
+
+def test_verify_paths_rejects_too_many_paths() -> None:
+    """More than 500 candidate paths is rejected with a validation error."""
+    response = TestClient(app).post(
+        "/api/files/verify-paths", json={"paths": [f"/tmp/{i}.mkv" for i in range(501)]}
+    )
+
+    assert response.status_code == 422
