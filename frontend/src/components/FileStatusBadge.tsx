@@ -16,6 +16,7 @@ const STYLE: Record<FileStatus, string> = {
     'bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]',
   seeded: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   ignored: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+  missing: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
 }
 
 export function FileStatusBadge({ status }: { status: FileStatus }) {
