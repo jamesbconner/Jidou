@@ -29,6 +29,7 @@ from jidou.services.episode_tracking import (
     mark_episode_tracked,
 )
 from jidou.services.llm_service import LLMService
+from jidou.services.path_transport import decode_path_bytes
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -114,15 +115,28 @@ async def verify_paths(payload: VerifyPathsRequest) -> VerifyPathsResponse:
     whose backing file was renamed/moved/deleted outside the app, without
     waiting for a Scan Local Files reconciliation pass to catch up.
 
+    Only meaningful for paths known to be container-side (e.g. a real
+    ``DownloadedFile.local_path`` from the normal download/route pipeline).
+    Callers must not send paths that might be host/catalog references
+    outside this container's filesystem (import-tracked files) — those can
+    never resolve here regardless of whether the file is still present, so
+    they would always be reported as missing.
+
     Args:
-        payload: Candidate paths to check (max 500 per request).
+        payload: Candidate paths to check (max 500 per request), in the
+            JSON/DB-safe encoded transport form (see ``path_transport.py``).
 
     Returns:
-        The subset of ``payload.paths`` that are real files right now.
+        The subset of ``payload.paths`` that are real files right now, in
+        their original (still-encoded) form.
     """
     # Filesystem I/O is synchronous — run it off the event loop, same as the
-    # local-directory walk in the scan-local-files endpoint.
-    exists = await asyncio.to_thread(lambda: [Path(p).is_file() for p in payload.paths])
+    # local-directory walk in the scan-local-files endpoint. Paths are stored
+    # encoded (literal '%' as '%25', non-UTF-8 bytes escaped) so must be
+    # decoded before touching disk, same as link-file/RouteOrchestrator.
+    exists = await asyncio.to_thread(
+        lambda: [Path(decode_path_bytes(p)).is_file() for p in payload.paths]
+    )
     return VerifyPathsResponse(
         existing=[p for p, ok in zip(payload.paths, exists, strict=True) if ok]
     )

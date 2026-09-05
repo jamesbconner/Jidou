@@ -268,4 +268,59 @@ describe('LinkFileModal — combined existing-file + imported pool', () => {
       expect(screen.queryByText(/renamed-away\.mkv/)).not.toBeInTheDocument()
     })
   })
+
+  test('never existence-checks import-tracked candidates (host/catalog paths)', async () => {
+    // Regression test (Bugbot finding on PR #568): bulk path-import can
+    // record a host/catalog path (e.g. a Windows drive letter) that never
+    // resolves inside this container, whether on a synthetic-import-backed
+    // DownloadedFile row or on Episode.tracked_filename. Neither should ever
+    // be sent to verify-paths, and both must keep showing up regardless of
+    // what verify-paths would say about them.
+    const target = episode({ id: 10 })
+    const importEp = episode({
+      id: 11,
+      episode_number: 2,
+      file_tracked: true,
+      tracked_filename: 'Z:\\anime tv\\Show\\ep02.mkv',
+      tracked_source: 'import',
+    })
+    const importBackedFile = file({
+      id: 100,
+      original_filename: 'ep03.mkv',
+      remote_path: 'synthetic-import://Z:\\anime tv\\Show\\ep03.mkv',
+      local_path: 'Z:\\anime tv\\Show\\ep03.mkv',
+      status: 'routed',
+    })
+    let verifyPathsBody: unknown = null
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/files/verify-paths') && init?.method === 'POST') {
+        verifyPathsBody = JSON.parse(String(init.body))
+        // Host/catalog paths can never resolve inside this container.
+        return mockResponse({ existing: [] })
+      }
+      if (url.includes('/config')) return mockResponse({})
+      if (url.endsWith('/shows/1/episodes')) return mockResponse([target, importEp])
+      if (url.includes('/files') && url.includes('show_id=1')) {
+        return mockResponse([importBackedFile])
+      }
+      return mockResponse(null)
+    })
+
+    render(
+      createElement(LinkFileModal, {
+        showId: 1,
+        showLocalPath: null,
+        episode: target,
+        onClose: vi.fn(),
+      }),
+      { wrapper: makeWrapper() },
+    )
+
+    expect(await screen.findByText(/ep02\.mkv/)).toBeInTheDocument()
+    expect(screen.getByText(/ep03\.mkv/)).toBeInTheDocument()
+    // No candidates were safe to check, so the verify-paths query never fires.
+    expect(verifyPathsBody).toBeNull()
+  })
 })

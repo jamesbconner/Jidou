@@ -1045,6 +1045,26 @@ def test_verify_paths_returns_only_existing_paths(tmp_path: Path) -> None:
     assert response.json() == {"existing": [str(real_file)]}
 
 
+def test_verify_paths_decodes_encoded_path_before_checking(tmp_path: Path) -> None:
+    """A percent-encoded candidate path pointing at a real file is reported as existing.
+
+    Regression test (Bugbot finding on PR #568): candidate paths arrive in
+    the JSON/DB-safe encoded transport form (see path_transport.py), not a
+    directly usable filesystem path.
+    """
+    from jidou.services.path_transport import encode_path_bytes
+
+    real_file = tmp_path / "100% Real.mkv"
+    real_file.write_text("data")
+    encoded_path = encode_path_bytes(str(real_file))
+    assert "%25" in encoded_path  # sanity: the literal '%' really is escaped
+
+    response = TestClient(app).post("/api/files/verify-paths", json={"paths": [encoded_path]})
+
+    assert response.status_code == 200
+    assert response.json() == {"existing": [encoded_path]}
+
+
 def test_verify_paths_empty_list_returns_empty_list() -> None:
     """An empty candidate list returns an empty existing list, no filesystem work."""
     response = TestClient(app).post("/api/files/verify-paths", json={"paths": []})

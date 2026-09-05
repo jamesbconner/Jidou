@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.services.path_transport import decode_path_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,15 @@ class ReconciliationResult:
 
 
 def _paths_present(paths: list[str]) -> list[bool]:
-    """Synchronously check which of *paths* are real files. Run off the event loop."""
-    return [Path(p).is_file() for p in paths]
+    """Synchronously check which of *paths* are real files. Run off the event loop.
+
+    ``local_path`` is stored in its JSON/DB-safe encoded transport form (see
+    ``path_transport.py`` — literal ``%`` becomes ``%25``, non-UTF-8 bytes are
+    escaped), so it must be decoded back to the exact on-disk bytes before
+    ``Path.is_file()`` — same as ``link-file`` and ``RouteOrchestrator`` do —
+    or an encoded-but-present file would be misreported as gone.
+    """
+    return [Path(decode_path_bytes(p)).is_file() for p in paths]
 
 
 async def reconcile_local_file_existence(
@@ -49,6 +57,14 @@ async def reconcile_local_file_existence(
     file has reappeared at the same path. Skips rows in an in-flight pipeline
     status, where ``local_path`` may be unset or only a transient staging path.
 
+    Also skips synthetic-import rows (``remote_path`` starting with
+    ``synthetic-import://``) entirely: these record a file bulk path-import
+    or "Enter file path" linked after the fact, sometimes using the host's
+    own filesystem path (e.g. a Windows drive letter) rather than a path
+    visible inside this container — there's no way to tell the two apart
+    from the stored string alone, so treating either as verifiable risks
+    flagging perfectly valid tracked files as missing.
+
     Args:
         db_session: DB session (injected).
         show_id: Show whose files should be reconciled.
@@ -60,6 +76,7 @@ async def reconcile_local_file_existence(
         DownloadedFile.show_id == show_id,
         DownloadedFile.local_path.is_not(None),
         DownloadedFile.status.not_in(_IN_FLIGHT_STATUSES),
+        ~DownloadedFile.remote_path.like("synthetic-import://%"),
     )
     rows = list((await db_session.execute(stmt)).scalars().all())
     if not rows:
