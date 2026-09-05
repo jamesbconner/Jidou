@@ -4167,7 +4167,9 @@ def test_scan_show_local_files_skips_already_imported_paths(tmp_path: Path) -> N
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = [(str(real_file),)]
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4207,7 +4209,9 @@ def test_scan_show_local_files_returns_matched_status_for_untracked_episode(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4252,7 +4256,9 @@ def test_scan_show_local_files_returns_conflict_status_for_tracked_episode(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4289,7 +4295,9 @@ def test_scan_show_local_files_returns_unmatched_status_when_no_episode_found(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4331,7 +4339,9 @@ def test_scan_show_local_files_marks_second_duplicate_match_as_conflict(tmp_path
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4377,7 +4387,9 @@ def test_scan_show_local_files_skips_already_imported_path_across_styles(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = [(windows_style_existing,)]
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4427,7 +4439,9 @@ def test_scan_show_local_files_skips_already_imported_path_with_literal_percent(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = [(existing_local_path,)]
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4472,7 +4486,9 @@ def test_scan_show_local_files_filename_is_human_readable_display_form(
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4508,7 +4524,9 @@ def test_scan_show_local_files_runs_directory_walk_off_the_event_loop(tmp_path: 
         show_result.scalar_one_or_none.return_value = show
         existing_result = MagicMock()
         existing_result.all.return_value = []
-        session.execute = AsyncMock(side_effect=[show_result, existing_result])
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
         yield session
 
     app.dependency_overrides[get_session] = _session
@@ -4522,6 +4540,48 @@ def test_scan_show_local_files_runs_directory_walk_off_the_event_loop(tmp_path: 
         mock_to_thread.assert_called_once()
         # First positional arg is the function being offloaded.
         assert mock_to_thread.call_args[0][0].__name__ == "scan_show_directory"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_scan_show_local_files_marks_vanished_row_missing(tmp_path: Path) -> None:
+    """A prior DownloadedFile row whose local_path no longer exists is flagged missing.
+
+    Regression test for stale "pick existing file" picker entries: renaming a
+    file outside the app used to leave its downloaded_files row pointing at a
+    dead path forever. Scan Local Files now reconciles this before returning
+    its proposals.
+    """
+    from jidou.api.dependencies import get_llm_service
+    from jidou.database import get_session
+    from jidou.models.downloaded_file import FileStatus
+
+    show = _make_show(id=1, local_path=str(tmp_path))
+    show.episode_group_map = None
+
+    stale_row = MagicMock()
+    stale_row.local_path = str(tmp_path / "renamed-away.mkv")
+    stale_row.status = FileStatus.UNMATCHED
+    stale_row.episode_id = None
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        reconcile_result = MagicMock()
+        reconcile_result.scalars.return_value.all.return_value = [stale_row]
+        existing_result = MagicMock()
+        existing_result.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, reconcile_result, existing_result])
+        session.commit = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
+    try:
+        response = TestClient(app).post("/api/shows/1/scan-local-files")
+        assert response.status_code == 200
+        assert stale_row.status == FileStatus.MISSING
     finally:
         app.dependency_overrides.clear()
 

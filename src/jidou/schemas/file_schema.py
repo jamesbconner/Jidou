@@ -105,6 +105,18 @@ class FileMatchRequest(BaseModel):
     )
 
 
+class VerifyPathsRequest(BaseModel):
+    """Request body for checking which candidate paths still exist on disk."""
+
+    paths: list[str] = Field(max_length=500)
+
+
+class VerifyPathsResponse(BaseModel):
+    """Subset of the requested paths confirmed to exist on disk."""
+
+    existing: list[str]
+
+
 class FilePatch(BaseModel):
     """Request body for manually overriding fields on a downloaded file."""
 

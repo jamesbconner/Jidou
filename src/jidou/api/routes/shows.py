@@ -45,6 +45,7 @@ from jidou.services.cache import cache
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.episode_watching import clear_episode_watched, mark_episode_watched
+from jidou.services.file_reconciliation import reconcile_local_file_existence
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_resolution import resolve_show_local_path
@@ -1845,10 +1846,20 @@ async def scan_show_local_files(
     An alternative to bulk text-file import for episodes whose files are
     already sitting at their final on-disk location — e.g. picking up
     stragglers a prior import missed, or files that predate Jidou entirely.
-    Read-only: nothing is written. The same matching pipeline bulk path-import
-    uses (regex heuristics, episode_group remap, LLM fallback — see
+    The same matching pipeline bulk path-import uses (regex heuristics,
+    episode_group remap, LLM fallback — see
     :func:`~jidou.services.episode_file_matching.match_entry_to_episode`)
     resolves each file to a proposed episode.
+
+    Side effect: before building proposals, this also reconciles the show's
+    existing ``downloaded_files`` rows against disk — any row whose
+    ``local_path`` no longer exists (renamed/moved/deleted outside the app)
+    is flagged ``missing``, and any previously-flagged row found present
+    again is restored — see
+    :func:`~jidou.services.file_reconciliation.reconcile_local_file_existence`.
+    Aside from that status housekeeping, matching itself is read-only:
+    nothing is written until a proposal is confirmed via
+    ``link-file``.
 
     Files whose path matches an already-recorded ``DownloadedFile`` for this
     show (a prior import or download — compared via
@@ -1886,6 +1897,8 @@ async def scan_show_local_files(
         raise HTTPException(status_code=404, detail="Show not found")
     if not show.local_path:
         raise HTTPException(status_code=422, detail="Show has no local path configured")
+
+    await reconcile_local_file_existence(db_session, show_id)
 
     # Filesystem I/O is synchronous — run it off the event loop so a large or
     # slow-mounted show directory doesn't stall every other concurrent request.

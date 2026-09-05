@@ -31,6 +31,7 @@ class FileStatus(StrEnum):
 
         routed ──► matched  (Fix Eps reassignment; triggers re-routing)
         * ──► error         (any unexpected failure at any stage)
+        * ──► missing ──► unmatched / matched  (local file vanishes, then reappears)
 
     Transitions:
         discovered  → downloading   Download task picks up the file.
@@ -47,6 +48,13 @@ class FileStatus(StrEnum):
         routing     → error         File move fails (permissions, path missing, etc.).
         routed      → matched       Fix Eps reassignment clears routing and re-queues.
         *           → error         Unexpected exception at any stage.
+        *           → missing       ``local_path`` no longer exists on disk (e.g. renamed
+                                     or moved outside the app) — detected during a
+                                     Scan Local Files reconciliation pass; any settled
+                                     status can transition here except the in-flight
+                                     ones (discovered/downloading/pending/routing).
+        missing     → unmatched     File reappears at the same path and had no episode.
+        missing     → matched       File reappears at the same path and had an episode.
 
     Note:
         ``pending`` is a legacy value; new records use ``discovered`` instead.
@@ -69,6 +77,11 @@ class FileStatus(StrEnum):
     # Terminal state for files that are downloaded (so they're never re-fetched)
     # but deliberately excluded from parse/match/route — see IgnoredReason.
     IGNORED = "ignored"
+    # Set when a Scan Local Files reconciliation pass finds local_path no
+    # longer exists on disk (renamed/moved/deleted outside the app). Reverts
+    # to unmatched/matched if a later pass finds the file back at the same
+    # path — see services/file_reconciliation.py.
+    MISSING = "missing"
 
 
 class MatchedBy(StrEnum):

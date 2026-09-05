@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useFilesByShow, useLinkEpisodeFile, fileKeys } from '@/hooks/useFiles'
+import { useFilesByShow, useLinkEpisodeFile, useVerifyPaths, fileKeys } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -36,6 +36,7 @@ const UNAVAILABLE_STATUSES = new Set<FileStatus>([
   'routing',
   'ignored',
   'seeded',
+  'missing',
 ])
 
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
@@ -52,7 +53,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   // covers files displaced by a mis-route (which keep their prior status,
   // e.g. 'routed', rather than resetting to 'unmatched') alongside files
   // that never matched in the first place.
-  const availableFiles = useMemo(
+  const candidateFiles = useMemo(
     () =>
       showFiles
         .filter((f) => f.episode_id === null && !UNAVAILABLE_STATUSES.has(f.status))
@@ -62,7 +63,11 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
 
   // Filenames tracked via path-import have no DownloadedFile row, so they
   // can't come from useFilesByShow — pulled separately from the show's
-  // other episodes, same pool AssignImportModal draws from.
+  // other episodes, same pool AssignImportModal draws from. Never existence-
+  // checked: an import-tracked path may be a host/catalog reference (bulk
+  // path-import can record e.g. a Windows drive-letter path) rather than
+  // something visible inside this container's filesystem, so a "missing"
+  // result here wouldn't be trustworthy — see file_reconciliation.py.
   const importPool = useMemo(() => {
     return episodes
       .filter((ep) => ep.tracked_filename && ep.tracked_source === 'import')
@@ -73,6 +78,35 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
       }))
       .sort((a, b) => a.filename.localeCompare(b.filename))
   }, [episodes])
+
+  // Same host/catalog-path caveat applies to any DownloadedFile row created
+  // by that same import path (remote_path carries the synthetic-import://
+  // marker) — exclude those from the live check too, same reasoning as
+  // importPool above.
+  const isImportBacked = (f: FileRead) => f.remote_path.startsWith('synthetic-import://')
+
+  // Live existence check on top of the DB-derived candidates above: a file
+  // renamed/moved/deleted outside the app still has a stale DB row until a
+  // Scan Local Files pass reconciles it — this keeps the picker honest in
+  // the meantime, for the subset of candidates it's safe to check.
+  const verifyPaths = useMemo(
+    () => candidateFiles.flatMap((f) => (f.local_path && !isImportBacked(f) ? [f.local_path] : [])),
+    [candidateFiles],
+  )
+  const { data: verified, isLoading: verifyLoading } = useVerifyPaths(verifyPaths)
+  const existingPaths = verified?.existing
+
+  const availableFiles = useMemo(
+    () =>
+      candidateFiles.filter(
+        (f) =>
+          isImportBacked(f) ||
+          !f.local_path ||
+          existingPaths === undefined ||
+          existingPaths.includes(f.local_path),
+      ),
+    [candidateFiles, existingPaths],
+  )
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -184,7 +218,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
               <select
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                disabled={pending || filesLoading}
+                disabled={pending || filesLoading || verifyLoading}
                 className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
               >
                 <option value="">— pick a file —</option>
@@ -207,7 +241,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
                   </optgroup>
                 )}
               </select>
-              {!filesLoading && availableFiles.length === 0 && importPool.length === 0 && (
+              {!filesLoading && !verifyLoading && availableFiles.length === 0 && importPool.length === 0 && (
                 <p className="text-xs text-zinc-500">No files available to link for this show.</p>
               )}
             </div>

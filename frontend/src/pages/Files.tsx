@@ -26,6 +26,7 @@ const STATUS_OPTIONS: (FileStatus | '')[] = [
   'routed',
   'error',
   'seeded',
+  'missing',
 ]
 
 function InlineShowId({ fileId, showId }: { fileId: number; showId: number | null }) {
