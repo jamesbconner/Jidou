@@ -3116,6 +3116,8 @@ export interface components {
             status: "tracked" | "missing" | "upcoming";
             /** Track Missing Episodes */
             track_missing_episodes: boolean;
+            /** Has Active Rss Subscription */
+            has_active_rss_subscription: boolean;
             content_type?: components["schemas"]["ContentType"] | null;
             /**
              * Genres

@@ -25,6 +25,13 @@ import type { CalendarEpisode } from '@/types/api'
 
 const TMDB_IMG = '/api/images/w92'
 
+// Kept in sync with the missingShowCount filter below and with the backend's
+// own skip logic in sync_missing_calendar_shows.
+const SYNC_MISSING_CRITERIA = `A show counts here when, within the dates shown, it has an episode that:
+• aired on or before today with no file tracked
+• belongs to a show with missing-episode tracking on (not "Ignore Missing Eps")
+• belongs to a show with an active RSS subscription`
+
 const STATUS_STYLE: Record<CalendarEpisode['status'], { dot: string; label: string }> = {
   tracked: { dot: 'bg-green-500', label: 'Aired — file tracked' },
   missing: { dot: 'bg-red-500', label: 'Aired — no file tracked' },
@@ -148,15 +155,22 @@ export default function Calendar() {
   // Distinct shows, not episodes -- sync-missing re-syncs a show's full
   // catalog once, so that's the count that matches what the click actually
   // does (and what the backend itself dedupes to). Shows with
-  // track_missing_episodes=False are excluded -- the user has opted them out
-  // of missing-episode tracking (e.g. deliberately no RSS feed), so counting
-  // and re-syncing them here would be misleading and pointless, matching the
-  // backend's own skip in sync_missing_calendar_shows.
+  // track_missing_episodes=False (explicit "Ignore Missing Eps" opt-out) or
+  // with no active RSS subscription (nothing will ever auto-download the
+  // episode anyway) are excluded -- counting or re-syncing them here would
+  // be misleading and pointless, matching the backend's own skip in
+  // sync_missing_calendar_shows. Keep SYNC_MISSING_CRITERIA below in sync
+  // with this filter.
   const missingShowCount = useMemo(
     () =>
       new Set(
         episodes
-          .filter((ep) => ep.status === 'missing' && ep.track_missing_episodes)
+          .filter(
+            (ep) =>
+              ep.status === 'missing' &&
+              ep.track_missing_episodes &&
+              ep.has_active_rss_subscription,
+          )
           .map((ep) => ep.show_id),
       ).size,
     [episodes],
@@ -234,6 +248,14 @@ export default function Calendar() {
               ? `Sync missing (${missingShowCount})`
               : 'Sync missing'}
         </Button>
+        <button
+          type="button"
+          aria-label="What counts as a missing show for Sync missing"
+          title={SYNC_MISSING_CRITERIA}
+          className="flex items-center justify-center w-5 h-5 rounded-full border text-xs text-gray-500 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+        >
+          ?
+        </button>
       </div>
 
       <div className="flex items-center gap-4 flex-wrap">

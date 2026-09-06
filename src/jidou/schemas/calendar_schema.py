@@ -24,11 +24,16 @@ class CalendarEpisode(BaseModel):
     name: str
     air_date: date
     status: Literal["tracked", "missing", "upcoming"]
-    # Mirrors Show.track_missing_episodes -- False means the user opted this
-    # show out of missing-episode tracking (e.g. it deliberately has no RSS
-    # feed), so the frontend shouldn't count a "missing" episode here toward
-    # anything actionable.
+    # Mirrors Show.track_missing_episodes -- False means the user explicitly
+    # opted this show out of missing-episode tracking, so the frontend
+    # shouldn't count a "missing" episode here toward anything actionable.
     track_missing_episodes: bool
+    # Whether the show has an active, published RSS subscription. False means
+    # nothing will ever auto-download this show's episodes, so a "missing"
+    # episode here isn't actionable via a TMDB re-sync either -- same
+    # exclusion rationale as track_missing_episodes, just implicit rather
+    # than a manual opt-out.
+    has_active_rss_subscription: bool
     content_type: ContentType | None = None
     genres: list[dict[str, object]] | None = Field(
         default=None,

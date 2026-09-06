@@ -11,20 +11,27 @@ from jidou.orchestrators.tmdb_orchestrator import TMDBSyncResult
 from tests._fake_orchestrator_session import FakeNested
 
 
-def _session(show_ids: list[int], shows_by_id: dict[int, MagicMock]) -> object:
+def _session(
+    show_ids: list[int],
+    shows_by_id: dict[int, MagicMock],
+    rss_by_id: dict[int, bool] | None = None,
+) -> object:
     """Build a mock session answering the show-id lookup then per-show lookups.
 
     The first execute() call is the distinct show_id query; every call after
-    that is a per-show ``select(Show).where(Show.id == show_id)`` lookup, in
-    the same order as *show_ids*.
+    that is a per-show ``select(Show, has_active_rss_subscription)`` lookup,
+    in the same order as *show_ids*. *rss_by_id* controls the RSS half of
+    that row and defaults to True for any show present in *shows_by_id*.
     """
+    rss_by_id = rss_by_id or {}
     ids_result = MagicMock()
     ids_result.scalars.return_value.all.return_value = show_ids
 
     show_results = []
     for sid in show_ids:
         r = MagicMock()
-        r.scalar_one_or_none.return_value = shows_by_id.get(sid)
+        show = shows_by_id.get(sid)
+        r.first.return_value = (show, rss_by_id.get(sid, True)) if show is not None else None
         show_results.append(r)
 
     async def _mock_session() -> AsyncMock:
@@ -146,6 +153,32 @@ def test_show_with_track_missing_episodes_false_is_skipped() -> None:
         _make_show(2),
     )
     session_override = _session([1, 2], {1: show1, 2: show2})
+
+    with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        mock_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            return_value=TMDBSyncResult(shows_synced=1, episodes_upserted=2, episodes_skipped=0)
+        )
+        response = _post_sync_missing(session_override)
+        mock_orch_cls.return_value.sync_show_episodes.assert_called_once()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "shows_synced": 1,
+        "shows_failed": 0,
+        "episodes_upserted": 2,
+    }
+
+
+def test_show_with_no_active_rss_subscription_is_skipped() -> None:
+    """A show with no active, published RSS subscription is not re-synced.
+
+    Regression test: a show that will never auto-download its episodes (no
+    RSS feed configured at all) shouldn't inflate the "Sync missing" count
+    or be re-synced, even if the user never explicitly toggled "Ignore
+    Missing Eps" for it.
+    """
+    show1, show2 = _make_show(1), _make_show(2)
+    session_override = _session([1, 2], {1: show1, 2: show2}, rss_by_id={1: False})
 
     with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
         mock_orch_cls.return_value.sync_show_episodes = AsyncMock(
