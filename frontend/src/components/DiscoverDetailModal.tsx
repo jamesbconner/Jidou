@@ -58,10 +58,11 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
               {result.vote_average != null && <span>★ {result.vote_average.toFixed(1)}</span>}
               {date && <span>{date.slice(0, 10)}</span>}
             </div>
+            {result.overview && (
+              <p className="text-sm text-gray-700 dark:text-gray-300">{result.overview}</p>
+            )}
           </div>
         </div>
-
-        {result.overview && <p className="text-sm text-gray-700 dark:text-gray-300">{result.overview}</p>}
 
         <div className="flex items-center gap-4">
           {inLibraryShowId != null && (
