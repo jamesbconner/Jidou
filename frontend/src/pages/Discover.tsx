@@ -134,6 +134,9 @@ export default function Discover() {
             libraryIndex.get(`${detailResult.id}:${detailResult.media_type}`)?.id ?? null
           }
           onClose={() => setDetailResult(null)}
+          onAdd={() => handleAdd(detailResult)}
+          addPending={pendingKeys.has(`${detailResult.id}:${detailResult.media_type}`)}
+          addLabel="Add + Watchlist"
         />
       )}
     </div>

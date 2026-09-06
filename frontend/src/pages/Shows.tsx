@@ -944,6 +944,8 @@ export default function Shows() {
           }
           onClose={() => setDetailResult(null)}
           onNavigate={closeModal}
+          onAdd={() => handleTrack(detailResult)}
+          addPending={createShow.isPending}
         />
       )}
     </div>
