@@ -8,6 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
 
+### Airing calendar: sync missing shows
+- New **Sync missing** button on the Calendar page (`POST /api/shows/calendar/sync-missing`) re-fetches TMDB metadata, bypassing the response cache, for every show with a `missing` episode in the visible range — the common cause is a TMDB schedule slip after the stored `air_date` was already written, not a genuinely absent file. Skips shows with **Ignore Missing Eps** set or with no active, published RSS subscription, since neither would ever auto-download the episode anyway.
+
+### Manual TMDB episode-group selection
+- Some shows have more than one TMDB numbering scheme (e.g. a combined-episode broadcast order). New **Use Alternate Grouping** action on Show Detail lists available groupings (`GET /api/shows/{id}/episode-groups`) and switches to one (`POST /api/shows/{id}/episode-groups/{group_id}/apply`), replacing the show's episode list; previously tracked episodes with no equivalent in the new grouping become orphaned tracking records instead of silently losing their tracked/watched state.
+
+### Missing Episodes tab
+- New **exact-1**, **whole-season**, and **low-owned** quick filters, alongside a rename/reorder of the existing columns for readability and a split into separate Episodes/Seasons columns.
+- Total and matched episode/season counts added; orphaned-episode counts are now split by file-tracked vs. watched-only.
+
+### Manual episode-to-file linking follow-ups
+- The untracked-episode file picker ("Match File") now surfaces orphaned files in *any* non-transient status (`routed`, `matched`, `error`), not just `unmatched` — a file displaced by another one getting misrouted onto its slot keeps its prior status rather than resetting, so it was invisible to the old `status=unmatched`-only query. The redundant "Fix Eps"-only path for untracked episodes was folded into the same picker.
+- New `missing` `FileStatus`, set by a **Scan Local Files** reconciliation pass when a tracked file's on-disk path vanishes (renamed/moved/deleted outside the app), and cleared automatically if the file reappears. New `POST /api/files/verify-paths` lets pickers filter out vanished candidates immediately rather than waiting for the next scan.
+- Fixed two Bugbot-flagged issues: path-existence checks on stored paths now decode the JSON/DB-safe transport form first (a literal `%` in a filename was wrongly flagged missing), and host/catalog paths from path-import (which never resolve inside the container) are excluded from reconciliation and picker candidates entirely.
+
+### Discover / Search Shows detail modal
+- The shared detail modal (Discover cards and the Search Shows TMDB tab) gained its own **Add** action, so adding a show no longer requires closing the modal first.
+- Fixed the recommendation-reason text getting cut off unreadably, and the description rendering under the image instead of under the title.
+
+### Watchlist preview modal
+- Clicking a Watchlist row (other than its title link, status select, or Remove button) now opens a quick-look modal with the show's poster, overview, rating, and next unwatched episode, without navigating away from the list.
+
+### Visual refresh
+- Replaced the indigo/blue-N accent palette with a new **ocean** accent across the app, then iterated the base neutral palette twice (Graphite Tide, then Stone & Pine) before landing on the current one; fixed a hard-to-read active-tab color in dark mode along the way.
+
+### Frontend performance
+- Routes are now lazy-loaded (`React.lazy()` per page) instead of statically imported in `App.tsx`, so each page ships in its own chunk — e.g. Dashboard's `recharts` dependency (~380KB) no longer bloats every other route. A `Suspense` boundary sits around just the page content, so the nav frame stays mounted across navigations. A stale chunk reference after a new deploy now triggers one automatic reload instead of a dead page (Chrome and Safari phrase the underlying error differently; both are matched).
+
+### UI polish
+- Modal forms with a fixed-column grid now collapse responsively on narrow viewports instead of overflowing.
+- Fixed a `ModalCloseButton` left-margin conflict and touch-target sizing flagged by Bugbot review; scoped `TaskProgressBar`'s CSS transition to `width`/`background-color` instead of `all`.
+
 ### Movies: flat routing and direct file linking
 - Movies now route to a shared root (`LOCAL_MOVIE_PATH/filename.mkv`) instead of a per-title subfolder — `resolve_show_local_path()` no longer creates `LOCAL_MOVIE_PATH/Movie Name/` for every movie. A movie that still needs its own folder can get one via an explicit `local_path` override on the Show Detail page.
 - New **Fix Match** button on a linked movie file opens `ScanLocalMovieFileModal` in a new replace mode — pick or type the correct on-disk file — instead of the episode-oriented `RematchModal`, which reassigned the show rather than the file. `link-movie-file` gained a `replace=true` mode that unlinks the existing file before linking the new one.

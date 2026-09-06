@@ -160,11 +160,11 @@ All server state is managed by [TanStack Query](https://tanstack.com/query). Thi
 
 ### Real-time updates
 
-A single WebSocket connection (managed in `stores/websocket.ts`) receives task progress events. Components subscribe to specific task IDs via a custom hook; unrelated events are ignored.
+A WebSocket connection per task (`api/websocket.ts:connectTaskProgress`, auto-reconnecting) receives task progress events; `stores/wsConnection.tsx` exposes the shared connection state (`connecting`/`open`/`closed`/`idle`) via React context for the `ConnectionBadge` component. Components subscribe to specific task IDs via a custom hook; unrelated events are ignored.
 
 ### TypeScript types
 
-API types in `frontend/src/types/api.ts` are generated from the FastAPI OpenAPI spec via `make.py generate-types`. They are not hand-written. This keeps the frontend in sync with the backend schema automatically.
+`frontend/src/types/api-generated.ts` is regenerated from the FastAPI OpenAPI spec via `make.py generate-types` (requires the API running) and is safe to overwrite freely. `frontend/src/types/api.ts` is hand-maintained on top of it — thin aliases and `Omit<>`+override narrowings per type, needed where the backend schema is looser than what the frontend relies on (e.g. a bare `string` narrowed to a literal union), plus fully hand-written types with no backend schema at all (TMDB proxy endpoints returning raw `dict[str, Any]`, WebSocket payloads, frontend-only compositions). `generate-types` never touches `api.ts`; diff it against the regenerated file after running the command to catch drift from a schema rename or a newly-loosened field.
 
 ### Shared UI primitives
 

@@ -233,6 +233,13 @@ All migrations up to and including the original `0002`–`0004` set were squashe
 | `287c0908e5d1` | Add `scanned_directories` table (shallow-scan redesign, issue #355) |
 | `a563ec7cddae` | Add `ignored` to the `filestatus` enum plus `downloaded_files.ignored_reason` (noscan paths / manual ignore) |
 | `6d2f4a9c7e13` | Add `shows.list_poster_path` / `shows.detail_poster_path` (manual poster overrides) |
+| `e00342464620` | Add `rss_feeds.regex_include_hint` / `regex_exclude_hint` |
+| `b1a2c3d4e5f6` | Add `episodes.watched` / `watched_at` (watched tracking, independent of `file_tracked`) |
+| `c2d3e4f5a6b7` | Add `downloaded_files.crc32` |
+| `d3e4f5a6b7c8` | Split `downloaded_files.crc32` into extracted/declared/computed columns |
+| `e4f5a6b7c8d9` | Add `shows.track_missing_episodes` (per-show opt-out for the calendar's `missing` status and Sync Missing) |
+| `f5a6b7c8d9e0` | Add `shows.active_episode_group_id` (manual TMDB episode-group selection) |
+| `a1b2c3d4e5f6` | Add `missing` to the `filestatus` enum (Scan Local Files path reconciliation) |
 
 ---
 
@@ -249,12 +256,18 @@ uv run python make.py health
 A healthy response looks like:
 ```json
 {
-  "database": "ok",
-  "redis": "ok",
-  "tmdb": "ok",
-  "llm": "disabled"
+  "healthy": true,
+  "services": {
+    "database": { "ok": true, "latency_ms": 2.1, "alembic_version": "0001_initial" },
+    "redis": { "ok": true, "latency_ms": 0.8 },
+    "celery": { "ok": true, "latency_ms": 45.2, "workers": ["celery@worker-1"] },
+    "tmdb": { "ok": true, "configured": true },
+    "sftp": { "ok": true, "configured": true },
+    "llm": { "ok": true, "configured": false, "error": "not configured" }
+  }
 }
 ```
+`redis`, `tmdb`, `sftp`, and an unconfigured `llm` report `ok: true` when simply not configured (an optional service can't drag overall `healthy` to `false`) — check each service's own `configured`/`error` field, not just `ok`, to tell "working" apart from "not set up." `celery` actually pings workers via the Celery control API, not just checking that the Redis broker is reachable. `tmdb`/`sftp`/`llm` are configuration-presence checks only, to avoid burning rate limit or making a live call on every health check — use `POST /api/config/test/{tmdb,sftp,llm}` for an actual connectivity probe.
 
 ![Admin health check response](screenshots/admin-health-response.png)
 ![Settings page](screenshots/settings-page.png)

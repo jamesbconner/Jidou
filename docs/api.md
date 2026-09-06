@@ -87,6 +87,9 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | POST | `/api/shows/{id}/aliases/regenerate` | Rebuild TMDB + LLM alias sources; preserves user-added aliases |
 | POST | `/api/shows/{id}/rss-stub` | Link (or create) an RSS subscription for this show |
 | GET | `/api/shows/calendar` | Episodes airing in a date range, across all shows, with computed `tracked`/`missing`/`upcoming` status |
+| POST | `/api/shows/calendar/sync-missing` | Re-sync TMDB metadata for every show with a `missing` episode in a date range, to pick up schedule slips; bypasses the TMDB response cache |
+| GET | `/api/shows/{id}/episode-groups` | List TMDB alternate episode groupings available for the show |
+| POST | `/api/shows/{id}/episode-groups/{group_id}/apply` | Switch the show's episode catalog to a specific TMDB episode grouping (destructive; orphans previously tracked episodes that don't exist in the new grouping) |
 | GET | `/api/shows/{id}/episodes` | List episodes for a show |
 | POST | `/api/shows/{show_id}/scan-local-files` | Read-only: scan the show's own local directory and propose episode matches for files found there |
 | POST | `/api/shows/{show_id}/episodes/{episode_id}/link-file` | Manually link an on-disk file path to an episode; `replace=true` unlinks whatever currently tracks it first instead of 422ing |
@@ -147,6 +150,27 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | `content_type` | string | Filter by `tv`, `anime`, `movie` |
 | `limit` | int | Max results (default 100) |
 
+**`GET`/`POST /api/shows/calendar[/sync-missing]` query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `start` | date | First date to include (inclusive) |
+| `end` | date | Last date to include (inclusive) |
+| `today` | date | Caller's local "today", used to compute `tracked`/`missing`/`upcoming`; the frontend always passes the browser's own date |
+
+`sync-missing` re-syncs any show with an episode in range that the calendar currently marks `missing` (aired on/before *today*, no file tracked) — the common cause is TMDB's schedule moving after the episode's `air_date` was already stored. Shows with `track_missing_episodes=false` or with no active, published RSS subscription are skipped, since neither will ever auto-download the episode. Response:
+```json
+{ "shows_synced": 3, "shows_failed": 0, "episodes_upserted": 5 }
+```
+
+**`GET /api/shows/{id}/episode-groups` response** — one entry per TMDB alternate grouping (e.g. a combined-episode broadcast order), each flagged `is_active` if it matches the show's current `active_episode_group_id`. 422s for movies, which have no TMDB `episode_groups`.
+
+**`POST /api/shows/{id}/episode-groups/{group_id}/apply` response:**
+```json
+{ "episodes": [...], "episodes_added": 2, "episodes_removed": 1, "orphaned_file_count": 1, "orphaned_watched_count": 0 }
+```
+Replaces every `Episode` row for the show with the chosen grouping's episodes. Previously tracked episodes with no equivalent in the new grouping become orphaned tracking records (see [Data Quality](#data-quality--orphaned-tracking-records)) rather than being silently dropped.
+
 ---
 
 ## Files
@@ -154,6 +178,7 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/files` | List files with optional filters |
+| POST | `/api/files/verify-paths` | Check which of up to 500 candidate container-side paths still exist on disk (pure filesystem check, no DB access) — used by pickers to filter out stale candidates without waiting for a rescan |
 | GET | `/api/files/unmatched` | List `unmatched` files awaiting manual review |
 | GET | `/api/files/{id}` | Get a single file record |
 | GET | `/api/files/{id}/tmdb-suggestions` | TMDB search results seeded from the file's `parsed_show_name`, for the Resolve modal |
@@ -173,6 +198,8 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | `offset` | int | Pagination offset |
 
 **Response headers:** `X-Total-Count` contains the total matching record count for pagination.
+
+`missing` is a `FileStatus` reached when a previously-known file's `local_path` no longer exists on disk (renamed/moved/deleted outside the app) — a **Scan Local Files** reconciliation pass sets it, and clears it back to `unmatched`/`matched` if the file reappears at the same path.
 
 ---
 
@@ -201,7 +228,7 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | GET | `/api/watchlist/{id}` | Get entry |
 | PATCH | `/api/watchlist/{id}` | Update `status`, `notes`, or `position` |
 | DELETE | `/api/watchlist/{id}` | Remove entry |
-| PATCH | `/api/watchlist/reorder` | Bulk-update positions after drag-to-reorder |
+| POST | `/api/watchlist/reorder` | Bulk-update positions after drag-to-reorder |
 
 **Watchlist status values:** `planned`, `watching`, `completed`, `on_hold`, `dropped`
 
@@ -214,7 +241,6 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | GET | `/api/tasks` | List background tasks |
 | GET | `/api/tasks/{id}` | Get task status and progress |
 | GET | `/api/tasks/count` | Count of tasks by status |
-| GET | `/api/tasks/active` | List currently running tasks |
 | POST | `/api/tasks/trigger` | Launch a background task |
 | POST | `/api/tasks/{id}/cancel` | Cancel a pending or running task |
 | DELETE | `/api/tasks/{id}` | Delete a completed, failed, or cancelled task (400s a pending/running one — cancel first) |
