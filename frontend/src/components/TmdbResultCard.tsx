@@ -63,7 +63,14 @@ export function TmdbResultCard({
       </div>
       <div className="p-2 flex flex-col flex-1">
         <p className="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">{result.name ?? result.title}</p>
-        {subtitle && <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{subtitle}</p>}
+        {subtitle && (
+          <p
+            title={subtitle}
+            className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-2"
+          >
+            {subtitle}
+          </p>
+        )}
         {inLibrary && inLibraryShowId ? (
           <Link
             to={`/shows/${inLibraryShowId}`}
