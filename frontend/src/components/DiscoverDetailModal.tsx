@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import type { DiscoverResult, TmdbResult } from '@/types/api'
@@ -17,13 +18,26 @@ interface Props {
    * that enclosing modal too instead of leaving it open behind the navigation.
    * Defaults to onClose. */
   onNavigate?: () => void
+  /** When provided (and the result isn't already in the library), renders an
+   * "Add" button so a show can be added without closing the modal first. */
+  onAdd?: () => void
+  addPending?: boolean
+  addLabel?: string
 }
 
 /** Detail popup for a Discover-page card or a TMDB search result, mirroring
  * MediaDetailModal's shape. Unlike dashboard items, the result may not be in
  * the library yet, so it links out to TMDB itself rather than assuming a
  * local show record. */
-export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNavigate }: Props) {
+export function DiscoverDetailModal({
+  result,
+  inLibraryShowId,
+  onClose,
+  onNavigate,
+  onAdd,
+  addPending = false,
+  addLabel = 'Add',
+}: Props) {
   const title = result.name ?? result.title ?? 'Untitled'
   const date = result.release_date ?? result.first_air_date
   const mediaType = result.media_type ?? 'tv'
@@ -65,7 +79,7 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
         </div>
 
         <div className="flex items-center gap-4">
-          {inLibraryShowId != null && (
+          {inLibraryShowId != null ? (
             <Link
               to={`/shows/${inLibraryShowId}`}
               onClick={onNavigate ?? onClose}
@@ -73,6 +87,12 @@ export function DiscoverDetailModal({ result, inLibraryShowId, onClose, onNaviga
             >
               View show →
             </Link>
+          ) : (
+            onAdd && (
+              <Button onClick={onAdd} disabled={addPending} variant="primary" tone="light" size="sm">
+                {addPending ? 'Adding…' : addLabel}
+              </Button>
+            )
           )}
           <a
             href={tmdbUrl}

@@ -26,10 +26,20 @@ function makeResult(overrides: Partial<DiscoverResult> = {}): DiscoverResult {
   }
 }
 
-function renderModal(result: DiscoverResult, inLibraryShowId: number | null = null, onClose = vi.fn()) {
+function renderModal(
+  result: DiscoverResult,
+  inLibraryShowId: number | null = null,
+  onClose = vi.fn(),
+  extraProps: Partial<Parameters<typeof DiscoverDetailModal>[0]> = {},
+) {
   render(
     <MemoryRouter>
-      <DiscoverDetailModal result={result} inLibraryShowId={inLibraryShowId} onClose={onClose} />
+      <DiscoverDetailModal
+        result={result}
+        inLibraryShowId={inLibraryShowId}
+        onClose={onClose}
+        {...extraProps}
+      />
     </MemoryRouter>,
   )
   return onClose
@@ -75,5 +85,29 @@ describe('DiscoverDetailModal', () => {
     const onClose = renderModal(makeResult())
     fireEvent.click(screen.getByLabelText('Close'))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  test('omits the Add button when onAdd is not provided', () => {
+    renderModal(makeResult(), null)
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+  })
+
+  test('shows an Add button when not in the library and onAdd is provided', () => {
+    const onAdd = vi.fn()
+    renderModal(makeResult(), null, vi.fn(), { onAdd })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  test('disables the Add button and shows pending label while adding', () => {
+    renderModal(makeResult(), null, vi.fn(), { onAdd: vi.fn(), addPending: true })
+    const button = screen.getByRole('button', { name: 'Adding…' })
+    expect(button).toBeDisabled()
+  })
+
+  test('omits the Add button when already in the library, even if onAdd is provided', () => {
+    renderModal(makeResult(), 7, vi.fn(), { onAdd: vi.fn() })
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+    expect(screen.getByText('View show →')).toBeInTheDocument()
   })
 })
