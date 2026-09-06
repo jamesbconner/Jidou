@@ -29,3 +29,11 @@ class CalendarEpisode(BaseModel):
         default=None,
         description='TMDB genre objects: [{"id": 16, "name": "Animation"}]',
     )
+
+
+class CalendarSyncResult(BaseModel):
+    """Result of re-syncing TMDB metadata for shows with a "missing" episode in a calendar range."""
+
+    shows_synced: int
+    shows_failed: int
+    episodes_upserted: int

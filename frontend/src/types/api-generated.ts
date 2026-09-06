@@ -292,6 +292,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/calendar/sync-missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Missing Calendar Shows
+         * @description Re-sync TMDB metadata for every show with a "missing" episode in a calendar range.
+         *
+         *     Scoped, manually-triggered alternative to clicking "Sync Episodes" on each
+         *     show individually from its detail page. A show is included if it has an
+         *     episode in [start, end] that the calendar would currently mark "missing"
+         *     -- aired on/before *today* per the currently-stored ``air_date``, but no
+         *     file tracked. That's deliberately the same condition :func:`get_calendar`
+         *     uses: a TMDB schedule slip is exactly what produces a false "missing"
+         *     flag, since the stored ``air_date`` says the episode already aired while
+         *     the real schedule moved it later. A genuinely missing episode (aired, no
+         *     file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
+         *     is just a no-op upsert for it.
+         *
+         *     Args:
+         *         start: First date to include (inclusive), matching the calendar view.
+         *         end: Last date to include (inclusive).
+         *         today: Caller's local "today" -- must match what the calendar view
+         *             itself is using (see :func:`get_calendar` for why).
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         Aggregated counts across every show that was re-synced.
+         */
+        post: operations["sync_missing_calendar_shows_api_shows_calendar_sync_missing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}": {
         parameters: {
             query?: never;
@@ -1209,11 +1251,20 @@ export interface paths {
          *     whose backing file was renamed/moved/deleted outside the app, without
          *     waiting for a Scan Local Files reconciliation pass to catch up.
          *
+         *     Only meaningful for paths known to be container-side (e.g. a real
+         *     ``DownloadedFile.local_path`` from the normal download/route pipeline).
+         *     Callers must not send paths that might be host/catalog references
+         *     outside this container's filesystem (import-tracked files) — those can
+         *     never resolve here regardless of whether the file is still present, so
+         *     they would always be reported as missing.
+         *
          *     Args:
-         *         payload: Candidate paths to check (max 500 per request).
+         *         payload: Candidate paths to check (max 500 per request), in the
+         *             JSON/DB-safe encoded transport form (see ``path_transport.py``).
          *
          *     Returns:
-         *         The subset of ``payload.paths`` that are real files right now.
+         *         The subset of ``payload.paths`` that are real files right now, in
+         *         their original (still-encoded) form.
          */
         post: operations["verify_paths_api_files_verify_paths_post"];
         delete?: never;
@@ -3071,6 +3122,18 @@ export interface components {
             genres?: {
                 [key: string]: unknown;
             }[] | null;
+        };
+        /**
+         * CalendarSyncResult
+         * @description Result of re-syncing TMDB metadata for shows with a "missing" episode in a calendar range.
+         */
+        CalendarSyncResult: {
+            /** Shows Synced */
+            shows_synced: number;
+            /** Shows Failed */
+            shows_failed: number;
+            /** Episodes Upserted */
+            episodes_upserted: number;
         };
         /**
          * ContentType
@@ -5040,6 +5103,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarEpisode"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_missing_calendar_shows_api_shows_calendar_sync_missing_post: {
+        parameters: {
+            query: {
+                start: string;
+                end: string;
+                today?: string | null;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSyncResult"];
                 };
             };
             /** @description Validation Error */

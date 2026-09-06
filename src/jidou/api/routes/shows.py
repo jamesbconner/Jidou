@@ -20,7 +20,7 @@ from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
-from jidou.schemas.calendar_schema import CalendarEpisode
+from jidou.schemas.calendar_schema import CalendarEpisode, CalendarSyncResult
 from jidou.schemas.discover_schema import DiscoverResult
 from jidou.schemas.episode_schema import BackingFile, BulkWatchedRequest, EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief, FileRead
@@ -600,6 +600,83 @@ async def get_calendar(
             )
         )
     return results
+
+
+@router.post("/calendar/sync-missing", response_model=CalendarSyncResult)
+async def sync_missing_calendar_shows(
+    start: date,
+    end: date,
+    today: date | None = None,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> CalendarSyncResult:
+    """Re-sync TMDB metadata for every show with a "missing" episode in a calendar range.
+
+    Scoped, manually-triggered alternative to clicking "Sync Episodes" on each
+    show individually from its detail page. A show is included if it has an
+    episode in [start, end] that the calendar would currently mark "missing"
+    -- aired on/before *today* per the currently-stored ``air_date``, but no
+    file tracked. That's deliberately the same condition :func:`get_calendar`
+    uses: a TMDB schedule slip is exactly what produces a false "missing"
+    flag, since the stored ``air_date`` says the episode already aired while
+    the real schedule moved it later. A genuinely missing episode (aired, no
+    file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
+    is just a no-op upsert for it.
+
+    Args:
+        start: First date to include (inclusive), matching the calendar view.
+        end: Last date to include (inclusive).
+        today: Caller's local "today" -- must match what the calendar view
+            itself is using (see :func:`get_calendar` for why).
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Aggregated counts across every show that was re-synced.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    today = today or date.today()
+    show_ids_stmt = (
+        select(Episode.show_id)
+        .distinct()
+        .where(
+            Episode.air_date.between(start, end),
+            Episode.air_date <= today,
+            Episode.file_tracked == False,  # noqa: E712
+        )
+    )
+    show_ids = list((await db_session.execute(show_ids_stmt)).scalars().all())
+
+    orchestrator = TMDBOrchestrator(db_session, tmdb)
+    shows_synced = 0
+    shows_failed = 0
+    episodes_upserted = 0
+    for show_id in show_ids:
+        show_stmt = select(Show).where(Show.id == show_id, Show.media_type != "movie")
+        show = (await db_session.execute(show_stmt)).scalar_one_or_none()
+        if show is None:
+            continue
+        try:
+            # Own SAVEPOINT per show, same rationale as sync_all_shows: a
+            # failure here should only roll back this show's partial work,
+            # not expire every already-loaded row for the rest of the loop.
+            async with db_session.begin_nested():
+                result = await orchestrator.sync_show_episodes(show)
+            await db_session.commit()
+        except Exception:
+            logger.exception("Calendar sync-missing: TMDB re-sync failed for show id=%d", show_id)
+            await db_session.rollback()
+            shows_failed += 1
+            continue
+        shows_synced += 1
+        episodes_upserted += result.episodes_upserted
+
+    return CalendarSyncResult(
+        shows_synced=shows_synced,
+        shows_failed=shows_failed,
+        episodes_upserted=episodes_upserted,
+    )
 
 
 @router.post("", response_model=ShowRead, status_code=201)

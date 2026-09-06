@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { useCalendarWeek } from '@/hooks/useCalendar'
+import { useCalendarWeek, useSyncMissingCalendarShows } from '@/hooks/useCalendar'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { Button } from '@/components/ui/Button'
@@ -144,6 +144,15 @@ export default function Calendar() {
 
   const { data: episodes = [], isLoading, isError, error } = useCalendarWeek(start, end, today)
 
+  const syncMissing = useSyncMissingCalendarShows()
+  // Distinct shows, not episodes -- sync-missing re-syncs a show's full
+  // catalog once, so that's the count that matches what the click actually
+  // does (and what the backend itself dedupes to).
+  const missingShowCount = useMemo(
+    () => new Set(episodes.filter((ep) => ep.status === 'missing').map((ep) => ep.show_id)).size,
+    [episodes],
+  )
+
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
     episodes.forEach((ep) => ep.genres?.forEach((g) => { if (g.name) names.add(g.name) }))
@@ -195,6 +204,20 @@ export default function Calendar() {
         >
           Next →
         </button>
+        <Button
+          onClick={() => syncMissing.mutate({ start, end, today })}
+          disabled={missingShowCount === 0 || syncMissing.isPending}
+          variant="secondary"
+          tone="light"
+          size="sm"
+          title="Re-fetch TMDB metadata for every show with a missing episode in this range -- fixes schedule slips the automatic sync won't catch on its own"
+        >
+          {syncMissing.isPending
+            ? 'Syncing…'
+            : missingShowCount > 0
+              ? `Sync missing (${missingShowCount})`
+              : 'Sync missing'}
+        </Button>
       </div>
 
       <div className="flex items-center gap-4 flex-wrap">
@@ -272,6 +295,22 @@ export default function Calendar() {
         {start} – {end}
         {activeFilterCount > 0 && ` · ${filtered.length} of ${episodes.length} episodes`}
       </p>
+
+      {syncMissing.data && (
+        <p className="text-sm text-green-700 dark:text-green-400">
+          Synced {syncMissing.data.shows_synced} show{syncMissing.data.shows_synced === 1 ? '' : 's'}
+          {syncMissing.data.episodes_upserted > 0 &&
+            ` · ${syncMissing.data.episodes_upserted} episode${syncMissing.data.episodes_upserted === 1 ? '' : 's'} updated`}
+          {syncMissing.data.shows_failed > 0 &&
+            ` · ${syncMissing.data.shows_failed} failed`}
+          .
+        </p>
+      )}
+      {syncMissing.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          Sync failed{syncMissing.error instanceof Error ? `: ${syncMissing.error.message}` : ''}.
+        </p>
+      )}
 
       {isError ? (
         <p className="text-sm text-red-600 dark:text-red-400">

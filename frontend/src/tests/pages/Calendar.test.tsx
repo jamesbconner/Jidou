@@ -80,6 +80,22 @@ function mockCalendar(data: CalendarEpisode[]) {
   vi.mocked(fetch).mockResolvedValue(mockResponse(data))
 }
 
+// Routes the sync-missing POST to its own response, distinct from every
+// other GET (all of which resolve `data`) -- api.post always sends the URL
+// as a plain string, so a substring check is enough to dispatch on it.
+function mockCalendarAndSync(
+  data: CalendarEpisode[],
+  syncResponse: { body: unknown; status?: number },
+) {
+  vi.mocked(fetch).mockImplementation((input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url
+    if (url.includes('/shows/calendar/sync-missing')) {
+      return Promise.resolve(mockResponse(syncResponse.body, syncResponse.status ?? 200))
+    }
+    return Promise.resolve(mockResponse(data))
+  })
+}
+
 function todayDate(): Date {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -280,5 +296,67 @@ describe('Calendar page range/anchor settings', () => {
     const today = todayDate()
     const expected = `${toISODate(today)} – ${toISODate(addDays(today, 2))}`
     expect(rangeParagraph().textContent).toContain(expected)
+  })
+})
+
+describe('Calendar page sync-missing button', () => {
+  test('disabled with no count when no episode in view is missing', async () => {
+    mockCalendar(episodes.map((ep) => ({ ...ep, status: 'tracked' })))
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const button = screen.getByRole('button', { name: 'Sync missing' })
+    expect(button).toBeDisabled()
+  })
+
+  test('enabled with the distinct missing-show count when episodes are missing', async () => {
+    mockCalendar(episodes) // fixture already has one 'missing' episode (The Wire)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const button = screen.getByRole('button', { name: 'Sync missing (1)' })
+    expect(button).not.toBeDisabled()
+  })
+
+  test('clicking syncs and reports the aggregated result', async () => {
+    mockCalendarAndSync(episodes, {
+      body: { shows_synced: 1, shows_failed: 0, episodes_upserted: 2 },
+    })
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync missing (1)' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('Synced 1 show · 2 episodes updated.')).toBeInTheDocument(),
+    )
+  })
+
+  test('reports partial failure when some shows fail to sync', async () => {
+    mockCalendarAndSync(episodes, {
+      body: { shows_synced: 1, shows_failed: 1, episodes_upserted: 2 },
+    })
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync missing (1)' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Synced 1 show · 2 episodes updated · 1 failed.'),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  test('shows an error message when the sync request fails', async () => {
+    mockCalendarAndSync(episodes, { body: { detail: 'TMDB unavailable' }, status: 502 })
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync missing (1)' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('Sync failed: TMDB unavailable.')).toBeInTheDocument(),
+    )
   })
 })
