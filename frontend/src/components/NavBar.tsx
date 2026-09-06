@@ -39,7 +39,10 @@ export function NavBar() {
 
   return (
     <nav className="sticky top-0 z-40 bg-gray-900 dark:bg-gray-950 text-white px-6 py-3 flex items-center gap-6">
-      <span className="font-bold text-lg tracking-tight">Jidou</span>
+      <span className="flex items-center gap-2 font-bold text-lg tracking-tight">
+        <img src="/logo.svg" alt="" className="h-7 w-7" />
+        Jidou
+      </span>
       <div className="flex gap-4 flex-1">
         {links.map(({ to, label, end }) => (
           <NavLink

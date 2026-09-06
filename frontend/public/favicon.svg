@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <style type="text/css">
+      .circle{fill:#e08a3c;}
+      .letter{fill:#ffffff;}
+    </style>
+  </defs>
+  <path class="circle" d="M40,4 a36,36 0 1 1 0,72 a36,36 0 1 1 0,-72 Z"/>
+  <text class="letter" x="41" y="61" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="700" font-size="62" text-anchor="middle">J</text>
+</svg>

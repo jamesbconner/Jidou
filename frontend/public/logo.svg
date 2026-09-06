@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <style type="text/css">
+      .g{fill:#e08a3c;}
+      .frame{stroke:#e08a3c;fill:none;}
+    </style>
+  </defs>
+  <!-- hanko-seal style square frame -->
+  <path class="frame" stroke-width="5" d="M12,8 h56 a4,4 0 0 1 4,4 v56 a4,4 0 0 1 -4,4 h-56 a4,4 0 0 1 -4,-4 v-56 a4,4 0 0 1 4,-4 Z"/>
+  <!-- 自動 (jidou, "automatic") stacked vertically -->
+  <text class="g" x="40" y="36" font-family="'Noto Sans JP','Yu Gothic','Hiragino Kaku Gothic Pro','Meiryo',sans-serif" font-weight="700" font-size="26" text-anchor="middle">自</text>
+  <text class="g" x="40" y="63.5" font-family="'Noto Sans JP','Yu Gothic','Hiragino Kaku Gothic Pro','Meiryo',sans-serif" font-weight="700" font-size="26" text-anchor="middle">動</text>
+</svg>

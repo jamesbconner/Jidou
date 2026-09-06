@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 149 80" width="149" height="80">
+  <defs>
+    <style type="text/css">
+      .g{fill:#e08a3c;}
+    </style>
+  </defs>
+  <!-- 自動 (jidou, "automatic") left to right, no frame -->
+  <text class="g" x="40" y="64" font-family="'Noto Sans JP','Yu Gothic','Hiragino Kaku Gothic Pro','Meiryo',sans-serif" font-weight="700" font-size="66" text-anchor="middle">自</text>
+  <text class="g" x="109" y="64" font-family="'Noto Sans JP','Yu Gothic','Hiragino Kaku Gothic Pro','Meiryo',sans-serif" font-weight="700" font-size="66" text-anchor="middle">動</text>
+</svg>
