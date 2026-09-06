@@ -145,6 +145,7 @@ class TMDBOrchestrator:
         self,
         show: Show,
         on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        bypass_cache: bool = False,
     ) -> TMDBSyncResult:
         """Fetch all seasons and episodes for one show and upsert Episode rows.
 
@@ -161,6 +162,11 @@ class TMDBOrchestrator:
         Args:
             show: Show ORM object to sync.
             on_progress: Optional async callback(current, total, message).
+            bypass_cache: Skip TMDB's response cache and fetch live data.
+                Routine/scheduled syncs should leave this False; a
+                user-triggered "refresh this show now" caller wants True, or
+                a schedule change TMDB made within the cache's TTL window
+                would otherwise keep being served back unchanged.
 
         Returns:
             TMDBSyncResult with counts.
@@ -180,8 +186,8 @@ class TMDBOrchestrator:
             # replaces the native season/episode structure outright -- a
             # routine sync must refresh *that* group's current data, not
             # silently revert the show back to its native 24-episode catalog.
-            return await self._refresh_active_group_episodes(show)
-        show_data = await self.tmdb.get_show_seasons(show.tmdb_id)
+            return await self._refresh_active_group_episodes(show, bypass_cache=bypass_cache)
+        show_data = await self.tmdb.get_show_seasons(show.tmdb_id, bypass_cache=bypass_cache)
         seasons = [s for s in show_data.get("seasons", []) if s.get("season_number", 0) > 0]
 
         total = len(seasons)
@@ -196,7 +202,9 @@ class TMDBOrchestrator:
             if on_progress:
                 await on_progress(idx, total, f"Fetching S{season_num:02d} of {show.title}")
 
-            season_data = await self.tmdb.get_season_details(show.tmdb_id, season_num)
+            season_data = await self.tmdb.get_season_details(
+                show.tmdb_id, season_num, bypass_cache=bypass_cache
+            )
 
             for ep_data in season_data.get("episodes", []):
                 tmdb_ep_id: int | None = ep_data.get("id")
@@ -255,7 +263,9 @@ class TMDBOrchestrator:
             episodes_skipped=episodes_skipped,
         )
 
-    async def _refresh_active_group_episodes(self, show: Show) -> TMDBSyncResult:
+    async def _refresh_active_group_episodes(
+        self, show: Show, bypass_cache: bool = False
+    ) -> TMDBSyncResult:
         """Upsert-refresh episodes from a show's already-applied active_episode_group_id.
 
         Non-destructive counterpart to :meth:`apply_episode_group`: called by
@@ -267,6 +277,8 @@ class TMDBOrchestrator:
 
         Args:
             show: Show ORM object whose ``active_episode_group_id`` is set.
+            bypass_cache: Forwarded to :meth:`TMDBService.get_episode_group`;
+                see :meth:`sync_show_episodes`.
 
         Returns:
             TMDBSyncResult with upsert/skip counts.
@@ -280,7 +292,9 @@ class TMDBOrchestrator:
                 f"_refresh_active_group_episodes called on show id={show.id} with no "
                 "active_episode_group_id set"
             )
-        detail = await self.tmdb.get_episode_group(show.active_episode_group_id)
+        detail = await self.tmdb.get_episode_group(
+            show.active_episode_group_id, bypass_cache=bypass_cache
+        )
         flattened = _flatten_episode_group(detail)
 
         episodes_upserted = 0

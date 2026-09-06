@@ -496,3 +496,5 @@ export interface PathImportResult {
 export type CalendarEpisode = Omit<components['schemas']['CalendarEpisode'], 'genres'> & {
   genres: TmdbGenre[] | null
 }
+
+export type CalendarSyncResult = components['schemas']['CalendarSyncResult']

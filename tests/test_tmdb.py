@@ -562,6 +562,54 @@ class TestTMDBRequestHTTPLayer:
         mock_cls.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_bypass_cache_ignores_a_warm_cache_and_calls_http(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """bypass_cache=True issues a live HTTP call even when the cache is warm.
+
+        Regression: sync_missing_calendar_shows exists specifically to pick
+        up a TMDB schedule change made since the last sync -- if it kept
+        deferring to a still-warm cache entry, it would silently return the
+        same stale response it was built to correct.
+        """
+        stale = {"episodes": [{"id": 1, "air_date": "2026-01-01"}]}
+        fresh = {"episodes": [{"id": 1, "air_date": "2026-01-08"}]}
+        async with _patched_http(json_data=fresh) as (mock_client, mock_cache_set):
+            with patch.object(tmdb_module.cache, "get", AsyncMock(return_value=stale)):
+                result = await tmdb_service.get_season_details(999, 1, bypass_cache=True)
+
+        assert result == fresh
+        mock_client.get.assert_called_once()
+        mock_cache_set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_bypass_cache_failure_deletes_a_stale_entry(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """A failed bypass_cache request clears any pre-existing stale entry.
+
+        Regression: a bypass owner never reads the cache, so a stale-but-
+        still-live entry from an earlier normal call is left untouched if the
+        live fetch then fails. Without deleting it, a concurrent waiter's
+        cache.get() would find that old value, mistake it for this attempt's
+        result, and silently hand back exactly the stale response
+        bypass_cache exists to avoid.
+        """
+        stale = {"episodes": [{"id": 1, "air_date": "2026-01-01"}]}
+        req = httpx.Request("GET", "https://api.themoviedb.org/3/tv/999/season/1")
+        error = httpx.HTTPStatusError("500 Server Error", request=req, response=httpx.Response(500))
+        async with _patched_http(raise_on_status=error) as (_, mock_cache_set):
+            with (
+                patch.object(tmdb_module.cache, "get", AsyncMock(return_value=stale)),
+                patch.object(tmdb_module.cache, "delete", AsyncMock()) as mock_cache_delete,
+            ):
+                with pytest.raises(httpx.HTTPStatusError):
+                    await tmdb_service.get_season_details(999, 1, bypass_cache=True)
+
+        mock_cache_delete.assert_called_once()
+        mock_cache_set.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_success_returns_json_and_populates_cache(
         self, tmdb_service: TMDBService
     ) -> None:

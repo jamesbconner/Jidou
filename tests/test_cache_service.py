@@ -69,6 +69,32 @@ async def test_get_client_closed_after_call() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_removes_entry_and_label_keys() -> None:
+    """delete() removes both the entry and label keys for the given cache key."""
+    cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=60)
+    r = _mock_redis()
+    r.delete = AsyncMock()
+
+    with patch("redis.asyncio.from_url", return_value=r):
+        await cache.delete("key1")
+
+    r.delete.assert_called_once_with("jidou:tmdb_cache:entry:key1", "jidou:tmdb_cache:label:key1")
+
+
+@pytest.mark.asyncio
+async def test_delete_client_closed_after_call() -> None:
+    """The Redis client is closed after delete()."""
+    cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=60)
+    r = _mock_redis()
+    r.delete = AsyncMock()
+
+    with patch("redis.asyncio.from_url", return_value=r):
+        await cache.delete("key1")
+
+    r.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_set_writes_entry_and_label_with_ttl() -> None:
     """set() pipelines a TTL'd SET for the value and label, plus a ZADD."""
     cache = CacheBackend(redis_url="redis://localhost:6379", maxsize=100, ttl=60)
