@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useCalendarWeek, useSyncMissingCalendarShows } from '@/hooks/useCalendar'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -152,6 +152,13 @@ export default function Calendar() {
     () => new Set(episodes.filter((ep) => ep.status === 'missing').map((ep) => ep.show_id)).size,
     [episodes],
   )
+  // Clears a prior sync's result/error banner when the viewed range changes
+  // (paging, range length, anchor, week-start day all funnel through
+  // start/end) -- otherwise it keeps reporting a result for a range that's
+  // no longer on screen. Same pattern as ShowDetail's per-showId reset.
+  useEffect(() => {
+    syncMissing.reset()
+  }, [start, end]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
@@ -296,7 +303,7 @@ export default function Calendar() {
         {activeFilterCount > 0 && ` · ${filtered.length} of ${episodes.length} episodes`}
       </p>
 
-      {syncMissing.data && (
+      {syncMissing.isSuccess && syncMissing.data && (
         <p className="text-sm text-green-700 dark:text-green-400">
           Synced {syncMissing.data.shows_synced} show{syncMissing.data.shows_synced === 1 ? '' : 's'}
           {syncMissing.data.episodes_upserted > 0 &&

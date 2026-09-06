@@ -148,7 +148,7 @@ async def test_sync_show_episodes_skips_season_zero():
     await orch.sync_show_episodes(show)
 
     # get_season_details should only be called for season 1, not season 0
-    tmdb.get_season_details.assert_called_once_with(show.tmdb_id, 1)
+    tmdb.get_season_details.assert_called_once_with(show.tmdb_id, 1, bypass_cache=False)
 
 
 async def test_sync_show_episodes_raises_for_a_movie():
@@ -1139,7 +1139,7 @@ class TestSyncShowEpisodesWithActiveGroup:
 
         tmdb.get_show_seasons.assert_not_called()
         tmdb.get_season_details.assert_not_called()
-        tmdb.get_episode_group.assert_called_once_with("us-broadcast-id")
+        tmdb.get_episode_group.assert_called_once_with("us-broadcast-id", bypass_cache=False)
         assert result.episodes_upserted == 2
         assert show.active_episode_group_name == "US Broadcast Order"
 

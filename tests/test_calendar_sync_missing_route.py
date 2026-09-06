@@ -87,6 +87,11 @@ def test_syncs_each_distinct_show_and_aggregates_counts() -> None:
         "shows_failed": 0,
         "episodes_upserted": 5,
     }
+    # Regression: this endpoint exists to pick up a TMDB change made after
+    # the last sync, so it must not settle for whatever's still in the
+    # TMDB response cache.
+    for call in mock_orch_cls.return_value.sync_show_episodes.await_args_list:
+        assert call.kwargs.get("bypass_cache") is True
 
 
 def test_one_show_failing_does_not_block_the_rest() -> None:

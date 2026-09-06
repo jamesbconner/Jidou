@@ -621,7 +621,10 @@ async def sync_missing_calendar_shows(
     flag, since the stored ``air_date`` says the episode already aired while
     the real schedule moved it later. A genuinely missing episode (aired, no
     file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
-    is just a no-op upsert for it.
+    is just a no-op upsert for it. Bypasses TMDB's response cache (see
+    ``TMDBService._request``) so a schedule change made within the cache's
+    TTL is actually picked up, rather than silently re-serving the same
+    stale response this endpoint exists to correct.
 
     Args:
         start: First date to include (inclusive), matching the calendar view.
@@ -662,7 +665,12 @@ async def sync_missing_calendar_shows(
             # failure here should only roll back this show's partial work,
             # not expire every already-loaded row for the rest of the loop.
             async with db_session.begin_nested():
-                result = await orchestrator.sync_show_episodes(show)
+                # bypass_cache=True: the whole point of this endpoint is to
+                # pick up a TMDB change since the last sync -- serving back
+                # the same cached response (up to a 7-day TTL for season/
+                # episode endpoints) would rewrite the same stale air_date
+                # and leave the episode looking "missing" forever.
+                result = await orchestrator.sync_show_episodes(show, bypass_cache=True)
             await db_session.commit()
         except Exception:
             logger.exception("Calendar sync-missing: TMDB re-sync failed for show id=%d", show_id)

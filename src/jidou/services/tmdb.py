@@ -90,12 +90,25 @@ class TMDBService:
         self._in_flight_rounds: dict[str, int] = {}
         self._in_flight_error: dict[str, BaseException] = {}
 
-    async def _request(self, endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _request(
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        bypass_cache: bool = False,
+    ) -> dict[str, Any]:
         """Make an authenticated, rate-limited, deduplicated request to TMDB.
 
         Args:
             endpoint: API endpoint path (e.g. ``"/trending/movie/day"``).
             params: Additional query parameters.
+            bypass_cache: Skip the cached-result reads and always issue a
+                live HTTP request. The fresh result is still written to the
+                cache afterward, so later non-bypassing callers benefit from
+                it. For callers where freshness is the entire point of the
+                call (a user-triggered "sync now"), the cache's TTL
+                (``settings.tmdb_cache_ttl``, 7 days by default for season/
+                episode endpoints) would otherwise silently keep serving a
+                stale response the caller is specifically trying to refresh.
 
         Returns:
             Parsed JSON response as a dictionary.
@@ -117,10 +130,11 @@ class TMDBService:
         cache_key = cache.make_key(url + str(sorted(request_params.items())))
 
         # --- Cache hit ---
-        cached_result = await cache.get(cache_key)
-        if cached_result is not None:
-            logger.debug("Cache hit for %s", endpoint)
-            return cached_result  # type: ignore[no-any-return]
+        if not bypass_cache:
+            cached_result = await cache.get(cache_key)
+            if cached_result is not None:
+                logger.debug("Cache hit for %s", endpoint)
+                return cached_result  # type: ignore[no-any-return]
 
         # --- In-flight deduplication ---
         async with self._flight_lock:
@@ -190,11 +204,15 @@ class TMDBService:
             #     between when this coroutine won the election and now.
             # (b) cross-process: another worker may have completed an identical
             #     request between the initial cache miss and this point.
-            pre_request_cached = await cache.get(cache_key)
-            if pre_request_cached is not None:
-                self._in_flight_rounds.pop(cache_key, None)
-                self._in_flight_error.pop(cache_key, None)
-                return pre_request_cached  # type: ignore[no-any-return]
+            # Skipped under bypass_cache for the same reason as the initial
+            # check above -- the caller wants a live result, not whatever a
+            # sibling request (possibly itself non-bypassing) just cached.
+            if not bypass_cache:
+                pre_request_cached = await cache.get(cache_key)
+                if pre_request_cached is not None:
+                    self._in_flight_rounds.pop(cache_key, None)
+                    self._in_flight_error.pop(cache_key, None)
+                    return pre_request_cached  # type: ignore[no-any-return]
 
             response = await self._get_with_retry(url, request_params, endpoint)
             result: dict[str, Any] = response.json()
@@ -351,7 +369,7 @@ class TMDBService:
     # Season / Episode data (TV only)
     # ------------------------------------------------------------------
 
-    async def get_show_seasons(self, tmdb_id: int) -> dict[str, Any]:
+    async def get_show_seasons(self, tmdb_id: int, bypass_cache: bool = False) -> dict[str, Any]:
         """Get the season list for a TV show.
 
         Equivalent to ``get_details`` but makes the intent explicit when only
@@ -359,18 +377,22 @@ class TMDBService:
 
         Args:
             tmdb_id: TMDB identifier of the TV show.
+            bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary containing show details including ``seasons`` list.
         """
-        return await self._request(f"/tv/{tmdb_id}")
+        return await self._request(f"/tv/{tmdb_id}", bypass_cache=bypass_cache)
 
-    async def get_season_details(self, tmdb_id: int, season_number: int) -> dict[str, Any]:
+    async def get_season_details(
+        self, tmdb_id: int, season_number: int, bypass_cache: bool = False
+    ) -> dict[str, Any]:
         """Get all episode details for a specific season.
 
         Args:
             tmdb_id: TMDB identifier of the TV show.
             season_number: Season number (1-based).
+            bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary containing season metadata and ``episodes`` list.
@@ -380,7 +402,9 @@ class TMDBService:
         """
         if season_number < 1:
             raise ValueError(f"season_number must be >= 1, got {season_number}")
-        return await self._request(f"/tv/{tmdb_id}/season/{season_number}")
+        return await self._request(
+            f"/tv/{tmdb_id}/season/{season_number}", bypass_cache=bypass_cache
+        )
 
     async def get_episode_details(
         self, tmdb_id: int, season_number: int, episode_number: int
@@ -459,7 +483,7 @@ class TMDBService:
         """
         return await self._request(f"/tv/{tmdb_id}/episode_groups")
 
-    async def get_episode_group(self, group_id: str) -> dict[str, Any]:
+    async def get_episode_group(self, group_id: str, bypass_cache: bool = False) -> dict[str, Any]:
         """Get the full per-episode breakdown for one episode group.
 
         ``get_episode_groups`` only returns a summary (id/name/type/counts);
@@ -469,12 +493,13 @@ class TMDBService:
         Args:
             group_id: TMDB episode group ID (the ``id`` field from a
                 ``get_episode_groups`` result entry).
+            bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary with a ``groups`` list of sub-groups, each carrying
             ``name``, ``order``, and an ``episodes`` list.
         """
-        return await self._request(f"/tv/episode_group/{group_id}")
+        return await self._request(f"/tv/episode_group/{group_id}", bypass_cache=bypass_cache)
 
     async def get_images(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get available images (posters, backdrops, logos) for a show or movie.

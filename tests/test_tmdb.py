@@ -562,6 +562,27 @@ class TestTMDBRequestHTTPLayer:
         mock_cls.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_bypass_cache_ignores_a_warm_cache_and_calls_http(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """bypass_cache=True issues a live HTTP call even when the cache is warm.
+
+        Regression: sync_missing_calendar_shows exists specifically to pick
+        up a TMDB schedule change made since the last sync -- if it kept
+        deferring to a still-warm cache entry, it would silently return the
+        same stale response it was built to correct.
+        """
+        stale = {"episodes": [{"id": 1, "air_date": "2026-01-01"}]}
+        fresh = {"episodes": [{"id": 1, "air_date": "2026-01-08"}]}
+        async with _patched_http(json_data=fresh) as (mock_client, mock_cache_set):
+            with patch.object(tmdb_module.cache, "get", AsyncMock(return_value=stale)):
+                result = await tmdb_service.get_season_details(999, 1, bypass_cache=True)
+
+        assert result == fresh
+        mock_client.get.assert_called_once()
+        mock_cache_set.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_success_returns_json_and_populates_cache(
         self, tmdb_service: TMDBService
     ) -> None:

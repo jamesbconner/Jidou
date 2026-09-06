@@ -359,4 +359,54 @@ describe('Calendar page sync-missing button', () => {
       expect(screen.getByText('Sync failed: TMDB unavailable.')).toBeInTheDocument(),
     )
   })
+
+  test('the success banner clears once the viewed range changes', async () => {
+    mockCalendarAndSync(episodes, {
+      body: { shows_synced: 1, shows_failed: 0, episodes_upserted: 2 },
+    })
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync missing (1)' }))
+    await waitFor(() =>
+      expect(screen.getByText('Synced 1 show · 2 episodes updated.')).toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByText('Next →'))
+
+    await waitFor(() =>
+      expect(screen.queryByText('Synced 1 show · 2 episodes updated.')).not.toBeInTheDocument(),
+    )
+  })
+
+  test('a later failed sync clears the previous success banner, not just adds to it', async () => {
+    let syncCallCount = 0
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      if (url.includes('/shows/calendar/sync-missing')) {
+        syncCallCount += 1
+        return Promise.resolve(
+          syncCallCount === 1
+            ? mockResponse({ shows_synced: 1, shows_failed: 0, episodes_upserted: 2 })
+            : mockResponse({ detail: 'TMDB unavailable' }, 502),
+        )
+      }
+      return Promise.resolve(mockResponse(episodes))
+    })
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+    const button = () => screen.getByRole('button', { name: 'Sync missing (1)' })
+
+    fireEvent.click(button())
+    await waitFor(() =>
+      expect(screen.getByText('Synced 1 show · 2 episodes updated.')).toBeInTheDocument(),
+    )
+
+    fireEvent.click(button())
+
+    await waitFor(() =>
+      expect(screen.getByText('Sync failed: TMDB unavailable.')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Synced 1 show · 2 episodes updated.')).not.toBeInTheDocument()
+  })
 })
