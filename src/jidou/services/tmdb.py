@@ -230,6 +230,16 @@ class TMDBService:
         except Exception as exc:
             if is_owner:
                 self._in_flight_error[cache_key] = exc
+                if bypass_cache:
+                    # A bypass owner never read the entry, so a stale-but-
+                    # still-live one (from an earlier non-bypassing call, or
+                    # left over from before this call started) is still
+                    # sitting in the cache untouched. Without clearing it, a
+                    # waiter's cache.get() below would find that old value,
+                    # mistake it for this attempt's result, and hand back
+                    # exactly the stale response bypass_cache exists to avoid
+                    # -- silently, with no error raised anywhere.
+                    await cache.delete(cache_key)
             raise
         finally:
             if is_owner:

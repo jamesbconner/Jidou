@@ -74,6 +74,18 @@ class CacheBackend:
             return None
         return json.loads(raw)
 
+    async def delete(self, key: str) -> None:
+        """Remove a single entry (and its label) from the cache.
+
+        Args:
+            key: The cache key to remove.
+        """
+        r = self._get_redis()
+        try:
+            await r.delete(_ENTRY_PREFIX + key, _LABEL_PREFIX + key)
+        finally:
+            await r.aclose()
+
     async def set(
         self,
         key: str,
