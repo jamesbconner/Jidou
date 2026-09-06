@@ -99,7 +99,7 @@ docker compose exec redis redis-cli ping
 **Resolution:**
 1. If the worker is stopped: `docker compose up -d jidou-worker`.
 2. If Redis is down: `docker compose up -d redis` — the worker reconnects automatically once Redis is available.
-3. If a task is permanently stuck in `running` after a worker crash, cancel it via the UI (Tasks page → Cancel) or `DELETE /api/tasks/{id}`, then re-trigger.
+3. If a task is permanently stuck in `running` after a worker crash, cancel it via the UI (Tasks page → Cancel) or `POST /api/tasks/{id}/cancel` (`DELETE /api/tasks/{id}` only works on an already-completed/failed/cancelled task — it 400s on a pending/running one), then re-trigger.
 4. To restart the worker cleanly: `docker compose restart jidou-worker`.
 
 **Prevention:** The worker container has `restart: unless-stopped` in `docker-compose.yml` so it recovers from crashes automatically. Ensure Docker itself is configured to start on system boot.

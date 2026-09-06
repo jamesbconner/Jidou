@@ -50,7 +50,7 @@ uv run python make.py migrate
 
 1. Click **Shows** → **Add Show**.
 2. Search for a title (e.g. `Breaking Bad`).
-3. Click the result to add it to your library.
+3. Click a poster to open a detail modal (overview, rating, year) and confirm it's the right match, then **Add**.
 
 ![Add Show search modal](screenshots/add-show-search.png)
 

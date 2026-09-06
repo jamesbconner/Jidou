@@ -26,6 +26,8 @@ Use **Sync Episodes** on the Show Detail page (or `POST /api/shows/{id}/sync-epi
 **Show rematch:**
 If a show was linked to the wrong TMDB entry, use **Rematch Show** to re-link it. All episode data is replaced; existing file tracking is preserved where episode numbers align, and orphaned records are created for episodes that no longer exist.
 
+**Alternate episode groupings:** Some shows have more than one TMDB numbering scheme — e.g. a combined-episode broadcast order alongside the standard season/episode split. Use **Use Alternate Grouping** (or **Change Episode Grouping**, once one is active) on the Show Detail page to list the groupings TMDB offers (`GET /api/shows/{id}/episode-groups`) and switch to one (`POST /api/shows/{id}/episode-groups/{group_id}/apply`). Applying a grouping replaces the show's entire episode list; previously tracked episodes with no equivalent in the new grouping become orphaned tracking records (see [Data Quality](#data-quality)) instead of silently losing their tracked file/watched state. Not available for movies.
+
 **Poster selection:** Use **Change Poster** on the Show Detail page to pick, independently, which TMDB poster (English or textless) is used on the Shows-page grid card versus the Show Details header. The choice is stored separately from TMDB's own `poster_path` so a later metadata resync never silently overwrites it. All poster and backdrop images load through Jidou's own image cache (see [Image caching](#image-caching)) rather than hotlinking `image.tmdb.org`.
 
 ![Poster picker modal](screenshots/poster-picker-modal.png)
@@ -75,13 +77,15 @@ If both fail, the file is marked `unmatched` for manual review.
 
 ![Files page Resolve modal](screenshots/files-resolve-modal.png)
 
-**Fixing an already-matched file:** On the Show Detail episode list, **Fix Show**/**Fix Eps** and the per-episode rematch flow let you re-open matching for a file that landed on the wrong show or episode without waiting for a full re-scan — this covers both download-backed files (`begin-rematch`) and path-imported episodes with no backing file (`assign-import`).
+**Fixing an already-matched file:** On the Show Detail episode list, **Fix Match**/**Fix Eps** and the per-episode rematch flow let you re-open matching for a file that landed on the wrong show or episode without waiting for a full re-scan — this covers both download-backed files (`begin-rematch`, **Fix Match**) and path-imported episodes with no backing file (`assign-import`, **Fix Eps** — the only option for import-tracked episodes, since `begin-rematch` requires a `DownloadedFile` to operate on).
 
-![Show Detail Fix Show / Fix Eps actions](screenshots/show-detail-fix-eps.png)
+![Show Detail Fix Match / Fix Eps actions](screenshots/show-detail-fix-eps.png)
 
-**Linking a file directly to an episode:** On an untracked episode row in the Show Detail episode list, use **Match File** instead of routing through bulk text-file import. Two modes: pick an existing unmatched file already scoped to the show, or type a path Jidou hasn't seen yet — a content-type picker (mirroring **Edit Path**) builds the full container path from the show/season/filename portion you type, previews it, and validates the file exists on disk before linking (`POST /shows/{show_id}/episodes/{episode_id}/link-file`). Manually linked files are tracked with `tracked_source="import"`, the same as bulk path-import, so they participate in the same reassignment flow.
+**Linking a file directly to an episode:** On an untracked episode row in the Show Detail episode list, use **Match File** instead of routing through bulk text-file import. Two modes: pick an existing file scoped to the show — any file not currently tracking another episode, in any non-transient status (`unmatched`, `routed`, `matched`, `error`; a file displaced when another one gets misrouted onto its slot keeps its prior status rather than resetting), and import-tracked filenames — or type a path Jidou hasn't seen yet — a content-type picker (mirroring **Edit Path**) builds the full container path from the show/season/filename portion you type, previews it, and validates the file exists on disk before linking (`POST /shows/{show_id}/episodes/{episode_id}/link-file`). Manually linked files are tracked with `tracked_source="import"`, the same as bulk path-import, so they participate in the same reassignment flow.
 
 **Scanning a show's own directory:** **Scan Local Files** on the Show Detail page walks the show's own local path on disk and runs every file it finds through the same matching pipeline bulk path-import uses — useful for picking up stragglers a prior import missed, or an existing library that predates Jidou. It's read-only: results are shown as `matched` (untracked episode, ready to confirm), `unmatched` (no episode resolved), or `conflict` (the proposed episode is already tracked by a different file), with an editable per-row episode picker and a bulk **Confirm All Matched** action. Files already recorded against the show (a prior import or download) are skipped automatically. If a filename or the show's own directory name contains a legacy Latin-1/cp1252 byte instead of proper UTF-8 — common in libraries authored by older Windows/NAS tooling — Jidou recovers the actual accented character for display and still links the file correctly; see [Matching Pipeline](matching-pipeline.md#filenames-and-directory-names-with-non-utf-8-bytes).
+
+The same scan also reconciles a `missing` status: if a tracked file's on-disk path no longer exists (renamed/moved/deleted outside the app), it's flagged `missing` so it stops showing up as a candidate in "Pick existing file" pickers, and automatically restored to its prior status if the file reappears at the same path on a later scan. The **Match File** picker also calls `POST /api/files/verify-paths` on open, so a vanished file drops out of the candidate list immediately rather than waiting for the next scan.
 
 ![Scan Local Files modal](screenshots/scan-local-files-modal.png)
 
@@ -173,7 +177,7 @@ Track your viewing status for each show independently of the file library.
 
 ![Watchlist page](screenshots/watchlist-page.png)
 
-Shows can be added to the watchlist from the Show Detail page — a color-coded Add/Remove toggle sits inline in the metadata line, alongside a "Queue #N" pill and a status pill (each opens a dropdown to change position/status without leaving the page). The Watchlist page supports drag-to-reorder for prioritising your queue.
+Shows can be added to the watchlist from the Show Detail page — a color-coded Add/Remove toggle sits inline in the metadata line, alongside a "Queue #N" pill and a status pill (each opens a dropdown to change position/status without leaving the page). The Watchlist page supports drag-to-reorder for prioritising your queue. Clicking a row (rather than its title link, status select, or Remove button) opens a quick-look preview modal with the show's poster, overview, rating, and next unwatched episode, without navigating away from the list.
 
 ![Watchlist drag-to-reorder](screenshots/watchlist-drag-reorder.png)
 
@@ -195,9 +199,9 @@ Track which episodes you've actually watched, independently of file tracking and
 
 ## Discover
 
-The **Discover** page (nav bar, between Shows and Files) surfaces shows and movies not yet in your library: `GET /api/shows/discover` seeds recommendations from your most recently updated `watching`/`completed` watchlist shows, dedupes them, and fills out the feed with trending TV/movies when seeded results are thin — or falls back to plain trending if your watchlist has no watching/completed entries at all. Each card shows which watchlist shows it was recommended because of (`seeded_from`), and clicking a card opens a detail modal with the overview, rating, and a "View on TMDB" link.
+The **Discover** page (nav bar, between Shows and Files) surfaces shows and movies not yet in your library: `GET /api/shows/discover` seeds recommendations from your most recently updated `watching`/`completed` watchlist shows, dedupes them, and fills out the feed with trending TV/movies when seeded results are thin — or falls back to plain trending if your watchlist has no watching/completed entries at all. Each card shows which watchlist shows it was recommended because of (`seeded_from`), and clicking a card opens a detail modal with the overview, rating, and a "View on TMDB" link. The same detail modal (reused for the Search Shows TMDB tab, see [Show library](#show-library)) has its own **Add** action, so you don't need to close it and use the underlying card's button.
 
-**Add + Watchlist:** one click on a Discover card creates the show and adds it to your watchlist (plus an RSS stub, if RSS is configured) in one step.
+**Add + Watchlist:** one click on a Discover card (or its detail modal) creates the show and adds it to your watchlist (plus an RSS stub, if RSS is configured) in one step.
 
 The feed is cached 24h and keyed to your current watchlist seed set, so adding/removing a watching show invalidates the cache immediately rather than waiting out the TTL.
 
@@ -233,6 +237,8 @@ The Dashboard is the landing page: a pipeline-status donut, a file-ingestion cha
 ## Airing calendar
 
 An optional calendar page (toggle in Settings) showing episodes airing in a date range across your whole library, each marked `tracked`, `missing`, or `upcoming` relative to today. The date range is configurable and persists per-browser: a **range** of 1, 3, 5, or 7 days, and an **anchor** — starting on today, centered on today, or (7-day range only) starting at the beginning of the calendar week, with Sunday or Monday as the week-start day.
+
+**Sync missing:** A show sometimes shows `missing` in the calendar purely because TMDB moved an episode's air date after Jidou already stored the old one — the episode never actually aired. The **Sync missing** button (enabled whenever the visible range has at least one `missing` episode) re-fetches TMDB metadata for every affected show, bypassing the TMDB response cache so a schedule change is picked up immediately (`POST /api/shows/calendar/sync-missing`). Shows with **Ignore Missing Eps** set on Show Detail, or with no active, published RSS subscription, are skipped — neither is ever going to auto-download the episode, so there'd be nothing to correct. A result banner reports how many shows were synced, episodes updated, and (if any) failed.
 
 ![Airing calendar page](screenshots/calendar-page.png)
 

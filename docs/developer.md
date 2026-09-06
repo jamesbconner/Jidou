@@ -49,14 +49,15 @@ uv run python make.py check
 # Individual checks
 uv run python make.py lint          # ruff check
 uv run python make.py format        # ruff format
+uv run python make.py format-check  # ruff format --check (read-only; this is what CI runs)
 uv run python make.py types         # mypy src/
 uv run python make.py security      # bandit -r src/ -l
 uv run python make.py test          # pytest with coverage
 
 # Docker
-uv run python make.py docker-up     # docker compose --profile default up -d
-uv run python make.py docker-down   # docker compose down
-uv run python make.py docker-build  # docker compose build --no-cache
+uv run python make.py docker-up     # docker compose --profile default up --build -d
+uv run python make.py docker-down   # docker compose --profile default down
+uv run python make.py docker-build  # docker compose --profile default build --no-cache
 
 # Database
 uv run python make.py migrate       # alembic upgrade head
@@ -114,7 +115,7 @@ jidou/
 │       ├── components/       # Reusable UI components
 │       ├── hooks/            # TanStack Query data hooks
 │       ├── pages/            # Route-level page components
-│       ├── types/            # TypeScript API types (generated from OpenAPI)
+│       ├── types/            # api-generated.ts (from OpenAPI) + hand-maintained api.ts on top
 │       └── utils/            # Shared utilities
 ├── alembic/versions/         # Database migrations
 ├── tests/                    # pytest test suite
