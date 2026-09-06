@@ -20,6 +20,7 @@ def _make_show(
     poster_path: str | None = None,
     content_type: str | None = None,
     genres: list[dict[str, object]] | None = None,
+    track_missing_episodes: bool = True,
 ) -> MagicMock:
     s = MagicMock(spec=Show)
     s.id = id
@@ -27,6 +28,7 @@ def _make_show(
     s.poster_path = poster_path
     s.content_type = content_type
     s.genres = genres
+    s.track_missing_episodes = track_missing_episodes
     return s
 
 
@@ -51,7 +53,7 @@ def _make_episode(
     return e
 
 
-def _session_override(rows: list[tuple[MagicMock, MagicMock]]) -> object:
+def _session_override(rows: list[tuple[MagicMock, MagicMock, bool]]) -> object:
     async def _mock_session() -> AsyncMock:
         session = AsyncMock()
         result = MagicMock()
@@ -63,9 +65,16 @@ def _session_override(rows: list[tuple[MagicMock, MagicMock]]) -> object:
 
 
 def _get_calendar(
-    rows: list[tuple[MagicMock, MagicMock]], start: str, end: str, today: str | None = None
+    rows: list[tuple[MagicMock, MagicMock] | tuple[MagicMock, MagicMock, bool]],
+    start: str,
+    end: str,
+    today: str | None = None,
 ):
-    app.dependency_overrides[get_session] = _session_override(rows)
+    # Callers that don't care about RSS status pass 2-tuples; default them to
+    # has_active_rss_subscription=True so existing assertions (about status,
+    # track_missing_episodes, etc.) aren't coupled to the RSS flag too.
+    full_rows = [row if len(row) == 3 else (*row, True) for row in rows]
+    app.dependency_overrides[get_session] = _session_override(full_rows)
     url = f"/api/shows/calendar?start={start}&end={end}"
     if today is not None:
         url += f"&today={today}"
@@ -176,6 +185,26 @@ class TestCalendarResponseShape:
         assert entry["air_date"] == (_TODAY - timedelta(days=1)).isoformat()
         assert entry["content_type"] == "anime"
         assert entry["genres"] == [{"id": 16, "name": "Animation"}]
+
+    def test_response_includes_track_missing_episodes_from_show(self) -> None:
+        """The per-episode flag mirrors the parent show's opt-out setting."""
+        show = _make_show(track_missing_episodes=False)
+        episode = _make_episode(air_date=_TODAY - timedelta(days=1))
+
+        response = _get_calendar([(episode, show)], "2026-07-01", "2026-07-14")
+
+        assert response.status_code == 200
+        assert response.json()[0]["track_missing_episodes"] is False
+
+    def test_response_includes_has_active_rss_subscription(self) -> None:
+        """The per-episode flag reflects whether the show has an active RSS subscription."""
+        show = _make_show()
+        episode = _make_episode(air_date=_TODAY - timedelta(days=1))
+
+        response = _get_calendar([(episode, show, False)], "2026-07-01", "2026-07-14")
+
+        assert response.status_code == 200
+        assert response.json()[0]["has_active_rss_subscription"] is False
 
     def test_response_allows_null_content_type_and_genres(self) -> None:
         show = _make_show(id=8, title="No Metadata")

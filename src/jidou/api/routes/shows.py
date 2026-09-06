@@ -560,8 +560,18 @@ async def get_calendar(
         ``status`` ("tracked", "missing", or "upcoming") so the frontend
         never has to reason about "today" itself.
     """
+    active_rss_sq = (
+        select(RssSubscription.id)
+        .where(
+            RssSubscription.show_id == Show.id,
+            RssSubscription.active.is_(True),
+            RssSubscription.enabled_in_config.is_(True),
+        )
+        .correlate(Show)
+        .exists()
+    )
     stmt = (
-        select(Episode, Show)
+        select(Episode, Show, active_rss_sq.label("has_active_rss_subscription"))
         .join(Show, Episode.show_id == Show.id)
         .where(Episode.air_date.between(start, end))
         .order_by(Episode.air_date, Show.title)
@@ -570,7 +580,7 @@ async def get_calendar(
 
     today = today or date.today()
     results: list[CalendarEpisode] = []
-    for episode, show in rows:
+    for episode, show, has_active_rss in rows:
         # Excluded by the WHERE clause above; narrows the type for the
         # CalendarEpisode.air_date field (non-nullable).
         if episode.air_date is None:
@@ -595,6 +605,8 @@ async def get_calendar(
                 name=episode.name,
                 air_date=episode.air_date,
                 status=status,
+                track_missing_episodes=show.track_missing_episodes,
+                has_active_rss_subscription=has_active_rss,
                 content_type=show.content_type,
                 genres=show.genres,
             )
@@ -621,7 +633,10 @@ async def sync_missing_calendar_shows(
     flag, since the stored ``air_date`` says the episode already aired while
     the real schedule moved it later. A genuinely missing episode (aired, no
     file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
-    is just a no-op upsert for it. Bypasses TMDB's response cache (see
+    is just a no-op upsert for it. Shows with ``track_missing_episodes=False``
+    or with no active, published RSS subscription are skipped -- neither one
+    is ever going to auto-download the "missing" episode, so re-syncing TMDB
+    metadata for it here would be pointless work. Bypasses TMDB's response cache (see
     ``TMDBService._request``) so a schedule change made within the cache's
     TTL is actually picked up, rather than silently re-serving the same
     stale response this endpoint exists to correct.
@@ -655,10 +670,27 @@ async def sync_missing_calendar_shows(
     shows_synced = 0
     shows_failed = 0
     episodes_upserted = 0
+    active_rss_sq = (
+        select(RssSubscription.id)
+        .where(
+            RssSubscription.show_id == Show.id,
+            RssSubscription.active.is_(True),
+            RssSubscription.enabled_in_config.is_(True),
+        )
+        .correlate(Show)
+        .exists()
+    )
     for show_id in show_ids:
-        show_stmt = select(Show).where(Show.id == show_id, Show.media_type != "movie")
-        show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-        if show is None:
+        show_stmt = select(Show, active_rss_sq.label("has_active_rss_subscription")).where(
+            Show.id == show_id, Show.media_type != "movie"
+        )
+        row = (await db_session.execute(show_stmt)).first()
+        if row is None:
+            continue
+        show, has_active_rss = row
+        if not show.track_missing_episodes:
+            continue
+        if not has_active_rss:
             continue
         try:
             # Own SAVEPOINT per show, same rationale as sync_all_shows: a

@@ -25,6 +25,8 @@ const episodes: CalendarEpisode[] = [
     name: 'To You, in 2000 Years',
     air_date: TODAY,
     status: 'tracked',
+    track_missing_episodes: true,
+    has_active_rss_subscription: true,
     content_type: 'anime',
     genres: [{ id: 16, name: 'Animation' }],
   },
@@ -38,6 +40,8 @@ const episodes: CalendarEpisode[] = [
     name: 'The Target',
     air_date: TODAY,
     status: 'missing',
+    track_missing_episodes: true,
+    has_active_rss_subscription: true,
     content_type: 'tv',
     genres: [{ id: 80, name: 'Crime' }],
   },
@@ -316,6 +320,42 @@ describe('Calendar page sync-missing button', () => {
 
     const button = screen.getByRole('button', { name: 'Sync missing (1)' })
     expect(button).not.toBeDisabled()
+  })
+
+  test('excludes missing episodes from shows opted out of missing-episode tracking', async () => {
+    // Regression test: a show the user explicitly toggled to "Ignore Missing
+    // Eps" has track_missing_episodes=False, and shouldn't inflate the "Sync
+    // missing" count or be a candidate for the sync it triggers.
+    mockCalendar(episodes.map((ep) => ({ ...ep, track_missing_episodes: false })))
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const button = screen.getByRole('button', { name: 'Sync missing' })
+    expect(button).toBeDisabled()
+  })
+
+  test('excludes missing episodes from shows with no active RSS subscription', async () => {
+    // Regression test: a show with no RSS feed configured at all will never
+    // auto-download its episodes, so it shouldn't inflate the "Sync missing"
+    // count or be a candidate for the sync it triggers -- even if the user
+    // never explicitly toggled "Ignore Missing Eps" for it.
+    mockCalendar(episodes.map((ep) => ({ ...ep, has_active_rss_subscription: false })))
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const button = screen.getByRole('button', { name: 'Sync missing' })
+    expect(button).toBeDisabled()
+  })
+
+  test('shows a criteria explanation next to the button', async () => {
+    mockCalendar(episodes)
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const info = screen.getByRole('button', {
+      name: 'What counts as a missing show for Sync missing',
+    })
+    expect(info).toHaveAttribute('title', expect.stringContaining('active RSS subscription'))
   })
 
   test('clicking syncs and reports the aggregated result', async () => {
