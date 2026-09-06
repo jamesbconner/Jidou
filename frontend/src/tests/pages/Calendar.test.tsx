@@ -25,6 +25,7 @@ const episodes: CalendarEpisode[] = [
     name: 'To You, in 2000 Years',
     air_date: TODAY,
     status: 'tracked',
+    track_missing_episodes: true,
     content_type: 'anime',
     genres: [{ id: 16, name: 'Animation' }],
   },
@@ -38,6 +39,7 @@ const episodes: CalendarEpisode[] = [
     name: 'The Target',
     air_date: TODAY,
     status: 'missing',
+    track_missing_episodes: true,
     content_type: 'tv',
     genres: [{ id: 80, name: 'Crime' }],
   },
@@ -316,6 +318,18 @@ describe('Calendar page sync-missing button', () => {
 
     const button = screen.getByRole('button', { name: 'Sync missing (1)' })
     expect(button).not.toBeDisabled()
+  })
+
+  test('excludes missing episodes from shows opted out of missing-episode tracking', async () => {
+    // Regression test: a show with no RSS feed configured (deliberately) has
+    // track_missing_episodes=False, and shouldn't inflate the "Sync missing"
+    // count or be a candidate for the sync it triggers.
+    mockCalendar(episodes.map((ep) => ({ ...ep, track_missing_episodes: false })))
+    render(<Calendar />, { wrapper: makeWrapper() })
+    await waitFor(() => expect(screen.getByText('Attack on Titan')).toBeInTheDocument())
+
+    const button = screen.getByRole('button', { name: 'Sync missing' })
+    expect(button).toBeDisabled()
   })
 
   test('clicking syncs and reports the aggregated result', async () => {

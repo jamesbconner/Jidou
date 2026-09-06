@@ -20,6 +20,7 @@ def _make_show(
     poster_path: str | None = None,
     content_type: str | None = None,
     genres: list[dict[str, object]] | None = None,
+    track_missing_episodes: bool = True,
 ) -> MagicMock:
     s = MagicMock(spec=Show)
     s.id = id
@@ -27,6 +28,7 @@ def _make_show(
     s.poster_path = poster_path
     s.content_type = content_type
     s.genres = genres
+    s.track_missing_episodes = track_missing_episodes
     return s
 
 
@@ -176,6 +178,16 @@ class TestCalendarResponseShape:
         assert entry["air_date"] == (_TODAY - timedelta(days=1)).isoformat()
         assert entry["content_type"] == "anime"
         assert entry["genres"] == [{"id": 16, "name": "Animation"}]
+
+    def test_response_includes_track_missing_episodes_from_show(self) -> None:
+        """The per-episode flag mirrors the parent show's opt-out setting."""
+        show = _make_show(track_missing_episodes=False)
+        episode = _make_episode(air_date=_TODAY - timedelta(days=1))
+
+        response = _get_calendar([(episode, show)], "2026-07-01", "2026-07-14")
+
+        assert response.status_code == 200
+        assert response.json()[0]["track_missing_episodes"] is False
 
     def test_response_allows_null_content_type_and_genres(self) -> None:
         show = _make_show(id=8, title="No Metadata")

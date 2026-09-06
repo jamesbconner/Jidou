@@ -24,6 +24,11 @@ class CalendarEpisode(BaseModel):
     name: str
     air_date: date
     status: Literal["tracked", "missing", "upcoming"]
+    # Mirrors Show.track_missing_episodes -- False means the user opted this
+    # show out of missing-episode tracking (e.g. it deliberately has no RSS
+    # feed), so the frontend shouldn't count a "missing" episode here toward
+    # anything actionable.
+    track_missing_episodes: bool
     content_type: ContentType | None = None
     genres: list[dict[str, object]] | None = Field(
         default=None,

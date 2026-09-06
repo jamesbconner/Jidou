@@ -3114,6 +3114,8 @@ export interface components {
              * @enum {string}
              */
             status: "tracked" | "missing" | "upcoming";
+            /** Track Missing Episodes */
+            track_missing_episodes: boolean;
             content_type?: components["schemas"]["ContentType"] | null;
             /**
              * Genres

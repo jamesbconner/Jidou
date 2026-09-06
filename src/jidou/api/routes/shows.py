@@ -595,6 +595,7 @@ async def get_calendar(
                 name=episode.name,
                 air_date=episode.air_date,
                 status=status,
+                track_missing_episodes=show.track_missing_episodes,
                 content_type=show.content_type,
                 genres=show.genres,
             )
@@ -621,7 +622,10 @@ async def sync_missing_calendar_shows(
     flag, since the stored ``air_date`` says the episode already aired while
     the real schedule moved it later. A genuinely missing episode (aired, no
     file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
-    is just a no-op upsert for it. Bypasses TMDB's response cache (see
+    is just a no-op upsert for it. Shows with ``track_missing_episodes=False``
+    are skipped -- the user has already opted this show out of missing-
+    episode tracking (e.g. it deliberately has no RSS feed), so re-syncing it
+    here would be pointless work. Bypasses TMDB's response cache (see
     ``TMDBService._request``) so a schedule change made within the cache's
     TTL is actually picked up, rather than silently re-serving the same
     stale response this endpoint exists to correct.
@@ -659,6 +663,8 @@ async def sync_missing_calendar_shows(
         show_stmt = select(Show).where(Show.id == show_id, Show.media_type != "movie")
         show = (await db_session.execute(show_stmt)).scalar_one_or_none()
         if show is None:
+            continue
+        if not show.track_missing_episodes:
             continue
         try:
             # Own SAVEPOINT per show, same rationale as sync_all_shows: a

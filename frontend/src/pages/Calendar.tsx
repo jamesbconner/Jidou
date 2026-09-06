@@ -147,9 +147,18 @@ export default function Calendar() {
   const syncMissing = useSyncMissingCalendarShows()
   // Distinct shows, not episodes -- sync-missing re-syncs a show's full
   // catalog once, so that's the count that matches what the click actually
-  // does (and what the backend itself dedupes to).
+  // does (and what the backend itself dedupes to). Shows with
+  // track_missing_episodes=False are excluded -- the user has opted them out
+  // of missing-episode tracking (e.g. deliberately no RSS feed), so counting
+  // and re-syncing them here would be misleading and pointless, matching the
+  // backend's own skip in sync_missing_calendar_shows.
   const missingShowCount = useMemo(
-    () => new Set(episodes.filter((ep) => ep.status === 'missing').map((ep) => ep.show_id)).size,
+    () =>
+      new Set(
+        episodes
+          .filter((ep) => ep.status === 'missing' && ep.track_missing_episodes)
+          .map((ep) => ep.show_id),
+      ).size,
     [episodes],
   )
   // Clears a prior sync's result/error banner when the viewed range changes
@@ -217,7 +226,7 @@ export default function Calendar() {
           variant="secondary"
           tone="light"
           size="sm"
-          title="Re-fetch TMDB metadata for every show with a missing episode in this range -- fixes schedule slips the automatic sync won't catch on its own"
+          title="Re-fetch TMDB metadata to fix schedule slips"
         >
           {syncMissing.isPending
             ? 'Syncing…'

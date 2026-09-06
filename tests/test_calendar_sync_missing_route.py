@@ -38,9 +38,10 @@ def _session(show_ids: list[int], shows_by_id: dict[int, MagicMock]) -> object:
     return _mock_session
 
 
-def _make_show(id: int) -> MagicMock:
+def _make_show(id: int, *, track_missing_episodes: bool = True) -> MagicMock:
     show = MagicMock()
     show.id = id
+    show.track_missing_episodes = track_missing_episodes
     return show
 
 
@@ -130,6 +131,34 @@ def test_show_id_with_no_matching_show_is_skipped() -> None:
         "shows_synced": 0,
         "shows_failed": 0,
         "episodes_upserted": 0,
+    }
+
+
+def test_show_with_track_missing_episodes_false_is_skipped() -> None:
+    """A show that opted out of missing-episode tracking is not re-synced.
+
+    Regression test for the calendar's "Sync missing" button re-syncing
+    shows the user has deliberately excluded from missing-episode tracking
+    (e.g. shows with no RSS feed), which is wasted work and an inflated count.
+    """
+    show1, show2 = (
+        _make_show(1, track_missing_episodes=False),
+        _make_show(2),
+    )
+    session_override = _session([1, 2], {1: show1, 2: show2})
+
+    with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        mock_orch_cls.return_value.sync_show_episodes = AsyncMock(
+            return_value=TMDBSyncResult(shows_synced=1, episodes_upserted=2, episodes_skipped=0)
+        )
+        response = _post_sync_missing(session_override)
+        mock_orch_cls.return_value.sync_show_episodes.assert_called_once()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "shows_synced": 1,
+        "shows_failed": 0,
+        "episodes_upserted": 2,
     }
 
 
