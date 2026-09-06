@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 
 // jsdom's requestAnimationFrame implementation (since v16.1.0) keeps an
 // internal setInterval alive with no way to cancel it, which prevents the
