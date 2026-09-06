@@ -5,7 +5,7 @@ import { TmdbResultCard } from '@/components/TmdbResultCard'
 import { useShows, useSearchShows, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
-import { useOrphans } from '@/hooks/useOrphans'
+import { useOrphans, useDismissOrphan } from '@/hooks/useOrphans'
 import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { Modal } from '@/components/ui/Modal'
@@ -219,6 +219,7 @@ export default function Shows() {
     'multi',
   )
   const { data: orphans = [] } = useOrphans()
+  const dismissOrphan = useDismissOrphan()
   const createShow = useCreateShow()
 
   // High limit mirrors allShows — covers the full library without pagination gaps.
@@ -729,8 +730,8 @@ export default function Shows() {
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 These episodes could not be migrated during a show rematch because their season/episode
-                number has no match in the new TMDB entry. Select <strong>Manual Match</strong> to link
-                each file to the correct episode.
+                number has no match in the new TMDB entry. Select <strong>Match</strong> to link
+                each file to the correct episode, or <strong>Dismiss</strong> to discard the record.
               </p>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -766,12 +767,21 @@ export default function Shows() {
                           </span>
                         </td>
                         <td className="py-2">
-                          <button
-                            onClick={() => setResolvingOrphan(o)}
-                            className="text-xs bg-[var(--color-ocean-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ocean-500)] transition-colors"
-                          >
-                            Manual Match
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setResolvingOrphan(o)}
+                              className="text-xs bg-[var(--color-ocean-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ocean-500)] transition-colors"
+                            >
+                              Match
+                            </button>
+                            <button
+                              onClick={() => dismissOrphan.mutate(o.id)}
+                              disabled={dismissOrphan.isPending && dismissOrphan.variables === o.id}
+                              className="text-xs bg-[var(--color-ember-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ember-500)] transition-colors disabled:opacity-50"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
