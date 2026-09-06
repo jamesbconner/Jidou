@@ -52,4 +52,10 @@ describe('TmdbResultCard', () => {
     renderCard()
     expect(screen.getByText('Test Show').closest('.card')).not.toHaveClass('cursor-pointer')
   })
+
+  test('subtitle exposes its full text via a title attribute for truncated cases', () => {
+    const subtitle = 'Because you watch Some Show With A Really Long Title +3 more'
+    renderCard({ subtitle })
+    expect(screen.getByText(subtitle)).toHaveAttribute('title', subtitle)
+  })
 })
