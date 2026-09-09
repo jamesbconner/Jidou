@@ -101,6 +101,20 @@
   .dark ::file-selector-button {
     border-color: var(--color-gray-700, currentColor);
   }
+
+  /* Graphite-toned scrollbars in place of the OS default grey. Both
+     properties inherit, so declaring them on the root reaches every
+     scrollable descendant (page, carousels, modals, tables). Standard
+     CSS Scrollbars module — modern Chromium/Firefox/Safari; older engines
+     fall back to the native scrollbar, which is an acceptable degradation.
+     Transparent track lets it blend into whatever surface it sits on. */
+  :root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-gray-500) transparent;
+  }
+  :root.dark {
+    scrollbar-color: var(--color-gray-600) transparent;
+  }
 }
 
 @layer components {
