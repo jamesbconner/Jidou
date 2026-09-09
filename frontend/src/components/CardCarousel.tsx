@@ -51,7 +51,12 @@ export function CardCarousel({ children }: Props) {
       <div
         ref={trackRef}
         onScroll={updateScrollState}
-        className="flex gap-3 overflow-x-auto snap-x scroll-smooth"
+        // overflow-x-auto also clips the cross axis (overflow-y computes to
+        // auto), so a card's focus/hover/in-library ring — drawn outside its
+        // border box — is cut off at the top and at the first/last card. The
+        // p-1 / -m-1 pair reserves 4px of bleed room inside the scroller
+        // without shifting the cards relative to the section heading.
+        className="flex gap-3 overflow-x-auto snap-x scroll-smooth p-1 -m-1"
       >
         {children}
       </div>
