@@ -136,6 +136,7 @@ class TestTtlForEndpoint:
             "/tv/999/alternative_titles",
             "/tv/999/images",
             "/tv/999/recommendations",
+            "/tv/999/similar",
         ],
     )
     def test_unlisted_endpoints_return_none(self, endpoint: str) -> None:
@@ -515,6 +516,22 @@ class TestTMDBPublicMethodsCoverage:
         """get_recommendations() raises ValueError for unknown media_type."""
         with pytest.raises(ValueError, match="media_type"):
             await tmdb_service.get_recommendations(1, media_type="podcast")
+
+    @pytest.mark.asyncio
+    async def test_get_similar_delegates_to_request(self, tmdb_service: TMDBService) -> None:
+        """get_similar() calls _request with the /similar endpoint."""
+        expected = {"results": []}
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = expected
+            result = await tmdb_service.get_similar(7, media_type="movie")
+        assert result == expected
+        assert mock_req.call_args.args[0] == "/movie/7/similar"
+
+    @pytest.mark.asyncio
+    async def test_get_similar_invalid_media_type_raises(self, tmdb_service: TMDBService) -> None:
+        """get_similar() raises ValueError for unknown media_type."""
+        with pytest.raises(ValueError, match="media_type"):
+            await tmdb_service.get_similar(1, media_type="podcast")
 
     @pytest.mark.asyncio
     async def test_get_external_ids_delegates_to_request(self, tmdb_service: TMDBService) -> None:

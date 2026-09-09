@@ -477,6 +477,82 @@ export default function Settings() {
             </label>
           </Card>
 
+          {/* Recommendations — controls the show detail page's "Similar Titles" carousel */}
+          <Card padding="md" className="space-y-3">
+            <h2 className="font-semibold dark:text-gray-100">Recommendations</h2>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Similar titles
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show a &quot;Similar Titles&quot; carousel on each show&apos;s detail page,
+                  built from TMDB recommendations.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.similar_titles_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ similar_titles_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Include titles not in your library
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Also show similar titles you don&apos;t track yet, with an Add action.
+                  When off, only titles already in your library appear.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.similar_titles_include_external ?? true}
+                disabled={
+                  !appSettings ||
+                  updateAppSettings.isPending ||
+                  !(appSettings?.similar_titles_enabled ?? true)
+                }
+                onChange={(e) =>
+                  updateAppSettings.mutate({
+                    similar_titles_include_external: e.target.checked,
+                  })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-gray-700 dark:text-gray-300">
+                Number of titles to show
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  How many similar titles to fetch and display (1–40).
+                </span>
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={40}
+                value={appSettings?.similar_titles_count ?? 12}
+                disabled={
+                  !appSettings ||
+                  updateAppSettings.isPending ||
+                  !(appSettings?.similar_titles_enabled ?? true)
+                }
+                onChange={(e) => {
+                  const next = Number(e.target.value)
+                  if (!Number.isFinite(next)) return
+                  updateAppSettings.mutate({
+                    similar_titles_count: Math.min(40, Math.max(1, Math.round(next))),
+                  })
+                }}
+                className="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </label>
+          </Card>
+
           {/* Services — health status + on-demand connection tests in one place */}
           <Card padding="md" className="space-y-3">
             <div className="flex items-center justify-between">

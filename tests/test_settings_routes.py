@@ -40,6 +40,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -63,6 +66,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -86,6 +92,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -109,6 +118,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -132,6 +144,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -155,6 +170,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -178,6 +196,9 @@ class TestGetSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": True,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
         finally:
             app.dependency_overrides.clear()
@@ -210,6 +231,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             # First execute() call is the upsert; second is the re-fetch in get_all_settings.
             assert session.execute.await_count == 2
@@ -242,6 +266,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             assert session.execute.await_count == 2
         finally:
@@ -273,6 +300,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             assert session.execute.await_count == 2
         finally:
@@ -304,6 +334,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": False,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             assert session.execute.await_count == 2
         finally:
@@ -335,6 +368,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": False,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             assert session.execute.await_count == 2
         finally:
@@ -368,8 +404,70 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": True,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_updates_similar_titles_count(self) -> None:
+        """PATCH /settings with similar_titles_count applies the update and returns state."""
+        row = MagicMock()
+        row.key = "recommendations.similar_titles_count"
+        row.value = 25
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = [row]
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None, result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch("/api/settings", json={"similar_titles_count": 25})
+            assert resp.status_code == 200
+            assert resp.json()["similar_titles_count"] == 25
+            assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_updates_similar_titles_include_external(self) -> None:
+        """PATCH /settings with similar_titles_include_external=False is applied."""
+        row = MagicMock()
+        row.key = "recommendations.similar_titles_include_external"
+        row.value = False
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = [row]
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None, result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch(
+                "/api/settings", json={"similar_titles_include_external": False}
+            )
+            assert resp.status_code == 200
+            assert resp.json()["similar_titles_include_external"] is False
+            assert session.execute.await_count == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_similar_titles_count_out_of_range_returns_422(self) -> None:
+        """PATCH /settings rejects a similar_titles_count above the schema bound."""
+        app.dependency_overrides[get_session] = _session_override(_empty_settings_result())
+        try:
+            resp = TestClient(app).patch("/api/settings", json={"similar_titles_count": 999})
+            assert resp.status_code == 422
         finally:
             app.dependency_overrides.clear()
 
@@ -393,6 +491,9 @@ class TestUpdateSettings:
                 "recent_episodes_enabled": True,
                 "recent_movies_enabled": True,
                 "recent_episodes_prefer_posters": False,
+                "similar_titles_enabled": True,
+                "similar_titles_count": 12,
+                "similar_titles_include_external": True,
             }
             # Only the get_all_settings read — no upsert executed.
             assert session.execute.await_count == 1

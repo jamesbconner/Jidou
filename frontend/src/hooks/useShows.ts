@@ -45,6 +45,8 @@ export const showKeys = {
   list: (sort?: ShowSortOrder, limit?: number) =>
     [...showKeys.all, 'list', sort ?? 'title_asc', limit ?? 500] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
+  similar: (id: number, count?: number | null, includeExternal?: boolean | null) =>
+    [...showKeys.all, 'detail', id, 'similar', count ?? null, includeExternal ?? null] as const,
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   episodeGroups: (id: number) => [...showKeys.all, 'episode-groups', id] as const,
   posters: (id: number) => [...showKeys.all, 'posters', id] as const,
@@ -127,6 +129,30 @@ export function useDiscoverShows(limit = 40) {
   return useQuery({
     queryKey: showKeys.discover(),
     queryFn: () => api.get<DiscoverResult[]>(`/shows/discover?limit=${limit}`),
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+/**
+ * TMDB titles similar to a given show, for the detail page's "Similar Titles"
+ * carousel. The backend merges TMDB recommendations + similar and honours the
+ * runtime `similar_titles_*` settings.
+ *
+ * `opts.enabled` (from `useAppSettings().similar_titles_enabled`) skips the
+ * request entirely when the feature is off. `count` / `includeExternal` are the
+ * other two settings: they aren't sent as params (the backend reads them from
+ * the DB), but they're folded into the query key so saving either setting
+ * refetches instead of showing the previous list until `staleTime` expires.
+ */
+export function useSimilarShows(
+  showId: number,
+  opts: { enabled?: boolean; count?: number | null; includeExternal?: boolean | null } = {},
+) {
+  const { enabled = true, count = null, includeExternal = null } = opts
+  return useQuery({
+    queryKey: showKeys.similar(showId, count, includeExternal),
+    queryFn: () => api.get<DiscoverResult[]>(`/shows/${showId}/similar`),
+    enabled: enabled && Number.isFinite(showId),
     staleTime: 60 * 60 * 1000,
   })
 }

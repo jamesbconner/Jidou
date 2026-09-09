@@ -1,6 +1,7 @@
 """API routes for runtime-configurable application settings."""
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,9 @@ from jidou.services.settings_service import (
     RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
     SHOW_ADULT_CONTENT,
+    SIMILAR_TITLES_COUNT,
+    SIMILAR_TITLES_ENABLED,
+    SIMILAR_TITLES_INCLUDE_EXTERNAL,
     get_all_settings,
     set_setting,
 )
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-def _to_read_model(values: dict[str, object]) -> AppSettingsRead:
+def _to_read_model(values: dict[str, Any]) -> AppSettingsRead:
     """Map the service layer's dotted setting keys onto the flat API schema."""
     return AppSettingsRead(
         show_adult_content=bool(values[SHOW_ADULT_CONTENT]),
@@ -32,6 +36,9 @@ def _to_read_model(values: dict[str, object]) -> AppSettingsRead:
         recent_episodes_enabled=bool(values[RECENT_EPISODES_ENABLED]),
         recent_movies_enabled=bool(values[RECENT_MOVIES_ENABLED]),
         recent_episodes_prefer_posters=bool(values[RECENT_EPISODES_PREFER_POSTERS]),
+        similar_titles_enabled=bool(values[SIMILAR_TITLES_ENABLED]),
+        similar_titles_count=int(values[SIMILAR_TITLES_COUNT]),
+        similar_titles_include_external=bool(values[SIMILAR_TITLES_INCLUDE_EXTERNAL]),
     )
 
 
@@ -92,6 +99,20 @@ async def update_settings(
     if "recent_episodes_prefer_posters" in payload.model_fields_set:
         await set_setting(
             db_session, RECENT_EPISODES_PREFER_POSTERS, payload.recent_episodes_prefer_posters
+        )
+        await db_session.flush()
+
+    if "similar_titles_enabled" in payload.model_fields_set:
+        await set_setting(db_session, SIMILAR_TITLES_ENABLED, payload.similar_titles_enabled)
+        await db_session.flush()
+
+    if "similar_titles_count" in payload.model_fields_set:
+        await set_setting(db_session, SIMILAR_TITLES_COUNT, payload.similar_titles_count)
+        await db_session.flush()
+
+    if "similar_titles_include_external" in payload.model_fields_set:
+        await set_setting(
+            db_session, SIMILAR_TITLES_INCLUDE_EXTERNAL, payload.similar_titles_include_external
         )
         await db_session.flush()
 

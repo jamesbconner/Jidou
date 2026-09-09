@@ -4103,6 +4103,257 @@ def test_discover_sorts_by_seeded_count_then_rating() -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/shows/{show_id}/similar
+# ---------------------------------------------------------------------------
+
+
+def _similar_session(
+    *,
+    show: MagicMock | None,
+    library: list[tuple[int, str]] | None = None,
+    settings: dict[str, object] | None = None,
+) -> "type[AsyncMock]":
+    """Dependency override for the /similar endpoint.
+
+    ``execute`` yields the show lookup then the library ``(tmdb_id, media_type)``
+    rows; ``get`` backs the ``settings_service`` accessors, returning a row with
+    ``.value`` for keys in *settings* and ``None`` (→ default) otherwise.
+    """
+    rows: dict[str, object] = settings or {}
+
+    async def _mock_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        library_result = MagicMock()
+        library_result.all.return_value = library or []
+        session.execute = AsyncMock(side_effect=[show_result, library_result])
+
+        async def _get(_model: object, key: str) -> object | None:
+            if key in rows:
+                row = MagicMock()
+                row.value = rows[key]
+                return row
+            return None
+
+        session.get = AsyncMock(side_effect=_get)
+        yield session
+
+    return _mock_session  # type: ignore[return-value]
+
+
+def test_similar_merges_recommendations_and_similar_dedups_and_drops_self() -> None:
+    """Recommendations come first, /similar fills in, the show itself and dupes drop."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={
+            "results": [
+                {"id": 1, "name": "Rec A", "vote_average": 8.0},
+                {"id": 100, "name": "The Show Itself"},
+                {"id": 2, "name": "Shared"},
+            ]
+        }
+    )
+    tmdb_mock.get_similar = AsyncMock(
+        return_value={"results": [{"id": 2, "name": "Shared (dupe)"}, {"id": 3, "name": "Sim C"}]}
+    )
+
+    app.dependency_overrides[get_session] = _similar_session(show=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()) as mock_set,
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert [r["id"] for r in response.json()] == [1, 2, 3]
+        tmdb_mock.get_recommendations.assert_awaited_once_with(100, "tv")
+        tmdb_mock.get_similar.assert_awaited_once_with(100, "tv")
+        assert mock_set.call_args.kwargs["ttl"] == 86_400
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_returns_empty_and_skips_tmdb_when_disabled() -> None:
+    """With similar_titles_enabled=False the endpoint short-circuits to []."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.settings_service import SIMILAR_TITLES_ENABLED
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 1}]})
+
+    app.dependency_overrides[get_session] = _similar_session(
+        show=show, settings={SIMILAR_TITLES_ENABLED: False}
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert response.json() == []
+        tmdb_mock.get_recommendations.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_excludes_titles_not_in_library_when_configured() -> None:
+    """similar_titles_include_external=False keeps only library members."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+    from jidou.services.settings_service import SIMILAR_TITLES_INCLUDE_EXTERNAL
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={"results": [{"id": 1}, {"id": 2}, {"id": 3}]}
+    )
+    tmdb_mock.get_similar = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _similar_session(
+        show=show,
+        library=[(2, "tv")],
+        settings={SIMILAR_TITLES_INCLUDE_EXTERNAL: False},
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert [r["id"] for r in response.json()] == [2]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_caps_results_to_configured_count() -> None:
+    """The merged list is truncated to similar_titles_count."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+    from jidou.services.settings_service import SIMILAR_TITLES_COUNT
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={"results": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}]}
+    )
+    tmdb_mock.get_similar = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _similar_session(
+        show=show, settings={SIMILAR_TITLES_COUNT: 2}
+    )
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert [r["id"] for r in response.json()] == [1, 2]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_cache_hit_skips_tmdb() -> None:
+    """A warm assembled-list cache entry is returned without hitting TMDB."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _similar_session(show=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        cached = [{"id": 9, "media_type": "tv", "name": "Cached"}]
+        with patch.object(cache, "get", AsyncMock(return_value=cached)):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert [r["id"] for r in response.json()] == [9]
+        tmdb_mock.get_recommendations.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_cache_key_includes_tmdb_id() -> None:
+    """The cache key carries the show's tmdb_id so a rematch can't serve stale titles."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 5}]})
+    tmdb_mock.get_similar = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _similar_session(show=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "make_key", side_effect=lambda raw: raw) as mock_make_key,
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        raw_key = mock_make_key.call_args.args[0]
+        assert raw_key == "similar:1:100:12:1"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_does_not_cache_empty_result_from_tmdb_failure() -> None:
+    """When both TMDB calls fail the endpoint returns [] but does not poison the cache."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(side_effect=ValueError("boom"))
+    tmdb_mock.get_similar = AsyncMock(side_effect=ValueError("boom"))
+
+    app.dependency_overrides[get_session] = _similar_session(show=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()) as mock_set,
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        assert response.json() == []
+        mock_set.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_similar_returns_404_for_unknown_show() -> None:
+    """A missing show id yields 404 before any settings or TMDB work."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _similar_session(show=None)
+    try:
+        response = TestClient(app).get("/api/shows/9999/similar")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # POST /api/shows/{show_id}/scan-local-files
 # ---------------------------------------------------------------------------
 

@@ -4,6 +4,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
 import {
   useSearchShows,
+  useSimilarShows,
   useLibraryIndex,
   useCreateShow,
   useDeleteShow,
@@ -100,6 +101,31 @@ describe('useSearchShows', () => {
   test('does not fire below the 2-character minimum', () => {
     renderHook(() => useSearchShows('a', 'multi'), { wrapper: makeWrapper() })
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('useSimilarShows', () => {
+  test('folds the count / includeExternal settings into the query key', () => {
+    // Regression: saving similar_titles_count or _include_external must
+    // produce a distinct key so the carousel refetches instead of serving
+    // the previous list until staleTime expires.
+    expect(showKeys.similar(1, 12, true)).not.toEqual(showKeys.similar(1, 20, true))
+    expect(showKeys.similar(1, 12, true)).not.toEqual(showKeys.similar(1, 12, false))
+    expect(showKeys.similar(1, 12, true)).toEqual(showKeys.similar(1, 12, true))
+  })
+
+  test('does not fetch while disabled', () => {
+    renderHook(() => useSimilarShows(1, { enabled: false }), { wrapper: makeWrapper() })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  test('fetches /shows/:id/similar when enabled', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
+    renderHook(() => useSimilarShows(1, { enabled: true, count: 12, includeExternal: true }), {
+      wrapper: makeWrapper(),
+    })
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(vi.mocked(fetch).mock.calls[0][0]).toContain('/shows/1/similar')
   })
 })
 

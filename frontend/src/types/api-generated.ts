@@ -314,7 +314,13 @@ export interface paths {
          *     flag, since the stored ``air_date`` says the episode already aired while
          *     the real schedule moved it later. A genuinely missing episode (aired, no
          *     file, and TMDB still agrees) is harmlessly re-synced too -- the refresh
-         *     is just a no-op upsert for it.
+         *     is just a no-op upsert for it. Shows with ``track_missing_episodes=False``
+         *     or with no active, published RSS subscription are skipped -- neither one
+         *     is ever going to auto-download the "missing" episode, so re-syncing TMDB
+         *     metadata for it here would be pointless work. Bypasses TMDB's response cache (see
+         *     ``TMDBService._request``) so a schedule change made within the cache's
+         *     TTL is actually picked up, rather than silently re-serving the same
+         *     stale response this endpoint exists to correct.
          *
          *     Args:
          *         start: First date to include (inclusive), matching the calendar view.
@@ -391,6 +397,49 @@ export interface paths {
          *         HTTPException: 404 if the show is not found.
          */
         patch: operations["patch_show_api_shows__show_id__patch"];
+        trace?: never;
+    };
+    "/api/shows/{show_id}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Similar Shows
+         * @description Return titles similar to a show, for the detail page's carousel.
+         *
+         *     Merges TMDB ``/recommendations`` (editorial + collaborative) and ``/similar``
+         *     (keyword/genre driven) for the show, deduplicates, drops the show itself,
+         *     and annotates nothing extra -- the frontend cross-references the library by
+         *     ``(tmdb_id, media_type)`` to decide whether a card links to an existing show
+         *     or offers an Add action, exactly as the Discover page does.
+         *
+         *     Behaviour is governed by three runtime settings: the feature can be disabled
+         *     (returns ``[]``), the result count is capped, and titles not already in the
+         *     library can be excluded. The assembled list is cached for 24h, keyed by
+         *     ``(show_id, count, include_external)``.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show to find matches for.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         List of :class:`DiscoverResult`, recommendation matches before
+         *         similar-only matches, capped to the configured count.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        get: operations["get_similar_shows_api_shows__show_id__similar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/shows/{show_id}/images/posters": {
@@ -2991,6 +3040,12 @@ export interface components {
             recent_movies_enabled?: boolean | null;
             /** Recent Episodes Prefer Posters */
             recent_episodes_prefer_posters?: boolean | null;
+            /** Similar Titles Enabled */
+            similar_titles_enabled?: boolean | null;
+            /** Similar Titles Count */
+            similar_titles_count?: number | null;
+            /** Similar Titles Include External */
+            similar_titles_include_external?: boolean | null;
         };
         /**
          * AppSettingsRead
@@ -3027,6 +3082,21 @@ export interface components {
              * @description Whether the Recently Added Episodes carousel always shows the show poster instead of the episode still, for visual consistency across cards
              */
             recent_episodes_prefer_posters: boolean;
+            /**
+             * Similar Titles Enabled
+             * @description Whether the show detail page shows a Similar Titles carousel
+             */
+            similar_titles_enabled: boolean;
+            /**
+             * Similar Titles Count
+             * @description How many similar titles to fetch and display
+             */
+            similar_titles_count: number;
+            /**
+             * Similar Titles Include External
+             * @description Whether similar titles not in the library are included in the carousel (with an Add action) alongside titles already tracked
+             */
+            similar_titles_include_external: boolean;
         };
         /**
          * AssignImportRequest
@@ -5243,6 +5313,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_similar_shows_api_shows__show_id__similar_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverResult"][];
                 };
             };
             /** @description Validation Error */

@@ -100,6 +100,7 @@ function mockShowDetail(initial: ShowRead, opts: { files?: unknown[] } = {}) {
       return mockResponse(show)
     }
     if (url.includes('/shows/1/episodes')) return mockResponse([])
+    if (url.includes('/shows/1/similar')) return mockResponse([])
     if (url.includes('/shows/1/scan-local-movie-file')) return mockResponse([])
     if (url.includes('/files?show_id=1')) return mockResponse(opts.files ?? [])
     if (url.includes('/shows/1')) return mockResponse(show)

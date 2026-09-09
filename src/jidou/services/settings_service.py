@@ -18,6 +18,14 @@ DISCOVER_ENABLED = "dashboard.discover_enabled"
 RECENT_EPISODES_ENABLED = "dashboard.recent_episodes_enabled"
 RECENT_MOVIES_ENABLED = "dashboard.recent_movies_enabled"
 RECENT_EPISODES_PREFER_POSTERS = "dashboard.recent_episodes_prefer_posters"
+SIMILAR_TITLES_ENABLED = "recommendations.similar_titles_enabled"
+SIMILAR_TITLES_COUNT = "recommendations.similar_titles_count"
+SIMILAR_TITLES_INCLUDE_EXTERNAL = "recommendations.similar_titles_include_external"
+
+#: Inclusive bounds for :data:`SIMILAR_TITLES_COUNT`; enforced in the accessor and
+#: mirrored by the API schema's ``Field(ge=, le=)`` bounds.
+SIMILAR_TITLES_COUNT_MIN = 1
+SIMILAR_TITLES_COUNT_MAX = 40
 
 _DEFAULTS: dict[str, Any] = {
     SHOW_ADULT_CONTENT: False,
@@ -26,6 +34,9 @@ _DEFAULTS: dict[str, Any] = {
     RECENT_EPISODES_ENABLED: True,
     RECENT_MOVIES_ENABLED: True,
     RECENT_EPISODES_PREFER_POSTERS: False,
+    SIMILAR_TITLES_ENABLED: True,
+    SIMILAR_TITLES_COUNT: 12,
+    SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
 }
 
 
@@ -67,6 +78,58 @@ async def get_show_adult_content(session: AsyncSession) -> bool:
         ``True`` if adult content should be shown; ``False`` by default.
     """
     return bool(await get_setting(session, SHOW_ADULT_CONTENT, _DEFAULTS[SHOW_ADULT_CONTENT]))
+
+
+async def get_similar_titles_enabled(session: AsyncSession) -> bool:
+    """Whether the show detail page shows a "Similar Titles" carousel.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        ``True`` if the section should be shown; ``True`` by default.
+    """
+    return bool(
+        await get_setting(session, SIMILAR_TITLES_ENABLED, _DEFAULTS[SIMILAR_TITLES_ENABLED])
+    )
+
+
+async def get_similar_titles_count(session: AsyncSession) -> int:
+    """How many similar titles to show, clamped to a sane range.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        The configured count, clamped to
+        ``[SIMILAR_TITLES_COUNT_MIN, SIMILAR_TITLES_COUNT_MAX]``. Non-integer or
+        missing values fall back to the default.
+    """
+    raw = await get_setting(session, SIMILAR_TITLES_COUNT, _DEFAULTS[SIMILAR_TITLES_COUNT])
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = int(_DEFAULTS[SIMILAR_TITLES_COUNT])
+    return max(SIMILAR_TITLES_COUNT_MIN, min(SIMILAR_TITLES_COUNT_MAX, value))
+
+
+async def get_similar_titles_include_external(session: AsyncSession) -> bool:
+    """Whether similar titles not in the library are included in the carousel.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        ``True`` if titles absent from the library should be shown (with an Add
+        action); ``True`` by default.
+    """
+    return bool(
+        await get_setting(
+            session,
+            SIMILAR_TITLES_INCLUDE_EXTERNAL,
+            _DEFAULTS[SIMILAR_TITLES_INCLUDE_EXTERNAL],
+        )
+    )
 
 
 async def get_all_settings(session: AsyncSession) -> dict[str, Any]:

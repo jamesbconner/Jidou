@@ -41,6 +41,7 @@ import { TrackedBadges } from '@/components/TrackedBadges'
 import { WatchedToggle } from '@/components/WatchedToggle'
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { MissingEpisodesList } from '@/components/MissingEpisodesList'
+import { SimilarTitlesSection } from '@/components/SimilarTitlesSection'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -716,6 +717,8 @@ export default function ShowDetail() {
           )}
         </Card>
       )}
+
+      <SimilarTitlesSection showId={showId} />
 
       {/* Modals */}
       {deleteConfirmOpen && (
