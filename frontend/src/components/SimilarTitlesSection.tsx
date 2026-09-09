@@ -28,8 +28,13 @@ export function SimilarTitlesSection({ showId }: Props) {
   const enabled = appSettings?.similar_titles_enabled ?? true
   // Wait for settings to load before fetching, so a disabled feature never
   // triggers a wasted /similar request. useAppSettings is app-wide and almost
-  // always warm, so this costs nothing in practice.
-  const { data } = useSimilarShows(showId, !!appSettings && enabled)
+  // always warm, so this costs nothing in practice. count / includeExternal are
+  // passed through so changing either setting refetches (see useSimilarShows).
+  const { data } = useSimilarShows(showId, {
+    enabled: !!appSettings && enabled,
+    count: appSettings?.similar_titles_count,
+    includeExternal: appSettings?.similar_titles_include_external,
+  })
   const results = useMemo(() => (Array.isArray(data) ? data : []), [data])
   const libraryIndex = useLibraryIndex()
   const { add, pendingKeys, issueKeys } = useAddDiscoverResult()

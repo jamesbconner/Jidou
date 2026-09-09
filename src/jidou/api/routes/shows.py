@@ -938,7 +938,10 @@ async def get_similar_shows(
     if media_type not in {"movie", "tv"}:
         return []
 
-    cache_key = cache.make_key(f"similar:{show_id}:{count}:{int(include_external)}")
+    # tmdb_id is part of the key so a rematch (which changes the show's TMDB
+    # identity without changing show_id) doesn't keep serving the old show's
+    # similar titles until the TTL expires.
+    cache_key = cache.make_key(f"similar:{show_id}:{show.tmdb_id}:{count}:{int(include_external)}")
     cached = await cache.get(cache_key)
     if cached is not None:
         return [DiscoverResult(**item) for item in cached]

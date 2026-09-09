@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useCreateShow } from '@/hooks/useShows'
 import { useCreateWatchlistEntry } from '@/hooks/useWatchlist'
 import { useEnsureRssStub } from '@/hooks/useRss'
@@ -29,14 +29,19 @@ export function resultKey(result: Pick<DiscoverResult, 'id' | 'media_type'>): st
  * page's "Similar Titles" carousel so the two stay in lockstep.
  */
 export function useAddDiscoverResult() {
-  const createShow = useCreateShow()
-  const createWatchlistEntry = useCreateWatchlistEntry()
-  const ensureRssStub = useEnsureRssStub()
+  // Pull out the stable `mutateAsync` refs rather than the mutation objects
+  // (which get a new identity on every state change) so `add` below can be a
+  // stable useCallback — consumers memoize their card lists on it, and an
+  // unstable `add` would reset the Similar Titles carousel's scroll on every
+  // parent re-render.
+  const { mutateAsync: createShow } = useCreateShow()
+  const { mutateAsync: createWatchlistEntry } = useCreateWatchlistEntry()
+  const { mutateAsync: ensureRssStub } = useEnsureRssStub()
 
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set())
   const [issueKeys, setIssueKeys] = useState<Map<string, AddIssue>>(new Map())
 
-  async function add(result: DiscoverResult) {
+  const add = useCallback(async (result: DiscoverResult) => {
     const key = resultKey(result)
     setPendingKeys((prev) => new Set(prev).add(key))
     setIssueKeys((prev) => {
@@ -45,10 +50,10 @@ export function useAddDiscoverResult() {
       return next
     })
     try {
-      const show = await createShow.mutateAsync(buildShowCreatePayload(result))
+      const show = await createShow(buildShowCreatePayload(result))
       const [watchlistResult, rssResult] = await Promise.allSettled([
-        createWatchlistEntry.mutateAsync({ show_id: show.id }),
-        ensureRssStub.mutateAsync(show.id),
+        createWatchlistEntry({ show_id: show.id }),
+        ensureRssStub(show.id),
       ])
       const watchlistFailed = watchlistResult.status === 'rejected'
       const rssFailed = rssResult.status === 'rejected'
@@ -83,7 +88,7 @@ export function useAddDiscoverResult() {
         return next
       })
     }
-  }
+  }, [createShow, createWatchlistEntry, ensureRssStub])
 
   return { add, pendingKeys, issueKeys }
 }

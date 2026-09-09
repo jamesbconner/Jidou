@@ -4288,6 +4288,33 @@ def test_similar_cache_hit_skips_tmdb() -> None:
         app.dependency_overrides.clear()
 
 
+def test_similar_cache_key_includes_tmdb_id() -> None:
+    """The cache key carries the show's tmdb_id so a rematch can't serve stale titles."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    show = _make_show(id=1, tmdb_id=100, media_type="tv")
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 5}]})
+    tmdb_mock.get_similar = AsyncMock(return_value={"results": []})
+
+    app.dependency_overrides[get_session] = _similar_session(show=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "make_key", side_effect=lambda raw: raw) as mock_make_key,
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", AsyncMock()),
+        ):
+            response = TestClient(app).get("/api/shows/1/similar")
+        assert response.status_code == 200
+        raw_key = mock_make_key.call_args.args[0]
+        assert raw_key == "similar:1:100:12:1"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_similar_does_not_cache_empty_result_from_tmdb_failure() -> None:
     """When both TMDB calls fail the endpoint returns [] but does not poison the cache."""
     from jidou.api.routes.shows import get_tmdb
