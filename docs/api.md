@@ -49,7 +49,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `discover_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`) |
+| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `discover_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`, `recent_episodes_prefer_posters`, `similar_titles_enabled`, `similar_titles_count`, `similar_titles_include_external`) |
 | PATCH | `/api/settings` | Update one or more settings |
 
 ---
@@ -74,6 +74,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | POST | `/api/shows` | Add a show from TMDB; fetches full details, auto-infers content type, and syncs episodes |
 | GET | `/api/shows/discover` | Personalized discovery feed — TMDB recommendations seeded from the watchlist, trending fallback, library-exclusion applied, cached 24h |
 | GET | `/api/shows/{id}` | Get show detail |
+| GET | `/api/shows/{id}/similar` | "Similar Titles" for the detail page — merged TMDB recommendations + `/similar`, deduped, self-excluded; honours the `similar_titles_*` settings (disabled → `[]`), assembled list cached 24h |
 | GET | `/api/shows/{id}/images/posters` | Candidate posters from TMDB (English + textless) for the poster-picker modal |
 | PATCH | `/api/shows/{id}` | Update user-managed fields (`content_type`, `local_path`, `list_poster_path`, `detail_poster_path`, etc.) |
 | PUT | `/api/shows/{id}/paths` | Set local filesystem path |

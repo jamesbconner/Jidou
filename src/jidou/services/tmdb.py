@@ -375,6 +375,28 @@ class TMDBService:
             raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
         return await self._request(f"/{media_type}/{tmdb_id}/recommendations")
 
+    async def get_similar(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
+        """Get titles TMDB considers similar to a show or movie.
+
+        Unlike :meth:`get_recommendations` (which blends editorial and
+        collaborative signals), TMDB's ``/similar`` endpoint is driven mainly by
+        shared keywords and genres, so the two lists overlap only partially and
+        are best merged.
+
+        Args:
+            tmdb_id: The TMDB identifier.
+            media_type: Either ``"movie"`` or ``"tv"``.
+
+        Returns:
+            Dictionary containing similar items.
+
+        Raises:
+            ValueError: If *media_type* is invalid.
+        """
+        if media_type not in {"movie", "tv"}:
+            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        return await self._request(f"/{media_type}/{tmdb_id}/similar")
+
     # ------------------------------------------------------------------
     # Season / Episode data (TV only)
     # ------------------------------------------------------------------

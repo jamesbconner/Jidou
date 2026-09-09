@@ -51,6 +51,11 @@ from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
 from jidou.services.rss_stub import ensure_rss_stub
+from jidou.services.settings_service import (
+    get_similar_titles_count,
+    get_similar_titles_enabled,
+    get_similar_titles_include_external,
+)
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
@@ -197,6 +202,12 @@ _DISCOVER_SEED_LIMIT = 5
 # Recommendations taken from each seed show, before dedup/exclusion.
 _DISCOVER_PER_SHOW_LIMIT = 10
 _DISCOVER_CACHE_TTL = 86_400  # 24h — the assembled/deduped feed, not the underlying TMDB calls
+
+# Per-show "Similar Titles" carousel. Merges TMDB /recommendations and /similar
+# for one show; the assembled list is cached for 24h keyed by
+# (show_id, count, include_external). The underlying TMDB calls have their own
+# 7-day cache in TMDBService.
+_SIMILAR_CACHE_TTL = 86_400
 
 
 def _to_discover_result(
@@ -880,6 +891,90 @@ async def get_show(
     if show is None:
         raise HTTPException(status_code=404, detail="Show not found")
     return show
+
+
+@router.get("/{show_id}/similar", response_model=list[DiscoverResult])
+async def get_similar_shows(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> list[DiscoverResult]:
+    """Return titles similar to a show, for the detail page's carousel.
+
+    Merges TMDB ``/recommendations`` (editorial + collaborative) and ``/similar``
+    (keyword/genre driven) for the show, deduplicates, drops the show itself,
+    and annotates nothing extra -- the frontend cross-references the library by
+    ``(tmdb_id, media_type)`` to decide whether a card links to an existing show
+    or offers an Add action, exactly as the Discover page does.
+
+    Behaviour is governed by three runtime settings: the feature can be disabled
+    (returns ``[]``), the result count is capped, and titles not already in the
+    library can be excluded. The assembled list is cached for 24h, keyed by
+    ``(show_id, count, include_external)``.
+
+    Args:
+        show_id: Database primary key of the show to find matches for.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        List of :class:`DiscoverResult`, recommendation matches before
+        similar-only matches, capped to the configured count.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    if not await get_similar_titles_enabled(db_session):
+        return []
+
+    count = await get_similar_titles_count(db_session)
+    include_external = await get_similar_titles_include_external(db_session)
+    media_type = show.media_type
+    if media_type not in {"movie", "tv"}:
+        return []
+
+    cache_key = cache.make_key(f"similar:{show_id}:{count}:{int(include_external)}")
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return [DiscoverResult(**item) for item in cached]
+
+    library_stmt = select(Show.tmdb_id, Show.media_type)
+    library = {(t, m) for t, m in (await db_session.execute(library_stmt)).all()}
+
+    merged: dict[int, DiscoverResult] = {}
+    any_failed = False
+    for fetch in (tmdb.get_recommendations, tmdb.get_similar):
+        try:
+            data = await fetch(show.tmdb_id, media_type)
+        except (ValueError, httpx.HTTPStatusError):
+            any_failed = True
+            logger.warning("Similar: %s failed for show_id=%d", fetch.__name__, show.id)
+            continue
+        for raw in data.get("results", []):
+            tmdb_id = raw.get("id")
+            if tmdb_id is None or tmdb_id == show.tmdb_id or tmdb_id in merged:
+                continue
+            if not include_external and (tmdb_id, media_type) not in library:
+                continue
+            merged[tmdb_id] = _to_discover_result(raw, media_type, [])
+
+    results = list(merged.values())[:count]
+    # Don't persist an empty list that only exists because TMDB was unreachable
+    # -- that would serve "no similar titles" for 24h. A genuine empty result
+    # (both calls succeeded, nothing matched) is still cached.
+    if results or not any_failed:
+        await cache.set(
+            cache_key,
+            [r.model_dump() for r in results],
+            label="similar",
+            ttl=_SIMILAR_CACHE_TTL,
+        )
+    return results
 
 
 @router.get("/{show_id}/images/posters", response_model=list[PosterOption])

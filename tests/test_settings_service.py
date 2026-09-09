@@ -11,9 +11,15 @@ from jidou.services.settings_service import (
     RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
     SHOW_ADULT_CONTENT,
+    SIMILAR_TITLES_COUNT,
+    SIMILAR_TITLES_ENABLED,
+    SIMILAR_TITLES_INCLUDE_EXTERNAL,
     get_all_settings,
     get_setting,
     get_show_adult_content,
+    get_similar_titles_count,
+    get_similar_titles_enabled,
+    get_similar_titles_include_external,
     set_setting,
 )
 
@@ -88,6 +94,56 @@ class TestGetShowAdultContent:
         assert result is True
 
 
+class TestGetSimilarTitlesSettings:
+    @pytest.mark.asyncio
+    async def test_enabled_defaults_to_true(self) -> None:
+        """get_similar_titles_enabled returns True when never explicitly set."""
+        session = MagicMock()
+        session.get = AsyncMock(return_value=None)
+
+        assert await get_similar_titles_enabled(session) is True
+
+    @pytest.mark.asyncio
+    async def test_include_external_defaults_to_true(self) -> None:
+        """get_similar_titles_include_external returns True by default."""
+        session = MagicMock()
+        session.get = AsyncMock(return_value=None)
+
+        assert await get_similar_titles_include_external(session) is True
+
+    @pytest.mark.asyncio
+    async def test_count_defaults_to_twelve(self) -> None:
+        """get_similar_titles_count returns the default when unset."""
+        session = MagicMock()
+        session.get = AsyncMock(return_value=None)
+
+        assert await get_similar_titles_count(session) == 12
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stored", "expected"),
+        [(0, 1), (-5, 1), (41, 40), (999, 40), (25, 25), ("30", 30)],
+    )
+    async def test_count_is_clamped(self, stored: object, expected: int) -> None:
+        """get_similar_titles_count clamps out-of-range / stringy values to 1..40."""
+        session = MagicMock()
+        row = MagicMock()
+        row.value = stored
+        session.get = AsyncMock(return_value=row)
+
+        assert await get_similar_titles_count(session) == expected
+
+    @pytest.mark.asyncio
+    async def test_count_falls_back_on_garbage(self) -> None:
+        """A non-numeric stored value falls back to the default rather than raising."""
+        session = MagicMock()
+        row = MagicMock()
+        row.value = "not a number"
+        session.get = AsyncMock(return_value=row)
+
+        assert await get_similar_titles_count(session) == 12
+
+
 class TestGetAllSettings:
     @pytest.mark.asyncio
     async def test_fills_defaults_for_unset_keys(self) -> None:
@@ -106,6 +162,9 @@ class TestGetAllSettings:
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,
             RECENT_EPISODES_PREFER_POSTERS: False,
+            SIMILAR_TITLES_ENABLED: True,
+            SIMILAR_TITLES_COUNT: 12,
+            SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
         }
 
     @pytest.mark.asyncio
@@ -128,4 +187,7 @@ class TestGetAllSettings:
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,
             RECENT_EPISODES_PREFER_POSTERS: False,
+            SIMILAR_TITLES_ENABLED: True,
+            SIMILAR_TITLES_COUNT: 12,
+            SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
         }

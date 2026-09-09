@@ -40,6 +40,9 @@ function makeAppSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     recent_episodes_enabled: true,
     recent_movies_enabled: true,
     recent_episodes_prefer_posters: false,
+    similar_titles_enabled: true,
+    similar_titles_count: 12,
+    similar_titles_include_external: true,
     ...overrides,
   }
 }
@@ -107,7 +110,13 @@ function setupFetch(options: {
     const method = init?.method ?? 'GET'
 
     if (url.endsWith('/api/config')) return mockResponse(config)
-    if (url.endsWith('/api/settings')) return mockResponse(appSettings)
+    if (url.endsWith('/api/settings')) {
+      if (method === 'PATCH') {
+        const patch = init?.body ? JSON.parse(String(init.body)) : {}
+        return mockResponse({ ...appSettings, ...patch })
+      }
+      return mockResponse(appSettings)
+    }
     if (url.endsWith('/api/admin/cache')) return mockResponse(cache)
     if (url.endsWith('/api/admin/health')) return mockResponse(health)
     if (method === 'POST' && url.endsWith('/api/config/test/tmdb')) {
@@ -211,5 +220,74 @@ describe('Settings page — tabs', () => {
     expect(screen.getByText('Text File Import')).toBeInTheDocument()
     expect(screen.getByText('Database Export')).toBeInTheDocument()
     expect(screen.getByText('Database Import')).toBeInTheDocument()
+  })
+})
+
+describe('Settings page — Recommendations panel', () => {
+  test('reflects current similar-titles settings', async () => {
+    setupFetch({
+      appSettings: makeAppSettings({
+        similar_titles_enabled: true,
+        similar_titles_count: 20,
+        similar_titles_include_external: false,
+      }),
+    })
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('switch', { name: /^include titles not in your library/i }),
+      ).not.toBeChecked(),
+    )
+    expect(screen.getByRole('switch', { name: /^similar titles/i })).toBeChecked()
+    expect(screen.getByRole('spinbutton', { name: /number of titles to show/i })).toHaveValue(20)
+  })
+
+  test('turning the feature off PATCHes similar_titles_enabled=false', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /^similar titles/i })).toBeEnabled(),
+    )
+    fireEvent.click(screen.getByRole('switch', { name: /^similar titles/i }))
+
+    await waitFor(() => {
+      const patch = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([u, i]) => String(u).endsWith('/api/settings') && i?.method === 'PATCH',
+        )
+      expect(patch).toBeTruthy()
+      expect(JSON.parse(String(patch![1]!.body))).toEqual({ similar_titles_enabled: false })
+    })
+  })
+
+  test('editing the count PATCHes a clamped similar_titles_count', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(
+        screen.getByRole('spinbutton', { name: /number of titles to show/i }),
+      ).toBeEnabled(),
+    )
+    fireEvent.change(screen.getByRole('spinbutton', { name: /number of titles to show/i }), {
+      target: { value: '999' },
+    })
+
+    await waitFor(() => {
+      const patch = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([u, i]) => String(u).endsWith('/api/settings') && i?.method === 'PATCH',
+        )
+      expect(patch).toBeTruthy()
+      expect(JSON.parse(String(patch![1]!.body))).toEqual({ similar_titles_count: 40 })
+    })
   })
 })

@@ -207,6 +207,12 @@ The feed is cached 24h and keyed to your current watchlist seed set, so adding/r
 
 ![Discover page](screenshots/discover-page.png)
 
+### Similar Titles
+
+Each show's detail page can show a **Similar Titles** carousel: `GET /api/shows/{id}/similar` merges TMDB's `/recommendations` and `/similar` for the show, dedupes them, and drops the show itself. Titles already in your library link straight to their detail page; the rest carry the same one-click **Add + Watchlist** action as Discover. The assembled list is cached 24h.
+
+Three toggles in **Settings → Recommendations** control it: turn the carousel on/off, set how many titles to show (1–40), and choose whether to include titles not yet in your library. With "include titles not in your library" off, the carousel is limited to shows you already track.
+
 ---
 
 ## RSS feed integration
@@ -249,6 +255,7 @@ An optional calendar page (toggle in Settings) showing episodes airing in a date
 The **Settings** page has three groups:
 - **Services** — connection tests and status for TMDB, SFTP, Redis, and the LLM provider, plus the API docs link and API key status.
 - **Feature toggles** — enable/disable the Dashboard's Recently Added Episodes and Recently Added Movies carousels, the airing calendar page, and whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI).
+- **Recommendations** — enable/disable the show detail page's [Similar Titles](#similar-titles) carousel, set how many titles it shows (1–40), and choose whether it includes titles not yet in your library.
 - **Show Metadata Backfill** — one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
 - Config values are read-only here (edit `.env` and restart to change them); the toggles above are the only settings persisted to the database (`app_settings` table) and changeable at runtime.
 
