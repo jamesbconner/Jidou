@@ -55,8 +55,10 @@ export function CardCarousel({ children }: Props) {
         // auto), so a card's focus/hover/in-library ring — drawn outside its
         // border box — is cut off at the top and at the first/last card. The
         // p-1 / -m-1 pair reserves 4px of bleed room inside the scroller
-        // without shifting the cards relative to the section heading.
-        className="flex gap-3 overflow-x-auto snap-x scroll-smooth p-1 -m-1"
+        // without shifting the cards relative to the section heading, and
+        // scroll-pl-1 keeps snap-start from aligning the first card to the
+        // padding edge (which would scroll that left bleed back out of view).
+        className="flex gap-3 overflow-x-auto snap-x scroll-smooth scroll-pl-1 p-1 -m-1"
       >
         {children}
       </div>
