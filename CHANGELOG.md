@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
 
+### Similar Titles on Show Detail
+- New **Similar Titles** carousel on the Show Detail page (`GET /api/shows/{id}/similar`) — merges TMDB `/recommendations` and `/similar` for the show, dedupes, and drops the show itself. Titles already in the library link straight to their detail page; the rest carry the same one-click **Add + Watchlist** action as Discover (create + watchlist + RSS stub), now extracted into a shared `useAddDiscoverResult` hook so the two surfaces stay identical. The assembled list is cached 24h keyed by `(show_id, tmdb_id, count, include_external)`; an empty result caused by a TMDB outage is not cached.
+- Three runtime toggles under **Settings → Recommendations** (stored in `app_settings`, no migration): enable/disable the carousel, how many titles to fetch (`similar_titles_count`, 1–40, clamped), and whether to include titles not yet in the library (`similar_titles_include_external`) — off limits the carousel to shows already tracked.
+- Bug fixes from Bugbot review: `useAddDiscoverResult`'s `add` is a stable `useCallback` so memoized card lists don't reset the carousel's scroll on unrelated Show Detail re-renders; `similar_titles_count` / `similar_titles_include_external` are folded into the `useSimilarShows` query key so saving either setting refetches instead of showing the stale list; and the backend cache key includes the show's `tmdb_id` so a rematch can't serve the previous TMDB identity's titles for the rest of the TTL.
+
 ### Airing calendar: sync missing shows
 - New **Sync missing** button on the Calendar page (`POST /api/shows/calendar/sync-missing`) re-fetches TMDB metadata, bypassing the response cache, for every show with a `missing` episode in the visible range — the common cause is a TMDB schedule slip after the stored `air_date` was already written, not a genuinely absent file. Skips shows with **Ignore Missing Eps** set or with no active, published RSS subscription, since neither would ever auto-download the episode anyway.
 
