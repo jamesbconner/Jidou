@@ -206,6 +206,12 @@ export default function ShowDetail() {
   const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
+  // Prototype: compare banner treatments live. Persists across show navigation;
+  // seedable via ?banner=hero|strip|bleed.
+  const [bannerVariant, setBannerVariant] = useState<'hero' | 'strip' | 'bleed'>(() => {
+    const q = new URLSearchParams(window.location.search).get('banner')
+    return q === 'strip' || q === 'bleed' ? q : 'hero'
+  })
 
   // Resets ~13 independent pieces of local UI state plus 4 react-query
   // mutation .reset() calls when navigating to a different show — React
@@ -438,105 +444,173 @@ export default function ShowDetail() {
     </div>
   )
 
+  // --- Header treatments (prototype) -------------------------------------
+  // `plainHeader` is the pre-banner layout, kept as the no-backdrop fallback
+  // and reused by the strip / bleed variants.
+  const plainHeader = (
+    <div className="flex gap-6">
+      {posterSrc && (
+        <img
+          src={posterSrc}
+          alt={show.title}
+          className="w-48 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+              {show.release_date?.slice(0, 4)}
+              {show.release_date && ' · '}
+              {show.media_type}
+              {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
+              {' · '}
+              <a
+                href={tmdbUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
+              >
+                TMDB #{show.tmdb_id}
+              </a>
+              {show.content_type && (
+                <span className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 text-xs px-1.5 py-0.5 rounded">
+                  {show.content_type}
+                </span>
+              )}
+            </p>
+            {primaryActions}
+            {secondaryInfo}
+          </div>
+          {maintenanceActions}
+        </div>
+      </div>
+    </div>
+  )
+
+  // Variant A: full-width backdrop with a dark gradient; poster + title +
+  // primary actions overlaid, everything else moved below.
+  const heroHeader = (
+    <div className="space-y-6">
+      {/* Add `-mx-6` to bleed the hero to the layout container edges. */}
+      <div className="relative overflow-hidden rounded-xl">
+        <img
+          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+        <div className="relative flex gap-6 p-6 pt-40 sm:pt-56">
+          {posterSrc && (
+            <img
+              src={posterSrc}
+              alt={show.title}
+              className="w-32 sm:w-44 aspect-[2/3] self-end rounded-lg object-cover shadow-2xl ring-1 ring-black/20"
+            />
+          )}
+          <div className="flex-1 min-w-0 self-end">
+            <h1 className="text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+            <p className="text-white/80 text-sm mt-1">
+              {show.release_date?.slice(0, 4)}
+              {show.release_date && ' · '}
+              {show.media_type}
+              {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
+              {' · '}
+              <a
+                href={tmdbUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--color-ocean-300)] hover:underline"
+              >
+                TMDB #{show.tmdb_id}
+              </a>
+              {show.content_type && (
+                <span className="ml-2 bg-white/15 text-white text-xs px-1.5 py-0.5 rounded">
+                  {show.content_type}
+                </span>
+              )}
+            </p>
+            {primaryActions}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">{secondaryInfo}</div>
+        {maintenanceActions}
+      </div>
+    </div>
+  )
+
+  // Variant B: a cropped backdrop band above the unchanged plain header.
+  const stripHeader = (
+    <div className="space-y-6">
+      <div className="relative -mx-6 h-44 sm:h-56 overflow-hidden">
+        <img
+          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+      </div>
+      {plainHeader}
+    </div>
+  )
+
+  // Variant C: faint blurred backdrop bleeding behind the plain header.
+  const bleedHeader = (
+    <div className="relative isolate">
+      <div className="pointer-events-none absolute -left-6 -right-6 -top-6 -z-10 h-80 overflow-hidden">
+        <img
+          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover opacity-20 blur-sm"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-gray-950" />
+      </div>
+      {plainHeader}
+    </div>
+  )
+
+  const bannerHeader = !show.backdrop_path
+    ? plainHeader
+    : bannerVariant === 'strip'
+      ? stripHeader
+      : bannerVariant === 'bleed'
+        ? bleedHeader
+        : heroHeader
+
   return (
     <div className="space-y-8">
       <Link to="/shows" className="text-sm text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
         ← Back to Shows
       </Link>
 
-      {/* Header — prototype: hero banner when the show has a backdrop image */}
-      {show.backdrop_path ? (
-        <div className="space-y-6">
-          {/* Add `-mx-6` to bleed the hero to the layout container edges. */}
-          <div className="relative overflow-hidden rounded-xl">
-            <img
-              src={`${TMDB_BACKDROP}${show.backdrop_path}`}
-              alt=""
-              loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
-            <div className="relative flex gap-6 p-6 pt-40 sm:pt-56">
-              {posterSrc && (
-                <img
-                  src={posterSrc}
-                  alt={show.title}
-                  className="w-32 sm:w-44 aspect-[2/3] self-end rounded-lg object-cover shadow-2xl ring-1 ring-black/20"
-                />
-              )}
-              <div className="flex-1 min-w-0 self-end">
-                <h1 className="text-3xl font-bold text-white drop-shadow">{show.title}</h1>
-                <p className="text-white/80 text-sm mt-1">
-                  {show.release_date?.slice(0, 4)}
-                  {show.release_date && ' · '}
-                  {show.media_type}
-                  {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-                  {' · '}
-                  <a
-                    href={tmdbUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--color-ocean-300)] hover:underline"
-                  >
-                    TMDB #{show.tmdb_id}
-                  </a>
-                  {show.content_type && (
-                    <span className="ml-2 bg-white/15 text-white text-xs px-1.5 py-0.5 rounded">
-                      {show.content_type}
-                    </span>
-                  )}
-                </p>
-                {primaryActions}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">{secondaryInfo}</div>
-            {maintenanceActions}
-          </div>
-        </div>
-      ) : (
-        <div className="flex gap-6">
-          {posterSrc && (
-            <img
-              src={posterSrc}
-              alt={show.title}
-              className="w-48 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
-            />
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
-                <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                  {show.release_date?.slice(0, 4)}
-                  {show.release_date && ' · '}
-                  {show.media_type}
-                  {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-                  {' · '}
-                  <a
-                    href={tmdbUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
-                  >
-                    TMDB #{show.tmdb_id}
-                  </a>
-                  {show.content_type && (
-                    <span className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 text-xs px-1.5 py-0.5 rounded">
-                      {show.content_type}
-                    </span>
-                  )}
-                </p>
-                {primaryActions}
-                {secondaryInfo}
-              </div>
-              {maintenanceActions}
-            </div>
-          </div>
+      {show.backdrop_path && (
+        <div className="fixed bottom-3 left-3 z-50 flex items-center gap-1 rounded-lg border border-gray-300 bg-white/90 p-1 text-xs shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/90">
+          <span className="px-1 text-gray-400">banner</span>
+          {(['hero', 'strip', 'bleed'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setBannerVariant(v)}
+              className={`rounded px-2 py-1 ${
+                bannerVariant === v
+                  ? 'bg-[var(--color-ocean-600)] text-white'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+              }`}
+            >
+              {v}
+            </button>
+          ))}
         </div>
       )}
+
+      {/* Header — prototype: banner treatment chosen via the bottom-left control */}
+      {bannerHeader}
 
       {/* Local path */}
       <Card as="section" padding="md">
