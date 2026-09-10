@@ -102,18 +102,45 @@
     border-color: var(--color-gray-700, currentColor);
   }
 
-  /* Graphite-toned scrollbars in place of the OS default grey. Both
-     properties inherit, so declaring them on the root reaches every
-     scrollable descendant (page, carousels, modals, tables). Standard
-     CSS Scrollbars module — modern Chromium/Firefox/Safari; older engines
-     fall back to the native scrollbar, which is an acceptable degradation.
-     Transparent track lets it blend into whatever surface it sits on. */
-  :root {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-gray-500) transparent;
+  /* Graphite-toned scrollbars in place of the OS default grey. Transparent
+     track lets it blend into whatever surface it sits on.
+
+     Two disjoint code paths, not a shared one with a WebKit patch on top:
+     on Chromium, merely *setting* scrollbar-width/scrollbar-color (even to
+     "auto") switches it from native scrollbars to its standard-properties
+     renderer — and that renderer's "thin" keyword is asymmetric, sizing the
+     horizontal bar to ~15px vs. ~10px vertical on Windows. There's no
+     numeric scrollbar-width value to sidestep it with. So Chromium/WebKit
+     must never see scrollbar-width/scrollbar-color at all; it's confined
+     below to browsers that lack ::-webkit-scrollbar (Firefox), which
+     doesn't have this bug. Chromium instead gets explicit, equal-thickness
+     sizing via the legacy pseudo-elements, unconditionally — Firefox simply
+     ignores unknown pseudo-elements, so both rules can coexist safely. */
+  @supports not selector(::-webkit-scrollbar) {
+    :root {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-gray-500) transparent;
+    }
+    :root.dark {
+      scrollbar-color: var(--color-gray-600) transparent;
+    }
   }
-  :root.dark {
-    scrollbar-color: var(--color-gray-600) transparent;
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-gray-500);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  :root.dark ::-webkit-scrollbar-thumb {
+    background-color: var(--color-gray-600);
   }
 }
 
