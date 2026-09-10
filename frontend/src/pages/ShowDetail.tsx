@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useParams, Link, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { arrayMove } from '@dnd-kit/sortable'
@@ -57,8 +57,10 @@ import type {
 } from '@/types/api'
 
 const TMDB_POSTER = '/api/images/w500'
-// Prototype: hero banner backdrop on the show detail page.
+// Prototype: banner backdrop on the show detail page.
 const TMDB_BACKDROP = '/api/images/w1280'
+const BANNER_VARIANTS = ['hero', 'strip', 'hybrid', 'compact', 'framed', 'contain', 'full'] as const
+type BannerVariant = (typeof BANNER_VARIANTS)[number]
 
 // ---------------------------------------------------------------------------
 // Watchlist controls
@@ -206,12 +208,47 @@ export default function ShowDetail() {
   const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
-  // Prototype: compare banner treatments live. Persists across show navigation;
-  // seedable via ?banner=hero|strip|bleed.
-  const [bannerVariant, setBannerVariant] = useState<'hero' | 'strip' | 'bleed'>(() => {
+  // Prototype: compare banner treatments live. Persists via localStorage and
+  // across show navigation; seedable via ?banner=<variant>&tint=1.
+  const [bannerVariant, setBannerVariant] = useState<BannerVariant>(() => {
     const q = new URLSearchParams(window.location.search).get('banner')
-    return q === 'strip' || q === 'bleed' ? q : 'hero'
+    if (q && (BANNER_VARIANTS as readonly string[]).includes(q)) return q as BannerVariant
+    try {
+      const s = localStorage.getItem('jidou.banner.variant')
+      if (s && (BANNER_VARIANTS as readonly string[]).includes(s)) return s as BannerVariant
+    } catch {
+      /* localStorage unavailable */
+    }
+    return 'hero'
   })
+  const [bannerTint, setBannerTint] = useState<boolean>(() => {
+    const q = new URLSearchParams(window.location.search).get('tint')
+    if (q === '1') return true
+    if (q === '0') return false
+    try {
+      return localStorage.getItem('jidou.banner.tint') === '1'
+    } catch {
+      return false
+    }
+  })
+  const chooseBannerVariant = (v: BannerVariant) => {
+    setBannerVariant(v)
+    try {
+      localStorage.setItem('jidou.banner.variant', v)
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+  const toggleBannerTint = () => {
+    setBannerTint((t) => {
+      try {
+        localStorage.setItem('jidou.banner.tint', t ? '0' : '1')
+      } catch {
+        /* localStorage unavailable */
+      }
+      return !t
+    })
+  }
 
   // Resets ~13 independent pieces of local UI state plus 4 react-query
   // mutation .reset() calls when navigating to a different show — React
@@ -444,9 +481,83 @@ export default function ShowDetail() {
     </div>
   )
 
-  // --- Header treatments (prototype) -------------------------------------
-  // `plainHeader` is the pre-banner layout, kept as the no-backdrop fallback
-  // and reused by the strip / bleed variants.
+  // --- Header treatments (prototype) -----------------------------------
+  // Shared pieces so the variants below stay consistent and DRY.
+  const backdropImg = (className: string) => (
+    <img src={`${TMDB_BACKDROP}${show.backdrop_path}`} alt="" loading="lazy" className={className} />
+  )
+
+  // Year · type · ★ rating · TMDB link · content-type chip. `onImage` picks
+  // light colours for overlaying on a backdrop.
+  const metaLine = (onImage: boolean) => (
+    <p className={`text-sm mt-1 ${onImage ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
+      {show.release_date?.slice(0, 4)}
+      {show.release_date && ' · '}
+      {show.media_type}
+      {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
+      {' · '}
+      <a
+        href={tmdbUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={`hover:underline ${
+          onImage
+            ? 'text-[var(--color-ocean-300)]'
+            : 'text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)]'
+        }`}
+      >
+        TMDB #{show.tmdb_id}
+      </a>
+      {show.content_type && (
+        <span
+          className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+            onImage
+              ? 'bg-white/15 text-white'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+          }`}
+        >
+          {show.content_type}
+        </span>
+      )}
+    </p>
+  )
+
+  // Frosted restyle of primaryActions for use over imagery.
+  const overlayActions = (
+    <div className="mt-2 [&_button]:!border-white/30 [&_button]:!bg-white/10 [&_button]:!text-white [&_button]:backdrop-blur-sm [&_button:hover]:!bg-white/20">
+      {primaryActions}
+    </div>
+  )
+
+  // Every variant's backdrop routes through this so the ocean-tint modifier
+  // is one code path.
+  const backdropBox = (
+    boxClassName: string,
+    opts: { imgClassName?: string; scrim?: ReactNode; children?: ReactNode } = {},
+  ) => (
+    <div className={`relative overflow-hidden ${boxClassName}`}>
+      {backdropImg(
+        `absolute inset-0 h-full w-full ${bannerTint ? 'saturate-[0.35]' : ''} ${
+          opts.imgClassName ?? 'object-cover'
+        }`,
+      )}
+      {opts.scrim}
+      {bannerTint && (
+        <div className="pointer-events-none absolute inset-0 bg-[var(--color-ocean-900)]/45 mix-blend-multiply" />
+      )}
+      {opts.children != null && <div className="relative">{opts.children}</div>}
+    </div>
+  )
+
+  const infoBelow = (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">{secondaryInfo}</div>
+      {maintenanceActions}
+    </div>
+  )
+
+  // `plainHeader` — the pre-banner layout; no-backdrop fallback and reused by
+  // strip / full.
   const plainHeader = (
     <div className="flex gap-6">
       {posterSrc && (
@@ -460,26 +571,7 @@ export default function ShowDetail() {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-              {show.release_date?.slice(0, 4)}
-              {show.release_date && ' · '}
-              {show.media_type}
-              {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-              {' · '}
-              <a
-                href={tmdbUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
-              >
-                TMDB #{show.tmdb_id}
-              </a>
-              {show.content_type && (
-                <span className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 text-xs px-1.5 py-0.5 rounded">
-                  {show.content_type}
-                </span>
-              )}
-            </p>
+            {metaLine(false)}
             {primaryActions}
             {secondaryInfo}
           </div>
@@ -489,100 +581,183 @@ export default function ShowDetail() {
     </div>
   )
 
-  // Variant A: full-width backdrop with a dark gradient; poster + title +
-  // primary actions overlaid, everything else moved below.
+  // A — hero: full-width backdrop + dark gradient; poster/title/actions overlaid.
   const heroHeader = (
     <div className="space-y-6">
-      {/* Add `-mx-6` to bleed the hero to the layout container edges. */}
-      <div className="relative overflow-hidden rounded-xl">
-        <img
-          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
-        <div className="relative flex gap-6 p-6 pt-40 sm:pt-56">
-          {posterSrc && (
-            <img
-              src={posterSrc}
-              alt={show.title}
-              className="w-32 sm:w-44 aspect-[2/3] self-end rounded-lg object-cover shadow-2xl ring-1 ring-black/20"
-            />
-          )}
-          <div className="flex-1 min-w-0 self-end">
-            <h1 className="text-3xl font-bold text-white drop-shadow">{show.title}</h1>
-            <p className="text-white/80 text-sm mt-1">
-              {show.release_date?.slice(0, 4)}
-              {show.release_date && ' · '}
-              {show.media_type}
-              {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-              {' · '}
-              <a
-                href={tmdbUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--color-ocean-300)] hover:underline"
-              >
-                TMDB #{show.tmdb_id}
-              </a>
-              {show.content_type && (
-                <span className="ml-2 bg-white/15 text-white text-xs px-1.5 py-0.5 rounded">
-                  {show.content_type}
-                </span>
-              )}
-            </p>
-            {primaryActions}
+      {backdropBox('rounded-xl min-h-[22rem]', {
+        scrim: (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+        ),
+        children: (
+          <div className="flex gap-6 p-6 pt-40 sm:pt-56">
+            {posterSrc && (
+              <img
+                src={posterSrc}
+                alt={show.title}
+                className="w-32 sm:w-44 aspect-[2/3] self-end rounded-lg object-cover shadow-2xl ring-1 ring-black/20"
+              />
+            )}
+            <div className="flex-1 min-w-0 self-end">
+              <h1 className="text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+              {metaLine(true)}
+              {overlayActions}
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">{secondaryInfo}</div>
-        {maintenanceActions}
-      </div>
+        ),
+      })}
+      {infoBelow}
     </div>
   )
 
-  // Variant B: a cropped backdrop band above the unchanged plain header.
+  // B — strip: cropped backdrop band above the unchanged plain header.
   const stripHeader = (
     <div className="space-y-6">
-      <div className="relative -mx-6 h-44 sm:h-56 overflow-hidden">
-        <img
-          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
-      </div>
+      {backdropBox('-mx-6 h-44 sm:h-56', {
+        scrim: <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />,
+      })}
       {plainHeader}
     </div>
   )
 
-  // Variant C: faint blurred backdrop bleeding behind the plain header.
-  const bleedHeader = (
-    <div className="relative isolate">
-      <div className="pointer-events-none absolute -left-6 -right-6 -top-6 -z-10 h-80 overflow-hidden">
-        <img
-          src={`${TMDB_BACKDROP}${show.backdrop_path}`}
-          alt=""
-          loading="lazy"
-          className="h-full w-full object-cover opacity-20 blur-sm"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white dark:to-gray-950" />
+  // C — hybrid: band with title overlaid, poster overhangs the bottom edge,
+  // the rest on normal background (Plex / Trakt profile look).
+  const hybridHeader = (
+    <div>
+      {backdropBox('-mx-6 h-52 sm:h-64', {
+        scrim: (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+        ),
+        children: (
+          <div className="flex h-52 sm:h-64 items-end p-6">
+            <div className="w-32 sm:w-40 shrink-0" />
+            <div className="ml-5 min-w-0 pb-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+              {metaLine(true)}
+            </div>
+          </div>
+        ),
+      })}
+      <div className="flex gap-5 -mt-14 sm:-mt-20">
+        {posterSrc && (
+          <img
+            src={posterSrc}
+            alt={show.title}
+            className="relative w-32 sm:w-40 aspect-[2/3] shrink-0 rounded-lg object-cover shadow-xl ring-2 ring-white/10"
+          />
+        )}
+        <div className="flex-1 min-w-0 flex items-start justify-between gap-4 pt-16 sm:pt-24">
+          <div className="min-w-0">
+            {primaryActions}
+            {secondaryInfo}
+          </div>
+          {maintenanceActions}
+        </div>
       </div>
+    </div>
+  )
+
+  // D — compact: height-capped hero, strong scrim, frosted buttons.
+  const compactHeader = (
+    <div className="space-y-6">
+      {backdropBox('rounded-xl h-64 sm:h-72', {
+        scrim: (
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/10" />
+        ),
+        children: (
+          <div className="flex h-64 sm:h-72 gap-5 p-5 pt-32 sm:pt-40">
+            {posterSrc && (
+              <img
+                src={posterSrc}
+                alt={show.title}
+                className="w-28 sm:w-36 aspect-[2/3] self-end rounded-lg object-cover shadow-xl ring-1 ring-black/20"
+              />
+            )}
+            <div className="flex-1 min-w-0 self-end">
+              <h1 className="text-2xl font-bold text-white drop-shadow">{show.title}</h1>
+              {metaLine(true)}
+              {overlayActions}
+            </div>
+          </div>
+        ),
+      })}
+      {infoBelow}
+    </div>
+  )
+
+  // E — framed: no overlay; a contained backdrop card beside a plain header.
+  const framedHeader = (
+    <div className="flex gap-6">
+      {posterSrc && (
+        <img
+          src={posterSrc}
+          alt={show.title}
+          className="w-44 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
+            {metaLine(false)}
+            {primaryActions}
+            {secondaryInfo}
+          </div>
+          <div className="hidden lg:block w-[46%] max-w-md shrink-0">
+            {backdropBox('aspect-video rounded-xl ring-1 ring-black/10 dark:ring-white/10')}
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">{maintenanceActions}</div>
+      </div>
+    </div>
+  )
+
+  // F — contain: whole 16:9 frame always visible (blurred fill + sharp contain).
+  const containHeader = (
+    <div className="space-y-6">
+      {backdropBox('-mx-6 aspect-video bg-black', {
+        imgClassName: 'object-cover blur-2xl scale-110 opacity-50',
+        scrim: (
+          <>
+            {backdropImg('absolute inset-0 h-full w-full object-contain')}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent p-6 pt-20">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+              {metaLine(true)}
+              {overlayActions}
+            </div>
+          </>
+        ),
+      })}
+      <div className="flex gap-6">
+        {posterSrc && (
+          <img
+            src={posterSrc}
+            alt={show.title}
+            className="w-44 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
+          />
+        )}
+        <div className="flex-1 min-w-0">{infoBelow}</div>
+      </div>
+    </div>
+  )
+
+  // G — full: whole uncropped backdrop at true 16:9, then the plain header.
+  const fullHeader = (
+    <div className="space-y-6">
+      {backdropBox('-mx-6 aspect-video bg-black', { imgClassName: 'object-contain' })}
       {plainHeader}
     </div>
   )
 
-  const bannerHeader = !show.backdrop_path
-    ? plainHeader
-    : bannerVariant === 'strip'
-      ? stripHeader
-      : bannerVariant === 'bleed'
-        ? bleedHeader
-        : heroHeader
+  const bannerHeaders: Record<BannerVariant, ReactNode> = {
+    hero: heroHeader,
+    strip: stripHeader,
+    hybrid: hybridHeader,
+    compact: compactHeader,
+    framed: framedHeader,
+    contain: containHeader,
+    full: fullHeader,
+  }
+  const bannerHeader = show.backdrop_path ? bannerHeaders[bannerVariant] : plainHeader
 
   return (
     <div className="space-y-8">
@@ -591,12 +766,12 @@ export default function ShowDetail() {
       </Link>
 
       {show.backdrop_path && (
-        <div className="fixed bottom-3 left-3 z-50 flex items-center gap-1 rounded-lg border border-gray-300 bg-white/90 p-1 text-xs shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/90">
+        <div className="fixed bottom-3 left-3 z-50 flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center gap-1 rounded-lg border border-gray-300 bg-white/90 p-1 text-xs shadow-lg backdrop-blur dark:border-gray-700 dark:bg-gray-900/90">
           <span className="px-1 text-gray-400">banner</span>
-          {(['hero', 'strip', 'bleed'] as const).map((v) => (
+          {BANNER_VARIANTS.map((v) => (
             <button
               key={v}
-              onClick={() => setBannerVariant(v)}
+              onClick={() => chooseBannerVariant(v)}
               className={`rounded px-2 py-1 ${
                 bannerVariant === v
                   ? 'bg-[var(--color-ocean-600)] text-white'
@@ -606,6 +781,17 @@ export default function ShowDetail() {
               {v}
             </button>
           ))}
+          <span className="mx-1 h-4 w-px bg-gray-300 dark:bg-gray-700" />
+          <button
+            onClick={toggleBannerTint}
+            className={`rounded px-2 py-1 ${
+              bannerTint
+                ? 'bg-[var(--color-ocean-600)] text-white'
+                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+            }`}
+          >
+            tint
+          </button>
         </div>
       )}
 
