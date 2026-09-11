@@ -142,10 +142,10 @@ function QueuePositionSelect({
         })
       }}
       onBlur={() => setEditing(false)}
-      className="text-xs border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="text-xs border rounded px-1 py-0.5 bg-white text-gray-900 border-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       {entries.map((_, i) => (
-        <option key={i} value={i}>
+        <option key={i} value={i} className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
           #{i + 1}
         </option>
       ))}
