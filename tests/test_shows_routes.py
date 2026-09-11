@@ -38,6 +38,7 @@ def _make_show(
     media_type: str = "tv",
     local_path: str | None = None,
     track_missing_episodes: bool = True,
+    banner_path: str | None = None,
 ) -> MagicMock:
     """Build a minimal Show mock suitable for route responses."""
     from datetime import UTC, datetime
@@ -81,6 +82,7 @@ def _make_show(
     s.local_path = local_path
     s.list_poster_path = None
     s.detail_poster_path = None
+    s.banner_path = banner_path
     s.track_missing_episodes = track_missing_episodes
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
@@ -697,6 +699,95 @@ def test_list_show_posters_empty_when_no_matches() -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/shows/{show_id}/images/backdrops
+# ---------------------------------------------------------------------------
+
+
+def test_list_show_backdrops_filters_to_english_and_textless() -> None:
+    """Only iso_639_1 None/"en" backdrops are returned, most-voted first."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_images = AsyncMock(
+        return_value={
+            "backdrops": [
+                {
+                    "file_path": "/low-en.jpg",
+                    "width": 1280,
+                    "height": 720,
+                    "vote_average": 1.0,
+                    "iso_639_1": "en",
+                },
+                {
+                    "file_path": "/ja.jpg",
+                    "width": 1280,
+                    "height": 720,
+                    "vote_average": 9.0,
+                    "iso_639_1": "ja",
+                },
+                {
+                    "file_path": "/textless.jpg",
+                    "width": 1280,
+                    "height": 720,
+                    "vote_average": 5.0,
+                    "iso_639_1": None,
+                },
+            ]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/images/backdrops")
+        assert response.status_code == 200
+        body = response.json()
+        assert [b["file_path"] for b in body] == ["/textless.jpg", "/low-en.jpg"]
+        tmdb_mock.get_images.assert_awaited_once_with(100, media_type="tv")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_show_backdrops_returns_404_when_show_not_found() -> None:
+    """GET /api/shows/{id}/images/backdrops returns 404 for an unknown show."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
+    try:
+        response = TestClient(app).get("/api/shows/9999/images/backdrops")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_show_backdrops_empty_when_no_matches() -> None:
+    """No English/textless backdrops available returns an empty list, not an error."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_images = AsyncMock(
+        return_value={
+            "backdrops": [{"file_path": "/ja.jpg", "iso_639_1": "ja", "vote_average": 1.0}]
+        }
+    )
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).get("/api/shows/1/images/backdrops")
+        assert response.status_code == 200
+        assert response.json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # PUT /api/shows/{show_id}/paths
 # ---------------------------------------------------------------------------
 
@@ -782,6 +873,34 @@ def test_patch_show_sets_list_and_detail_poster_overrides() -> None:
         assert response.status_code == 200
         assert show.list_poster_path == "/list.jpg"
         assert show.detail_poster_path == "/detail.jpg"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_show_sets_banner_path_override() -> None:
+    """PATCH /api/shows/{id} persists banner_path."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch("/api/shows/1", json={"banner_path": "/banner.jpg"})
+        assert response.status_code == 200
+        assert show.banner_path == "/banner.jpg"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_show_clears_banner_path_with_null() -> None:
+    """PATCH /api/shows/{id} with null clears banner_path."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1, banner_path="/banner.jpg")
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).patch("/api/shows/1", json={"banner_path": None})
+        assert response.status_code == 200
+        assert show.banner_path is None
     finally:
         app.dependency_overrides.clear()
 

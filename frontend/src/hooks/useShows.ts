@@ -50,6 +50,7 @@ export const showKeys = {
   episodes: (id: number) => [...showKeys.all, 'episodes', id] as const,
   episodeGroups: (id: number) => [...showKeys.all, 'episode-groups', id] as const,
   posters: (id: number) => [...showKeys.all, 'posters', id] as const,
+  backdrops: (id: number) => [...showKeys.all, 'backdrops', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
   discover: () => ['tmdb', 'discover'] as const,
@@ -100,10 +101,19 @@ export function useApplyEpisodeGroup(showId: number) {
   })
 }
 
-export function useShowPosters(showId: number) {
+export function useShowPosters(showId: number, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: showKeys.posters(showId),
     queryFn: () => api.get<PosterOption[]>(`/shows/${showId}/images/posters`),
+    enabled: opts.enabled ?? true,
+  })
+}
+
+export function useShowBackdrops(showId: number, opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: showKeys.backdrops(showId),
+    queryFn: () => api.get<PosterOption[]>(`/shows/${showId}/images/backdrops`),
+    enabled: opts.enabled ?? true,
   })
 }
 

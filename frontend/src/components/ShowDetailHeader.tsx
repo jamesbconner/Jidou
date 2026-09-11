@@ -31,7 +31,7 @@ interface Props {
  *
  * Both backdrop styles use `object-contain`, so the full image is always shown
  * (thin letterbox bars on the rare non-16:9 backdrop, never a crop). A show
- * without a `backdrop_path` always falls back to the plain header.
+ * without a `banner_path` or `backdrop_path` always falls back to the plain header.
  */
 export function ShowDetailHeader({
   show,
@@ -42,8 +42,12 @@ export function ShowDetailHeader({
   secondaryInfo,
   maintenanceActions,
 }: Props) {
+  // Manual banner override (set via the Change Images modal) takes priority
+  // over the raw TMDB backdrop, which gets overwritten on every metadata resync.
+  const bannerPath = show.banner_path ?? show.backdrop_path
+
   const backdropImg = (className: string) => (
-    <img src={`${TMDB_BACKDROP}${show.backdrop_path}`} alt="" loading="lazy" className={className} />
+    <img src={`${TMDB_BACKDROP}${bannerPath}`} alt="" loading="lazy" className={className} />
   )
 
   // Year · type · ★ rating · TMDB link · content-type chip. `onImage` picks
@@ -118,7 +122,7 @@ export function ShowDetailHeader({
     </div>
   )
 
-  if (!show.backdrop_path || style === 'none') return plainHeader
+  if (!bannerPath || style === 'none') return plainHeader
 
   if (style === 'full') {
     return (

@@ -31,7 +31,7 @@ import { ScanLocalFilesModal } from '@/components/ScanLocalFilesModal'
 import { ScanLocalMovieFileModal } from '@/components/ScanLocalMovieFileModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { AliasModal } from '@/components/AliasModal'
-import { PosterPickerModal } from '@/components/PosterPickerModal'
+import { ImagePickerModal } from '@/components/ImagePickerModal'
 import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
 import { ShowRematchModal } from '@/components/ShowRematchModal'
 import { EpisodeGroupPickerModal } from '@/components/EpisodeGroupPickerModal'
@@ -193,7 +193,7 @@ export default function ShowDetail() {
   const [pathModalOpen, setPathModalOpen] = useState(false)
   const [contentTypeOpen, setContentTypeOpen] = useState(false)
   const [aliasModalOpen, setAliasModalOpen] = useState(false)
-  const [posterModalOpen, setPosterModalOpen] = useState(false)
+  const [imageModalOpen, setImageModalOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
@@ -222,7 +222,7 @@ export default function ShowDetail() {
     setPathModalOpen(false)
     setContentTypeOpen(false)
     setAliasModalOpen(false)
-    setPosterModalOpen(false)
+    setImageModalOpen(false)
     setDeleteConfirmOpen(false)
     setFileForRematch(null)
     setFileForFixEps(null)
@@ -429,8 +429,8 @@ export default function ShowDetail() {
       <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
         Manage Aliases
       </Button>
-      <Button onClick={() => setPosterModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
-        Change Poster
+      <Button onClick={() => setImageModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+        Change Images
       </Button>
       {ensureRssStub.isError && (
         <span className="text-xs text-red-600 text-right max-w-[10rem]">
@@ -770,10 +770,10 @@ export default function ShowDetail() {
           onClose={() => setAliasModalOpen(false)}
         />
       )}
-      {posterModalOpen && (
-        <PosterPickerModal
+      {imageModalOpen && (
+        <ImagePickerModal
           show={show}
-          onClose={() => setPosterModalOpen(false)}
+          onClose={() => setImageModalOpen(false)}
         />
       )}
       {fileForRematch && (

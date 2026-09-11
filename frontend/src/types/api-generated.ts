@@ -477,6 +477,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/images/backdrops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Show Backdrops
+         * @description List candidate backdrops for a show, for the banner-picker tab.
+         *
+         *     Filtered to English-language and textless (``iso_639_1: null``)
+         *     backdrops, same as ``list_show_posters`` -- TMDB does tag some localized
+         *     backdrop variants, which aren't useful choices for this app's English UI.
+         *     Response shape reuses ``PosterOption`` since TMDB's ``posters`` and
+         *     ``backdrops`` entries share an identical shape.
+         *
+         *     Args:
+         *         show_id: Database primary key.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         Available backdrops, most-voted first.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        get: operations["list_show_backdrops_api_shows__show_id__images_backdrops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/paths": {
         parameters: {
             query?: never;
@@ -4410,6 +4447,11 @@ export interface components {
              */
             detail_poster_path?: string | null;
             /**
+             * Banner Path
+             * @description Manual banner (backdrop) override (TMDB file_path) for the Details header
+             */
+            banner_path?: string | null;
+            /**
              * Track Missing Episodes
              * @description When False, this show is excluded from missing-episode counts/lists
              */
@@ -4521,6 +4563,8 @@ export interface components {
             list_poster_path?: string | null;
             /** Detail Poster Path */
             detail_poster_path?: string | null;
+            /** Banner Path */
+            banner_path?: string | null;
             /**
              * Track Missing Episodes
              * @default true
@@ -5360,6 +5404,39 @@ export interface operations {
         };
     };
     list_show_posters_api_shows__show_id__images_posters_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosterOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_show_backdrops_api_shows__show_id__images_backdrops_get: {
         parameters: {
             query?: never;
             header?: {
