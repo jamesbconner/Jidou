@@ -89,7 +89,10 @@ function baseShow(overrides: Partial<ShowRead> = {}): ShowRead {
   }
 }
 
-function mockShowDetail(initial: ShowRead, opts: { files?: unknown[] } = {}) {
+function mockShowDetail(
+  initial: ShowRead,
+  opts: { files?: unknown[]; watchlist?: unknown[] } = {},
+) {
   let show = initial
   vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -107,7 +110,7 @@ function mockShowDetail(initial: ShowRead, opts: { files?: unknown[] } = {}) {
     if (url.includes('/config')) return mockResponse({ today: '2026-08-04' })
     if (url.includes('/rss/subscriptions')) return mockResponse([])
     if (url.includes('/rss/feeds')) return mockResponse([])
-    if (url.includes('/watchlist')) return mockResponse([])
+    if (url.includes('/watchlist')) return mockResponse(opts.watchlist ?? [])
     return mockResponse([])
   })
 }
@@ -233,5 +236,38 @@ describe('ShowDetail — banner style (Settings → Appearance)', () => {
 
     await screen.findByRole('heading', { name: 'Test Show' })
     expect(container.querySelector('img[src*="/api/images/w1280/"]')).not.toBeInTheDocument()
+  })
+})
+
+describe('ShowDetail — Queue position select (watchlisted show)', () => {
+  test('the editing <select> pairs an explicit background with an explicit text colour in both themes', async () => {
+    // Regression: the queue-position <select> had no explicit bg/text classes
+    // at all, so it inherited whatever ambient colour surrounded it. That
+    // rendered invisible (background-on-background) text — black-on-black in
+    // light mode when overlaid on a dark banner, white-on-white in the native
+    // dropdown popup in dark mode.
+    mockShowDetail(baseShow({ backdrop_path: null }), {
+      watchlist: [
+        { id: 9, show_id: 1, status: 'planned', position: 0 },
+        { id: 10, show_id: 2, status: 'planned', position: 1 },
+      ],
+    })
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    const queueButton = await screen.findByRole('button', { name: 'Queue #1' })
+    fireEvent.click(queueButton)
+
+    const select = screen.getByRole('combobox')
+    expect(select.className).toMatch(/\bbg-white\b/)
+    expect(select.className).toMatch(/\btext-gray-900\b/)
+    expect(select.className).toMatch(/\bdark:bg-gray-800\b/)
+    expect(select.className).toMatch(/\bdark:text-gray-100\b/)
+
+    const options = select.querySelectorAll('option')
+    expect(options.length).toBe(2)
+    options.forEach((opt) => {
+      expect(opt.className).toMatch(/\bbg-white\b/)
+      expect(opt.className).toMatch(/\bdark:bg-gray-800\b/)
+    })
   })
 })

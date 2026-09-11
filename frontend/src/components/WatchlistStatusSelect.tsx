@@ -54,10 +54,10 @@ export function WatchlistStatusSelect({ id, current }: Props) {
         }
       }}
       onBlur={() => setEditing(false)}
-      className="text-xs border rounded px-1 py-0.5 dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="text-xs border rounded px-1 py-0.5 bg-white text-gray-900 border-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
     >
       {STATUS_OPTIONS.map((s) => (
-        <option key={s} value={s}>
+        <option key={s} value={s} className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
           {STATUS_LABEL[s]}
         </option>
       ))}
