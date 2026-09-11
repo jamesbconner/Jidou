@@ -385,7 +385,6 @@ export default function Settings() {
                 onChange={setBannerStyle}
                 options={[
                   { value: 'hero', label: 'Hero' },
-                  { value: 'contained', label: 'Contained' },
                   { value: 'full', label: 'Full' },
                   { value: 'none', label: 'None' },
                 ]}

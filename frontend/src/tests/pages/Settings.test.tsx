@@ -301,12 +301,12 @@ describe('Settings page — Appearance (banner style)', () => {
     }
   })
 
-  test('defaults to "Contained" when nothing is stored', async () => {
+  test('defaults to "Hero" when nothing is stored', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
     const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
-    expect(within(group).getByRole('radio', { name: 'Contained' })).toHaveAttribute(
+    expect(within(group).getByRole('radio', { name: 'Hero' })).toHaveAttribute(
       'aria-checked',
       'true',
     )

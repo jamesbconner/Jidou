@@ -22,16 +22,16 @@ interface Props {
 
 /**
  * Header region of the show detail page. Renders the poster, title, metadata and
- * the page-supplied action slots in one of four arrangements:
+ * the page-supplied action slots in one of three arrangements:
  *
- * - `hero`      — full-width backdrop with a dark gradient; poster, title and
- *   (frosted) primary actions overlaid, everything else below.
- * - `contained` — the whole 16:9 backdrop always visible (blurred fill + sharp
- *   letterbox); title and frosted actions overlaid on the bottom.
- * - `full`      — the whole uncropped backdrop, then the plain header beneath it.
- * - `none`      — no backdrop; the plain header only.
+ * - `hero` — the whole uncropped 16:9 backdrop, with the poster, title and
+ *   (frosted) primary actions overlaid on its lower half; everything else below.
+ * - `full` — the whole uncropped 16:9 backdrop, then the plain header beneath it.
+ * - `none` — no backdrop; the plain header only.
  *
- * A show without a `backdrop_path` always falls back to the plain header.
+ * Both backdrop styles use `object-contain`, so the full image is always shown
+ * (thin letterbox bars on the rare non-16:9 backdrop, never a crop). A show
+ * without a `backdrop_path` always falls back to the plain header.
  */
 export function ShowDetailHeader({
   show,
@@ -88,17 +88,6 @@ export function ShowDetailHeader({
     </div>
   )
 
-  const backdropBox = (
-    boxClassName: string,
-    opts: { imgClassName?: string; scrim?: ReactNode; children?: ReactNode } = {},
-  ) => (
-    <div className={`relative overflow-hidden ${boxClassName}`}>
-      {backdropImg(`absolute inset-0 h-full w-full ${opts.imgClassName ?? 'object-cover'}`)}
-      {opts.scrim}
-      {opts.children != null && <div className="relative">{opts.children}</div>}
-    </div>
-  )
-
   const infoBelow = (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">{secondaryInfo}</div>
@@ -131,73 +120,45 @@ export function ShowDetailHeader({
 
   if (!show.backdrop_path || style === 'none') return plainHeader
 
-  if (style === 'hero') {
-    return (
-      <div className="space-y-6">
-        {backdropBox('rounded-xl min-h-[22rem]', {
-          scrim: (
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
-          ),
-          children: (
-            <div className="flex gap-6 p-6 pt-40 sm:pt-56">
-              {posterSrc && (
-                <img
-                  src={posterSrc}
-                  alt={show.title}
-                  className="w-32 sm:w-44 aspect-[2/3] self-end rounded-lg object-cover shadow-2xl ring-1 ring-black/20"
-                />
-              )}
-              <div className="flex-1 min-w-0 self-end">
-                <h1 className="text-3xl font-bold text-white drop-shadow">{show.title}</h1>
-                {metaLine(true)}
-                {overlayActions}
-              </div>
-            </div>
-          ),
-        })}
-        {infoBelow}
-      </div>
-    )
-  }
-
   if (style === 'full') {
     return (
       <div className="space-y-6">
-        {backdropBox('-mx-6 aspect-video bg-black', { imgClassName: 'object-contain' })}
+        <div className="relative -mx-6 aspect-video overflow-hidden bg-black">
+          {backdropImg('absolute inset-0 h-full w-full object-contain')}
+        </div>
         {plainHeader}
       </div>
     )
   }
 
-  // 'contained' — whole 16:9 frame always visible (blurred fill + sharp
-  // letterbox), in a rounded card that echoes the poster's corners. The caption
-  // block sits in normal flow (not absolutely positioned), so a tall wrapped
-  // action row grows the card instead of being clipped by overflow-hidden on
-  // narrow viewports.
+  // 'hero' — full uncropped backdrop with the poster, title and frosted actions
+  // overlaid on its lower half. The caption row is in normal flow (pulled up
+  // with a negative margin) and the card has no overflow clipping, so a tall
+  // wrapped action row grows the card instead of being cut off on narrow
+  // viewports.
   return (
     <div className="space-y-6">
-      <div className="relative -mx-6 overflow-hidden rounded-lg bg-black">
+      <div className="relative -mx-6 bg-black">
         <div className="relative aspect-video">
-          {backdropImg('absolute inset-0 h-full w-full object-cover blur-2xl scale-110 opacity-50')}
           {backdropImg('absolute inset-0 h-full w-full object-contain')}
-          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
         </div>
-        <div className="relative -mt-16 bg-gradient-to-t from-black via-black/95 to-black/70 px-6 pt-4 pb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
-          {metaLine(true)}
-          {overlayActions}
+        <div className="relative -mt-24 flex items-end gap-4 px-6 pb-6 sm:-mt-32 sm:gap-6">
+          {posterSrc && (
+            <img
+              src={posterSrc}
+              alt={show.title}
+              className="w-24 sm:w-32 aspect-[2/3] shrink-0 rounded-lg object-cover shadow-2xl ring-1 ring-white/10"
+            />
+          )}
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+            {metaLine(true)}
+            {overlayActions}
+          </div>
         </div>
       </div>
-      <div className="flex gap-6">
-        {posterSrc && (
-          <img
-            src={posterSrc}
-            alt={show.title}
-            className="w-44 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
-          />
-        )}
-        <div className="flex-1 min-w-0">{infoBelow}</div>
-      </div>
+      {infoBelow}
     </div>
   )
 }

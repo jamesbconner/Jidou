@@ -209,7 +209,7 @@ describe('ShowDetail — banner style (Settings → Appearance)', () => {
     }
   })
 
-  test('renders the w1280 backdrop for the default (contained) style', async () => {
+  test('renders the w1280 backdrop for the default (hero) style', async () => {
     mockShowDetail(baseShow({ backdrop_path: '/bd.jpg' }))
     const { container } = render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
