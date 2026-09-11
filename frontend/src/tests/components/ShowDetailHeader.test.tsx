@@ -61,4 +61,13 @@ describe('ShowDetailHeader', () => {
     expect(container.querySelector('img[src*="/api/images/w1280/"]')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Test Show' })).toBeInTheDocument()
   })
+
+  test('contained: the title/actions block is in normal flow, not an absolute overlay', () => {
+    // Regression: an absolutely-positioned overlay inside the aspect-video
+    // overflow-hidden card clipped the title when the action row wrapped on
+    // narrow viewports. The caption block must grow the card instead.
+    renderHeader('contained', makeShow())
+    const caption = screen.getByRole('heading', { name: 'Test Show' }).parentElement as HTMLElement
+    expect(caption.className).not.toMatch(/\babsolute\b/)
+  })
 })

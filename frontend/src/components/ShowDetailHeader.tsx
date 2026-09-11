@@ -169,23 +169,25 @@ export function ShowDetailHeader({
     )
   }
 
-  // 'contained' — whole 16:9 frame always visible (blurred fill + sharp letterbox),
-  // in a rounded card that echoes the poster's corners.
+  // 'contained' — whole 16:9 frame always visible (blurred fill + sharp
+  // letterbox), in a rounded card that echoes the poster's corners. The caption
+  // block sits in normal flow (not absolutely positioned), so a tall wrapped
+  // action row grows the card instead of being clipped by overflow-hidden on
+  // narrow viewports.
   return (
     <div className="space-y-6">
-      {backdropBox('-mx-6 aspect-video rounded-lg bg-black', {
-        imgClassName: 'object-cover blur-2xl scale-110 opacity-50',
-        scrim: (
-          <>
-            {backdropImg('absolute inset-0 h-full w-full object-contain')}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent p-6 pt-20">
-              <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
-              {metaLine(true)}
-              {overlayActions}
-            </div>
-          </>
-        ),
-      })}
+      <div className="relative -mx-6 overflow-hidden rounded-lg bg-black">
+        <div className="relative aspect-video">
+          {backdropImg('absolute inset-0 h-full w-full object-cover blur-2xl scale-110 opacity-50')}
+          {backdropImg('absolute inset-0 h-full w-full object-contain')}
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+        </div>
+        <div className="relative -mt-16 bg-gradient-to-t from-black via-black/95 to-black/70 px-6 pt-4 pb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white drop-shadow">{show.title}</h1>
+          {metaLine(true)}
+          {overlayActions}
+        </div>
+      </div>
       <div className="flex gap-6">
         {posterSrc && (
           <img
