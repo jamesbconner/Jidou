@@ -199,3 +199,39 @@ describe('ShowDetail — Movie file actions', () => {
     expect(String(scanCall?.[0])).toContain('replace=true')
   })
 })
+
+describe('ShowDetail — banner style (Settings → Appearance)', () => {
+  afterEach(() => {
+    try {
+      localStorage.clear()
+    } catch {
+      /* jsdom localStorage always available; guard anyway */
+    }
+  })
+
+  test('renders the w1280 backdrop for the default (contained) style', async () => {
+    mockShowDetail(baseShow({ backdrop_path: '/bd.jpg' }))
+    const { container } = render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await screen.findByRole('heading', { name: 'Test Show' })
+    expect(container.querySelector('img[src="/api/images/w1280/bd.jpg"]')).toBeInTheDocument()
+  })
+
+  test('style "none" renders the plain header with no backdrop', async () => {
+    localStorage.setItem('jidou.bannerStyle', JSON.stringify('none'))
+    mockShowDetail(baseShow({ backdrop_path: '/bd.jpg' }))
+    const { container } = render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await screen.findByRole('heading', { name: 'Test Show' })
+    expect(container.querySelector('img[src*="/api/images/w1280/"]')).not.toBeInTheDocument()
+  })
+
+  test('a show with no backdrop_path never renders a banner, whatever the style', async () => {
+    localStorage.setItem('jidou.bannerStyle', JSON.stringify('hero'))
+    mockShowDetail(baseShow({ backdrop_path: null }))
+    const { container } = render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await screen.findByRole('heading', { name: 'Test Show' })
+    expect(container.querySelector('img[src*="/api/images/w1280/"]')).not.toBeInTheDocument()
+  })
+})

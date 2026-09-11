@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import type { AppConfig, ConnectionTestResult, ServiceHealth, TaskRead } from '@/types/api'
 import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
+import { useBannerStyle } from '@/hooks/useBannerStyle'
 import { useImportText, useExportDatabase, useImportDatabase } from '@/hooks/useData'
 import { useTask } from '@/hooks/useTasks'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
@@ -12,6 +13,8 @@ import { TaskProgressBar } from '@/components/TaskProgressBar'
 import clsx from 'clsx'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import type { BannerStyle } from '@/hooks/useBannerStyle'
 
 type Tab = 'general' | 'data'
 
@@ -278,6 +281,9 @@ export default function Settings() {
   const { data: appSettings } = useAppSettings()
   const updateAppSettings = useUpdateAppSettings()
 
+  // Browser-local UI preference (not backed by /api/settings).
+  const [bannerStyle, setBannerStyle] = useBannerStyle()
+
   const seedDryRun = useMutation({
     mutationFn: () => api.post<TaskRead>('/tasks/trigger', { task_type: 'seed', dry_run: true }),
     onSuccess: (task) => navigate(`/tasks?highlight=${task.id}`),
@@ -360,6 +366,32 @@ export default function Settings() {
               <ConfigRow label="Database" value={config.database_url ?? 'Not configured'} />
             </Card>
           )}
+
+          {/* Appearance — browser-local UI preferences, stored in localStorage (not /api/settings) */}
+          <Card padding="md" className="space-y-3">
+            <h2 className="font-semibold dark:text-gray-100">Appearance</h2>
+            <div className="flex items-start justify-between gap-4 text-sm">
+              <span className="text-gray-700 dark:text-gray-300">
+                Show detail banner
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Backdrop treatment at the top of each show&apos;s detail page. Saved in this
+                  browser only.
+                </span>
+              </span>
+              <SegmentedControl<BannerStyle>
+                aria-label="Show detail banner style"
+                className="shrink-0 flex-wrap justify-end"
+                value={bannerStyle}
+                onChange={setBannerStyle}
+                options={[
+                  { value: 'hero', label: 'Hero' },
+                  { value: 'contained', label: 'Contained' },
+                  { value: 'full', label: 'Full' },
+                  { value: 'none', label: 'None' },
+                ]}
+              />
+            </div>
+          </Card>
 
           {/* Dashboard — user-editable at runtime, unlike the env-backed Configuration card above */}
           <Card padding="md" className="space-y-3">

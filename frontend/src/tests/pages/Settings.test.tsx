@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -289,5 +289,54 @@ describe('Settings page — Recommendations panel', () => {
       expect(patch).toBeTruthy()
       expect(JSON.parse(String(patch![1]!.body))).toEqual({ similar_titles_count: 40 })
     })
+  })
+})
+
+describe('Settings page — Appearance (banner style)', () => {
+  afterEach(() => {
+    try {
+      localStorage.clear()
+    } catch {
+      /* jsdom localStorage always available; guard anyway */
+    }
+  })
+
+  test('defaults to "Contained" when nothing is stored', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
+    expect(within(group).getByRole('radio', { name: 'Contained' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  test('reflects a value already saved in localStorage', async () => {
+    localStorage.setItem('jidou.bannerStyle', JSON.stringify('full'))
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
+    expect(within(group).getByRole('radio', { name: 'Full' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  test('selecting a style writes localStorage and makes no /api/settings call', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
+    fireEvent.click(within(group).getByRole('radio', { name: 'None' }))
+
+    expect(localStorage.getItem('jidou.bannerStyle')).toBe(JSON.stringify('none'))
+    const patchedSettings = vi
+      .mocked(fetch)
+      .mock.calls.some(
+        ([u, i]) => String(u).endsWith('/api/settings') && i?.method === 'PATCH',
+      )
+    expect(patchedSettings).toBe(false)
   })
 })

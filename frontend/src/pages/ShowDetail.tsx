@@ -42,9 +42,11 @@ import { WatchedToggle } from '@/components/WatchedToggle'
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { MissingEpisodesList } from '@/components/MissingEpisodesList'
 import { SimilarTitlesSection } from '@/components/SimilarTitlesSection'
+import { ShowDetailHeader } from '@/components/ShowDetailHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { useBannerStyle } from '@/hooks/useBannerStyle'
 import { api } from '@/api/client'
 import { toHostPath } from '@/utils/paths'
 import { computeMissingEpisodes } from '@/utils/missingEpisodes'
@@ -204,6 +206,7 @@ export default function ShowDetail() {
   const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
   const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
+  const [bannerStyle] = useBannerStyle()
 
   // Resets ~13 independent pieces of local UI state plus 4 react-query
   // mutation .reset() calls when navigating to a different show — React
@@ -324,148 +327,135 @@ export default function ShowDetail() {
     }
   }
 
+  const posterPath = show.detail_poster_path ?? show.poster_path
+  const posterSrc = posterPath ? `${TMDB_POSTER}${posterPath}` : null
+
+  // Built here (they touch page mutation hooks) and handed to <ShowDetailHeader>,
+  // which arranges them per the chosen banner style.
+  const primaryActions = (
+    <div className="flex items-center gap-2 flex-wrap mt-2">
+      <WatchlistToggleButton showId={showId} entryId={watchlistEntry?.id ?? null} />
+      {!isMovie && episodes.length > 0 && (
+        <button
+          onClick={() =>
+            allWatched
+              ? bulkClearWatched.mutate({ showId })
+              : bulkSetWatched.mutate({ showId })
+          }
+          disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
+          className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+            allWatched
+              ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/40'
+              : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
+          }`}
+        >
+          {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
+        </button>
+      )}
+      {!isMovie && (
+        <button
+          onClick={() =>
+            patchShow.mutate({
+              id: showId,
+              patch: { track_missing_episodes: !show.track_missing_episodes },
+            })
+          }
+          disabled={patchShow.isPending}
+          className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+            !show.track_missing_episodes
+              ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40'
+              : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
+          }`}
+        >
+          {show.track_missing_episodes ? 'Ignore Missing Eps' : 'Track Missing Eps'}
+        </button>
+      )}
+      {watchlistEntry && (
+        <>
+          <QueuePositionSelect entries={watchlistEntries} entryId={watchlistEntry.id} />
+          <WatchlistStatusSelect id={watchlistEntry.id} current={watchlistEntry.status} />
+        </>
+      )}
+    </div>
+  )
+
+  const secondaryInfo = (
+    <>
+      {show.overview && (
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-xl">{show.overview}</p>
+      )}
+      {!isMovie && (
+        <WatchedProgressBar
+          watched={watchedCount}
+          total={episodes.length}
+          showLabel
+          className="mt-2 max-w-xl"
+        />
+      )}
+      {isMovie ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
+        </p>
+      ) : (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          {trackedCount} / {episodes.length} episodes tracked
+        </p>
+      )}
+    </>
+  )
+
+  const maintenanceActions = (
+    <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+      <Button onClick={() => setDeleteConfirmOpen(true)} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
+        {isDeleting ? 'Removing…' : 'Remove Show'}
+      </Button>
+      <button
+        onClick={handleRssButtonClick}
+        disabled={ensureRssStub.isPending}
+        className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+          existingRssSub
+            ? 'border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40'
+            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+        }`}
+      >
+        {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
+      </button>
+      <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+        Fix Match
+      </Button>
+      <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+        {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
+      </Button>
+      <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+        Manage Aliases
+      </Button>
+      <Button onClick={() => setPosterModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+        Change Poster
+      </Button>
+      {ensureRssStub.isError && (
+        <span className="text-xs text-red-600 text-right max-w-[10rem]">
+          {(ensureRssStub.error as Error).message}
+        </span>
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-8">
       <Link to="/shows" className="text-sm text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
         ← Back to Shows
       </Link>
 
-      {/* Header */}
-      <div className="flex gap-6">
-        {(show.detail_poster_path ?? show.poster_path) && (
-          <img
-            src={`${TMDB_POSTER}${show.detail_poster_path ?? show.poster_path}`}
-            alt={show.title}
-            className="w-48 aspect-[2/3] self-start rounded-lg object-cover hidden md:block"
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold dark:text-gray-100">{show.title}</h1>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                {show.release_date?.slice(0, 4)}
-                {show.release_date && ' · '}
-                {show.media_type}
-                {show.vote_average != null && ` · ★ ${show.vote_average.toFixed(1)}`}
-                {' · '}
-                <a
-                  href={tmdbUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
-                >
-                  TMDB #{show.tmdb_id}
-                </a>
-                {show.content_type && (
-                  <span className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 text-xs px-1.5 py-0.5 rounded">
-                    {show.content_type}
-                  </span>
-                )}
-              </p>
-              <div className="flex items-center gap-2 flex-wrap mt-2">
-                <WatchlistToggleButton showId={showId} entryId={watchlistEntry?.id ?? null} />
-                {!isMovie && episodes.length > 0 && (
-                  <button
-                    onClick={() =>
-                      allWatched
-                        ? bulkClearWatched.mutate({ showId })
-                        : bulkSetWatched.mutate({ showId })
-                    }
-                    disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
-                    className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-                      allWatched
-                        ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/40'
-                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
-                  </button>
-                )}
-                {!isMovie && (
-                  <button
-                    onClick={() =>
-                      patchShow.mutate({
-                        id: showId,
-                        patch: { track_missing_episodes: !show.track_missing_episodes },
-                      })
-                    }
-                    disabled={patchShow.isPending}
-                    className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-                      !show.track_missing_episodes
-                        ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40'
-                        : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    {show.track_missing_episodes ? 'Ignore Missing Eps' : 'Track Missing Eps'}
-                  </button>
-                )}
-                {watchlistEntry && (
-                  <>
-                    <QueuePositionSelect entries={watchlistEntries} entryId={watchlistEntry.id} />
-                    <WatchlistStatusSelect id={watchlistEntry.id} current={watchlistEntry.status} />
-                  </>
-                )}
-              </div>
-              {show.overview && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-xl">{show.overview}</p>
-              )}
-              {!isMovie && (
-                <WatchedProgressBar
-                  watched={watchedCount}
-                  total={episodes.length}
-                  showLabel
-                  className="mt-2 max-w-xl"
-                />
-              )}
-              {isMovie ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
-                </p>
-              ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                  {trackedCount} / {episodes.length} episodes tracked
-                </p>
-              )}
-            </div>
-
-            {/* Show-level actions — upper right */}
-            <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-              <Button onClick={() => setDeleteConfirmOpen(true)} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
-                {isDeleting ? 'Removing…' : 'Remove Show'}
-              </Button>
-              <button
-                onClick={handleRssButtonClick}
-                disabled={ensureRssStub.isPending}
-                className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-                  existingRssSub
-                    ? 'border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                }`}
-              >
-                {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
-              </button>
-              <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
-                Fix Match
-              </Button>
-              <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
-                {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
-              </Button>
-              <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
-                Manage Aliases
-              </Button>
-              <Button onClick={() => setPosterModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
-                Change Poster
-              </Button>
-              {ensureRssStub.isError && (
-                <span className="text-xs text-red-600 text-right max-w-[10rem]">
-                  {(ensureRssStub.error as Error).message}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Banner style is a browser-local preference set on the Settings page. */}
+      <ShowDetailHeader
+        show={show}
+        style={bannerStyle}
+        posterSrc={posterSrc}
+        tmdbUrl={tmdbUrl}
+        primaryActions={primaryActions}
+        secondaryInfo={secondaryInfo}
+        maintenanceActions={maintenanceActions}
+      />
 
       {/* Local path */}
       <Card as="section" padding="md">
