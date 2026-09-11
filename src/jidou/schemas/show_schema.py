@@ -95,6 +95,10 @@ class ShowPatch(BaseModel):
         default=None,
         description="Manual poster override (TMDB file_path) for the Show Details header",
     )
+    banner_path: str | None = Field(
+        default=None,
+        description="Manual banner (backdrop) override (TMDB file_path) for the Details header",
+    )
     track_missing_episodes: bool | None = Field(
         default=None,
         description="When False, this show is excluded from missing-episode counts/lists",
@@ -206,6 +210,7 @@ class ShowRead(BaseModel):
     adult: bool | None = None
     list_poster_path: str | None = None
     detail_poster_path: str | None = None
+    banner_path: str | None = None
     track_missing_episodes: bool = True
     created_at: datetime
     updated_at: datetime

@@ -980,6 +980,23 @@ async def get_similar_shows(
     return results
 
 
+def _filter_and_rank_images(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter a TMDB images-endpoint list to English/textless, most-voted first.
+
+    Shared by the poster and backdrop picker routes -- both apply the same
+    "English UI, textless-or-en only" rule to TMDB's ``iso_639_1`` field.
+
+    Args:
+        items: Raw ``posters`` or ``backdrops`` entries from ``TMDBService.get_images()``.
+
+    Returns:
+        Filtered list sorted by ``vote_average`` descending.
+    """
+    filtered = [i for i in items if i.get("iso_639_1") in (None, "en")]
+    filtered.sort(key=lambda i: i.get("vote_average") or 0, reverse=True)
+    return filtered
+
+
 @router.get("/{show_id}/images/posters", response_model=list[PosterOption])
 async def list_show_posters(
     show_id: int,
@@ -1009,11 +1026,41 @@ async def list_show_posters(
         raise HTTPException(status_code=404, detail="Show not found")
 
     images = await tmdb.get_images(show.tmdb_id, media_type=show.media_type)
-    posters: list[dict[str, Any]] = [
-        p for p in images.get("posters", []) if p.get("iso_639_1") in (None, "en")
-    ]
-    posters.sort(key=lambda p: p.get("vote_average") or 0, reverse=True)
-    return posters
+    return _filter_and_rank_images(images.get("posters", []))
+
+
+@router.get("/{show_id}/images/backdrops", response_model=list[PosterOption])
+async def list_show_backdrops(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """List candidate backdrops for a show, for the banner-picker tab.
+
+    Filtered to English-language and textless (``iso_639_1: null``)
+    backdrops, same as ``list_show_posters`` -- TMDB does tag some localized
+    backdrop variants, which aren't useful choices for this app's English UI.
+    Response shape reuses ``PosterOption`` since TMDB's ``posters`` and
+    ``backdrops`` entries share an identical shape.
+
+    Args:
+        show_id: Database primary key.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        Available backdrops, most-voted first.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    stmt = select(Show).where(Show.id == show_id)
+    show = (await db_session.execute(stmt)).scalar_one_or_none()
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    images = await tmdb.get_images(show.tmdb_id, media_type=show.media_type)
+    return _filter_and_rank_images(images.get("backdrops", []))
 
 
 @router.put("/{show_id}/paths", response_model=ShowRead)

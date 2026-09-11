@@ -142,6 +142,18 @@ describe('ShowDetail — Ignore Missing Eps toggle', () => {
   })
 })
 
+describe('ShowDetail — Change Images modal', () => {
+  test('clicking "Change Images" opens the image picker modal', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    const button = await screen.findByRole('button', { name: 'Change Images' })
+    fireEvent.click(button)
+
+    expect(await screen.findByText('Change Images — Test Show')).toBeInTheDocument()
+  })
+})
+
 describe('ShowDetail — files fetch', () => {
   test('requests show_ignored=true so ignored files linked to the show still appear', async () => {
     // useFilesByShow only fires for movie-type shows (see isMovie in ShowDetail.tsx).

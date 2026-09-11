@@ -62,6 +62,32 @@ describe('ShowDetailHeader', () => {
     expect(screen.getByRole('heading', { name: 'Test Show' })).toBeInTheDocument()
   })
 
+  test.each(['hero', 'full'] as const)(
+    'style "%s" prefers banner_path over backdrop_path when both are set',
+    (style) => {
+      const { container } = renderHeader(
+        style,
+        makeShow({ banner_path: '/banner-override.jpg', backdrop_path: '/bd.jpg' }),
+      )
+
+      expect(
+        container.querySelector('img[src="/api/images/w1280/banner-override.jpg"]'),
+      ).toBeInTheDocument()
+      expect(container.querySelector('img[src="/api/images/w1280/bd.jpg"]')).not.toBeInTheDocument()
+    },
+  )
+
+  test('a show with banner_path but no backdrop_path still renders the banner', () => {
+    const { container } = renderHeader(
+      'hero',
+      makeShow({ backdrop_path: null, banner_path: '/only-banner.jpg' }),
+    )
+
+    expect(
+      container.querySelector('img[src="/api/images/w1280/only-banner.jpg"]'),
+    ).toBeInTheDocument()
+  })
+
   test('hero: the title/actions caption is in normal flow, not an absolute overlay', () => {
     // Regression: an absolutely-positioned overlay inside the aspect-video
     // overflow-hidden card clipped the title when the action row wrapped on
