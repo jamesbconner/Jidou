@@ -1,11 +1,11 @@
 import { useLocalStorageState } from './useLocalStorage'
 
-export const BANNER_STYLES = ['hero', 'contained', 'full', 'none'] as const
+export const BANNER_STYLES = ['hero', 'full', 'none'] as const
 
 /** Backdrop treatment shown at the top of the show detail page. */
 export type BannerStyle = (typeof BANNER_STYLES)[number]
 
-export const DEFAULT_BANNER_STYLE: BannerStyle = 'contained'
+export const DEFAULT_BANNER_STYLE: BannerStyle = 'hero'
 
 const STORAGE_KEY = 'jidou.bannerStyle'
 

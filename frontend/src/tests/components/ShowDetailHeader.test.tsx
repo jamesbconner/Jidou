@@ -34,7 +34,7 @@ function renderHeader(style: BannerStyle, show: ShowRead) {
 }
 
 describe('ShowDetailHeader', () => {
-  test.each(['hero', 'contained', 'full'] as const)(
+  test.each(['hero', 'full'] as const)(
     'style "%s" renders the w1280 backdrop and every action slot',
     (style) => {
       const { container } = renderHeader(style, makeShow())
@@ -62,12 +62,17 @@ describe('ShowDetailHeader', () => {
     expect(screen.getByRole('heading', { name: 'Test Show' })).toBeInTheDocument()
   })
 
-  test('contained: the title/actions block is in normal flow, not an absolute overlay', () => {
+  test('hero: the title/actions caption is in normal flow, not an absolute overlay', () => {
     // Regression: an absolutely-positioned overlay inside the aspect-video
     // overflow-hidden card clipped the title when the action row wrapped on
-    // narrow viewports. The caption block must grow the card instead.
-    renderHeader('contained', makeShow())
-    const caption = screen.getByRole('heading', { name: 'Test Show' }).parentElement as HTMLElement
-    expect(caption.className).not.toMatch(/\babsolute\b/)
+    // narrow viewports. The caption row must grow the card instead.
+    renderHeader('hero', makeShow())
+    const h1 = screen.getByRole('heading', { name: 'Test Show' })
+    // walk up to the flex caption row and assert nothing on the way is absolute
+    let el: HTMLElement | null = h1
+    for (let i = 0; i < 3 && el; i++) {
+      expect(el.className).not.toMatch(/\babsolute\b/)
+      el = el.parentElement
+    }
   })
 })
