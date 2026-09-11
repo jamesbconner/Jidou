@@ -169,10 +169,11 @@ export function ShowDetailHeader({
     )
   }
 
-  // 'contained' — whole 16:9 frame always visible (blurred fill + sharp letterbox).
+  // 'contained' — whole 16:9 frame always visible (blurred fill + sharp letterbox),
+  // in a rounded card that echoes the poster's corners.
   return (
     <div className="space-y-6">
-      {backdropBox('-mx-6 aspect-video bg-black', {
+      {backdropBox('-mx-6 aspect-video rounded-lg bg-black', {
         imgClassName: 'object-cover blur-2xl scale-110 opacity-50',
         scrim: (
           <>
