@@ -433,9 +433,10 @@ export default function Settings() {
 
       {tab === 'features' && (
         <div className="space-y-8">
-          {/* Appearance — browser-local UI preferences, stored in localStorage (not /api/settings) */}
+          {/* Show Detail — everything that changes how an individual show's detail page looks/behaves */}
           <Card padding="md" className="space-y-3">
-            <h2 className="font-semibold dark:text-gray-100">Appearance</h2>
+            <h2 className="font-semibold dark:text-gray-100">Show Detail</h2>
+            {/* Banner style is browser-local (localStorage), not persisted via /api/settings */}
             <div className="flex items-start justify-between gap-4 text-sm">
               <span className="text-gray-700 dark:text-gray-300">
                 Show detail banner
@@ -456,127 +457,6 @@ export default function Settings() {
                 ]}
               />
             </div>
-          </Card>
-
-          {/* Dashboard — user-editable at runtime, unlike the env-backed Configuration cards on the General tab */}
-          <Card padding="md" className="space-y-3">
-            <h2 className="font-semibold dark:text-gray-100">Dashboard</h2>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Show adult content
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  Adult-flagged shows and episodes are always tracked; this only controls whether
-                  they appear in the dashboard&apos;s recently-added carousels.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.show_adult_content ?? false}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ show_adult_content: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Calendar
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  Show the airing calendar page and its nav link.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.calendar_enabled ?? true}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ calendar_enabled: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Discover
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  Show the discover page and its nav link.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.discover_enabled ?? true}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ discover_enabled: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Recently added episodes
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  Show the &quot;Recently Added Episodes&quot; carousel on the dashboard.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.recent_episodes_enabled ?? true}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ recent_episodes_enabled: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Recently added movies
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  Show the &quot;Recently Added Movies&quot; carousel on the dashboard.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.recent_movies_enabled ?? true}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ recent_movies_enabled: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
-              <span className="text-gray-700 dark:text-gray-300">
-                Uniform episode artwork
-                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
-                  In the &quot;Recently Added Episodes&quot; carousel, always use the show poster
-                  instead of the episode still, so every card has the same shape. Episodes
-                  without a still already fall back to the poster.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={appSettings?.recent_episodes_prefer_posters ?? false}
-                disabled={!appSettings || updateAppSettings.isPending}
-                onChange={(e) =>
-                  updateAppSettings.mutate({ recent_episodes_prefer_posters: e.target.checked })
-                }
-                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
-              />
-            </label>
-          </Card>
-
-          {/* Recommendations — controls the show detail page's "Similar Titles" carousel */}
-          <Card padding="md" className="space-y-3">
-            <h2 className="font-semibold dark:text-gray-100">Recommendations</h2>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">
                 Similar titles
@@ -646,6 +526,127 @@ export default function Settings() {
                   })
                 }}
                 className="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+            </label>
+          </Card>
+
+          {/* Dashboard — only settings that affect the Dashboard page itself */}
+          <Card padding="md" className="space-y-3">
+            <h2 className="font-semibold dark:text-gray-100">Dashboard</h2>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Show adult content
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Adult-flagged shows and episodes are always tracked; this only controls whether
+                  they appear in the dashboard&apos;s recently-added carousels.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.show_adult_content ?? false}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ show_adult_content: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Recently added episodes
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show the &quot;Recently Added Episodes&quot; carousel on the dashboard.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.recent_episodes_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ recent_episodes_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Recently added movies
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show the &quot;Recently Added Movies&quot; carousel on the dashboard.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.recent_movies_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ recent_movies_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Uniform episode artwork
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  In the &quot;Recently Added Episodes&quot; carousel, always use the show poster
+                  instead of the episode still, so every card has the same shape. Episodes
+                  without a still already fall back to the poster.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.recent_episodes_prefer_posters ?? false}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ recent_episodes_prefer_posters: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+          </Card>
+
+          {/* Optional Pages — whole-page on/off switches, unrelated to Dashboard content */}
+          <Card padding="md" className="space-y-3">
+            <h2 className="font-semibold dark:text-gray-100">Optional Pages</h2>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Calendar
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show the airing calendar page and its nav link.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.calendar_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ calendar_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
+                Discover
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show the discover page and its nav link.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.discover_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ discover_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
               />
             </label>
           </Card>
