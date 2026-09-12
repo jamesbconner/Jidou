@@ -76,6 +76,11 @@ services:
       # Image cache (disk-backed proxy for TMDB poster/backdrop images)
       - IMAGE_CACHE_BACKEND=${IMAGE_CACHE_BACKEND:-disk}
       - IMAGE_CACHE_PATH=${IMAGE_CACHE_PATH:-/data/image-cache}
+      # Image cache host path — passed into the container (API service only) so
+      # /api/config can expose the path the user recognises instead of the
+      # container-internal path, same reasoning as the LOCAL_*_HOST_PATH vars
+      # below. Defaults to the container path (Linux/macOS no-op).
+      - IMAGE_CACHE_HOST_PATH=${IMAGE_CACHE_HOST_PATH:-${IMAGE_CACHE_PATH:-/data/image-cache}}
       - IMAGE_CACHE_EXPIRATION_ENABLED=${IMAGE_CACHE_EXPIRATION_ENABLED:-true}
       - IMAGE_CACHE_RETENTION_DAYS=${IMAGE_CACHE_RETENTION_DAYS:-180}
       # LLM (optional)
