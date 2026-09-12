@@ -211,7 +211,7 @@ The feed is cached 24h and keyed to your current watchlist seed set, so adding/r
 
 Each show's detail page can show a **Similar Titles** carousel: `GET /api/shows/{id}/similar` merges TMDB's `/recommendations` and `/similar` for the show, dedupes them, and drops the show itself. Titles already in your library link straight to their detail page; the rest carry the same one-click **Add + Watchlist** action as Discover. The assembled list is cached 24h.
 
-Three toggles in **Settings → Recommendations** control it: turn the carousel on/off, set how many titles to show (1–40), and choose whether to include titles not yet in your library. With "include titles not in your library" off, the carousel is limited to shows you already track.
+Three toggles in **Settings → Features → Show Detail** control it: turn the carousel on/off, set how many titles to show (1–40), and choose whether to include titles not yet in your library. With "include titles not in your library" off, the carousel is limited to shows you already track.
 
 ---
 
@@ -254,7 +254,7 @@ An optional calendar page (toggle in Settings) showing episodes airing in a date
 
 The **Settings** page is split into four tabs:
 - **General** — read-only env-backed configuration, broken into discrete cards: Application (name, debug, API auth), Database, Redis, TMDB (API key status, base URL, rate limit, cache TTL), LLM (provider, model, host, cache TTL), SFTP (host, port, username, remote/noscan paths), Media Paths (host and container paths per content type), and Image Cache (backend, host path, expiration/retention).
-- **Features** — the show-detail banner style (Appearance, a browser-local preference), feature toggles for the Dashboard's Recently Added Episodes and Recently Added Movies carousels, the airing calendar page, whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI), and [Recommendations](#similar-titles): enable/disable the show detail page's Similar Titles carousel, set how many titles it shows (1–40), and choose whether it includes titles not yet in your library.
+- **Features** — grouped by the page each setting affects: **Show Detail** (the banner style — a browser-local preference — and [Similar Titles](#similar-titles): enable/disable the carousel, how many titles it shows (1–40), and whether it includes titles not yet in your library), **Dashboard** (whether adult-flagged content appears at all, enforced server-side rather than just hidden in the UI, plus the Recently Added Episodes/Movies carousels and their artwork), and **Optional Pages** (show/hide the Calendar and Discover pages and their nav links).
 - **Services** — connection tests and status for TMDB, SFTP, Redis, and the LLM provider, the TMDB response cache, and the sync/RSS import schedules.
 - **Data** — text-file import, database export/import, the SFTP baseline (seed) task, and **Show Metadata Backfill**: a one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
 - Config values on the General tab are read-only here (edit `.env` and restart to change them); the toggles on the Features tab are the only settings persisted to the database (`app_settings` table) and changeable at runtime.

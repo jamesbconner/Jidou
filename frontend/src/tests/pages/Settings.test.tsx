@@ -258,16 +258,16 @@ describe('Settings page — tabs', () => {
     expect(screen.getByText('Database Import')).toBeInTheDocument()
   })
 
-  test('Features tab renders the Appearance, Dashboard, and Recommendations cards', async () => {
+  test('Features tab renders the Show Detail, Dashboard, and Optional Pages cards', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
     await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
-    expect(screen.getByText('Appearance')).toBeInTheDocument()
-    expect(screen.getByText('Dashboard')).toBeInTheDocument()
-    expect(screen.getByText('Recommendations')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Show Detail' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Optional Pages' })).toBeInTheDocument()
   })
 
   test('General tab renders discrete config cards, including Media Paths and Image Cache', async () => {
@@ -302,7 +302,7 @@ describe('Settings page — tabs', () => {
   })
 })
 
-describe('Settings page — Recommendations panel', () => {
+describe('Settings page — Show Detail panel (Similar Titles)', () => {
   test('reflects current similar-titles settings', async () => {
     setupFetch({
       appSettings: makeAppSettings({
@@ -316,7 +316,7 @@ describe('Settings page — Recommendations panel', () => {
     await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
-    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Show Detail' })).toBeInTheDocument())
 
     await waitFor(() =>
       expect(
@@ -334,7 +334,7 @@ describe('Settings page — Recommendations panel', () => {
     await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
-    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Show Detail' })).toBeInTheDocument())
     await waitFor(() =>
       expect(screen.getByRole('switch', { name: /^similar titles/i })).toBeEnabled(),
     )
@@ -358,7 +358,7 @@ describe('Settings page — Recommendations panel', () => {
     await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
-    await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Show Detail' })).toBeInTheDocument())
     await waitFor(() =>
       expect(
         screen.getByRole('spinbutton', { name: /number of titles to show/i }),
