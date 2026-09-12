@@ -252,12 +252,12 @@ An optional calendar page (toggle in Settings) showing episodes airing in a date
 
 ## Settings
 
-The **Settings** page has three groups:
-- **Services** — connection tests and status for TMDB, SFTP, Redis, and the LLM provider, plus the API docs link and API key status.
-- **Feature toggles** — enable/disable the Dashboard's Recently Added Episodes and Recently Added Movies carousels, the airing calendar page, and whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI).
-- **Recommendations** — enable/disable the show detail page's [Similar Titles](#similar-titles) carousel, set how many titles it shows (1–40), and choose whether it includes titles not yet in your library.
-- **Show Metadata Backfill** — one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
-- Config values are read-only here (edit `.env` and restart to change them); the toggles above are the only settings persisted to the database (`app_settings` table) and changeable at runtime.
+The **Settings** page is split into four tabs:
+- **General** — read-only env-backed configuration (app name, TMDB/LLM/SFTP/Redis/database status, API auth) plus the show-detail banner style, a browser-local appearance preference.
+- **Features** — feature toggles for the Dashboard's Recently Added Episodes and Recently Added Movies carousels, the airing calendar page, whether adult-flagged content is shown at all (enforced server-side, not just hidden in the UI), and [Recommendations](#similar-titles): enable/disable the show detail page's Similar Titles carousel, set how many titles it shows (1–40), and choose whether it includes titles not yet in your library.
+- **Services** — connection tests and status for TMDB, SFTP, Redis, and the LLM provider, the TMDB response cache, and the sync/RSS import schedules.
+- **Data** — text-file import, database export/import, the SFTP baseline (seed) task, and **Show Metadata Backfill**: a one-click trigger (dry-run supported) for the `backfill_show_metadata` task, which re-fetches full TMDB details for any show that's missing genre/external-ID data — see [Show library](#show-library).
+- Config values on the General tab are read-only here (edit `.env` and restart to change them); the toggles on the Features tab are the only settings persisted to the database (`app_settings` table) and changeable at runtime.
 
 ![Settings page](screenshots/settings-page.png)
 
