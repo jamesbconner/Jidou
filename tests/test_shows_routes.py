@@ -1,6 +1,7 @@
 """Tests for the /shows API routes."""
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -127,6 +128,7 @@ def _session_override(
     matched_ep_count: int = 0,
     aired_season_count: int = 0,
     matched_full_season_count: int = 0,
+    latest_episode_added_at: datetime | None = None,
 ) -> "type[AsyncMock]":
     """Return a FastAPI dependency override that yields a mock session.
 
@@ -144,7 +146,7 @@ def _session_override(
         # list_shows returns (show, ep_count, watched_ep_count, file_count,
         # missing_ep_count, missing_full_season_count, aired_ep_count,
         # matched_ep_count, aired_season_count, matched_full_season_count,
-        # has_active_rss) tuples via .all()
+        # has_active_rss, latest_episode_added_at) tuples via .all()
         result.all.return_value = [
             (
                 item,
@@ -158,6 +160,7 @@ def _session_override(
                 aired_season_count,
                 matched_full_season_count,
                 has_active_rss,
+                latest_episode_added_at,
             )
             for item in items
         ]
@@ -384,6 +387,56 @@ def test_list_shows_does_not_zero_aired_or_matched_counts_when_tracking_disabled
         assert body["matched_episode_count"] == 9
         assert body["aired_season_count"] == 4
         assert body["matched_full_season_count"] == 3
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_surfaces_latest_episode_added_at() -> None:
+    """latest_episode_added_at reflects the correlated MAX(file_tracked_at) subquery."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    added_at = datetime(2024, 6, 1, tzinfo=UTC)
+    app.dependency_overrides[get_session] = _session_override(
+        many=[show], latest_episode_added_at=added_at
+    )
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["latest_episode_added_at"] == "2024-06-01T00:00:00Z"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_defaults_latest_episode_added_at_to_none() -> None:
+    """A show with no tracked episode files reports latest_episode_added_at=None."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show])
+    try:
+        response = TestClient(app).get("/api/shows")
+        assert response.status_code == 200
+        assert response.json()[0]["latest_episode_added_at"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_shows_rejects_unknown_sort_value() -> None:
+    """An invalid sort key is rejected by the pattern-constrained query param."""
+    response = TestClient(app).get("/api/shows", params={"sort": "not_a_real_sort"})
+    assert response.status_code == 422
+
+
+def test_list_shows_accepts_episodes_added_desc_sort() -> None:
+    """sort=episodes_added_desc is a valid, accepted sort key."""
+    from jidou.database import get_session
+
+    show = _make_show()
+    app.dependency_overrides[get_session] = _session_override(many=[show])
+    try:
+        response = TestClient(app).get("/api/shows", params={"sort": "episodes_added_desc"})
+        assert response.status_code == 200
     finally:
         app.dependency_overrides.clear()
 

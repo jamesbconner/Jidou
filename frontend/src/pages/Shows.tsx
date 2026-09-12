@@ -86,6 +86,8 @@ function sortShows(shows: ShowList[], sort: ShowSortOrder): ShowList[] {
       case 'last_aired_desc': return nullsLast(a.last_air_date, b.last_air_date, (x, y) => y.localeCompare(x))
       case 'rating_desc': return nullsLast(a.vote_average, b.vote_average, (x, y) => y - x)
       case 'episodes_desc': return nullsLast(a.number_of_episodes, b.number_of_episodes, (x, y) => y - x)
+      case 'episodes_added_desc':
+        return nullsLast(a.latest_episode_added_at, b.latest_episode_added_at, (x, y) => y.localeCompare(x))
     }
   })
 }

@@ -27,6 +27,7 @@ export type ShowSortOrder =
   | 'last_aired_desc'
   | 'rating_desc'
   | 'episodes_desc'
+  | 'episodes_added_desc'
 
 export const SHOW_SORT_LABELS: Record<ShowSortOrder, string> = {
   title_asc: 'Title A → Z',
@@ -38,6 +39,7 @@ export const SHOW_SORT_LABELS: Record<ShowSortOrder, string> = {
   last_aired_desc: 'Recently Aired',
   rating_desc: 'Highest Rated',
   episodes_desc: 'Most Episodes',
+  episodes_added_desc: 'Recently Added Episodes',
 }
 
 export const showKeys = {

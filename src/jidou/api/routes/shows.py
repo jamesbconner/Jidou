@@ -336,6 +336,13 @@ async def discover_shows(
 # ---------------------------------------------------------------------------
 
 
+_LATEST_EPISODE_ADDED_SQ = (
+    select(func.max(Episode.file_tracked_at))
+    .where(Episode.show_id == Show.id)
+    .correlate(Show)
+    .scalar_subquery()
+)
+
 _SORT_MAP: dict[str, ColumnElement[Any]] = {
     "title_asc": Show.title.asc(),
     "title_desc": Show.title.desc(),
@@ -346,6 +353,7 @@ _SORT_MAP: dict[str, ColumnElement[Any]] = {
     "last_aired_desc": nullslast(Show.last_air_date.desc()),
     "rating_desc": nullslast(Show.vote_average.desc()),
     "episodes_desc": nullslast(Show.number_of_episodes.desc()),
+    "episodes_added_desc": nullslast(_LATEST_EPISODE_ADDED_SQ.desc()),
 }
 
 
@@ -357,7 +365,8 @@ async def list_shows(
         default="title_asc",
         pattern=(
             "^(title_asc|title_desc|added_desc|added_asc"
-            "|release_desc|release_asc|last_aired_desc|rating_desc|episodes_desc)$"
+            "|release_desc|release_asc|last_aired_desc|rating_desc|episodes_desc"
+            "|episodes_added_desc)$"
         ),
     ),
     today: date | None = None,
@@ -370,7 +379,8 @@ async def list_shows(
         offset: Number of results to skip for pagination.
         sort: Sort order key. One of: ``title_asc``, ``title_desc``,
             ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
-            ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
+            ``last_aired_desc``, ``rating_desc``, ``episodes_desc``,
+            ``episodes_added_desc`` (most recently added episode file first).
         today: The caller's notion of "today", used to decide whether an
             episode has aired for ``missing_episode_count`` and the other
             aired-only counts below. Defaults to the server's current date;
@@ -506,6 +516,7 @@ async def list_shows(
             aired_season_count_sq.label("aired_season_count"),
             matched_full_season_sq.label("matched_full_season_count"),
             active_rss_sq.label("has_active_rss_subscription"),
+            _LATEST_EPISODE_ADDED_SQ.label("latest_episode_added_at"),
         )
         .order_by(_SORT_MAP[sort])
         .offset(offset)
@@ -525,6 +536,7 @@ async def list_shows(
         aired_season_count,
         matched_full_season_count,
         has_active_rss,
+        latest_episode_added_at,
     ) in rows:
         data = ShowList.model_validate(show)
         data.episode_count = ep_count
@@ -537,6 +549,7 @@ async def list_shows(
         data.aired_episode_count = aired_ep_count
         data.matched_episode_count = matched_ep_count
         data.aired_season_count = aired_season_count
+        data.latest_episode_added_at = latest_episode_added_at
         data.matched_full_season_count = matched_full_season_count
         data.has_active_rss_subscription = has_active_rss
         shows.append(data)
