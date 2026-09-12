@@ -194,7 +194,8 @@ export interface paths {
          *         offset: Number of results to skip for pagination.
          *         sort: Sort order key. One of: ``title_asc``, ``title_desc``,
          *             ``added_desc``, ``added_asc``, ``release_desc``, ``release_asc``,
-         *             ``last_aired_desc``, ``rating_desc``, ``episodes_desc``.
+         *             ``last_aired_desc``, ``rating_desc``, ``episodes_desc``,
+         *             ``episodes_added_desc`` (most recently added episode file first).
          *         today: The caller's notion of "today", used to decide whether an
          *             episode has aired for ``missing_episode_count`` and the other
          *             aired-only counts below. Defaults to the server's current date;
@@ -4420,6 +4421,8 @@ export interface components {
              * @default false
              */
             has_active_rss_subscription: boolean;
+            /** Latest Episode Added At */
+            latest_episode_added_at?: string | null;
             /**
              * Created At
              * Format: date-time

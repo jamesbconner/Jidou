@@ -333,4 +333,8 @@ class ShowList(BaseModel):
     aired_season_count: int = 0
     matched_full_season_count: int = 0
     has_active_rss_subscription: bool = False
+    # Most recent Episode.file_tracked_at across the show's episodes, i.e. when
+    # an episode file was last added/matched. None if no episode has a tracked
+    # file yet.
+    latest_episode_added_at: datetime | None = None
     created_at: datetime
