@@ -225,13 +225,22 @@ export interface AppConfig {
   redis_url: string | null
   tmdb_api_key_set: boolean
   tmdb_base_url: string
+  tmdb_rate_limit_per_second: number
+  tmdb_cache_ttl: number
   sftp_host: string | null
   sftp_port: number
   sftp_username: string | null
+  sftp_remote_paths: string
+  sftp_noscan_paths: string
   llm_provider: string
   llm_model: string
   llm_base_url: string | null
+  llm_cache_ttl: number
   media_paths: MediaPaths
+  image_cache_backend: string
+  image_cache_host_path: string
+  image_cache_expiration_enabled: boolean
+  image_cache_retention_days: number
   rss_config_path_set: boolean
   api_key_enabled: boolean
   sync_schedule_enabled: boolean

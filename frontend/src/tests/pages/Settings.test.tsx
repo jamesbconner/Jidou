@@ -15,13 +15,26 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     redis_url: 'redis://localhost:6379/0',
     tmdb_api_key_set: true,
     tmdb_base_url: 'https://api.themoviedb.org/3',
+    tmdb_rate_limit_per_second: 0.5,
+    tmdb_cache_ttl: 604_800,
     sftp_host: 'sftp.example.com',
     sftp_port: 22,
     sftp_username: 'jidou',
+    sftp_remote_paths: '/',
+    sftp_noscan_paths: '',
     llm_provider: 'none',
     llm_model: '',
     llm_base_url: null,
-    media_paths: {} as AppConfig['media_paths'],
+    llm_cache_ttl: 3600,
+    media_paths: {
+      tv: { container: '/data/media/tv', host: '/data/media/tv' },
+      anime: { container: '/data/media/anime', host: '/data/media/anime' },
+      movie: { container: '/data/media/movies', host: '/data/media/movies' },
+    },
+    image_cache_backend: 'disk',
+    image_cache_host_path: '/data/image-cache',
+    image_cache_expiration_enabled: true,
+    image_cache_retention_days: 180,
     rss_config_path_set: false,
     api_key_enabled: false,
     sync_schedule_enabled: true,
@@ -145,7 +158,7 @@ describe('Settings page — Services panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
@@ -156,7 +169,7 @@ describe('Settings page — Services panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
@@ -179,7 +192,7 @@ describe('Settings page — Services panel', () => {
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
@@ -203,7 +216,7 @@ describe('Settings page — Services panel', () => {
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
@@ -219,7 +232,7 @@ describe('Settings page — Services panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('TMDB')).toBeInTheDocument())
@@ -237,7 +250,7 @@ describe('Settings page — tabs', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Data' }))
 
     expect(screen.getByText('Text File Import')).toBeInTheDocument()
@@ -245,22 +258,42 @@ describe('Settings page — tabs', () => {
     expect(screen.getByText('Database Import')).toBeInTheDocument()
   })
 
-  test('Features tab renders the Dashboard and Recommendations cards', async () => {
+  test('Features tab renders the Appearance, Dashboard, and Recommendations cards', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
+    expect(screen.getByText('Appearance')).toBeInTheDocument()
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(screen.getByText('Recommendations')).toBeInTheDocument()
+  })
+
+  test('General tab renders discrete config cards, including Media Paths and Image Cache', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+
+    expect(screen.getByText('Database')).toBeInTheDocument()
+    expect(screen.getByText('Redis')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'TMDB' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'LLM' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'SFTP' })).toBeInTheDocument()
+    expect(screen.getByText('Media Paths')).toBeInTheDocument()
+    expect(screen.getByText('Image Cache')).toBeInTheDocument()
+
+    expect(screen.getByText('/data/media/tv')).toBeInTheDocument()
+    expect(screen.getByText('/data/image-cache')).toBeInTheDocument()
+    expect(screen.getByText('Enabled — 180d retention')).toBeInTheDocument()
   })
 
   test('Services tab renders the Services, TMDB Cache, and Schedules cards', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     expect(screen.getByRole('heading', { name: 'Services' })).toBeInTheDocument()
@@ -280,7 +313,7 @@ describe('Settings page — Recommendations panel', () => {
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
@@ -298,7 +331,7 @@ describe('Settings page — Recommendations panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
@@ -322,7 +355,7 @@ describe('Settings page — Recommendations panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
-    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
@@ -360,6 +393,9 @@ describe('Settings page — Appearance (banner style)', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
+
     const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
     expect(within(group).getByRole('radio', { name: 'Hero' })).toHaveAttribute(
       'aria-checked',
@@ -372,6 +408,9 @@ describe('Settings page — Appearance (banner style)', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
+
     const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
     expect(within(group).getByRole('radio', { name: 'Full' })).toHaveAttribute(
       'aria-checked',
@@ -382,6 +421,9 @@ describe('Settings page — Appearance (banner style)', () => {
   test('selecting a style writes localStorage and makes no /api/settings call', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     const group = await screen.findByRole('radiogroup', { name: 'Show detail banner style' })
     fireEvent.click(within(group).getByRole('radio', { name: 'None' }))
