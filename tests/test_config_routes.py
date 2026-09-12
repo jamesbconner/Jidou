@@ -22,6 +22,17 @@ def test_get_config_returns_200() -> None:
     assert "api_key_enabled" in body
 
 
+def test_get_config_surfaces_image_cache_settings() -> None:
+    """GET /api/config exposes image cache backend, host path, and retention."""
+    response = TestClient(app).get("/api/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert "image_cache_backend" in body
+    assert "image_cache_host_path" in body
+    assert "image_cache_expiration_enabled" in body
+    assert "image_cache_retention_days" in body
+
+
 def test_get_config_surfaces_server_local_today() -> None:
     """GET /api/config exposes the server's local date for client date math.
 
