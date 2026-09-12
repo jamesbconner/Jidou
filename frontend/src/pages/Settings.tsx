@@ -16,7 +16,7 @@ import { Card } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import type { BannerStyle } from '@/hooks/useBannerStyle'
 
-type Tab = 'general' | 'data'
+type Tab = 'general' | 'features' | 'services' | 'data'
 
 // ---------------------------------------------------------------------------
 // Live task tracker — subscribes to WS progress for a single task
@@ -322,6 +322,12 @@ export default function Settings() {
         <button className={tabCls('general')} onClick={() => setTab('general')}>
           General
         </button>
+        <button className={tabCls('features')} onClick={() => setTab('features')}>
+          Features
+        </button>
+        <button className={tabCls('services')} onClick={() => setTab('services')}>
+          Services
+        </button>
         <button className={tabCls('data')} onClick={() => setTab('data')}>
           Data
         </button>
@@ -391,7 +397,11 @@ export default function Settings() {
               />
             </div>
           </Card>
+        </div>
+      )}
 
+      {tab === 'features' && (
+        <div className="space-y-8">
           {/* Dashboard — user-editable at runtime, unlike the env-backed Configuration card above */}
           <Card padding="md" className="space-y-3">
             <h2 className="font-semibold dark:text-gray-100">Dashboard</h2>
@@ -583,7 +593,11 @@ export default function Settings() {
               />
             </label>
           </Card>
+        </div>
+      )}
 
+      {tab === 'services' && (
+        <div className="space-y-8">
           {/* Services — health status + on-demand connection tests in one place */}
           <Card padding="md" className="space-y-3">
             <div className="flex items-center justify-between">

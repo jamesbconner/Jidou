@@ -132,10 +132,21 @@ function setupFetch(options: {
   })
 }
 
+// The Services and TMDB Cache cards each have their own "Refresh" button;
+// scope to the Services card specifically to avoid ambiguous matches.
+function servicesRefreshButton(): HTMLElement {
+  const heading = screen.getByRole('heading', { name: 'Services' })
+  const card = heading.closest('.card') as HTMLElement
+  return within(card).getByRole('button', { name: /refresh/i })
+}
+
 describe('Settings page — Services panel', () => {
   test('Database row shows a dash indicator and no detail before Refresh is clicked', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
     expect(screen.getByText('Click Refresh to check service health')).toBeInTheDocument()
@@ -145,8 +156,11 @@ describe('Settings page — Services panel', () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
 
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    fireEvent.click(servicesRefreshButton())
 
     await waitFor(() => {
       expect(screen.getByText('4.2 ms · rev abc123def456')).toBeInTheDocument()
@@ -165,8 +179,11 @@ describe('Settings page — Services panel', () => {
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
 
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    fireEvent.click(servicesRefreshButton())
 
     await waitFor(() => {
       expect(screen.getByText('4.2 ms')).toBeInTheDocument()
@@ -186,8 +203,11 @@ describe('Settings page — Services panel', () => {
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
 
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+
     await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    fireEvent.click(servicesRefreshButton())
 
     await waitFor(() => {
       expect(screen.getByText('● Degraded')).toBeInTheDocument()
@@ -198,6 +218,9 @@ describe('Settings page — Services panel', () => {
   test('TMDB Test button runs an on-demand connection test independent of the health refresh', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
 
     await waitFor(() => expect(screen.getByText('TMDB')).toBeInTheDocument())
     const testButtons = screen.getAllByRole('button', { name: 'Test' })
@@ -221,6 +244,29 @@ describe('Settings page — tabs', () => {
     expect(screen.getByText('Database Export')).toBeInTheDocument()
     expect(screen.getByText('Database Import')).toBeInTheDocument()
   })
+
+  test('Features tab renders the Dashboard and Recommendations cards', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    expect(screen.getByText('Recommendations')).toBeInTheDocument()
+  })
+
+  test('Services tab renders the Services, TMDB Cache, and Schedules cards', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+
+    expect(screen.getByRole('heading', { name: 'Services' })).toBeInTheDocument()
+    expect(screen.getByText('TMDB Cache')).toBeInTheDocument()
+    expect(screen.getByText('Schedules')).toBeInTheDocument()
+  })
 })
 
 describe('Settings page — Recommendations panel', () => {
@@ -233,6 +279,9 @@ describe('Settings page — Recommendations panel', () => {
       }),
     })
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
 
@@ -248,6 +297,9 @@ describe('Settings page — Recommendations panel', () => {
   test('turning the feature off PATCHes similar_titles_enabled=false', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
     await waitFor(() =>
@@ -269,6 +321,9 @@ describe('Settings page — Recommendations panel', () => {
   test('editing the count PATCHes a clamped similar_titles_count', async () => {
     setupFetch()
     render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Configuration')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
 
     await waitFor(() => expect(screen.getByText('Recommendations')).toBeInTheDocument())
     await waitFor(() =>

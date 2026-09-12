@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
 
+### Settings page reorganized into four tabs
+- Split the crowded **General** tab into **General** (env-backed config + Appearance), **Features** (Dashboard toggles + Recommendations), **Services** (health checks/connection tests, TMDB cache, sync/RSS schedules), and **Data** (unchanged: import/export, SFTP baseline, metadata backfill) — no behavior or persisted-settings changes, purely a layout split to reduce scroll depth on the page users actually adjust most often.
+
 ### Similar Titles on Show Detail
 - New **Similar Titles** carousel on the Show Detail page (`GET /api/shows/{id}/similar`) — merges TMDB `/recommendations` and `/similar` for the show, dedupes, and drops the show itself. Titles already in the library link straight to their detail page; the rest carry the same one-click **Add + Watchlist** action as Discover (create + watchlist + RSS stub), now extracted into a shared `useAddDiscoverResult` hook so the two surfaces stay identical. The assembled list is cached 24h keyed by `(show_id, tmdb_id, count, include_external)`; an empty result caused by a TMDB outage is not cached.
 - Three runtime toggles under **Settings → Recommendations** (stored in `app_settings`, no migration): enable/disable the carousel, how many titles to fetch (`similar_titles_count`, 1–40, clamped), and whether to include titles not yet in the library (`similar_titles_include_external`) — off limits the carousel to shows already tracked.
