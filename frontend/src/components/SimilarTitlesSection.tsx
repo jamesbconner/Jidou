@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSimilarShows, useLibraryIndex } from '@/hooks/useShows'
 import { useAppSettings } from '@/hooks/useSettings'
 import { useAddDiscoverResult, resultKey } from '@/hooks/useAddDiscoverResult'
 import { CardCarousel } from '@/components/CardCarousel'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
+import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { Card } from '@/components/ui/Card'
+import type { DiscoverResult } from '@/types/api'
 
 interface Props {
   showId: number
@@ -38,6 +40,7 @@ export function SimilarTitlesSection({ showId }: Props) {
   const results = useMemo(() => (Array.isArray(data) ? data : []), [data])
   const libraryIndex = useLibraryIndex()
   const { add, pendingKeys, issueKeys } = useAddDiscoverResult()
+  const [detailResult, setDetailResult] = useState<DiscoverResult | null>(null)
 
   // Memoized so CardCarousel's children identity only changes with the result
   // set or add-flow state — not on every unrelated ShowDetail re-render, which
@@ -56,6 +59,7 @@ export function SimilarTitlesSection({ showId }: Props) {
               onAdd={() => add(r)}
               addPending={pendingKeys.has(key)}
               addLabel="Add + Watchlist"
+              onCardClick={() => setDetailResult(r)}
             />
             {issue?.kind === 'failed' && (
               <p className="text-xs text-red-500 dark:text-red-400 mt-1">
@@ -74,9 +78,22 @@ export function SimilarTitlesSection({ showId }: Props) {
   if (!enabled || results.length === 0) return null
 
   return (
-    <Card as="section" padding="md" className="space-y-3">
-      <h2 className="font-semibold mb-1 dark:text-gray-100">Similar Titles</h2>
-      <CardCarousel>{cards}</CardCarousel>
-    </Card>
+    <>
+      <Card as="section" padding="md" className="space-y-3">
+        <h2 className="font-semibold mb-1 dark:text-gray-100">Similar Titles</h2>
+        <CardCarousel>{cards}</CardCarousel>
+      </Card>
+
+      {detailResult && (
+        <DiscoverDetailModal
+          result={detailResult}
+          inLibraryShowId={libraryIndex.get(resultKey(detailResult))?.id ?? null}
+          onClose={() => setDetailResult(null)}
+          onAdd={() => add(detailResult)}
+          addPending={pendingKeys.has(resultKey(detailResult))}
+          addLabel="Add + Watchlist"
+        />
+      )}
+    </>
   )
 }
