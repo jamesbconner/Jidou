@@ -7,7 +7,9 @@ import { useAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
 import type { AppConfig } from '@/types/api'
 
-const BASE_LINKS = [
+type NavItem = { to: string; label: string; end?: boolean }
+
+const BASE_LINKS: NavItem[] = [
   { to: '/shows', label: 'Shows' },
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
