@@ -615,6 +615,24 @@ export default function Settings() {
             <h2 className="font-semibold dark:text-gray-100">Optional Pages</h2>
             <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">
+                Dashboard
+                <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
+                  Show the dashboard page and its nav link.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={appSettings?.dashboard_page_enabled ?? true}
+                disabled={!appSettings || updateAppSettings.isPending}
+                onChange={(e) =>
+                  updateAppSettings.mutate({ dashboard_page_enabled: e.target.checked })
+                }
+                className="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+              <span className="text-gray-700 dark:text-gray-300">
                 Calendar
                 <span className="block text-xs text-gray-400 dark:text-gray-500 font-normal">
                   Show the airing calendar page and its nav link.

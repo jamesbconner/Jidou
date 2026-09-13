@@ -50,6 +50,7 @@ function makeAppSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     show_adult_content: false,
     calendar_enabled: true,
     discover_enabled: true,
+    dashboard_page_enabled: true,
     recent_episodes_enabled: true,
     recent_movies_enabled: true,
     recent_episodes_prefer_posters: false,
@@ -376,6 +377,34 @@ describe('Settings page — Show Detail panel (Similar Titles)', () => {
         )
       expect(patch).toBeTruthy()
       expect(JSON.parse(String(patch![1]!.body))).toEqual({ similar_titles_count: 40 })
+    })
+  })
+})
+
+describe('Settings page — Optional Pages panel', () => {
+  test('turning off the Dashboard switch PATCHes dashboard_page_enabled=false', async () => {
+    setupFetch()
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Features' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Optional Pages' })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /^dashboard/i })).toBeChecked(),
+    )
+    fireEvent.click(screen.getByRole('switch', { name: /^dashboard/i }))
+
+    await waitFor(() => {
+      const patch = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([u, i]) => String(u).endsWith('/api/settings') && i?.method === 'PATCH',
+        )
+      expect(patch).toBeTruthy()
+      expect(JSON.parse(String(patch![1]!.body))).toEqual({ dashboard_page_enabled: false })
     })
   })
 })

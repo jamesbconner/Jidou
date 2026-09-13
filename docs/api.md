@@ -49,7 +49,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `discover_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`, `recent_episodes_prefer_posters`, `similar_titles_enabled`, `similar_titles_count`, `similar_titles_include_external`) |
+| GET | `/api/settings` | Current value of every app setting (`show_adult_content`, `calendar_enabled`, `discover_enabled`, `dashboard_page_enabled`, `recent_episodes_enabled`, `recent_movies_enabled`, `recent_episodes_prefer_posters`, `similar_titles_enabled`, `similar_titles_count`, `similar_titles_include_external`) |
 | PATCH | `/api/settings` | Update one or more settings |
 
 ---

@@ -11,6 +11,7 @@ function makeAppSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     show_adult_content: false,
     calendar_enabled: true,
     discover_enabled: true,
+    dashboard_page_enabled: true,
     recent_episodes_enabled: true,
     recent_movies_enabled: true,
     recent_episodes_prefer_posters: false,

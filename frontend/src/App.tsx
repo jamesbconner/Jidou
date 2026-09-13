@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { WsConnectionProvider } from '@/stores/wsConnection'
@@ -41,7 +41,8 @@ export default function App() {
             <ErrorBoundary>
               <Routes>
                 <Route element={<Layout />}>
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<Navigate to="/shows" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/shows" element={<Shows />} />
                   <Route path="/discover" element={<Discover />} />
                   <Route path="/shows/:id" element={<ShowDetail />} />
