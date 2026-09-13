@@ -25,10 +25,11 @@ export function NavBar() {
   })
   const { data: appSettings } = useAppSettings()
 
-  let links = BASE_LINKS.slice(0, 1)
+  let links: NavItem[] = []
   if (appSettings?.dashboard_page_enabled ?? true) {
     links = [...links, { to: '/dashboard', label: 'Dashboard' }]
   }
+  links = [...links, ...BASE_LINKS.slice(0, 1)]
   if (appSettings?.discover_enabled ?? true) {
     links = [...links, { to: '/discover', label: 'Discover' }]
   }
