@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -160,5 +160,31 @@ describe('SimilarTitlesSection', () => {
     expect(
       await screen.findByRole('button', { name: /add \+ watchlist/i }),
     ).toBeInTheDocument()
+  })
+
+  test('clicking a card opens a detail modal with the show overview', async () => {
+    setupFetch({
+      similar: [makeResult({ id: 5, name: 'Detailed Show', overview: 'A show about a thing.' })],
+    })
+    renderSection()
+
+    fireEvent.click(await screen.findByText('Detailed Show'))
+
+    expect(await screen.findByText('A show about a thing.')).toBeInTheDocument()
+  })
+
+  test('closing the detail modal removes it', async () => {
+    setupFetch({
+      similar: [makeResult({ id: 5, name: 'Detailed Show', overview: 'A show about a thing.' })],
+    })
+    renderSection()
+
+    fireEvent.click(await screen.findByText('Detailed Show'))
+    expect(await screen.findByText('A show about a thing.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Close'))
+    await waitFor(() =>
+      expect(screen.queryByText('A show about a thing.')).not.toBeInTheDocument(),
+    )
   })
 })
