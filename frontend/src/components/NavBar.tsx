@@ -8,7 +8,6 @@ import clsx from 'clsx'
 import type { AppConfig } from '@/types/api'
 
 const BASE_LINKS = [
-  { to: '/', label: 'Dashboard', end: true },
   { to: '/shows', label: 'Shows' },
   { to: '/files', label: 'Files' },
   { to: '/watchlist', label: 'Watchlist' },
@@ -24,18 +23,21 @@ export function NavBar() {
   })
   const { data: appSettings } = useAppSettings()
 
-  let links = BASE_LINKS.slice(0, 2)
+  let links = BASE_LINKS.slice(0, 1)
+  if (appSettings?.dashboard_page_enabled ?? true) {
+    links = [...links, { to: '/dashboard', label: 'Dashboard' }]
+  }
   if (appSettings?.discover_enabled ?? true) {
     links = [...links, { to: '/discover', label: 'Discover' }]
   }
-  links = [...links, ...BASE_LINKS.slice(2, 4)]
+  links = [...links, ...BASE_LINKS.slice(1, 3)]
   if (appSettings?.calendar_enabled ?? true) {
     links = [...links, { to: '/calendar', label: 'Calendar' }]
   }
   if (config?.rss_config_path_set) {
     links = [...links, { to: '/rss', label: 'RSS' }]
   }
-  links = [...links, ...BASE_LINKS.slice(4)]
+  links = [...links, ...BASE_LINKS.slice(3)]
 
   return (
     <nav className="sticky top-0 z-40 bg-gray-900 dark:bg-gray-950 text-white px-6 py-3 flex items-center gap-6">

@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-Everything below shipped after 0.1.0 and has not been tagged yet. Grouped by area rather than by commit — see `git log` for individual changes.
+## [0.1.1] — 2026-09-12
+
+Everything below shipped after 0.1.0. Grouped by area rather than by commit — see `git log` for individual changes.
+
+### Dashboard added to Optional Pages; app landing page changed to Shows
+- The Dashboard page now has its own on/off switch under **Settings → Features → Optional Pages**, alongside Calendar and Discover (`dashboard_page_enabled` in `app_settings`, defaulting to on). Disabling it hides the nav link the same way Calendar/Discover do.
+- Since Dashboard could no longer permanently occupy the app's root route while also being toggleable, Dashboard moved from `/` to its own `/dashboard` path, and `/` now redirects to `/shows` — Shows is the new default landing page.
 
 ### Settings page reorganized into four tabs
 - Split the crowded **General** tab into **General** (read-only env-backed configuration), **Features** (everything you visually/functionally customize), **Services** (health checks/connection tests, TMDB cache, sync/RSS schedules), and **Data** (unchanged: import/export, SFTP baseline, metadata backfill) — no persisted-settings changes, purely a layout split to reduce scroll depth on the page users actually adjust most often.

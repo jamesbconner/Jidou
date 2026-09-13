@@ -15,6 +15,9 @@ class AppSettingsRead(BaseModel):
     discover_enabled: bool = Field(
         description="Whether the discover page and nav link are shown",
     )
+    dashboard_page_enabled: bool = Field(
+        description="Whether the dashboard page and nav link are shown",
+    )
     recent_episodes_enabled: bool = Field(
         description="Whether the dashboard's Recently Added Episodes carousel is shown",
     )
@@ -49,6 +52,7 @@ class AppSettingsPatch(BaseModel):
     show_adult_content: bool | None = None
     calendar_enabled: bool | None = None
     discover_enabled: bool | None = None
+    dashboard_page_enabled: bool | None = None
     recent_episodes_enabled: bool | None = None
     recent_movies_enabled: bool | None = None
     recent_episodes_prefer_posters: bool | None = None

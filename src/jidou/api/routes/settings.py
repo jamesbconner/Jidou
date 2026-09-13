@@ -10,6 +10,7 @@ from jidou.database import get_session
 from jidou.schemas.settings_schema import AppSettingsPatch, AppSettingsRead
 from jidou.services.settings_service import (
     CALENDAR_ENABLED,
+    DASHBOARD_PAGE_ENABLED,
     DISCOVER_ENABLED,
     RECENT_EPISODES_ENABLED,
     RECENT_EPISODES_PREFER_POSTERS,
@@ -33,6 +34,7 @@ def _to_read_model(values: dict[str, Any]) -> AppSettingsRead:
         show_adult_content=bool(values[SHOW_ADULT_CONTENT]),
         calendar_enabled=bool(values[CALENDAR_ENABLED]),
         discover_enabled=bool(values[DISCOVER_ENABLED]),
+        dashboard_page_enabled=bool(values[DASHBOARD_PAGE_ENABLED]),
         recent_episodes_enabled=bool(values[RECENT_EPISODES_ENABLED]),
         recent_movies_enabled=bool(values[RECENT_MOVIES_ENABLED]),
         recent_episodes_prefer_posters=bool(values[RECENT_EPISODES_PREFER_POSTERS]),
@@ -86,6 +88,10 @@ async def update_settings(
 
     if "discover_enabled" in payload.model_fields_set:
         await set_setting(db_session, DISCOVER_ENABLED, payload.discover_enabled)
+        await db_session.flush()
+
+    if "dashboard_page_enabled" in payload.model_fields_set:
+        await set_setting(db_session, DASHBOARD_PAGE_ENABLED, payload.dashboard_page_enabled)
         await db_session.flush()
 
     if "recent_episodes_enabled" in payload.model_fields_set:

@@ -6,6 +6,7 @@ import pytest
 
 from jidou.services.settings_service import (
     CALENDAR_ENABLED,
+    DASHBOARD_PAGE_ENABLED,
     DISCOVER_ENABLED,
     RECENT_EPISODES_ENABLED,
     RECENT_EPISODES_PREFER_POSTERS,
@@ -158,6 +159,7 @@ class TestGetAllSettings:
         assert result == {
             SHOW_ADULT_CONTENT: False,
             CALENDAR_ENABLED: True,
+            DASHBOARD_PAGE_ENABLED: True,
             DISCOVER_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,
@@ -183,6 +185,7 @@ class TestGetAllSettings:
         assert result == {
             SHOW_ADULT_CONTENT: True,
             CALENDAR_ENABLED: True,
+            DASHBOARD_PAGE_ENABLED: True,
             DISCOVER_ENABLED: True,
             RECENT_EPISODES_ENABLED: True,
             RECENT_MOVIES_ENABLED: True,

@@ -3072,6 +3072,8 @@ export interface components {
             calendar_enabled?: boolean | null;
             /** Discover Enabled */
             discover_enabled?: boolean | null;
+            /** Dashboard Page Enabled */
+            dashboard_page_enabled?: boolean | null;
             /** Recent Episodes Enabled */
             recent_episodes_enabled?: boolean | null;
             /** Recent Movies Enabled */
@@ -3105,6 +3107,11 @@ export interface components {
              * @description Whether the discover page and nav link are shown
              */
             discover_enabled: boolean;
+            /**
+             * Dashboard Page Enabled
+             * @description Whether the dashboard page and nav link are shown
+             */
+            dashboard_page_enabled: boolean;
             /**
              * Recent Episodes Enabled
              * @description Whether the dashboard's Recently Added Episodes carousel is shown
