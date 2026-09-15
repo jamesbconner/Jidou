@@ -15,6 +15,21 @@ import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
 import { RecommendationsTab } from '@/components/RecommendationsTab'
 import { RssDiffModal } from '@/components/RssDiffModal'
+import { useLocalStorageState } from '@/hooks/useLocalStorage'
+
+interface RssFilterState {
+  nameSearch: string
+  enabledFilter: 'all' | 'enabled' | 'disabled'
+  activeFilter: 'all' | 'active' | 'inactive'
+  feedFilter: number | 'unlinked' | 'all'
+}
+
+const DEFAULT_RSS_FILTERS: RssFilterState = {
+  nameSearch: '',
+  enabledFilter: 'all',
+  activeFilter: 'all',
+  feedFilter: 'all',
+}
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -39,10 +54,15 @@ function TaskStatusBadge({ task }: { task: TaskRead | undefined }) {
 
 export default function RSS() {
   const [tab, setTab] = useState<'subscriptions' | 'feeds' | 'recommendations'>('subscriptions')
-  const [nameSearch, setNameSearch] = useState('')
-  const [enabledFilter, setEnabledFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all')
-  const [feedFilter, setFeedFilter] = useState<number | 'unlinked' | 'all'>('all')
+
+  // Persisted so filter choices survive navigating away and back, not just page reloads.
+  const [filters, setFilters] = useLocalStorageState<RssFilterState>('jidou:rss-filters', DEFAULT_RSS_FILTERS)
+  const { nameSearch, enabledFilter, activeFilter, feedFilter } = filters
+  const setNameSearch = (v: string) => setFilters({ ...filters, nameSearch: v })
+  const setEnabledFilter = (v: RssFilterState['enabledFilter']) => setFilters({ ...filters, enabledFilter: v })
+  const setActiveFilter = (v: RssFilterState['activeFilter']) => setFilters({ ...filters, activeFilter: v })
+  const setFeedFilter = (v: RssFilterState['feedFilter']) => setFilters({ ...filters, feedFilter: v })
+
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
   const qc = useQueryClient()
