@@ -21,6 +21,7 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   globalThis.fetch = vi.fn()
+  window.localStorage.clear()
 })
 
 afterEach(() => {
@@ -70,6 +71,25 @@ function mockRss({
     return mockResponse([])
   })
 }
+
+describe('RSS page — filter persistence', () => {
+  test('name search, enabled, and active filter choices persist to localStorage', async () => {
+    mockRss()
+    render(<RSS />, { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(0))
+
+    fireEvent.change(screen.getByPlaceholderText('Search name…'), { target: { value: 'foo' } })
+    const [enabledSelect, activeSelect] = screen.getAllByRole('combobox')
+    fireEvent.change(enabledSelect, { target: { value: 'enabled' } })
+    fireEvent.change(activeSelect, { target: { value: 'inactive' } })
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('jidou:rss-filters') ?? '{}')
+      expect(stored).toMatchObject({ nameSearch: 'foo', enabledFilter: 'enabled', activeFilter: 'inactive' })
+    })
+  })
+})
 
 describe('RSS page — dispatch/download failures surface inline errors', () => {
   test('a failed import dispatch shows an inline error, not silence', async () => {
