@@ -619,9 +619,9 @@ class TestTMDBRequestHTTPLayer:
             with (
                 patch.object(tmdb_module.cache, "get", AsyncMock(return_value=stale)),
                 patch.object(tmdb_module.cache, "delete", AsyncMock()) as mock_cache_delete,
+                pytest.raises(httpx.HTTPStatusError),
             ):
-                with pytest.raises(httpx.HTTPStatusError):
-                    await tmdb_service.get_season_details(999, 1, bypass_cache=True)
+                await tmdb_service.get_season_details(999, 1, bypass_cache=True)
 
         mock_cache_delete.assert_called_once()
         mock_cache_set.assert_not_called()
