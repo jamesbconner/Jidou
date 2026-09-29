@@ -1397,6 +1397,25 @@ def test_get_tmdb_details_proxies_tmdb_service() -> None:
     assert body["name"] == "Some Show"
 
 
+def test_get_tmdb_details_returns_404_for_unknown_id() -> None:
+    """GET /api/shows/tmdb/{id} surfaces a TMDB 404 as a 404 with a clear detail.
+
+    Used by the file-resolution search modal's "search by TMDB ID" mode: an
+    invalid/mistyped ID should read as "not found", not a 500.
+    """
+    import httpx2 as httpx
+
+    request = httpx.Request("GET", "https://api.themoviedb.org/3/tv/999999999")
+    not_found = httpx.Response(404, request=request, json={"status_message": "not found"})
+    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+        mock_tmdb.get_details = AsyncMock(
+            side_effect=httpx.HTTPStatusError("404", request=request, response=not_found)
+        )
+        response = TestClient(app).get("/api/shows/tmdb/999999999?media_type=tv")
+    assert response.status_code == 404
+    assert "999999999" in response.json()["detail"]
+
+
 # ---------------------------------------------------------------------------
 # PUT /api/shows/{show_id}/aliases
 # ---------------------------------------------------------------------------

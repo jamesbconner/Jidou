@@ -12,6 +12,7 @@ import type {
   EpisodeGroupSummary,
   EpisodeGroupApplyResponse,
   TmdbSearchResponse,
+  TmdbDetailsResult,
   DiscoverResult,
   ScannedFileMatch,
   PosterOption,
@@ -56,6 +57,8 @@ export const showKeys = {
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
   discover: () => ['tmdb', 'discover'] as const,
+  tmdbDetails: (tmdbId: number, mediaType: string) =>
+    ['tmdb', 'details', tmdbId, mediaType] as const,
 }
 
 export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
@@ -134,6 +137,23 @@ export function useSearchShows(query: string, mediaType?: string) {
         `/shows/search?query=${encodeURIComponent(query)}${mediaType ? `&media_type=${mediaType}` : ''}`,
       ),
     enabled: query.length >= 2,
+  })
+}
+
+/**
+ * Look up a single show or movie directly by TMDB ID, bypassing title search.
+ * Used by the file-resolution search modal's "search by TMDB ID" mode, where
+ * a title search returns too many unrelated results to find the right match
+ * (e.g. common words like "Green" surfacing "Green Acres", "Green Lantern",
+ * etc. instead of the intended show).
+ */
+export function useTmdbDetails(tmdbId: number | null, mediaType: 'tv' | 'movie') {
+  return useQuery({
+    queryKey: showKeys.tmdbDetails(tmdbId ?? 0, mediaType),
+    queryFn: () =>
+      api.get<TmdbDetailsResult>(`/shows/tmdb/${tmdbId}?media_type=${mediaType}`),
+    enabled: tmdbId !== null && tmdbId > 0,
+    retry: false,
   })
 }
 

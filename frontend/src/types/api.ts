@@ -461,6 +461,21 @@ export interface TmdbSearchResponse {
   page: number
 }
 
+// GET /shows/tmdb/{tmdb_id} returns the raw TMDB /tv/{id} or /movie/{id}
+// response — same underlying fields as a search TmdbResult, but with no
+// media_type of its own (the caller already knows it, since it's the param
+// used to pick the endpoint).
+export interface TmdbDetailsResult {
+  id: number
+  title?: string
+  name?: string
+  overview: string
+  poster_path: string | null
+  first_air_date?: string
+  release_date?: string
+  vote_average: number
+}
+
 // GET /shows/discover returns a synthesized feed (recommendations merged with
 // trending), not a single raw TMDB response, but the field shape still
 // mirrors TmdbResult's (so it can feed directly into the existing
