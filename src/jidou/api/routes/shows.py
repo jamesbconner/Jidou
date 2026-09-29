@@ -189,8 +189,20 @@ async def get_tmdb_details(
 
     Returns:
         Raw TMDB detail response dictionary.
+
+    Raises:
+        HTTPException: 404 if no show or movie exists for *tmdb_id* under
+            *media_type* on TMDB.
     """
-    return await tmdb.get_details(tmdb_id=tmdb_id, media_type=media_type)
+    try:
+        return await tmdb.get_details(tmdb_id=tmdb_id, media_type=media_type)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No {media_type} found on TMDB for ID {tmdb_id}",
+            ) from exc
+        raise
 
 
 # Number of most-recently-updated watching/completed watchlist entries used to

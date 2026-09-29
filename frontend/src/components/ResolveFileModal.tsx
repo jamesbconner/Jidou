@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
-import { useSearchShows } from '@/hooks/useShows'
+import { useSearchShows, useTmdbDetails } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
+
+type SearchMode = 'suggestions' | 'title' | 'tmdb_id'
 
 const TMDB_IMAGE_BASE = '/api/images/w185'
 
@@ -22,7 +24,9 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [folderName, setFolderName] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
   const debouncedQuery = useDebounce(searchQuery, 300)
-  const [customSearch, setCustomSearch] = useState(false)
+  const [searchMode, setSearchMode] = useState<SearchMode>('suggestions')
+  const [tmdbIdQuery, setTmdbIdQuery] = useState('')
+  const [tmdbIdMediaType, setTmdbIdMediaType] = useState<'tv' | 'movie'>('tv')
 
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -34,12 +38,23 @@ export function ResolveFileModal({ file, onClose }: Props) {
     data: suggestions,
     isFetching: suggestionsLoading,
     error: suggestionsError,
-  } = useTmdbSuggestions(customSearch ? null : file.id)
+  } = useTmdbSuggestions(searchMode === 'suggestions' ? file.id : null)
 
   const { data: searchResults, isFetching: searchLoading } = useSearchShows(
-    customSearch && searchQuery.length >= 2 ? debouncedQuery : '',
+    searchMode === 'title' && searchQuery.length >= 2 ? debouncedQuery : '',
     'multi',
   )
+
+  // Title search returns many unrelated results for common-word titles (e.g.
+  // "Green Green" surfaces "Green Acres", "Green Lantern", …), so a direct
+  // TMDB-ID lookup is offered as a precise alternative.
+  const trimmedTmdbIdQuery = tmdbIdQuery.trim()
+  const parsedTmdbId = /^\d+$/.test(trimmedTmdbIdQuery) ? parseInt(trimmedTmdbIdQuery, 10) : null
+  const {
+    data: tmdbIdResult,
+    isFetching: tmdbIdLoading,
+    error: tmdbIdError,
+  } = useTmdbDetails(searchMode === 'tmdb_id' ? parsedTmdbId : null, tmdbIdMediaType)
 
   const rematch = useRematchFile()
 
@@ -57,8 +72,28 @@ export function ResolveFileModal({ file, onClose }: Props) {
       vote_average: r.vote_average,
     }))
 
-  const displayResults = customSearch ? searchAsSuggestions : (suggestions?.results ?? [])
-  const isLoading = customSearch ? searchLoading : suggestionsLoading
+  const tmdbIdAsSuggestions: TmdbSuggestion[] = tmdbIdResult
+    ? [
+        {
+          tmdb_id: tmdbIdResult.id,
+          title: tmdbIdResult.name ?? tmdbIdResult.title ?? null,
+          media_type: tmdbIdMediaType,
+          overview: tmdbIdResult.overview,
+          poster_path: tmdbIdResult.poster_path,
+          first_air_date: tmdbIdResult.first_air_date ?? tmdbIdResult.release_date ?? null,
+          vote_average: tmdbIdResult.vote_average,
+        },
+      ]
+    : []
+
+  const displayResults =
+    searchMode === 'title'
+      ? searchAsSuggestions
+      : searchMode === 'tmdb_id'
+        ? tmdbIdAsSuggestions
+        : (suggestions?.results ?? [])
+  const isLoading =
+    searchMode === 'title' ? searchLoading : searchMode === 'tmdb_id' ? tmdbIdLoading : suggestionsLoading
 
   // Selecting a result: snap content type (movies -> 'movie', everything else
   // defaults to 'anime'), suggest a folder name, and reset folderEdited so
@@ -130,19 +165,34 @@ export function ResolveFileModal({ file, onClose }: Props) {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <label className="text-xs text-zinc-400">Search TMDB</label>
-              {!customSearch && (
+              {searchMode === 'suggestions' ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setSearchMode('title')
+                      setSearchQuery(file.parsed_show_name ?? '')
+                    }}
+                    className="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]"
+                  >
+                    refine search
+                  </button>
+                  <button
+                    onClick={() => setSearchMode('tmdb_id')}
+                    className="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]"
+                  >
+                    search by TMDB ID
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={() => {
-                    setCustomSearch(true)
-                    setSearchQuery(file.parsed_show_name ?? '')
-                  }}
-                  className="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]"
+                  onClick={() => setSearchMode('suggestions')}
+                  className="text-xs text-zinc-500 hover:text-zinc-300"
                 >
-                  refine search
+                  back to suggestions
                 </button>
               )}
             </div>
-            {customSearch && (
+            {searchMode === 'title' && (
               <input
                 type="text"
                 value={searchQuery}
@@ -151,6 +201,26 @@ export function ResolveFileModal({ file, onClose }: Props) {
                 className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
               />
             )}
+            {searchMode === 'tmdb_id' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={tmdbIdQuery}
+                  onChange={(e) => setTmdbIdQuery(e.target.value)}
+                  placeholder="TMDB ID, e.g. 1668"
+                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
+                />
+                <select
+                  value={tmdbIdMediaType}
+                  onChange={(e) => setTmdbIdMediaType(e.target.value as 'tv' | 'movie')}
+                  className="bg-zinc-800 border border-zinc-600 rounded px-2 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)]"
+                >
+                  <option value="tv">TV</option>
+                  <option value="movie">Movie</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* TMDB results grid */}
@@ -158,16 +228,24 @@ export function ResolveFileModal({ file, onClose }: Props) {
             {isLoading && (
               <div className="text-xs text-zinc-500 py-2">Loading suggestions…</div>
             )}
-            {!isLoading && !customSearch && suggestionsError && (
+            {!isLoading && searchMode === 'suggestions' && suggestionsError && (
               <div className="text-xs text-red-400 py-2">
                 {suggestionsError instanceof Error
                   ? suggestionsError.message
                   : 'Failed to load suggestions'}
               </div>
             )}
-            {!isLoading && !(suggestionsError && !customSearch) && displayResults.length === 0 && (
-              <div className="text-xs text-zinc-500 py-2">No results found.</div>
+            {!isLoading && searchMode === 'tmdb_id' && tmdbIdError && (
+              <div className="text-xs text-red-400 py-2">
+                {tmdbIdError instanceof Error ? tmdbIdError.message : 'Failed to look up TMDB ID'}
+              </div>
             )}
+            {!isLoading &&
+              !(searchMode === 'suggestions' && suggestionsError) &&
+              !(searchMode === 'tmdb_id' && tmdbIdError) &&
+              displayResults.length === 0 && (
+                <div className="text-xs text-zinc-500 py-2">No results found.</div>
+              )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {displayResults.map((r) => (
                 <button
