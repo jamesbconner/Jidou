@@ -91,6 +91,56 @@ describe('RSS page — filter persistence', () => {
   })
 })
 
+describe('RSS page — key (stub) filter', () => {
+  function sub(id: number, name: string, remote_key: string | null) {
+    return {
+      id, name, remote_key, feed_id: null, show_id: null, show: null, active: false,
+      enabled_in_config: remote_key !== null, regex_include: null, regex_exclude: null,
+      regex_include_ignorecase: true, regex_exclude_ignorecase: true,
+      download_location: null, move_completed: null, label: null, last_match: null,
+    }
+  }
+
+  function mockSubs() {
+    const subs = [sub(1, 'Alpha Published', '3'), sub(2, 'Beta Stub', null), sub(3, 'Gamma Published', '7')]
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/rss/subscriptions')) return mockResponse(subs)
+      return mockResponse([])
+    })
+  }
+
+  test('"Stub" shows only subscriptions without a remote key; "Has key" the rest', async () => {
+    mockSubs()
+    render(<RSS />, { wrapper: makeWrapper() })
+    await screen.findByText('Beta Stub')
+    const keySelect = screen.getByLabelText('Key filter')
+
+    fireEvent.change(keySelect, { target: { value: 'stub' } })
+    expect(screen.getByText('Beta Stub')).toBeInTheDocument()
+    expect(screen.queryByText('Alpha Published')).not.toBeInTheDocument()
+    expect(screen.queryByText('Gamma Published')).not.toBeInTheDocument()
+
+    fireEvent.change(keySelect, { target: { value: 'keyed' } })
+    expect(screen.queryByText('Beta Stub')).not.toBeInTheDocument()
+    expect(screen.getByText('Alpha Published')).toBeInTheDocument()
+    expect(screen.getByText('Gamma Published')).toBeInTheDocument()
+  })
+
+  test('the key filter choice persists to localStorage', async () => {
+    mockSubs()
+    render(<RSS />, { wrapper: makeWrapper() })
+    await screen.findByText('Beta Stub')
+
+    fireEvent.change(screen.getByLabelText('Key filter'), { target: { value: 'stub' } })
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('jidou:rss-filters') ?? '{}')
+      expect(stored).toMatchObject({ keyFilter: 'stub' })
+    })
+  })
+})
+
 describe('RSS page — dispatch/download failures surface inline errors', () => {
   test('a failed import dispatch shows an inline error, not silence', async () => {
     mockRss({ importStatus: 500 })
