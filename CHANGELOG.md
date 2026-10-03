@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-10-03
+
 ### Fixed
 - **RSS subscription edit modal now honours unsaved changes.** "Suggest via LLM" uses the regex hints of the feed currently selected in the form (`POST /api/rss/subscriptions/{id}/suggest-regex` accepts an optional `{"feed_id": ...}` body) instead of the last-saved feed, and ticking **Enabled in config** on a new subscription immediately unlocks **Active** — no more save-and-reopen.
 - **Newly listed seasons no longer stay hidden behind the TMDB cache.** Show Detail → **Sync Episodes** (`POST /api/shows/{id}/sync-episodes`) now bypasses the TMDB response cache, as the calendar sync already did. Separately, a season-details response with no episodes yet (TMDB lists a new season before populating it) is cached for 1 hour instead of the multi-day default, so scheduled syncs pick up the episodes once TMDB fills them in.
