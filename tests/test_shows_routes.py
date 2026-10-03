@@ -2295,6 +2295,36 @@ def test_sync_episodes_returns_updated_episode_list() -> None:
         app.dependency_overrides.clear()
 
 
+def test_sync_episodes_bypasses_tmdb_cache() -> None:
+    """POST /{id}/sync-episodes forces a live TMDB fetch (regression: a stale
+    cached season response hid a newly populated season until Redis was
+    flushed by hand)."""
+    from jidou.api.routes.shows import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+
+    async def _sync_session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _sync_session
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).post("/api/shows/1/sync-episodes")
+        assert response.status_code == 200
+        mock_orch.return_value.sync_show_episodes.assert_awaited_once_with(show, bypass_cache=True)
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_sync_episodes_returns_404_when_show_not_found() -> None:
     """POST /{id}/sync-episodes returns 404 when show doesn't exist."""
     from jidou.database import get_session

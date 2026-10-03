@@ -1350,7 +1350,9 @@ async def sync_episodes(
         raise HTTPException(status_code=404, detail="Show not found")
 
     orchestrator = TMDBOrchestrator(db_session, tmdb)
-    await orchestrator.sync_show_episodes(show)
+    # User-triggered "sync now": bypass the TMDB response cache so a season
+    # TMDB has since populated isn't masked by a stale cached response.
+    await orchestrator.sync_show_episodes(show, bypass_cache=True)
 
     ep_stmt = (
         select(Episode)

@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **Newly listed seasons no longer stay hidden behind the TMDB cache.** Show Detail → **Sync Episodes** (`POST /api/shows/{id}/sync-episodes`) now bypasses the TMDB response cache, as the calendar sync already did. Separately, a season-details response with no episodes yet (TMDB lists a new season before populating it) is cached for 1 hour instead of the multi-day default, so scheduled syncs pick up the episodes once TMDB fills them in.
+
 ## [0.1.1] — 2026-09-12
 
 Everything below shipped after 0.1.0. Grouped by area rather than by commit — see `git log` for individual changes.
