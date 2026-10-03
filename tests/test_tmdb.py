@@ -658,6 +658,40 @@ class TestTMDBRequestHTTPLayer:
         assert mock_cache_set.call_args.kwargs["ttl"] == 3_600
 
     @pytest.mark.asyncio
+    async def test_empty_season_cached_with_short_ttl(self, tmdb_service: TMDBService) -> None:
+        """A season TMDB lists but hasn't populated (``episodes: []``) is cached
+        for 1 hour, not the multi-day default, so it isn't hidden once filled."""
+        async with _patched_http(json_data={"id": 1, "season_number": 2, "episodes": []}) as (
+            _,
+            mock_cache_set,
+        ):
+            await tmdb_service.get_season_details(999, 2)
+
+        assert mock_cache_set.call_args.kwargs["ttl"] == 3_600
+
+    @pytest.mark.asyncio
+    async def test_populated_season_cached_with_default_ttl(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """A season with episodes keeps the cache's configured default TTL."""
+        payload = {"id": 1, "season_number": 1, "episodes": [{"id": 5}]}
+        async with _patched_http(json_data=payload) as (_, mock_cache_set):
+            await tmdb_service.get_season_details(999, 1)
+
+        assert mock_cache_set.call_args.kwargs["ttl"] is None
+
+    @pytest.mark.asyncio
+    async def test_empty_episodes_on_non_season_endpoint_keeps_default_ttl(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """The short TTL applies only to season-details paths, not any
+        response that happens to carry an empty ``episodes`` key."""
+        async with _patched_http(json_data={"id": 999, "episodes": []}) as (_, mock_cache_set):
+            await tmdb_service.get_details(999, media_type="tv")
+
+        assert mock_cache_set.call_args.kwargs["ttl"] is None
+
+    @pytest.mark.asyncio
     async def test_show_details_cached_with_no_ttl_override(
         self, tmdb_service: TMDBService
     ) -> None:

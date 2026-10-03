@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import httpx2 as httpx
@@ -29,6 +30,13 @@ _TTL_OVERRIDES: tuple[tuple[str, int], ...] = (
 )
 
 
+# A season TMDB has listed but not yet populated (``episodes: []``) is a
+# transient state, so caching it for the multi-day default would keep hiding
+# the episodes after TMDB fills them in.
+_EMPTY_SEASON_TTL = 3_600  # 1 hour
+_SEASON_ENDPOINT = re.compile(r"^/tv/\d+/season/\d+$")
+
+
 def _ttl_for_endpoint(endpoint: str) -> int | None:
     """Return a TTL override in seconds for *endpoint*, or None for the cache default.
 
@@ -44,6 +52,22 @@ def _ttl_for_endpoint(endpoint: str) -> int | None:
         if endpoint.startswith(prefix):
             return ttl
     return None
+
+
+def _ttl_for_response(endpoint: str, result: dict[str, Any]) -> int | None:
+    """Return the cache TTL for *result*, shortening it for unpopulated seasons.
+
+    Args:
+        endpoint: API endpoint path the response came from.
+        result: Parsed JSON response body.
+
+    Returns:
+        :data:`_EMPTY_SEASON_TTL` when *endpoint* is a season-details path and
+        *result* has no episodes yet; otherwise :func:`_ttl_for_endpoint`.
+    """
+    if _SEASON_ENDPOINT.match(endpoint) and not result.get("episodes"):
+        return _EMPTY_SEASON_TTL
+    return _ttl_for_endpoint(endpoint)
 
 
 class TMDBService:
@@ -223,7 +247,9 @@ class TMDBService:
                 response.status_code,
                 response.elapsed.total_seconds(),
             )
-            await cache.set(cache_key, result, label=endpoint, ttl=_ttl_for_endpoint(endpoint))
+            await cache.set(
+                cache_key, result, label=endpoint, ttl=_ttl_for_response(endpoint, result)
+            )
             self._in_flight_rounds.pop(cache_key, None)
             self._in_flight_error.pop(cache_key, None)
             return result
