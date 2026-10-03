@@ -184,11 +184,18 @@ export function useBulkPatchRssSubscriptions() {
   })
 }
 
-export function useSuggestRegex(subId: number | null) {
+/**
+ * Suggest regexes for a subscription. `feedId` is the feed currently selected
+ * in the (possibly unsaved) edit form; the backend uses it for hint lookup
+ * instead of the persisted feed. `null` means "no feed selected".
+ */
+export function useSuggestRegex(subId: number | null, feedId: number | null) {
   return useMutation({
     mutationFn: () => {
       if (subId == null) return Promise.reject(new Error('No subscription selected'))
-      return api.post<RssRegexSuggestion>(`/rss/subscriptions/${subId}/suggest-regex`)
+      return api.post<RssRegexSuggestion>(`/rss/subscriptions/${subId}/suggest-regex`, {
+        feed_id: feedId,
+      })
     },
   })
 }

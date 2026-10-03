@@ -194,6 +194,19 @@ class RssConfigDiff(BaseModel):
     diff: list[str]
 
 
+class RssRegexSuggestRequest(BaseModel):
+    """Optional unsaved context for an LLM regex suggestion.
+
+    Attributes:
+        feed_id: Feed currently selected in the edit form. When the field is
+            present it overrides the subscription's persisted feed for hint
+            lookup (``None`` means "no feed"); when omitted the persisted feed
+            is used.
+    """
+
+    feed_id: int | None = None
+
+
 class RssRegexSuggestion(BaseModel):
     """LLM-generated regex suggestion for an RSS subscription filter.
 

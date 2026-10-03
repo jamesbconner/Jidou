@@ -834,6 +834,93 @@ def test_suggest_regex_returns_suggestion() -> None:
         app.dependency_overrides.clear()
 
 
+def _run_suggest_with_body(
+    body: dict[str, object] | None,
+    *,
+    sub_feed: MagicMock | None,
+    extra_results: list[MagicMock] | None = None,
+) -> tuple[object, AsyncMock]:
+    """POST suggest-regex with ``body`` and return (response, llm.complete mock)."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="Attack on Titan")
+    sub.show = None
+    sub.feed = sub_feed
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+
+    llm_response = LLMResponse(
+        content='{"regex_include": "a", "regex_exclude": "b"}',
+        model="m",
+        provider=LLMProvider.OPENAI,
+        cached=False,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=llm_response)
+
+    app.dependency_overrides[get_session] = _session_override(
+        execute_side_effect=[sub_result, *(extra_results or [])]
+    )
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex", json=body)
+    finally:
+        app.dependency_overrides.clear()
+    return r, mock_llm.complete
+
+
+def test_suggest_regex_uses_draft_feed_hints_over_saved_feed() -> None:
+    """A feed_id in the body overrides the persisted feed when building hints."""
+    saved = _make_feed(id=1, regex_include_hint="SAVED_HINT")
+    draft = _make_feed(id=2, regex_include_hint="DRAFT_HINT")
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = draft
+
+    r, complete = _run_suggest_with_body(
+        {"feed_id": 2}, sub_feed=saved, extra_results=[feed_result]
+    )
+
+    assert r.status_code == 200  # type: ignore[attr-defined]
+    prompt = complete.call_args.kwargs["prompt"]
+    assert "DRAFT_HINT" in prompt
+    assert "SAVED_HINT" not in prompt
+
+
+def test_suggest_regex_null_feed_id_drops_saved_feed_hints() -> None:
+    """An explicit feed_id of null means 'no feed selected' -- no hints."""
+    saved = _make_feed(id=1, regex_include_hint="SAVED_HINT")
+
+    r, complete = _run_suggest_with_body({"feed_id": None}, sub_feed=saved)
+
+    assert r.status_code == 200  # type: ignore[attr-defined]
+    assert "SAVED_HINT" not in complete.call_args.kwargs["prompt"]
+
+
+def test_suggest_regex_without_body_uses_saved_feed_hints() -> None:
+    """Omitting the body keeps the original behaviour (persisted feed hints)."""
+    saved = _make_feed(id=1, regex_include_hint="SAVED_HINT")
+
+    r, complete = _run_suggest_with_body(None, sub_feed=saved)
+
+    assert r.status_code == 200  # type: ignore[attr-defined]
+    assert "SAVED_HINT" in complete.call_args.kwargs["prompt"]
+
+
+def test_suggest_regex_404_when_draft_feed_not_found() -> None:
+    """An unknown feed_id in the body returns 404 without calling the LLM."""
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = None
+
+    r, complete = _run_suggest_with_body(
+        {"feed_id": 999}, sub_feed=None, extra_results=[feed_result]
+    )
+
+    assert r.status_code == 404  # type: ignore[attr-defined]
+    complete.assert_not_called()
+
+
 def test_suggest_regex_sanitizes_show_title_in_prompt() -> None:
     """POST suggest-regex strips control chars/backticks from the show title before prompting."""
     from jidou.database import get_session
