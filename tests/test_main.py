@@ -68,3 +68,12 @@ def test_health_degraded_returns_503() -> None:
     assert response.status_code == 503
     data = response.json()
     assert data["status"] == "degraded"
+
+
+def test_openapi_version_matches_package_version() -> None:
+    """The FastAPI app advertises the real package version, not FastAPI's default."""
+    import jidou
+    from jidou.main import app
+
+    assert app.version == jidou.__version__
+    assert app.openapi()["info"]["version"] == jidou.__version__

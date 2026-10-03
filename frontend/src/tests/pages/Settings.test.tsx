@@ -68,6 +68,7 @@ function makeCacheStats(overrides: Partial<CacheStats> = {}): CacheStats {
 function makeHealth(overrides: Partial<HealthCheck> = {}): HealthCheck {
   return {
     healthy: true,
+    version: '0.1.3',
     services: {
       database: { ok: true, latency_ms: 4.2, alembic_version: 'abc123def456' },
       redis: { ok: true, latency_ms: 1.1 },
@@ -180,6 +181,21 @@ describe('Settings page — Services panel', () => {
       expect(screen.getByText('4.2 ms · rev abc123def456')).toBeInTheDocument()
     })
     expect(screen.queryByText('Click Refresh to check service health')).not.toBeInTheDocument()
+  })
+
+  test('Services card shows the running app version from the health check', async () => {
+    setupFetch({ health: makeHealth({ version: '9.8.7' }) })
+    render(createElement(Settings), { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(screen.getByText('Application')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+
+    await waitFor(() => expect(screen.getByText('Database')).toBeInTheDocument())
+    fireEvent.click(servicesRefreshButton())
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-version')).toHaveTextContent('v9.8.7')
+    })
   })
 
   test('Database row omits the revision suffix when alembic_version is null', async () => {

@@ -356,6 +356,7 @@ export interface ServiceHealth {
 
 export interface HealthCheck {
   healthy: boolean
+  version: string
   services: {
     database: ServiceHealth
     redis: ServiceHealth

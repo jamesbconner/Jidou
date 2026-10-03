@@ -177,6 +177,7 @@ def _mock_celery_ping(ok: bool = True) -> MagicMock:
 
 def test_health_returns_healthy_true_when_all_pass() -> None:
     """GET /api/admin/health reports healthy=True when DB and Redis pass."""
+    import jidou
     from jidou.database import get_session
 
     async def _ok_session() -> AsyncMock:
@@ -206,6 +207,7 @@ def test_health_returns_healthy_true_when_all_pass() -> None:
         body = response.json()
         assert "healthy" in body
         assert "services" in body
+        assert body["version"] == jidou.__version__
         assert body["services"]["celery"]["ok"] is True
         assert body["services"]["celery"]["workers"] == ["worker1@host"]
         assert body["services"]["sftp"]["ok"] is True
