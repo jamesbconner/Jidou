@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
+## [0.1.4] — 2026-10-03
+
+### Fixed
 - **The running version is now visible.** `GET /api/health` and `GET /api/admin/health` report the app `version`, the Settings → Services card shows it next to the health badge, and the OpenAPI schema (`/docs`) advertises the real version instead of FastAPI's default `0.1.0`.
 
 ## [0.1.3] — 2026-10-03
