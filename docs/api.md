@@ -305,7 +305,7 @@ Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tr
 | PATCH | `/api/rss/subscriptions/bulk` | Apply active-flag changes to multiple subscriptions in one transaction |
 | DELETE | `/api/rss/subscriptions/{id}` | Delete a subscription |
 | GET | `/api/rss/subscriptions/recommendations` | Health-check recommendations (e.g. stale/unlinked subscriptions) |
-| POST | `/api/rss/subscriptions/{id}/suggest-regex` | LLM-assisted include/exclude regex suggestion |
+| POST | `/api/rss/subscriptions/{id}/suggest-regex` | LLM-assisted include/exclude regex suggestion; optional body `{"feed_id"}` picks the feed whose hints steer the prompt (defaults to the saved feed) |
 | GET | `/api/rss/subscriptions/{id}/preview` | Preview the YaRSS2 dict Jidou would publish for one subscription |
 | GET | `/api/rss/download` | Compose and download the current DB state as a YaRSS2 config file |
 | GET | `/api/rss/diff` | Unified diff between the current DB-composed config and the last stored snapshot |

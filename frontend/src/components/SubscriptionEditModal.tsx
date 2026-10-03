@@ -19,14 +19,16 @@ function Field({ label, note, children }: { label: string; note?: string; childr
 
 function RegexSuggestModal({
   sub,
+  feedId,
   onClose,
   onApply,
 }: {
   sub: RssSubscriptionRead
+  feedId: number | null
   onClose: () => void
   onApply: (inc: string, exc: string) => void
 }) {
-  const suggest = useSuggestRegex(sub.id)
+  const suggest = useSuggestRegex(sub.id, feedId)
   const [result, setResult] = useState<{ regex_include: string; regex_exclude: string } | null>(null)
 
   return (
@@ -132,7 +134,8 @@ export function SubscriptionEditModal({
   // silently exclude titles sorting past it once the library grows past that
   // size, making this search miss shows that do exist.
   const { data: allShows = [] } = useShows('title_asc', 10000)
-  const isStub = sub.remote_key === null && !sub.enabled_in_config
+  // Follows the draft so ticking "Enabled in config" unlocks Active without a save/reopen.
+  const isStub = sub.remote_key === null && !draft.enabled_in_config
 
   const linkedShowFromList = allShows.find((s) => s.id === draft.show_id) ?? null
   const linkedShow = draft.show_id !== null
@@ -196,6 +199,7 @@ export function SubscriptionEditModal({
       {showSuggest && (
         <RegexSuggestModal
           sub={sub}
+          feedId={draft.feed_id}
           onClose={() => setShowSuggest(false)}
           onApply={(inc, exc) => { set('regex_include', inc); set('regex_exclude', exc) }}
         />

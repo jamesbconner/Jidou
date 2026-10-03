@@ -23,6 +23,7 @@ from jidou.schemas.rss_schema import (
     RssFeedRead,
     RssFeedUpdate,
     RssRegexSuggestion,
+    RssRegexSuggestRequest,
     RssSubscriptionBulkPatchItem,
     RssSubscriptionCreate,
     RssSubscriptionRead,
@@ -539,6 +540,7 @@ def _feed_hint_prompt_suffix(feed: RssFeed | None) -> str:
 @router.post("/subscriptions/{sub_id}/suggest-regex", response_model=RssRegexSuggestion)
 async def suggest_regex(
     sub_id: int,
+    body: RssRegexSuggestRequest | None = None,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
     llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> RssRegexSuggestion:
@@ -551,13 +553,16 @@ async def suggest_regex(
 
     Args:
         sub_id: Database primary key of the subscription.
+        body: Optional unsaved form state. A ``feed_id`` here selects the feed
+            whose regex hints steer the prompt instead of the persisted one, so
+            suggestions follow a feed changed in the edit modal but not yet saved.
         db_session: DB session (injected).
 
     Returns:
         :class:`RssRegexSuggestion` with the suggested regex patterns.
 
     Raises:
-        HTTPException: 404 if the subscription is not found.
+        HTTPException: 404 if the subscription or the requested feed is not found.
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
@@ -567,6 +572,16 @@ async def suggest_regex(
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
     if sub is None:
         raise HTTPException(status_code=404, detail="RSS subscription not found")
+
+    feed = sub.feed
+    if body is not None and "feed_id" in body.model_fields_set:
+        feed = None
+        if body.feed_id is not None:
+            feed = (
+                await db_session.execute(select(RssFeed).where(RssFeed.id == body.feed_id))
+            ).scalar_one_or_none()
+            if feed is None:
+                raise HTTPException(status_code=404, detail="RSS feed not found")
 
     if not llm.is_available():
         raise HTTPException(
@@ -581,7 +596,7 @@ async def suggest_regex(
         if show_title
         else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
-    user_prompt += _feed_hint_prompt_suffix(sub.feed)
+    user_prompt += _feed_hint_prompt_suffix(feed)
 
     response = await llm.complete(
         prompt=user_prompt,
