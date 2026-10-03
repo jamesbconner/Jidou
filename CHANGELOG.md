@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-10-03
+
+### Changed
+- **Dependency upgrades.** Python: `redis` 6.4.0 → 8.1.0 (major), `hiredis` 3.4.2, `httpx2` 2.13.1, `hypothesis` 6.168.2, `ruff` 0.16.9, `urllib3` 2.8.0, `virtualenv` 21.7.13. Frontend: `@tanstack/react-query` (+devtools) 5.104.0, `@typescript-eslint/*` 8.70.1, `vite` 8.3.1, `vitest` (+coverage) 5.0.2, `jsdom` 30.1.1, `prettier` 3.9.9, `brace-expansion` 1.1.21. `eslint` 10 is deferred (failing upgrade).
+
 ## [0.1.2] — 2026-10-03
 
 ### Fixed
