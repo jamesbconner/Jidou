@@ -21,6 +21,8 @@ interface RssFilterState {
   nameSearch: string
   enabledFilter: 'all' | 'enabled' | 'disabled'
   activeFilter: 'all' | 'active' | 'inactive'
+  // 'stub' = no remote key yet (the "stub" badge); 'keyed' = has a key.
+  keyFilter: 'all' | 'stub' | 'keyed'
   feedFilter: number | 'unlinked' | 'all'
 }
 
@@ -28,6 +30,7 @@ const DEFAULT_RSS_FILTERS: RssFilterState = {
   nameSearch: '',
   enabledFilter: 'all',
   activeFilter: 'all',
+  keyFilter: 'all',
   feedFilter: 'all',
 }
 
@@ -57,10 +60,11 @@ export default function RSS() {
 
   // Persisted so filter choices survive navigating away and back, not just page reloads.
   const [filters, setFilters] = useLocalStorageState<RssFilterState>('jidou:rss-filters', DEFAULT_RSS_FILTERS)
-  const { nameSearch, enabledFilter, activeFilter, feedFilter } = filters
+  const { nameSearch, enabledFilter, activeFilter, keyFilter, feedFilter } = filters
   const setNameSearch = (v: string) => setFilters({ ...filters, nameSearch: v })
   const setEnabledFilter = (v: RssFilterState['enabledFilter']) => setFilters({ ...filters, enabledFilter: v })
   const setActiveFilter = (v: RssFilterState['activeFilter']) => setFilters({ ...filters, activeFilter: v })
+  const setKeyFilter = (v: RssFilterState['keyFilter']) => setFilters({ ...filters, keyFilter: v })
   const setFeedFilter = (v: RssFilterState['feedFilter']) => setFilters({ ...filters, feedFilter: v })
 
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
@@ -112,6 +116,8 @@ export default function RSS() {
     if (enabledFilter === 'disabled' && s.enabled_in_config) return false
     if (activeFilter === 'active' && !s.active) return false
     if (activeFilter === 'inactive' && s.active) return false
+    if (keyFilter === 'stub' && s.remote_key !== null) return false
+    if (keyFilter === 'keyed' && s.remote_key === null) return false
     if (feedFilter === 'unlinked' && s.feed_id !== null) return false
     if (typeof feedFilter === 'number' && s.feed_id !== feedFilter) return false
     return true
@@ -238,6 +244,16 @@ export default function RSS() {
               <option value="all">Any active</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+            </select>
+            <select
+              aria-label="Key filter"
+              value={keyFilter}
+              onChange={(e) => setKeyFilter(e.target.value as typeof keyFilter)}
+              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="all">Any key</option>
+              <option value="stub">Stub (no key)</option>
+              <option value="keyed">Has key</option>
             </select>
             <select
               value={feedFilter === 'all' ? 'all' : feedFilter === 'unlinked' ? 'unlinked' : String(feedFilter)}

@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **RSS page: Key filter.** A new dropdown on the Subscriptions tab narrows the list to stubs (subscriptions with no remote key yet) or to subscriptions that already have one. Like the other RSS filters, the choice is remembered.
+
 ## [0.1.4] — 2026-10-03
 
 ### Fixed
