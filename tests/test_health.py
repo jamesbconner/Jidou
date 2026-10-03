@@ -65,3 +65,19 @@ def test_health_redis_client_creation_failure_marks_degraded() -> None:
     body = response.json()
     assert body["status"] == "degraded"
     assert body["services"]["redis"]["status"] == "unhealthy"
+
+
+def test_health_reports_app_version_even_when_degraded() -> None:
+    """The running version is reported on /api/health regardless of dependency state."""
+    from unittest.mock import AsyncMock, patch
+
+    import jidou
+
+    mock_redis = AsyncMock()
+    mock_redis.ping = AsyncMock(side_effect=ConnectionError("Redis unreachable"))
+    mock_redis.aclose = AsyncMock()
+
+    with patch("redis.asyncio.from_url", return_value=mock_redis), TestClient(app) as client:
+        response = client.get("/api/health")
+
+    assert response.json()["version"] == jidou.__version__

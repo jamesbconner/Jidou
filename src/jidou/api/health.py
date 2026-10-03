@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from jidou import __version__
 from jidou.config import settings
 from jidou.database import engine
 
@@ -23,7 +24,8 @@ async def health_check() -> JSONResponse:
 
     Returns HTTP 200 when all dependencies are healthy, HTTP 503 when
     one or more are unreachable. Docker and orchestration probes can
-    inspect the HTTP status to determine container health.
+    inspect the HTTP status to determine container health. The body also
+    reports the running application ``version``.
     """
     services: dict[str, dict[str, Any]] = {}
     overall_healthy = True
@@ -67,6 +69,7 @@ async def health_check() -> JSONResponse:
 
     body = {
         "status": "healthy" if overall_healthy else "degraded",
+        "version": __version__,
         "timestamp": datetime.now(UTC).isoformat(),
         "services": services,
     }

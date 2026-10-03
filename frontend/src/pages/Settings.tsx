@@ -688,6 +688,11 @@ export default function Settings() {
                     {health.healthy ? '● Healthy' : '● Degraded'}
                   </span>
                 )}
+                {health && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">
+                    v{health.version}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => refetchHealth()}

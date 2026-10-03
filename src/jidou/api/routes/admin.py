@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import Date, and_, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou import __version__
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
@@ -230,7 +231,8 @@ async def system_health(
         db_session: DB session (injected).
 
     Returns:
-        Dictionary with an overall ``healthy`` flag and per-service results.
+        Dictionary with an overall ``healthy`` flag, the running application
+        ``version``, and per-service results.
     """
     results: dict[str, Any] = {}
 
@@ -335,4 +337,4 @@ async def system_health(
         )
 
     overall = all(v.get("ok") for v in results.values())
-    return {"healthy": overall, "services": results}
+    return {"healthy": overall, "version": __version__, "services": results}

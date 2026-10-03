@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from jidou import __version__
 from jidou.api import health
 from jidou.api.dependencies import verify_api_key
 from jidou.api.routes import (
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(
         title=settings.app_name,
+        version=__version__,
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
