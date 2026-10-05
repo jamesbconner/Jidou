@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - **RSS page: Key filter.** A new dropdown on the Subscriptions tab narrows the list to stubs (subscriptions with no remote key yet) or to subscriptions that already have one. Like the other RSS filters, the choice is remembered.
 
+### Changed
+- **Show Details: cleaner top of page.** Removed the redundant "← Back to Shows" link (use the navbar's Shows link or browser back) and the extra space above the banner, so it now sits flush under the navbar.
+
 ## [0.1.4] — 2026-10-03
 
 ### Fixed
