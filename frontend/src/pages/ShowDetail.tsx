@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router'
+import { useParams, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
@@ -441,11 +441,8 @@ export default function ShowDetail() {
   )
 
   return (
-    <div className="space-y-8">
-      <Link to="/shows" className="text-sm text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
-        ← Back to Shows
-      </Link>
-
+    // -mt-8 cancels Layout's py-8 so the banner sits flush under the navbar.
+    <div className="-mt-8 space-y-8">
       {/* Banner style is a browser-local preference set on the Settings page. */}
       <ShowDetailHeader
         show={show}
