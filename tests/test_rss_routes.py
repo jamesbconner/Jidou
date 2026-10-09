@@ -3,7 +3,9 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from jidou.api.dependencies import get_llm_service
 from jidou.main import app
@@ -40,7 +42,7 @@ def _make_feed(
     name: str = "ShowRSS",
     url: str = "https://showrss.info/feed",
     active: bool = True,
-    regex_include_hint: str | None = None,
+    regex_include_samples: list[dict[str, str]] | None = None,
     regex_exclude_hint: str | None = None,
 ) -> MagicMock:
     f = MagicMock(spec=RssFeed)
@@ -51,7 +53,7 @@ def _make_feed(
     f.active = active
     f.default_download_location = None
     f.default_move_completed = None
-    f.regex_include_hint = regex_include_hint
+    f.regex_include_samples = regex_include_samples
     f.regex_exclude_hint = regex_exclude_hint
     f.extra_config = None
     f.created_at = _now()
@@ -1903,3 +1905,66 @@ def test_diff_config_reports_changed_field() -> None:
         assert "New Name" in diff_text
     finally:
         app.dependency_overrides.clear()
+
+
+def test_feed_create_accepts_up_to_three_samples() -> None:
+    """RssFeedCreate accepts 3 samples and allows an empty sample_name."""
+    from jidou.schemas.rss_schema import RssFeedCreate
+
+    body = RssFeedCreate(
+        name="Feed",
+        url="https://example.com/feed",
+        regex_include_samples=[
+            {"sample_name": "Show.S01E01.1080p", "hint": r"^Show.*s\d{2}e\d{2}.*1080p"},
+            {"sample_name": "", "hint": r"^Other.*"},
+            {"sample_name": "Third.S02E03", "hint": r"^Third.*"},
+        ],
+    )
+    assert body.regex_include_samples is not None
+    assert len(body.regex_include_samples) == 3
+    assert body.regex_include_samples[1].sample_name == ""
+
+
+def test_feed_create_rejects_four_samples() -> None:
+    """More than 3 samples is a validation error."""
+    from jidou.schemas.rss_schema import RssFeedCreate
+
+    with pytest.raises(ValidationError):
+        RssFeedCreate(
+            name="Feed",
+            url="https://example.com/feed",
+            regex_include_samples=[{"sample_name": "s", "hint": "a"}] * 4,
+        )
+
+
+def test_feed_create_rejects_invalid_sample_regex() -> None:
+    """A sample hint that does not compile is a validation error."""
+    from jidou.schemas.rss_schema import RssFeedCreate
+
+    with pytest.raises(ValidationError):
+        RssFeedCreate(
+            name="Feed",
+            url="https://example.com/feed",
+            regex_include_samples=[{"sample_name": "s", "hint": "("}],
+        )
+
+
+def test_feed_create_rejects_blank_sample_hint() -> None:
+    """A sample with an empty hint is a validation error (nothing to teach the LLM)."""
+    from jidou.schemas.rss_schema import RssFeedCreate
+
+    with pytest.raises(ValidationError):
+        RssFeedCreate(
+            name="Feed",
+            url="https://example.com/feed",
+            regex_include_samples=[{"sample_name": "s", "hint": ""}],
+        )
+
+
+def test_suggest_request_caps_previous_at_five() -> None:
+    """RssRegexSuggestRequest.previous is limited to 5 entries."""
+    from jidou.schemas.rss_schema import RssRegexSuggestRequest
+
+    assert RssRegexSuggestRequest().previous == []
+    with pytest.raises(ValidationError):
+        RssRegexSuggestRequest(previous=["a"] * 6)

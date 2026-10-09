@@ -114,8 +114,8 @@ async def update_feed(
     if feed is None:
         raise HTTPException(status_code=404, detail="RSS feed not found")
 
-    for field in payload.model_fields_set:
-        setattr(feed, field, getattr(payload, field))
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(feed, field, value)
 
     await db_session.flush()
     await db_session.refresh(feed)
