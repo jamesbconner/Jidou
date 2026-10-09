@@ -31,7 +31,7 @@ from jidou.schemas.rss_schema import (
     RssSubscriptionUpdate,
 )
 from jidou.schemas.task_schema import TaskRead
-from jidou.services.llm_service import LLMService
+from jidou.services.llm_service import LLMResponse, LLMService
 from jidou.services.progress import TaskDispatchError, enqueue_task
 from jidou.services.rss_config import (
     diff_rss_config,
@@ -506,9 +506,12 @@ def _feed_hint_prompt_suffix(feed: RssFeed | None) -> str:
         feed: The subscription's linked feed, if any.
 
     Returns:
-        Extra prompt text (possibly empty) describing the feed's
-        ``regex_include_hint``/``regex_exclude_hint``, sanitized against
-        prompt injection the same way show titles are.
+        Extra prompt text (possibly empty): each ``regex_include_samples`` entry
+        as a worked name->regex example (or a bare "shape like" hint when the
+        sample has no name), plus a note when the feed needs no exclude filter.
+        A non-empty ``regex_exclude_hint`` adds nothing because the route returns
+        it verbatim. All strings are sanitized against prompt injection the same
+        way show titles are.
     """
     from jidou.services.llm_json import sanitize_for_prompt
 
@@ -516,25 +519,128 @@ def _feed_hint_prompt_suffix(feed: RssFeed | None) -> str:
         return ""
 
     suffix = ""
-    if feed.regex_include_hint:
-        hint = sanitize_for_prompt(feed.regex_include_hint)
+    samples = feed.regex_include_samples or []
+    named = [s for s in samples if s.get("sample_name")]
+    unnamed = [s for s in samples if not s.get("sample_name")]
+    for s in named:
+        suffix += (
+            f' Release "{sanitize_for_prompt(s["sample_name"])}" is matched by '
+            f'regex_include "{sanitize_for_prompt(s["hint"])}".'
+        )
+    if named:
+        suffix += (
+            " Follow the token order and structure shown in these examples for this show "
+            "rather than inventing a new one."
+        )
+    for s in unnamed:
         suffix += (
             f" This feed's other subscriptions use regex_include patterns shaped like "
-            f'"{hint}" — adapt that shape for this show rather than inventing a new one.'
+            f'"{sanitize_for_prompt(s["hint"])}" — adapt that shape for this show '
+            f"rather than inventing a new one."
         )
-    if feed.regex_exclude_hint is not None:
-        if feed.regex_exclude_hint == "":
-            suffix += (
-                " This feed's releases typically don't need a regex_exclude filter; "
-                "return an empty string for regex_exclude unless there is a clear reason not to."
-            )
-        else:
-            hint = sanitize_for_prompt(feed.regex_exclude_hint)
-            suffix += (
-                f" This feed's subscriptions typically reuse this regex_exclude pattern: "
-                f'"{hint}" — reuse it unless this show needs something different.'
-            )
+    if feed.regex_exclude_hint == "":
+        suffix += (
+            " This feed's releases typically don't need a regex_exclude filter; "
+            "return an empty string for regex_exclude unless there is a clear reason not to."
+        )
     return suffix
+
+
+def _previous_prompt_suffix(previous: list[str]) -> str:
+    """Tell the LLM which regex_include patterns were already rejected.
+
+    Args:
+        previous: Earlier suggestions from this session (may be empty).
+
+    Returns:
+        Prompt text listing them with an instruction to differ, or ``""``.
+    """
+    from jidou.services.llm_json import sanitize_for_prompt
+
+    if not previous:
+        return ""
+    listed = "; ".join(f'"{sanitize_for_prompt(p)}"' for p in previous)
+    return (
+        f" These regex_include patterns were already suggested and rejected: {listed}. "
+        "Return a materially different pattern."
+    )
+
+
+_DUPLICATE_RETRY_SUFFIX = (
+    " Your last answer repeated a rejected pattern. Change the structure of the "
+    "pattern, not just whitespace or escaping."
+)
+
+
+async def _request_regex(
+    llm: LLMService, prompt: str, sub_id: int, *, bypass_cache: bool
+) -> tuple[str, str, LLMResponse]:
+    """Call the LLM once and return validated (regex_include, regex_exclude, response).
+
+    Args:
+        llm: The LLM service.
+        prompt: User prompt.
+        sub_id: Subscription id (for logging).
+        bypass_cache: Skip the LLM response cache.
+
+    Returns:
+        Tuple of include regex, exclude regex and the raw LLM response.
+
+    Raises:
+        HTTPException: 503 if the call fails, is truncated, or returns
+            unparseable JSON or an uncompilable regex.
+    """
+    from jidou.services.llm_json import parse_llm_json
+
+    response = await llm.complete(
+        prompt=prompt,
+        system=_REGEX_SYSTEM_PROMPT,
+        max_tokens=_REGEX_MAX_TOKENS,
+        response_format=_REGEX_RESPONSE_FORMAT,
+        bypass_cache=bypass_cache,
+    )
+    if response is None:
+        raise HTTPException(status_code=503, detail="LLM provider call failed.")
+
+    if response.finish_reason == "length":
+        logger.warning(
+            "LLM regex suggestion truncated at %d tokens for sub_id=%d",
+            response.completion_tokens,
+            sub_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"LLM response was truncated at {response.completion_tokens} tokens "
+                f"(max_tokens={_REGEX_MAX_TOKENS}). "
+                "Try a model with a larger context window."
+            ),
+        )
+
+    parsed = parse_llm_json(response.content)
+    if not isinstance(parsed, dict):
+        logger.warning("LLM returned unparseable regex JSON for sub_id=%d", sub_id)
+        raise HTTPException(status_code=503, detail="LLM returned an unparseable response.")
+
+    try:
+        regex_include = str(parsed["regex_include"])
+        regex_exclude = str(parsed["regex_exclude"])
+    except KeyError as exc:
+        logger.warning("LLM returned unparseable regex JSON for sub_id=%d: %s", sub_id, exc)
+        raise HTTPException(
+            status_code=503, detail="LLM returned an unparseable response."
+        ) from exc
+
+    try:
+        re.compile(regex_include)
+        re.compile(regex_exclude)
+    except re.error as exc:
+        logger.warning("LLM returned invalid regex for sub_id=%d: %s", sub_id, exc)
+        raise HTTPException(
+            status_code=503, detail="LLM returned an invalid regex pattern."
+        ) from exc
+
+    return regex_include, regex_exclude, response
 
 
 @router.post("/subscriptions/{sub_id}/suggest-regex", response_model=RssRegexSuggestion)
@@ -556,6 +662,8 @@ async def suggest_regex(
         body: Optional unsaved form state. A ``feed_id`` here selects the feed
             whose regex hints steer the prompt instead of the persisted one, so
             suggestions follow a feed changed in the edit modal but not yet saved.
+            ``previous`` lists earlier suggestions; when present the LLM cache is
+            bypassed and the model is told to differ.
         db_session: DB session (injected).
 
     Returns:
@@ -566,7 +674,7 @@ async def suggest_regex(
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
-    from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+    from jidou.services.llm_json import sanitize_for_prompt
 
     stmt = _sub_stmt().where(RssSubscription.id == sub_id)
     sub = (await db_session.execute(stmt)).scalar_one_or_none()
@@ -596,65 +704,30 @@ async def suggest_regex(
         if show_title
         else f'Suggest RSS filter regexes for the subscription named "{label}".'
     )
-    user_prompt += _feed_hint_prompt_suffix(feed)
+    previous = body.previous if body is not None else []
+    user_prompt += _feed_hint_prompt_suffix(feed) + _previous_prompt_suffix(previous)
 
-    response = await llm.complete(
-        prompt=user_prompt,
-        system=_REGEX_SYSTEM_PROMPT,
-        max_tokens=_REGEX_MAX_TOKENS,
-        response_format=_REGEX_RESPONSE_FORMAT,
+    regex_include, regex_exclude, response = await _request_regex(
+        llm, user_prompt, sub_id, bypass_cache=bool(previous)
     )
-    if response is None:
-        raise HTTPException(status_code=503, detail="LLM provider call failed.")
-
-    if response.finish_reason == "length":
-        logger.warning(
-            "LLM regex suggestion truncated at %d tokens for sub_id=%d",
-            response.completion_tokens,
-            sub_id,
+    if regex_include in previous:
+        logger.info("LLM repeated a rejected regex for sub_id=%d; retrying once", sub_id)
+        regex_include, regex_exclude, response = await _request_regex(
+            llm, user_prompt + _DUPLICATE_RETRY_SUFFIX, sub_id, bypass_cache=True
         )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"LLM response was truncated at {response.completion_tokens} tokens "
-                f"(max_tokens={_REGEX_MAX_TOKENS}). "
-                "Try a model with a larger context window."
-            ),
-        )
+        if regex_include in previous:
+            logger.warning("LLM repeated a rejected regex after retry for sub_id=%d", sub_id)
 
-    parsed = parse_llm_json(response.content)
-    if not isinstance(parsed, dict):
-        logger.warning("LLM returned unparseable regex JSON for sub_id=%d", sub_id)
-        raise HTTPException(
-            status_code=503,
-            detail="LLM returned an unparseable response.",
-        )
-
-    try:
-        regex_include = str(parsed["regex_include"])
-        regex_exclude = str(parsed["regex_exclude"])
-    except KeyError as exc:
-        logger.warning("LLM returned unparseable regex JSON for sub_id=%d: %s", sub_id, exc)
-        raise HTTPException(
-            status_code=503,
-            detail="LLM returned an unparseable response.",
-        ) from exc
-
-    try:
-        re.compile(regex_include)
-        re.compile(regex_exclude)
-    except re.error as exc:
-        logger.warning("LLM returned invalid regex for sub_id=%d: %s", sub_id, exc)
-        raise HTTPException(
-            status_code=503,
-            detail="LLM returned an invalid regex pattern.",
-        ) from exc
+    # A feed's non-empty exclude hint is a ready-to-use filter, not a style guide.
+    if feed is not None and feed.regex_exclude_hint:
+        regex_exclude = feed.regex_exclude_hint
 
     logger.info(
-        "Suggested regex for sub_id=%d (model=%s cached=%s)",
+        "Suggested regex for sub_id=%d (model=%s cached=%s resuggest=%s)",
         sub_id,
         response.model,
         response.cached,
+        bool(previous),
     )
     return RssRegexSuggestion(
         regex_include=regex_include,
