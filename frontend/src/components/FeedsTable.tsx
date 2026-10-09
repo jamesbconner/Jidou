@@ -47,8 +47,8 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
               <th className="px-3 py-2 w-12" title="Whether a feed URL is set.">URL</th>
               <th className="px-3 py-2 w-12" title="Whether a default download location is set.">DL Loc</th>
               <th className="px-3 py-2 w-12" title="Whether a default move-completed location is set.">Move Loc</th>
-              <th className="px-3 py-2 w-12" title="Whether a regex include hint is set for the LLM suggester.">Incl. Hint</th>
-              <th className="px-3 py-2 w-12" title="Whether a regex exclude hint is set for the LLM suggester.">Excl. Hint</th>
+              <th className="px-3 py-2 w-12" title="Number of sample+hint pairs set for the LLM suggester (max 3).">Incl. Hint</th>
+              <th className="px-3 py-2 w-12" title="Whether a regex exclude pattern is set (used as-is by the LLM suggester).">Excl. Hint</th>
               <th className="px-3 py-2 w-24" title="Inactive feeds are excluded from the published YaRSS2 config.">Active</th>
               <th className="px-3 py-2 w-24"></th>
             </tr>
@@ -74,7 +74,12 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
                   <SetIndicator value={f.default_move_completed} unsetTitle="No default move-completed location set" />
                 </td>
                 <td className="px-3 py-2 text-center">
-                  <SetIndicator value={f.regex_include_hint} unsetTitle="No regex include hint set" />
+                  <span
+                    title={(f.regex_include_samples ?? []).length ? (f.regex_include_samples ?? []).map((s) => s.sample_name || '(no sample name)').join('\n') : 'No regex include samples set'}
+                    className={(f.regex_include_samples ?? []).length ? 'text-green-600 dark:text-green-400' : 'text-gray-300 dark:text-gray-600'}
+                  >
+                    {(f.regex_include_samples ?? []).length ? `${(f.regex_include_samples ?? []).length}/3` : '—'}
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-center">
                   <SetIndicator value={f.regex_exclude_hint} unsetTitle="No regex exclude hint set" />

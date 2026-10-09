@@ -11,7 +11,7 @@ interface FeedDraft {
   remote_key: string
   default_download_location: string
   default_move_completed: string
-  regex_include_hint: string
+  regex_include_samples: { sample_name: string; hint: string }[]
   regex_exclude_hint: string
   no_exclude_needed: boolean
   active: boolean
@@ -28,7 +28,8 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
     remote_key: feed?.remote_key ?? '',
     default_download_location: feed?.default_download_location ?? '',
     default_move_completed: feed?.default_move_completed ?? '',
-    regex_include_hint: feed?.regex_include_hint ?? '',
+    regex_include_samples:
+      feed?.regex_include_samples?.map((s) => ({ sample_name: s.sample_name, hint: s.hint })) ?? [],
     regex_exclude_hint: feed?.regex_exclude_hint ?? '',
     no_exclude_needed: feed?.regex_exclude_hint === '',
     active: feed?.active ?? true,
@@ -41,6 +42,9 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
     if (!draft.name.trim() || !draft.url.trim()) return
     // regex_exclude_hint distinguishes "" (feed explicitly needs no exclude
     // filter) from null (no guidance set) -- see suggest-regex prompt logic.
+    const samples = draft.regex_include_samples
+      .map((s) => ({ sample_name: s.sample_name.trim(), hint: s.hint.trim() }))
+      .filter((s) => s.hint)
     const regexExcludeHint = draft.no_exclude_needed ? '' : draft.regex_exclude_hint.trim() || null
     if (isEdit) {
       const update: RssFeedUpdate = {
@@ -49,7 +53,7 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         remote_key: draft.remote_key.trim() || null,
         default_download_location: draft.default_download_location.trim() || null,
         default_move_completed: draft.default_move_completed.trim() || null,
-        regex_include_hint: draft.regex_include_hint.trim() || null,
+        regex_include_samples: samples.length ? samples : null,
         regex_exclude_hint: regexExcludeHint,
         active: draft.active,
       }
@@ -61,13 +65,25 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
         remote_key: draft.remote_key.trim() || null,
         default_download_location: draft.default_download_location.trim() || null,
         default_move_completed: draft.default_move_completed.trim() || null,
-        regex_include_hint: draft.regex_include_hint.trim() || null,
+        regex_include_samples: samples.length ? samples : null,
         regex_exclude_hint: regexExcludeHint,
         active: draft.active,
       }
       create.mutate(body, { onSuccess: onClose })
     }
   }
+
+  const sampleInputClass =
+    'w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]'
+  const setSample = (i: number, patch: Partial<{ sample_name: string; hint: string }>) =>
+    setDraft((d) => ({
+      ...d,
+      regex_include_samples: d.regex_include_samples.map((s, j) => (j === i ? { ...s, ...patch } : s)),
+    }))
+  const removeSample = (i: number) =>
+    setDraft((d) => ({ ...d, regex_include_samples: d.regex_include_samples.filter((_, j) => j !== i) }))
+  const addSample = () =>
+    setDraft((d) => ({ ...d, regex_include_samples: [...d.regex_include_samples, { sample_name: '', hint: '' }] }))
 
   const isPending = create.isPending || patch.isPending
 
@@ -98,14 +114,46 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
             <Field label="Default Move Completed" note="Used by subscriptions that don't override it.">{textInput('default_move_completed')}</Field>
           </div>
           <Field
-            label="Regex Include Hint"
-            note="Example regex_include shape typical of this feed's releases (e.g. ^ShowName.*s\d{2}e\d{2}.*1080p.*). Shown to the LLM suggester as a style guide."
+            label="Regex Include Samples"
+            note="Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters)."
           >
-            {textInput('regex_include_hint', 'e.g. ^ShowName.*MKV.*h26[4-5].*1080p.*Freeleech$')}
+            <div className="space-y-2">
+              {draft.regex_include_samples.map((s, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="flex-1 space-y-1">
+                    <input
+                      value={s.sample_name}
+                      onChange={(e) => setSample(i, { sample_name: e.target.value })}
+                      placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv"
+                      className={sampleInputClass}
+                    />
+                    <input
+                      value={s.hint}
+                      onChange={(e) => setSample(i, { hint: e.target.value })}
+                      placeholder="Hint, e.g. ^Some.Show.*s\d{2}e\d{2}.*1080p.*"
+                      className={sampleInputClass}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSample(i)}
+                    aria-label={`Remove sample ${i + 1}`}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {draft.regex_include_samples.length < 3 && (
+                <button type="button" onClick={addSample} className="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">
+                  + Add sample
+                </button>
+              )}
+            </div>
           </Field>
           <Field
-            label="Regex Exclude Hint"
-            note="Example regex_exclude pattern typical of this feed's releases. Shown to the LLM suggester as a style guide."
+            label="Regex Exclude"
+            note="Used as-is as the suggested regex_exclude for this feed's subscriptions."
           >
             <input
               value={draft.regex_exclude_hint}

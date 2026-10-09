@@ -224,7 +224,7 @@ Jidou can two-way sync with a Deluge-compatible RSS feed config (YaRSS2 format):
 - Every publish keeps a **snapshot** of the config it wrote, viewable from the RSS page for diffing against a previous publish.
 - The **Recommendations** tab flags subscriptions worth reviewing (e.g. stale or unlinked). **Suggest regex** asks the configured LLM to draft an include/exclude filter from a show's title.
 
-Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_PATH` env var controls where the generated config is written on the SFTP server. The Feeds table shows the remote key ID directly and set/unset checkmarks (full value on hover) for URL, default locations, and regex hints, so long paths/URLs don't clutter the table.
+Configure feeds and subscriptions from the **RSS** page. The `RSS_CONFIG_REMOTE_PATH` env var controls where the generated config is written on the SFTP server. The Feeds table shows the remote key ID directly and set/unset checkmarks (full value on hover) for URL, default locations, and the exclude pattern, plus the regex include-sample count (e.g. `2/3`, sample names on hover; up to 3 sample name + hint pairs), so long paths/URLs don't clutter the table.
 
 ![RSS Subscriptions tab](screenshots/rss-subscriptions-tab.png)
 ![RSS Recommendations tab](screenshots/rss-recommendations-tab.png)

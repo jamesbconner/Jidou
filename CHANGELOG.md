@@ -6,11 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-09
+
 ### Added
 - **RSS page: Key filter.** A new dropdown on the Subscriptions tab narrows the list to stubs (subscriptions with no remote key yet) or to subscriptions that already have one. Like the other RSS filters, the choice is remembered.
+- **RSS feeds: sample name + hint pairs.** Each feed can hold up to 3 pairs of a real release title and the regex that matches it. The LLM regex suggester shows them as worked examples, so suggestions follow the feed's real token order. Existing include hints were migrated into the first slot.
 
 ### Changed
 - **Show Details: cleaner top of page.** Removed the redundant "← Back to Shows" link (use the navbar's Shows link or browser back) and the extra space above the banner, so it now sits flush under the navbar.
+- **RSS feeds: exclude hint is used as-is.** A feed's exclude pattern is now returned verbatim as the suggested exclude regex instead of being offered to the LLM as a style guide.
+
+### Fixed
+- **Re-suggest returns a new regex.** The Suggest-regex dialog's Re-suggest button previously replayed a cached answer. It now bypasses the cache and tells the LLM which patterns were already rejected.
 
 ## [0.1.4] — 2026-10-03
 

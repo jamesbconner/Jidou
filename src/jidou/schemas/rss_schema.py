@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _validate_regex(v: str | None) -> str | None:
@@ -15,6 +15,29 @@ def _validate_regex(v: str | None) -> str | None:
         except re.error as exc:
             raise ValueError(f"Invalid regular expression: {exc}") from exc
     return v
+
+
+MAX_REGEX_SAMPLES = 3
+MAX_PREVIOUS_SUGGESTIONS = 5
+
+
+class RegexHintSample(BaseModel):
+    """A real release title from a feed plus the regex_include that matches it.
+
+    Attributes:
+        sample_name: Example release title. May be empty (migrated legacy hints).
+        hint: Python regex that correctly matches ``sample_name``.
+    """
+
+    sample_name: str = ""
+    hint: str = Field(min_length=1)
+
+    @field_validator("hint")
+    @classmethod
+    def validate_hint(cls, v: str) -> str:
+        """Reject hints that fail to compile as Python regexes."""
+        _validate_regex(v)
+        return v
 
 
 class RssShowBrief(BaseModel):
@@ -37,11 +60,13 @@ class RssFeedCreate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool = True
-    regex_include_hint: str | None = None
+    regex_include_samples: list[RegexHintSample] | None = Field(
+        default=None, max_length=MAX_REGEX_SAMPLES
+    )
     regex_exclude_hint: str | None = None
     extra_config: dict[str, object] | None = None
 
-    @field_validator("regex_include_hint", "regex_exclude_hint")
+    @field_validator("regex_exclude_hint")
     @classmethod
     def validate_regex_hint(cls, v: str | None) -> str | None:
         """Reject hints that fail to compile as Python regexes."""
@@ -57,11 +82,13 @@ class RssFeedUpdate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool | None = None
-    regex_include_hint: str | None = None
+    regex_include_samples: list[RegexHintSample] | None = Field(
+        default=None, max_length=MAX_REGEX_SAMPLES
+    )
     regex_exclude_hint: str | None = None
     extra_config: dict[str, object] | None = None
 
-    @field_validator("regex_include_hint", "regex_exclude_hint")
+    @field_validator("regex_exclude_hint")
     @classmethod
     def validate_regex_hint(cls, v: str | None) -> str | None:
         """Reject hints that fail to compile as Python regexes."""
@@ -80,7 +107,7 @@ class RssFeedRead(BaseModel):
     default_download_location: str | None
     default_move_completed: str | None
     active: bool
-    regex_include_hint: str | None
+    regex_include_samples: list[RegexHintSample] | None
     regex_exclude_hint: str | None
     extra_config: dict[str, object] | None
     created_at: datetime
@@ -202,9 +229,13 @@ class RssRegexSuggestRequest(BaseModel):
             present it overrides the subscription's persisted feed for hint
             lookup (``None`` means "no feed"); when omitted the persisted feed
             is used.
+        previous: Earlier ``regex_include`` suggestions from this session. When
+            non-empty the request is a re-suggest: the LLM cache is bypassed and
+            the model is told not to repeat these.
     """
 
     feed_id: int | None = None
+    previous: list[str] = Field(default_factory=list, max_length=MAX_PREVIOUS_SUGGESTIONS)
 
 
 class RssRegexSuggestion(BaseModel):

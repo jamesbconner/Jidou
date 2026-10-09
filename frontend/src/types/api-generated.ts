@@ -17,7 +17,8 @@ export interface paths {
          *
          *     Returns HTTP 200 when all dependencies are healthy, HTTP 503 when
          *     one or more are unreachable. Docker and orchestration probes can
-         *     inspect the HTTP status to determine container health.
+         *     inspect the HTTP status to determine container health. The body also
+         *     reports the running application ``version``.
          */
         get: operations["health_check_api_health_get"];
         put?: never;
@@ -134,6 +135,10 @@ export interface paths {
          *
          *     Returns:
          *         Raw TMDB detail response dictionary.
+         *
+         *     Raises:
+         *         HTTPException: 404 if no show or movie exists for *tmdb_id* under
+         *             *media_type* on TMDB.
          */
         get: operations["get_tmdb_details_api_shows_tmdb__tmdb_id__get"];
         put?: never;
@@ -2096,7 +2101,8 @@ export interface paths {
          *         db_session: DB session (injected).
          *
          *     Returns:
-         *         Dictionary with an overall ``healthy`` flag and per-service results.
+         *         Dictionary with an overall ``healthy`` flag, the running application
+         *         ``version``, and per-service results.
          */
         get: operations["system_health_api_admin_health_get"];
         put?: never;
@@ -2661,13 +2667,18 @@ export interface paths {
          *
          *     Args:
          *         sub_id: Database primary key of the subscription.
+         *         body: Optional unsaved form state. A ``feed_id`` here selects the feed
+         *             whose regex hints steer the prompt instead of the persisted one, so
+         *             suggestions follow a feed changed in the edit modal but not yet saved.
+         *             ``previous`` lists earlier suggestions; when present the LLM cache is
+         *             bypassed and the model is told to differ.
          *         db_session: DB session (injected).
          *
          *     Returns:
          *         :class:`RssRegexSuggestion` with the suggested regex patterns.
          *
          *     Raises:
-         *         HTTPException: 404 if the subscription is not found.
+         *         HTTPException: 404 if the subscription or the requested feed is not found.
          *         HTTPException: 422 if the LLM provider is not configured.
          *         HTTPException: 503 if the LLM call fails.
          */
@@ -3766,6 +3777,23 @@ export interface components {
             adult?: boolean | null;
         };
         /**
+         * RegexHintSample
+         * @description A real release title from a feed plus the regex_include that matches it.
+         *
+         *     Attributes:
+         *         sample_name: Example release title. May be empty (migrated legacy hints).
+         *         hint: Python regex that correctly matches ``sample_name``.
+         */
+        RegexHintSample: {
+            /**
+             * Sample Name
+             * @default
+             */
+            sample_name: string;
+            /** Hint */
+            hint: string;
+        };
+        /**
          * RematchRequest
          * @description Payload for re-matching a show to a different TMDB entry.
          */
@@ -3831,8 +3859,8 @@ export interface components {
              * @default true
              */
             active: boolean;
-            /** Regex Include Hint */
-            regex_include_hint?: string | null;
+            /** Regex Include Samples */
+            regex_include_samples?: components["schemas"]["RegexHintSample"][] | null;
             /** Regex Exclude Hint */
             regex_exclude_hint?: string | null;
             /** Extra Config */
@@ -3859,8 +3887,8 @@ export interface components {
             default_move_completed: string | null;
             /** Active */
             active: boolean;
-            /** Regex Include Hint */
-            regex_include_hint: string | null;
+            /** Regex Include Samples */
+            regex_include_samples: components["schemas"]["RegexHintSample"][] | null;
             /** Regex Exclude Hint */
             regex_exclude_hint: string | null;
             /** Extra Config */
@@ -3895,14 +3923,33 @@ export interface components {
             default_move_completed?: string | null;
             /** Active */
             active?: boolean | null;
-            /** Regex Include Hint */
-            regex_include_hint?: string | null;
+            /** Regex Include Samples */
+            regex_include_samples?: components["schemas"]["RegexHintSample"][] | null;
             /** Regex Exclude Hint */
             regex_exclude_hint?: string | null;
             /** Extra Config */
             extra_config?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * RssRegexSuggestRequest
+         * @description Optional unsaved context for an LLM regex suggestion.
+         *
+         *     Attributes:
+         *         feed_id: Feed currently selected in the edit form. When the field is
+         *             present it overrides the subscription's persisted feed for hint
+         *             lookup (``None`` means "no feed"); when omitted the persisted feed
+         *             is used.
+         *         previous: Earlier ``regex_include`` suggestions from this session. When
+         *             non-empty the request is a re-suggest: the LLM cache is bypassed and
+         *             the model is told not to repeat these.
+         */
+        RssRegexSuggestRequest: {
+            /** Feed Id */
+            feed_id?: number | null;
+            /** Previous */
+            previous?: string[];
         };
         /**
          * RssRegexSuggestion
@@ -7954,7 +8001,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RssRegexSuggestRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
