@@ -234,6 +234,7 @@ All migrations up to and including the original `0002`–`0004` set were squashe
 | `a563ec7cddae` | Add `ignored` to the `filestatus` enum plus `downloaded_files.ignored_reason` (noscan paths / manual ignore) |
 | `6d2f4a9c7e13` | Add `shows.list_poster_path` / `shows.detail_poster_path` (manual poster overrides) |
 | `e00342464620` | Add `rss_feeds.regex_include_hint` / `regex_exclude_hint` |
+| `c3d4e5f6a7b8` | Replace `rss_feeds.regex_include_hint` with `regex_include_samples` (JSONB, up to 3 sample+hint pairs) |
 | `b1a2c3d4e5f6` | Add `episodes.watched` / `watched_at` (watched tracking, independent of `file_tracked`) |
 | `c2d3e4f5a6b7` | Add `downloaded_files.crc32` |
 | `d3e4f5a6b7c8` | Split `downloaded_files.crc32` into extracted/declared/computed columns |
