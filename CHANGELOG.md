@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-09
+
+### Fixed
+- **RSS regex suggestions no longer use `\s` for spaces.** The suggester's system prompt now states the convention: spaces in a title are written as a bare `.`, and punctuation (commas, quotes, semicolons, colons, exclamation and question marks) as `.*`, with an example. Previously the LLM defaulted to `\s` even when every feed sample used periods.
+
 ## [0.2.0] — 2026-10-09
 
 ### Added
