@@ -873,6 +873,38 @@ def test_suggest_regex_returns_suggestion() -> None:
         app.dependency_overrides.clear()
 
 
+def test_suggest_regex_system_prompt_states_space_and_punctuation_convention() -> None:
+    """The system prompt tells the LLM spaces are '.' and punctuation is '.*'."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="Attack on Titan")
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    llm_response = LLMResponse(
+        content='{"regex_include": "Attack.on.Titan", "regex_exclude": ""}',
+        model="gpt-4o-mini",
+        provider=LLMProvider.OPENAI,
+        cached=False,
+    )
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = True
+    mock_llm.complete = AsyncMock(return_value=llm_response)
+
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+        assert r.status_code == 200
+        system = mock_llm.complete.await_args.kwargs["system"]
+        assert "unescaped period (.)" in system
+        assert "^Attack.on.Titan.*" in system
+        assert "with .*" in system
+        assert "After a colon" in system
+    finally:
+        app.dependency_overrides.clear()
+
+
 def _run_suggest_with_body(
     body: dict[str, object] | None,
     *,

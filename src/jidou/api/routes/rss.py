@@ -495,6 +495,12 @@ _REGEX_SYSTEM_PROMPT = (
     "regex_exclude should filter out dubbed language releases (e.g. FRENCH, GERMAN, "
     "SPANISH, ITALIAN, DUBBED), internal scene releases (INTERNAL), "
     "and low-quality encodes (CAM, TS). "
+    "In regex_include, write every space in the title as an unescaped period (.). "
+    "Replace punctuation in the title (commas, quotes, semicolons, colons, "
+    "exclamation and question marks) with .* instead of matching it literally. "
+    "After a colon, .* may skip the rest of the title when the text before it already "
+    "identifies the show uniquely. "
+    'Example: the title "Attack on Titan: The Final Season" becomes "^Attack.on.Titan.*". '
     "Do not include any explanation, markdown, or extra text — only the JSON object."
 )
 
