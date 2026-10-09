@@ -77,7 +77,7 @@ function RegexSuggestModal({
               suggest.mutate(history.slice(-5), {
                 onSuccess: (r) => {
                   setResult(r)
-                  setHistory((h) => [...h, r.regex_include])
+                  setHistory((h) => (h.includes(r.regex_include) ? h : [...h, r.regex_include]))
                 },
               })
             }

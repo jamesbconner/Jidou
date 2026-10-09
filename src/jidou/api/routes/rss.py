@@ -573,7 +573,7 @@ _DUPLICATE_RETRY_SUFFIX = (
 
 
 async def _request_regex(
-    llm: LLMService, prompt: str, sub_id: int, *, bypass_cache: bool
+    llm: LLMService, prompt: str, sub_id: int, *, bypass_cache: bool, validate_exclude: bool = True
 ) -> tuple[str, str, LLMResponse]:
     """Call the LLM once and return validated (regex_include, regex_exclude, response).
 
@@ -582,6 +582,8 @@ async def _request_regex(
         prompt: User prompt.
         sub_id: Subscription id (for logging).
         bypass_cache: Skip the LLM response cache.
+        validate_exclude: Compile-check the exclude regex. Pass ``False`` when
+            the LLM's exclude will be discarded in favour of a feed hint.
 
     Returns:
         Tuple of include regex, exclude regex and the raw LLM response.
@@ -633,7 +635,8 @@ async def _request_regex(
 
     try:
         re.compile(regex_include)
-        re.compile(regex_exclude)
+        if validate_exclude:
+            re.compile(regex_exclude)
     except re.error as exc:
         logger.warning("LLM returned invalid regex for sub_id=%d: %s", sub_id, exc)
         raise HTTPException(
@@ -707,16 +710,34 @@ async def suggest_regex(
     previous = body.previous if body is not None else []
     user_prompt += _feed_hint_prompt_suffix(feed) + _previous_prompt_suffix(previous)
 
+    use_exclude_hint = feed is not None and bool(feed.regex_exclude_hint)
     regex_include, regex_exclude, response = await _request_regex(
-        llm, user_prompt, sub_id, bypass_cache=bool(previous)
+        llm,
+        user_prompt,
+        sub_id,
+        bypass_cache=bool(previous),
+        validate_exclude=not use_exclude_hint,
     )
     if regex_include in previous:
         logger.info("LLM repeated a rejected regex for sub_id=%d; retrying once", sub_id)
-        regex_include, regex_exclude, response = await _request_regex(
-            llm, user_prompt + _DUPLICATE_RETRY_SUFFIX, sub_id, bypass_cache=True
-        )
-        if regex_include in previous:
-            logger.warning("LLM repeated a rejected regex after retry for sub_id=%d", sub_id)
+        try:
+            retry = await _request_regex(
+                llm,
+                user_prompt + _DUPLICATE_RETRY_SUFFIX,
+                sub_id,
+                bypass_cache=True,
+                validate_exclude=not use_exclude_hint,
+            )
+        except HTTPException as exc:
+            logger.warning(
+                "Duplicate-retry failed for sub_id=%d (%s); keeping first result",
+                sub_id,
+                exc.detail,
+            )
+        else:
+            regex_include, regex_exclude, response = retry
+            if regex_include in previous:
+                logger.warning("LLM repeated a rejected regex after retry for sub_id=%d", sub_id)
 
     # A feed's non-empty exclude hint is a ready-to-use filter, not a style guide.
     if feed is not None and feed.regex_exclude_hint:

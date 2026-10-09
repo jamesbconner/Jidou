@@ -46,14 +46,15 @@ def downgrade() -> None:
     """Downgrade schema.
 
     Only slot 1's hint survives the downgrade (the old column held one value).
+    The type guard is needed because JSONB stores Python None as JSON ``null``
+    (not SQL NULL); ``-> 0`` on an empty array yields SQL NULL.
     """
     op.add_column("rss_feeds", sa.Column("regex_include_hint", sa.Text(), nullable=True))
     op.execute(
         """
         UPDATE rss_feeds
         SET regex_include_hint = regex_include_samples -> 0 ->> 'hint'
-        WHERE regex_include_samples IS NOT NULL
-          AND jsonb_array_length(regex_include_samples) > 0
+        WHERE jsonb_typeof(regex_include_samples) = 'array'
         """
     )
     op.drop_column("rss_feeds", "regex_include_samples")

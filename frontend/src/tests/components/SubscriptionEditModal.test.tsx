@@ -125,4 +125,33 @@ describe('SubscriptionEditModal — unsaved edits', () => {
       ])
     })
   })
+
+  test('a repeated suggestion is not added to history twice', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/suggest-regex')) {
+        return mockResponse({ regex_include: 'dup', regex_exclude: 'b', model: 'm', cached: false })
+      }
+      return mockResponse([])
+    })
+    renderModal()
+
+    fireEvent.click(screen.getByText('Suggest via LLM'))
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-suggest' }))
+    await waitFor(() => {
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/suggest-regex')),
+      ).toHaveLength(2)
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-suggest' }))
+
+    await waitFor(() => {
+      const bodies = vi
+        .mocked(fetch)
+        .mock.calls.filter(([url]) => String(url).includes('/suggest-regex'))
+        .map(([, init]) => JSON.parse(String(init?.body)))
+      expect(bodies).toHaveLength(3)
+      expect(bodies[2]).toEqual({ feed_id: 1, previous: ['dup'] })
+    })
+  })
 })
