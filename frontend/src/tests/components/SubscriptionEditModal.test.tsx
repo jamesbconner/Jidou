@@ -95,7 +95,34 @@ describe('SubscriptionEditModal — unsaved edits', () => {
         .mocked(fetch)
         .mock.calls.find(([url]) => String(url).includes('/suggest-regex'))
       expect(call).toBeDefined()
-      expect(JSON.parse(String(call![1]?.body))).toEqual({ feed_id: 2 })
+      expect(JSON.parse(String(call![1]?.body))).toEqual({ feed_id: 2, previous: [] })
+    })
+  })
+
+  test('Re-suggest sends previously suggested includes as history', async () => {
+    let n = 0
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/suggest-regex')) {
+        n += 1
+        return mockResponse({ regex_include: `inc${n}`, regex_exclude: 'b', model: 'm', cached: false })
+      }
+      return mockResponse([])
+    })
+    renderModal()
+
+    fireEvent.click(screen.getByText('Suggest via LLM'))
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-suggest' }))
+
+    await waitFor(() => {
+      const bodies = vi
+        .mocked(fetch)
+        .mock.calls.filter(([url]) => String(url).includes('/suggest-regex'))
+        .map(([, init]) => JSON.parse(String(init?.body)))
+      expect(bodies).toEqual([
+        { feed_id: 1, previous: [] },
+        { feed_id: 1, previous: ['inc1'] },
+      ])
     })
   })
 })

@@ -30,6 +30,7 @@ function RegexSuggestModal({
 }) {
   const suggest = useSuggestRegex(sub.id, feedId)
   const [result, setResult] = useState<{ regex_include: string; regex_exclude: string } | null>(null)
+  const [history, setHistory] = useState<string[]>([])
 
   return (
     <Modal onClose={onClose} tone="light" overlayClassName="z-[60]">
@@ -72,7 +73,14 @@ function RegexSuggestModal({
             </button>
           )}
           <button
-            onClick={() => suggest.mutate(undefined, { onSuccess: (r) => setResult(r) })}
+            onClick={() =>
+              suggest.mutate(history.slice(-5), {
+                onSuccess: (r) => {
+                  setResult(r)
+                  setHistory((h) => [...h, r.regex_include])
+                },
+              })
+            }
             disabled={suggest.isPending}
             className="px-3 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50"
           >
