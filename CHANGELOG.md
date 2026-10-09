@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-09
+
 ### Added
 - **RSS page: Key filter.** A new dropdown on the Subscriptions tab narrows the list to stubs (subscriptions with no remote key yet) or to subscriptions that already have one. Like the other RSS filters, the choice is remembered.
 - **RSS feeds: sample name + hint pairs.** Each feed can hold up to 3 pairs of a real release title and the regex that matches it. The LLM regex suggester shows them as worked examples, so suggestions follow the feed's real token order. Existing include hints were migrated into the first slot.
