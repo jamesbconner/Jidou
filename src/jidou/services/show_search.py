@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
 
-from sqlalchemy import func, literal, or_, select
+from sqlalchemy import case, func, literal, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,7 +136,15 @@ async def search_local_shows(
 
     pattern = f"%{_escape_like(needle)}%"
     basename = func.regexp_replace(func.rtrim(Show.local_path, "/"), "^.*/", "")
-    alias_values = func.jsonb_array_elements_text(Show.aliases.cast(JSONB)).table_valued("value")
+    # `aliases` can hold a JSON null (distinct from SQL NULL) or another
+    # non-array value; jsonb_array_elements_text raises on those, which would
+    # fail the whole query. Treat anything that is not an array as empty.
+    aliases_json = Show.aliases.cast(JSONB)
+    safe_aliases = case(
+        (func.jsonb_typeof(aliases_json) == "array", aliases_json),
+        else_=literal_column("'[]'::jsonb"),
+    )
+    alias_values = func.jsonb_array_elements_text(safe_aliases).table_valued("value")
     alias_match = (
         select(literal(1))
         .select_from(alias_values)
