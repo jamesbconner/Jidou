@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.show import Show
+from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file
@@ -35,17 +36,12 @@ class ParseResult:
     dry_run: bool
 
 
-def _sanitize_alias(name: str) -> str:
-    """Normalise an alias name for case-insensitive storage and lookup."""
-    return name.strip().lower()
-
-
 def _is_exact_alias_match(show: Show, name: str) -> bool:
     """Return True if *name* already exactly names *show* (title or alias).
 
-    Guards ``_add_alias`` calls after a fuzzy ``_find_show`` lookup: a
+    Guards ``add_alias`` calls after a fuzzy ``_find_show`` lookup: a
     substring hit (e.g. "Daredevil" matching "Daredevil: Born Again") must
-    never get taught as a permanent alias, since that would misfile every
+    never get added as a permanent alias, since that would misfile every
     future parse of the shorter name onto the longer show.
 
     Args:
@@ -56,8 +52,8 @@ def _is_exact_alias_match(show: Show, name: str) -> bool:
         True if *name* matches ``show.title`` or is already in
         ``show.aliases`` (case-insensitive), False otherwise.
     """
-    normalised = _sanitize_alias(name)
-    if normalised == _sanitize_alias(show.title):
+    normalised = sanitize_alias(name)
+    if normalised == sanitize_alias(show.title):
         return True
     return show.aliases is not None and normalised in show.aliases
 
@@ -130,7 +126,7 @@ class ParseOrchestrator:
         Enables the substring title fallback (``fuzzy=True``) since the LLM's
         parsed name is not guaranteed to equal the show's exact stored title.
         A fuzzy hit must not be trusted as a valid alias on its own — see the
-        exactness check in ``run()`` before ``_add_alias`` is called.
+        exactness check in ``run()`` before ``add_alias`` is called.
 
         Args:
             parsed_name: The extracted show name (not yet normalised).
@@ -139,32 +135,6 @@ class ParseOrchestrator:
             Matching :class:`Show` or None if not found.
         """
         return await find_show_by_name(self.session, parsed_name, fuzzy=True)
-
-    @staticmethod
-    def _add_alias(show: Show, alias: str) -> None:
-        """Add a normalised alias to show.aliases and aliases_sources (in-place, no duplicate).
-
-        Mirrors the alias into ``aliases_sources["user"]`` so the structured
-        PUT /shows/{id}/aliases endpoint does not silently drop it when the
-        user next edits aliases via the UI (which reads from aliases_sources).
-        """
-        norm = _sanitize_alias(alias)
-        # Flat GIN-indexed column — used for fast show lookup during parsing.
-        current: list[str] = list(show.aliases) if show.aliases else []
-        if norm not in current:
-            show.aliases = [*current, norm]
-        # Structured source map — used by the UI and the PUT endpoint.
-        sources: dict[str, list[str]] = dict(show.aliases_sources) if show.aliases_sources else {}
-        if not show.aliases_sources and show.aliases:
-            # First-time write on a legacy show: seed the user bucket from all
-            # existing flat aliases so that generate_aliases or a UI save doesn't
-            # orphan them when it rebuilds show.aliases from sources only.
-            sources["user"] = list(show.aliases)
-            show.aliases_sources = sources  # persist even if norm is already present
-        user_aliases: list[str] = list(sources.get("user") or [])
-        if norm not in user_aliases:
-            sources["user"] = [*user_aliases, norm]
-            show.aliases_sources = sources
 
     async def run(
         self,
@@ -350,12 +320,12 @@ class ParseOrchestrator:
                     file.status = FileStatus.MATCHED
                     # Clear any stale reason from a prior UNMATCHED attempt.
                     file.error_message = None
-                    # Teach the alias index so future matches skip LLM — but only
+                    # Add the alias so future matches skip LLM — but only
                     # when show_name is already known to name this show exactly.
                     # A fuzzy substring hit from _find_show must never be
                     # permanently written as an alias.
                     if show_name and _is_exact_alias_match(show, show_name):
-                        self._add_alias(show, show_name)
+                        add_alias(show, show_name)
                     # Backfill show.content_type from the parsed value if unset
                     if content_type and not show.content_type:
                         show.content_type = content_type

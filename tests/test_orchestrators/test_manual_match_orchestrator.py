@@ -24,6 +24,7 @@ def _make_file(
     parsed_episode: int | None = None,
     original_filename: str = "show.s01e01.mkv",
     local_path: str | None = None,
+    parsed_show_name: str | None = None,
 ) -> MagicMock:
     f = MagicMock()
     f.id = file_id
@@ -36,6 +37,7 @@ def _make_file(
     f.parsed_episode = parsed_episode
     f.original_filename = original_filename
     f.local_path = local_path
+    f.parsed_show_name = parsed_show_name
     return f
 
 
@@ -53,6 +55,8 @@ def _make_show(
     s.local_path = local_path
     s.tmdb_id = tmdb_id
     s.media_type = media_type
+    s.aliases = None
+    s.aliases_sources = None
     return s
 
 
@@ -155,6 +159,48 @@ async def test_match_show_id_sets_matched_status() -> None:
     assert f.matched_by == MatchedBy.MANUAL
     assert f.parsed_season == 1  # extracted from "show.s01e01.mkv"
     assert f.parsed_episode == 1
+
+
+async def test_match_adds_parsed_name_as_alias() -> None:
+    """The file's parsed name is stored as a user alias so future parses match it."""
+    f = _make_file(parsed_show_name="Example Show")
+    show = _make_show(title="Example Show (2019)")
+    session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
+
+    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+
+    assert show.aliases == ["example show"]
+    assert show.aliases_sources == {"user": ["example show"]}
+    session.commit.assert_awaited_once()
+
+
+async def test_match_does_not_duplicate_existing_alias() -> None:
+    """Re-matching with a name the show already has leaves the alias list unchanged."""
+    f = _make_file(parsed_show_name="Example Show")
+    show = _make_show(title="Example Show (2019)")
+    show.aliases = ["example show"]
+    show.aliases_sources = {"user": ["example show"]}
+    session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
+
+    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+
+    assert show.aliases == ["example show"]
+    assert show.aliases_sources == {"user": ["example show"]}
+
+
+@pytest.mark.parametrize("parsed_name", [None, "", "   ", "test show", "TEST SHOW"])
+async def test_match_skips_alias_when_name_missing_or_equals_title(
+    parsed_name: str | None,
+) -> None:
+    """No alias is added for an empty name or one that is just the show's title."""
+    f = _make_file(parsed_show_name=parsed_name)
+    show = _make_show(title="Test Show")
+    session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
+
+    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+
+    assert show.aliases is None
+    assert show.aliases_sources is None
 
 
 async def test_match_flushes_before_commit() -> None:

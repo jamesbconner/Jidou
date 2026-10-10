@@ -18,7 +18,7 @@ async def find_show_by_name(
     Lookup chain:
 
     1. GIN-indexed alias containment — fastest path, and the one hit on
-       every re-import once a name has been taught via ``_add_alias``.
+       every re-import once a name has been added via ``alias_handling.add_alias``.
     2. Title match. Exact case-insensitive equality when *fuzzy* is False;
        a substring match (``ILIKE '%name%'``) when *fuzzy* is True. These
        are alternatives, not stacked tiers — a substring match already
@@ -29,7 +29,7 @@ async def find_show_by_name(
     match "Daredevil: Born Again". Callers that enable it must not treat a
     fuzzy hit as proof the searched name is a valid alias for the matched
     show (see ``ParseOrchestrator._find_show``, which checks the returned
-    show's own title/aliases before teaching a new one).
+    show's own title/aliases before adding a new one).
 
     Args:
         session: Active async SQLAlchemy session.

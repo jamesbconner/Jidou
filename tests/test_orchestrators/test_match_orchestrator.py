@@ -3,7 +3,7 @@
 Filename-extraction-level tests (heuristic regex, LLM prompt/parsing) live
 in tests/test_filename_parser.py, covering jidou.services.filename_parser
 directly. These tests cover ParseOrchestrator's own behavior: the
-confidence gate, DB show/episode lookup, alias teaching, and local_path
+confidence gate, DB show/episode lookup, alias handling, and local_path
 resolution.
 """
 
@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _sanitize_alias
+from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
+from jidou.services.alias_handling import sanitize_alias
 
 # ---------------------------------------------------------------------------
 # Unit helpers
@@ -21,7 +22,7 @@ from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _sanitize_
 
 def test_sanitize_alias():
     """Aliases are lowercased and stripped."""
-    assert _sanitize_alias("  Attack on Titan  ") == "attack on titan"
+    assert sanitize_alias("  Attack on Titan  ") == "attack on titan"
 
 
 # ---------------------------------------------------------------------------
@@ -498,12 +499,12 @@ async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
 
     assert result.files_matched == 1
     assert file1.show_id == show.id
-    # The fuzzy hit must not have been taught as an alias.
+    # The fuzzy hit must not have been added as an alias.
     assert show.aliases == []
 
 
 async def test_run_exact_show_match_still_gets_aliased():
-    """An exact title match (not a fuzzy substring guess) is still taught as an alias."""
+    """An exact title match (not a fuzzy substring guess) is still added as an alias."""
     file1 = _make_file(filename="Attack.on.Titan.S01E01.mkv")
     show = _make_show(title="Attack on Titan", aliases=[])
 
