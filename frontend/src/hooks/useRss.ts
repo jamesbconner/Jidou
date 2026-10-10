@@ -11,6 +11,7 @@ import type {
   RssSubscriptionBulkPatchItem,
   RssRegexSuggestion,
   RssConfigDiff,
+  FeedEntriesRead,
   TaskRead,
 } from '@/types/api'
 
@@ -20,6 +21,7 @@ export const rssKeys = {
   subscriptions: (filters?: { show_id?: number; feed_id?: number; enabled_only?: boolean }) =>
     [...rssKeys.all, 'subscriptions', filters ?? {}] as const,
   recommendations: () => [...rssKeys.all, 'recommendations'] as const,
+  feedEntries: (feedId: number) => [...rssKeys.all, 'feed-entries', feedId] as const,
 }
 
 export function useRssFeeds() {
@@ -208,5 +210,32 @@ export function useSubscriptionPreview(subId: number | null) {
     queryKey: [...rssKeys.all, 'preview', subId] as const,
     queryFn: () => api.get<Record<string, unknown>>(`/rss/subscriptions/${subId}/preview`),
     enabled: subId != null,
+  })
+}
+
+/**
+ * Entries of a feed (fetched server-side), grouped by parsed show name.
+ *
+ * `retry: false` so a failing tracker is hit once per open, not twice (the
+ * global default retries once). Short staleTime mirrors the server's 5-minute
+ * entry cache; use `useRefreshFeedEntries` to force a refetch.
+ */
+export function useFeedEntries(feedId: number | null) {
+  return useQuery({
+    queryKey: rssKeys.feedEntries(feedId ?? -1),
+    queryFn: () => api.get<FeedEntriesRead>(`/rss/feeds/${feedId}/entries`),
+    enabled: feedId != null,
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useRefreshFeedEntries(feedId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.get<FeedEntriesRead>(`/rss/feeds/${feedId}/entries?refresh=true`),
+    onSuccess: (data) => {
+      qc.setQueryData(rssKeys.feedEntries(feedId), data)
+    },
   })
 }

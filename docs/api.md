@@ -299,6 +299,7 @@ Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tr
 | POST | `/api/rss/feeds` | Create a feed |
 | PATCH | `/api/rss/feeds/{id}` | Update a feed |
 | DELETE | `/api/rss/feeds/{id}` | Delete a feed |
+| GET | `/api/rss/feeds/{id}/entries` | Fetch the feed URL server-side (read-only, nothing persisted) and return its current entries grouped by parsed show name. Each group has `parsed_name`, `entry_count`, season/episode min/max, `sample_titles`, `library_show` (exact title/alias match, or null) and `existing_subscription_id` (a subscription on this feed linked to that show, or null). Top-level fields: `feed_id`, `total_entries`, `truncated` (more than 200 entries), `malformed` (feed XML was not well-formed; entries may be incomplete), `cached`. Cached for 5 minutes; `?refresh=true` bypasses the cache. 404 unknown feed, 502 unreachable / not a feed / over 5 MiB / blocked target, 504 timed out. |
 | GET | `/api/rss/subscriptions` | List subscriptions, with optional filters |
 | POST | `/api/rss/subscriptions` | Create a subscription (feed + show + optional include/exclude regex) |
 | GET | `/api/rss/subscriptions/{id}` | Get a single subscription |
@@ -324,6 +325,8 @@ Jidou models a YaRSS2 config as **feeds** (the RSS source URL, e.g. a Nyaa or tr
 | GET | `/api/images/{size}/{filename}` | Serve a cached TMDB poster/backdrop, fetching and caching to disk on first request |
 
 `size` is one of `w92`, `w185`, `w300`, `w500`, `w780`, `w1280`. This route is registered **without** `X-API-Key` — plain `<img src>` tags can't send custom headers, and the images aren't sensitive data. Rate-limited independently from TMDB metadata calls via `IMAGE_RATE_LIMIT_PER_SECOND`.
+
+Feed fetches (`GET /api/rss/feeds/{id}/entries`) are likewise rate-limited independently via `FEED_RATE_LIMIT_PER_SECOND`.
 
 ---
 

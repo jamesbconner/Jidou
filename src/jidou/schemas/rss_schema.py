@@ -252,3 +252,52 @@ class RssRegexSuggestion(BaseModel):
     regex_exclude: str
     model: str
     cached: bool
+
+
+class FeedEntryGroupRead(BaseModel):
+    """Feed entries grouped by the show name parsed from their titles.
+
+    Attributes:
+        parsed_name: Parsed show name, or None for entries that could not be
+            parsed.
+        entry_count: Number of entries in the group.
+        season_min: Lowest season seen, if any.
+        season_max: Highest season seen, if any.
+        episode_min: Lowest episode seen, if any.
+        episode_max: Highest episode seen, if any.
+        sample_titles: Up to three raw entry titles.
+        library_show: Library show whose alias/title exactly matches the parsed
+            name, if any.
+        existing_subscription_id: A subscription on this feed already linked to
+            ``library_show``, if any.
+    """
+
+    parsed_name: str | None
+    entry_count: int
+    season_min: int | None
+    season_max: int | None
+    episode_min: int | None
+    episode_max: int | None
+    sample_titles: list[str]
+    library_show: RssShowBrief | None
+    existing_subscription_id: int | None
+
+
+class FeedEntriesRead(BaseModel):
+    """Response for browsing a feed's entries.
+
+    Attributes:
+        feed_id: Feed the entries were fetched from.
+        total_entries: Entries returned (after the server-side cap).
+        truncated: The feed had more entries than the cap.
+        malformed: The feed XML was not well-formed; entries may be incomplete.
+        cached: Served from the short-lived entry cache.
+        groups: Entries grouped by parsed show name.
+    """
+
+    feed_id: int
+    total_entries: int
+    truncated: bool
+    malformed: bool
+    cached: bool
+    groups: list[FeedEntryGroupRead]

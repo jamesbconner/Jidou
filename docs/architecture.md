@@ -122,6 +122,8 @@ The default limit is `0.5` req/sec (configurable via `TMDB_RATE_LIMIT_PER_SECOND
 
 **Images get their own, separate bucket.** `image.tmdb.org` (posters/backdrops) is a different host from `api.themoviedb.org` (metadata), with much looser practical limits — CDN image fetches don't risk the same account-level block metadata calls do. Sharing one bucket meant poster loading queued up behind an in-progress sync. `services/rate_limiter.py` exposes a second instance, `image_rate_limiter`, at `IMAGE_RATE_LIMIT_PER_SECOND` (default `5.0`), used only by `api/routes/images.py`.
 
+**RSS feed fetches get a third bucket.** `GET /api/rss/feeds/{id}/entries` fetches user-configured feed URLs through `FeedFetchService` (`services/feed_fetch.py`) at `FEED_RATE_LIMIT_PER_SECOND` (default `0.5`), via `feed_rate_limiter` in `services/rate_limiter.py` (Redis key `rss_feed`). Fetches are SSRF-guarded: the host is resolved once and the request is sent to that validated address (with the original `Host`/SNI) so DNS rebinding can't swap the target; redirects are re-validated; link-local, multicast, reserved and cloud-metadata ranges (including IPv6 forms that tunnel them) are refused, while private/loopback are allowed for LAN indexers. Responses are capped at 5 MiB / 200 entries with a 30 s total deadline, concurrent requests for one feed share a single fetch, and results are cached for 5 minutes. Feed URLs commonly embed passkeys in the path or query, so nothing beyond `scheme://host` is logged, used as a cache label, or put in an error message (the HTTP client's own request log lines are scrubbed the same way during a feed fetch). Note that `GET /api/rss/feeds` already returns each feed's stored URL to authenticated clients, as it did before.
+
 ---
 
 ## Image caching

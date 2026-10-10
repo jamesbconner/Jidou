@@ -19,7 +19,7 @@ patterns and LLM prompt that would inevitably drift apart.
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
@@ -231,6 +231,35 @@ def _heuristic_parse(filename: str) -> FilenameParseResult:
         confidence=0.1,
         llm_ok=False,
     )
+
+
+# Private-use placeholders for path separators (see parse_release_title).
+_SLASH = "\ue000"
+_BACKSLASH = "\ue001"
+
+
+def parse_release_title(title: str) -> FilenameParseResult:
+    """Heuristically parse an RSS/torrent release title (not a filesystem path).
+
+    ``_heuristic_parse`` treats its input as a filename and takes the
+    basename first, which would truncate a title such as ``"Fate/stay night -
+    05"`` to ``"stay night - 05"``. Path separators are therefore swapped for
+    placeholders that survive the filename cleanup and restored in the parsed
+    name, so the result is still ``"Fate/stay night"`` and matches a library
+    show of that exact title. Regex only — no LLM call — so it is cheap enough
+    to run on every entry of a feed.
+
+    Args:
+        title: Raw release title as published in a feed entry.
+
+    Returns:
+        FilenameParseResult with content_type always None and llm_ok=False.
+    """
+    result = _heuristic_parse(title.replace("/", _SLASH).replace("\\", _BACKSLASH))
+    if result.show_name:
+        restored = result.show_name.replace(_SLASH, "/").replace(_BACKSLASH, "\\")
+        result = replace(result, show_name=restored)
+    return result
 
 
 def heuristic_se(filename: str) -> tuple[int, int] | None:

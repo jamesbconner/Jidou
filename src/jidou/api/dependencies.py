@@ -3,6 +3,7 @@
 from fastapi import Header, HTTPException, Request, status
 
 from jidou.config import settings
+from jidou.services.feed_fetch import FeedFetchService
 from jidou.services.llm_service import LLMService, create_llm_service
 
 
@@ -25,6 +26,18 @@ def get_llm_service(request: Request) -> LLMService:
         svc = create_llm_service(settings)
         request.app.state.llm_service = svc
     return svc
+
+
+_feed_fetch_service = FeedFetchService()
+
+
+def get_feed_fetch_service() -> FeedFetchService:
+    """Return the process-wide :class:`FeedFetchService`.
+
+    Returns:
+        The shared service (it holds no per-request state).
+    """
+    return _feed_fetch_service
 
 
 async def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
