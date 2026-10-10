@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-10
+
 ### Added
 - **Local library search API.** `GET /api/shows/search` now searches the local library by title, alias, `sys_name`, and folder name (the last component of `local_path`, so a remake's `Show (2019)` folder is found), ranked exact > prefix > substring with a `matched_on` field. The Shows page's Library search and the file Rematch modal use it instead of a title-only client-side filter.
 
