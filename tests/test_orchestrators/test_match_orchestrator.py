@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _sanitize_alias
+from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
+from jidou.services.alias_teaching import sanitize_alias
 
 # ---------------------------------------------------------------------------
 # Unit helpers
@@ -21,7 +22,7 @@ from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _sanitize_
 
 def test_sanitize_alias():
     """Aliases are lowercased and stripped."""
-    assert _sanitize_alias("  Attack on Titan  ") == "attack on titan"
+    assert sanitize_alias("  Attack on Titan  ") == "attack on titan"
 
 
 # ---------------------------------------------------------------------------

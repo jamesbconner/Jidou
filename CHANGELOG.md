@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-10-10
+
+### Fixed
+- **Resolving a file by hand now teaches the show its parsed name.** A manual match (Files page → Resolve or Rematch) saves the file's parsed show name as a user alias of the chosen show, so later files with the same name match automatically instead of landing in Unmatched again. Names that already equal the show's title are skipped. The alias helper now lives in `services/alias_teaching.py`, shared with the parse pipeline.
+
 ## [0.3.1] — 2026-10-10
 
 ### Fixed

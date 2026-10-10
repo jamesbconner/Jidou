@@ -69,7 +69,7 @@ If the LLM is unavailable, returns no response, or returns unparseable JSON, thi
 Unlike Pipeline B, this pipeline never attempts the `episode_group_map` cour/season remap (below) — a season mismatch here just falls through to `UNMATCHED` rather than being reinterpreted.
 
 **Side effects on a successful match:**
-- The parsed name is taught back into `show.aliases` / `show.aliases_sources["user"]` (`_add_alias`) — every subsequent file with that exact name skips the LLM entirely and resolves via the GIN index.
+- The parsed name is taught back into `show.aliases` / `show.aliases_sources["user"]` (`services/alias_teaching.add_alias`) — every subsequent file with that exact name skips the LLM entirely and resolves via the GIN index.
 - `show.content_type` is backfilled from the LLM's parsed value **only if currently unset** — an existing value is never overwritten here.
 - `show.local_path` is auto-populated via `_resolve_local_path` (content_type/media_type → base dir + `sys_name`) **only if** `show.content_type` is set, or `show.media_type == "movie"` (unambiguous either way). A show whose `media_type == "tv"` with no `content_type` set is intentionally left with `local_path=None` — TMDB's `"tv"` covers both real TV and anime, so guessing would risk routing to the wrong base directory. A warning is logged; someone has to `PATCH /shows/{id}` to set it manually.
 - If the LLM returned `season=null` (anime absolute numbering) but the episode resolved successfully, `file.parsed_season` is backfilled from the resolved episode's actual `season_number` so `RouteOrchestrator` doesn't place the file at the show root by mistake.
