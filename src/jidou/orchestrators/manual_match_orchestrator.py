@@ -12,7 +12,7 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
-from jidou.services.alias_teaching import add_alias, sanitize_alias
+from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import (
     clear_if_unreferenced,
@@ -261,7 +261,7 @@ class ManualMatchOrchestrator:
         return show
 
     @staticmethod
-    def _teach_parsed_name(file: DownloadedFile, show: Show) -> None:
+    def _add_parsed_name_alias(file: DownloadedFile, show: Show) -> None:
         """Record the file's parsed show name as an alias of *show*.
 
         A name that already equals the show's title is skipped, since title
@@ -276,7 +276,7 @@ class ManualMatchOrchestrator:
             return
         add_alias(show, name)
         logger.info(
-            "Taught alias %r to show id=%d (%s) from manual match of file id=%d",
+            "Added alias %r to show id=%d (%s) from manual match of file id=%d",
             sanitize_alias(name),
             show.id,
             show.title,
@@ -334,11 +334,11 @@ class ManualMatchOrchestrator:
                 await dismiss_orphans_for_file(self.session, file.id)
                 mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
 
-        # Teach the show the name this file was parsed as, so the next file with
+        # Add the name this file was parsed as to the show's aliases, so the next file with
         # the same parsed name matches automatically instead of landing in
         # UNMATCHED again. A manual match is an explicit human decision, so
         # unlike the parse pipeline there is no fuzzy-hit guard here.
-        self._teach_parsed_name(file, show)
+        self._add_parsed_name_alias(file, show)
 
         # Clear stale tracking on the old episode only when the episode actually
         # changed.  Running this after the heuristic avoids falsely clearing

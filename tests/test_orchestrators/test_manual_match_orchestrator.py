@@ -161,7 +161,7 @@ async def test_match_show_id_sets_matched_status() -> None:
     assert f.parsed_episode == 1
 
 
-async def test_match_teaches_parsed_name_as_alias() -> None:
+async def test_match_adds_parsed_name_as_alias() -> None:
     """The file's parsed name is stored as a user alias so future parses match it."""
     f = _make_file(parsed_show_name="Example Show")
     show = _make_show(title="Example Show (2019)")
@@ -192,7 +192,7 @@ async def test_match_does_not_duplicate_existing_alias() -> None:
 async def test_match_skips_alias_when_name_missing_or_equals_title(
     parsed_name: str | None,
 ) -> None:
-    """No alias is taught for an empty name or one that is just the show's title."""
+    """No alias is added for an empty name or one that is just the show's title."""
     f = _make_file(parsed_show_name=parsed_name)
     show = _make_show(title="Test Show")
     session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])

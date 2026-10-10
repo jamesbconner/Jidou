@@ -1,9 +1,9 @@
-"""Tests for the shared alias-teaching helpers."""
+"""Tests for the shared alias-handling helpers."""
 
 import pytest
 
 from jidou.models.show import Show
-from jidou.services.alias_teaching import add_alias, sanitize_alias
+from jidou.services.alias_handling import add_alias, sanitize_alias
 
 
 def _show(

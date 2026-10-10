@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.show import Show
-from jidou.services.alias_teaching import add_alias, sanitize_alias
+from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file
@@ -41,7 +41,7 @@ def _is_exact_alias_match(show: Show, name: str) -> bool:
 
     Guards ``add_alias`` calls after a fuzzy ``_find_show`` lookup: a
     substring hit (e.g. "Daredevil" matching "Daredevil: Born Again") must
-    never get taught as a permanent alias, since that would misfile every
+    never get added as a permanent alias, since that would misfile every
     future parse of the shorter name onto the longer show.
 
     Args:
@@ -320,7 +320,7 @@ class ParseOrchestrator:
                     file.status = FileStatus.MATCHED
                     # Clear any stale reason from a prior UNMATCHED attempt.
                     file.error_message = None
-                    # Teach the alias index so future matches skip LLM — but only
+                    # Add the alias so future matches skip LLM — but only
                     # when show_name is already known to name this show exactly.
                     # A fuzzy substring hit from _find_show must never be
                     # permanently written as an alias.

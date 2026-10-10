@@ -1,4 +1,4 @@
-"""Teach a show a new alias so future parses of the same name match it."""
+"""Normalise aliases and add them to a show record."""
 
 from jidou.models.show import Show
 
@@ -23,8 +23,8 @@ def add_alias(show: Show, alias: str) -> None:
     user next edits aliases via the UI (which reads from ``aliases_sources``).
     Adding an alias that is already present is a no-op.
 
-    Callers decide *whether* a name should be taught; this only stores it.
-    The parse pipeline must not teach fuzzy substring hits, while a manual
+    Callers decide *whether* a name should be added; this only stores it.
+    The parse pipeline must not add fuzzy substring hits, while a manual
     match is an explicit user decision and may.
 
     Args:
