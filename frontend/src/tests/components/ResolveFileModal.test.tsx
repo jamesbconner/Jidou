@@ -159,4 +159,20 @@ describe('ResolveFileModal local + TMDB matching', () => {
     expect(await screen.findByText(/has no local path/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm match' })).toBeDisabled()
   })
+
+  test('shows the library section above the TMDB search controls and results', async () => {
+    mockApi({ local: [localShow], suggestions: [{ ...tmdbSuggestion, tmdb_id: 900, title: 'Brand New Show' }] })
+    renderModal()
+
+    const library = await screen.findByText('In your library')
+    const tmdbLabel = screen.getByText('Search TMDB')
+    const tmdbResult = await screen.findByRole('button', { name: /Brand New Show/ })
+
+    // The library block must come first, so it never splits the TMDB label
+    // from the TMDB links/results that belong to it.
+    expect(library.compareDocumentPosition(tmdbLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(library.compareDocumentPosition(tmdbResult) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const refine = screen.getByRole('button', { name: 'refine search' })
+    expect(library.compareDocumentPosition(refine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

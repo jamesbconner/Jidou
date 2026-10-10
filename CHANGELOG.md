@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-10
+
+### Fixed
+- **Resolve modal: library matches now sit above the TMDB search.** The "In your library" section was rendered between the "Search TMDB" controls and the TMDB results, splitting them apart. It now comes first, so the TMDB label, links and results stay together.
+
 ## [0.3.0] — 2026-10-10
 
 ### Added

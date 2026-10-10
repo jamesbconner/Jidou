@@ -210,6 +210,53 @@ export function ResolveFileModal({ file, onClose }: Props) {
             )}
           </div>
 
+          {/* Local library matches */}
+          {(localLoading || localResults.length > 0) && (
+            <div className="space-y-2">
+              <div className="text-xs text-zinc-400">In your library</div>
+              {localLoading && localResults.length === 0 && (
+                <div className="text-xs text-zinc-500 py-1">Searching library…</div>
+              )}
+              <div className="space-y-1.5">
+                {localResults.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => selectLocal(s)}
+                    className={`w-full flex items-center gap-3 rounded border px-3 py-2 text-left transition-colors ${
+                      selectedLocal?.id === s.id
+                        ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
+                        : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-zinc-200 truncate">
+                        {s.title}
+                        {year(s.release_date) ? ` (${year(s.release_date)})` : ''}
+                      </div>
+                      <div className="text-xs text-zinc-500 font-mono truncate">
+                        {s.local_path
+                          ? config
+                            ? toHostPath(s.local_path, config.media_paths)
+                            : s.local_path
+                          : 'no local path set'}
+                      </div>
+                    </div>
+                    {s.matched_on !== 'title' && (
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-400 shrink-0">
+                        matched{' '}
+                        {s.matched_on === 'path'
+                          ? 'folder'
+                          : s.matched_on === 'sys_name'
+                            ? 'system name'
+                            : 'alias'}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Search */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -272,58 +319,8 @@ export function ResolveFileModal({ file, onClose }: Props) {
             )}
           </div>
 
-          {/* Local library matches */}
-          {(localLoading || localResults.length > 0) && (
-            <div className="space-y-2">
-              <div className="text-xs text-zinc-400">In your library</div>
-              {localLoading && localResults.length === 0 && (
-                <div className="text-xs text-zinc-500 py-1">Searching library…</div>
-              )}
-              <div className="space-y-1.5">
-                {localResults.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => selectLocal(s)}
-                    className={`w-full flex items-center gap-3 rounded border px-3 py-2 text-left transition-colors ${
-                      selectedLocal?.id === s.id
-                        ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
-                        : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-zinc-200 truncate">
-                        {s.title}
-                        {year(s.release_date) ? ` (${year(s.release_date)})` : ''}
-                      </div>
-                      <div className="text-xs text-zinc-500 font-mono truncate">
-                        {s.local_path
-                          ? config
-                            ? toHostPath(s.local_path, config.media_paths)
-                            : s.local_path
-                          : 'no local path set'}
-                      </div>
-                    </div>
-                    {s.matched_on !== 'title' && (
-                      <span className="text-[10px] uppercase tracking-wide text-zinc-400 shrink-0">
-                        matched{' '}
-                        {s.matched_on === 'path'
-                          ? 'folder'
-                          : s.matched_on === 'sys_name'
-                            ? 'system name'
-                            : 'alias'}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* TMDB results grid */}
           <div className="space-y-2">
-            {(localLoading || localResults.length > 0) && (
-              <div className="text-xs text-zinc-400">From TMDB</div>
-            )}
             {isLoading && (
               <div className="text-xs text-zinc-500 py-2">Loading suggestions…</div>
             )}
