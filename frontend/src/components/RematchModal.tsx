@@ -47,11 +47,15 @@ export function RematchModal({ file, onClose }: Props) {
   const rematch = useRematchFile()
   const triggerRoute = useTriggerTask()
 
-  // Library search: server-side match on title, alias, sys_name and folder name
-  const { data: libraryResults = [] } = useLocalShowSearch(
-    mode === 'library' ? debouncedQuery : '',
+  // Library search: server-side match on title, alias, sys_name and folder name.
+  // Gated on the live input (like the TMDB search) so a mode switch, which clears
+  // searchQuery, cannot replay the previous debounced query.
+  const { data: libraryResults = [], isFetching: libraryLoading } = useLocalShowSearch(
+    mode === 'library' && searchQuery.trim().length >= 2 ? debouncedQuery : '',
     8,
   )
+  // Only report "no results" once the debounce and request have both settled.
+  const librarySettled = debouncedQuery === searchQuery && !libraryLoading
 
   const tmdbDisplayResults = useMemo(
     () =>
@@ -209,7 +213,7 @@ export function RematchModal({ file, onClose }: Props) {
                   </div>
                 </button>
               ))}
-              {searchQuery.length >= 2 && libraryResults.length === 0 && (
+              {searchQuery.trim().length >= 2 && librarySettled && libraryResults.length === 0 && (
                 <div className="text-xs text-zinc-500 py-1">No library shows found.</div>
               )}
               {selectedLibraryShow && !selectedLibraryShow.local_path && (
