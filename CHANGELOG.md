@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Local library search API.** `GET /api/shows/search` now searches the local library by title, alias, `sys_name`, and folder name (the last component of `local_path`, so a remake's `Show (2019)` folder is found), ranked exact > prefix > substring with a `matched_on` field. The Shows page's Library search and the file Rematch modal use it instead of a title-only client-side filter.
+
+### Changed
+- **TMDB endpoints moved under `/api/shows/tmdb/`.** `GET /api/shows/search`, `/trending`, and `/discover` are now `GET /api/shows/tmdb/search`, `/tmdb/trending`, and `/tmdb/discover`, alongside the existing `/tmdb/{tmdb_id}`. `/api/shows/search` now means the local search above.
+
 ## [0.2.1] — 2026-10-09
 
 ### Fixed

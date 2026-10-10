@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { dashboardKeys } from '@/hooks/useDashboard'
 import type {
   ShowList,
+  ShowSearchResult,
   ShowRead,
   ShowCreate,
   ShowPatch,
@@ -56,6 +57,7 @@ export const showKeys = {
   backdrops: (id: number) => [...showKeys.all, 'backdrops', id] as const,
   trending: () => ['tmdb', 'trending'] as const,
   search: (q: string, mediaType?: string) => ['tmdb', 'search', q, mediaType ?? null] as const,
+  localSearch: (q: string) => [...showKeys.all, 'local-search', q] as const,
   discover: () => ['tmdb', 'discover'] as const,
   tmdbDetails: (tmdbId: number, mediaType: string) =>
     ['tmdb', 'details', tmdbId, mediaType] as const,
@@ -122,19 +124,35 @@ export function useShowBackdrops(showId: number, opts: { enabled?: boolean } = {
   })
 }
 
-export function useTrendingShows(mediaType = 'tv') {
+export function useTmdbTrending(mediaType = 'tv') {
   return useQuery({
     queryKey: showKeys.trending(),
-    queryFn: () => api.get<TmdbSearchResponse>(`/shows/trending?media_type=${mediaType}`),
+    queryFn: () => api.get<TmdbSearchResponse>(`/shows/tmdb/trending?media_type=${mediaType}`),
   })
 }
 
-export function useSearchShows(query: string, mediaType?: string) {
+/**
+ * Search the local library by title, alias, sys_name or folder name.
+ * Distinct from `useTmdbSearch`, which searches TMDB's catalog.
+ */
+export function useLocalShowSearch(query: string, limit = 20) {
+  const trimmed = query.trim()
+  return useQuery({
+    queryKey: showKeys.localSearch(trimmed),
+    queryFn: () =>
+      api.get<ShowSearchResult[]>(
+        `/shows/search?query=${encodeURIComponent(trimmed)}&limit=${limit}`,
+      ),
+    enabled: trimmed.length >= 2,
+  })
+}
+
+export function useTmdbSearch(query: string, mediaType?: string) {
   return useQuery({
     queryKey: showKeys.search(query, mediaType),
     queryFn: () =>
       api.get<TmdbSearchResponse>(
-        `/shows/search?query=${encodeURIComponent(query)}${mediaType ? `&media_type=${mediaType}` : ''}`,
+        `/shows/tmdb/search?query=${encodeURIComponent(query)}${mediaType ? `&media_type=${mediaType}` : ''}`,
       ),
     enabled: query.length >= 2,
   })
@@ -157,10 +175,10 @@ export function useTmdbDetails(tmdbId: number | null, mediaType: 'tv' | 'movie')
   })
 }
 
-export function useDiscoverShows(limit = 40) {
+export function useTmdbDiscover(limit = 40) {
   return useQuery({
     queryKey: showKeys.discover(),
-    queryFn: () => api.get<DiscoverResult[]>(`/shows/discover?limit=${limit}`),
+    queryFn: () => api.get<DiscoverResult[]>(`/shows/tmdb/discover?limit=${limit}`),
     staleTime: 60 * 60 * 1000,
   })
 }

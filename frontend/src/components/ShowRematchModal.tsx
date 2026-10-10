@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useRematchShow, useSearchShows } from '@/hooks/useShows'
+import { useRematchShow, useTmdbSearch } from '@/hooks/useShows'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
 import type { TmdbResult } from '@/types/api'
@@ -29,7 +29,7 @@ export function ShowRematchModal({
     }
   }, [query])
 
-  const { data: searchData } = useSearchShows(debouncedQuery)
+  const { data: searchData } = useTmdbSearch(debouncedQuery)
 
   function handlePick(r: TmdbResult) {
     if (r.id === currentTmdbId) return

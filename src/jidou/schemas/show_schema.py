@@ -282,6 +282,25 @@ class RematchRequest(BaseModel):
     )
 
 
+class ShowSearchResult(BaseModel):
+    """One local show matched by ``GET /shows/search``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tmdb_id: int
+    title: str
+    media_type: str
+    content_type: ContentType | None = None
+    local_path: str | None = None
+    sys_name: str | None = None
+    poster_path: str | None = None
+    release_date: str | None = None
+    matched_on: Literal["title", "alias", "sys_name", "path"] = Field(
+        description="Which field produced the best match",
+    )
+
+
 class ShowList(BaseModel):
     """Slim show record returned by ``GET /shows``."""
 

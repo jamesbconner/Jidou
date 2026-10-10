@@ -61,7 +61,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shows/trending": {
+    "/api/shows/tmdb/trending": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,7 +80,7 @@ export interface paths {
          *     Returns:
          *         Raw TMDB trending response dictionary.
          */
-        get: operations["get_trending_api_shows_trending_get"];
+        get: operations["get_trending_api_shows_tmdb_trending_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -89,7 +89,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shows/search": {
+    "/api/shows/tmdb/search": {
         parameters: {
             query?: never;
             header?: never;
@@ -97,7 +97,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Search Shows
+         * Search Tmdb
          * @description Search TMDB for shows matching a query.
          *
          *     Args:
@@ -108,7 +108,7 @@ export interface paths {
          *     Returns:
          *         Raw TMDB search response dictionary.
          */
-        get: operations["search_shows_api_shows_search_get"];
+        get: operations["search_tmdb_api_shows_tmdb_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -149,7 +149,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shows/discover": {
+    "/api/shows/tmdb/discover": {
         parameters: {
             query?: never;
             header?: never;
@@ -174,7 +174,39 @@ export interface paths {
          *     Returns:
          *         List of :class:`DiscoverResult`, seeded items first.
          */
-        get: operations["discover_shows_api_shows_discover_get"];
+        get: operations["discover_shows_api_shows_tmdb_discover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shows/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Shows
+         * @description Search the local library by title, alias, ``sys_name`` or folder name.
+         *
+         *     Case-insensitive substring match; results are ranked exact > prefix >
+         *     substring. Folder matching uses only the final component of ``local_path``.
+         *     For TMDB search use ``GET /shows/tmdb/search``.
+         *
+         *     Args:
+         *         query: Search text (at least two characters).
+         *         limit: Maximum number of results.
+         *         db_session: Async database session (injected).
+         *
+         *     Returns:
+         *         Ranked matching shows, each tagged with the field that matched.
+         */
+        get: operations["search_shows_api_shows_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4639,6 +4671,35 @@ export interface components {
             updated_at: string;
         };
         /**
+         * ShowSearchResult
+         * @description One local show matched by ``GET /shows/search``.
+         */
+        ShowSearchResult: {
+            /** Id */
+            id: number;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Title */
+            title: string;
+            /** Media Type */
+            media_type: string;
+            content_type?: components["schemas"]["ContentType"] | null;
+            /** Local Path */
+            local_path?: string | null;
+            /** Sys Name */
+            sys_name?: string | null;
+            /** Poster Path */
+            poster_path?: string | null;
+            /** Release Date */
+            release_date?: string | null;
+            /**
+             * Matched On
+             * @description Which field produced the best match
+             * @enum {string}
+             */
+            matched_on: "title" | "alias" | "sys_name" | "path";
+        };
+        /**
          * StatsResponse
          * @description Response model for ``GET /api/admin/stats``.
          *
@@ -5043,7 +5104,7 @@ export interface operations {
             };
         };
     };
-    get_trending_api_shows_trending_get: {
+    get_trending_api_shows_tmdb_trending_get: {
         parameters: {
             query?: {
                 media_type?: string;
@@ -5079,7 +5140,7 @@ export interface operations {
             };
         };
     };
-    search_shows_api_shows_search_get: {
+    search_tmdb_api_shows_tmdb_search_get: {
         parameters: {
             query: {
                 query: string;
@@ -5152,7 +5213,7 @@ export interface operations {
             };
         };
     };
-    discover_shows_api_shows_discover_get: {
+    discover_shows_api_shows_tmdb_discover_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -5172,6 +5233,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoverResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_shows_api_shows_search_get: {
+        parameters: {
+            query: {
+                query: string;
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowSearchResult"][];
                 };
             };
             /** @description Validation Error */

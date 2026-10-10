@@ -429,6 +429,9 @@ export type OrphanedTrackingRecord = Omit<
 
 export type FilePatch = components['schemas']['FilePatch']
 
+// GET /shows/search — local-library search hit (title/alias/sys_name/folder match).
+export type ShowSearchResult = components['schemas']['ShowSearchResult']
+
 // ─── Show local-directory scan ─────────────────────────────────────────────
 
 export type ScannedFileMatch = components['schemas']['ScannedFileMatch']
@@ -477,7 +480,7 @@ export interface TmdbDetailsResult {
   vote_average: number
 }
 
-// GET /shows/discover returns a synthesized feed (recommendations merged with
+// GET /shows/tmdb/discover returns a synthesized feed (recommendations merged with
 // trending), not a single raw TMDB response, but the field shape still
 // mirrors TmdbResult's (so it can feed directly into the existing
 // add-to-library flow). media_type is narrowed from the backend's bare

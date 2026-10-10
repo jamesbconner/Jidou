@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry, useReorderWatchlist } from '@/hooks/useWatchlist'
-import { useShows, useSearchShows, useCreateShow, useLibraryIndex } from '@/hooks/useShows'
+import { useShows, useTmdbSearch, useCreateShow, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
@@ -197,7 +197,7 @@ export default function Watchlist() {
   // once the watchlist is large enough for this to matter.
   const { data: allEntries = [] } = useWatchlist(undefined, 10000)
   const { data: allShows = [] } = useShows('title_asc', 10000)
-  const { data: tmdbData, isLoading: tmdbLoading } = useSearchShows(
+  const { data: tmdbData, isLoading: tmdbLoading } = useTmdbSearch(
     searchMode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',
     'multi',
   )

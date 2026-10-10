@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useDiscoverShows, useLibraryIndex } from '@/hooks/useShows'
+import { useTmdbDiscover, useLibraryIndex } from '@/hooks/useShows'
 import { useAddDiscoverResult, resultKey } from '@/hooks/useAddDiscoverResult'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
 import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
@@ -12,7 +12,7 @@ function subtitleFor(result: DiscoverResult): string {
 }
 
 export default function Discover() {
-  const { data: results = [], isLoading, isError } = useDiscoverShows()
+  const { data: results = [], isLoading, isError } = useTmdbDiscover()
   const libraryIndex = useLibraryIndex()
   const { add: handleAdd, pendingKeys, issueKeys } = useAddDiscoverResult()
 

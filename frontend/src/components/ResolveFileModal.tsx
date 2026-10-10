@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
-import { useSearchShows, useTmdbDetails } from '@/hooks/useShows'
+import { useTmdbSearch, useTmdbDetails } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -40,7 +40,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
     error: suggestionsError,
   } = useTmdbSuggestions(searchMode === 'suggestions' ? file.id : null)
 
-  const { data: searchResults, isFetching: searchLoading } = useSearchShows(
+  const { data: searchResults, isFetching: searchLoading } = useTmdbSearch(
     searchMode === 'title' && searchQuery.length >= 2 ? debouncedQuery : '',
     'multi',
   )

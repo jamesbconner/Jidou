@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Link } from 'react-router'
 import { ShowCard } from '@/components/ShowCard'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
-import { useShows, useSearchShows, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
+import { useShows, useTmdbSearch, useLocalShowSearch, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
 import { useWatchlist, useCreateWatchlistEntry, useDeleteWatchlistEntry } from '@/hooks/useWatchlist'
 import { useOrphans, useDismissOrphan } from '@/hooks/useOrphans'
@@ -216,7 +216,7 @@ export default function Shows() {
   // Single fetch covers both the modal search pool and the display grid.
   const { data: allShows = [], isLoading } = useShows('title_asc', 10000)
   const displayShows = useMemo(() => sortShows(allShows, sort), [allShows, sort])
-  const { data: searchData, isLoading: tmdbSearching } = useSearchShows(
+  const { data: searchData, isLoading: tmdbSearching } = useTmdbSearch(
     modalMode === 'tmdb' && query.length >= 2 ? debouncedQuery : '',
     'multi',
   )
@@ -257,11 +257,11 @@ export default function Shows() {
 
   const libraryIndex = useLibraryIndex()
 
-  const librarySearchResults = useMemo(() => {
-    if (query.trim().length < 2) return []
-    const q = query.toLowerCase()
-    return allShows.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 10)
-  }, [allShows, query])
+  // Server-side match on title, alias, sys_name and folder name.
+  const { data: librarySearchResults = [], isFetching: librarySearching } = useLocalShowSearch(
+    modalMode === 'library' ? debouncedQuery : '',
+    10,
+  )
 
   const genreOptions = useMemo(() => {
     const names = new Set<string>()
@@ -541,6 +541,8 @@ export default function Shows() {
                   {modalMode === 'library' ? (
                     query.trim().length < 2 ? (
                       <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
+                    ) : librarySearching || debouncedQuery !== query ? (
+                      <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
                     ) : librarySearchResults.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">No shows found for &quot;{query}&quot;.</p>
                     ) : (
@@ -561,6 +563,7 @@ export default function Shows() {
                               <p className="text-sm font-medium truncate dark:text-gray-100">{s.title}</p>
                               <p className="text-xs text-gray-400 dark:text-gray-500">
                                 {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
+                                {s.matched_on !== 'title' ? ` · matched ${s.matched_on === 'path' ? 'folder' : s.matched_on === 'sys_name' ? 'system name' : 'alias'}` : ''}
                               </p>
                             </div>
                             <span className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] shrink-0">View →</span>

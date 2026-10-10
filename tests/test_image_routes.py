@@ -322,7 +322,7 @@ def test_images_route_ignores_a_configured_api_key(client: TestClient) -> None:
             patch.object(images_module.image_cache_backend, "get", AsyncMock(return_value=b"x")),
         ):
             images_response = client.get("/api/images/w300/abc123.jpg")
-            control_response = client.get("/api/shows/trending")
+            control_response = client.get("/api/shows/tmdb/trending")
     finally:
         app.dependency_overrides[verify_api_key] = lambda: None
 

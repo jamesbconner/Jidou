@@ -3,7 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
 import {
-  useSearchShows,
+  useTmdbSearch,
+  useLocalShowSearch,
   useSimilarShows,
   useLibraryIndex,
   useCreateShow,
@@ -80,10 +81,10 @@ describe('showKeys.search', () => {
   })
 })
 
-describe('useSearchShows', () => {
+describe('useTmdbSearch', () => {
   test('omits media_type from the URL when mediaType is not passed', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [], total_results: 0, total_pages: 0, page: 1 }))
-    renderHook(() => useSearchShows('breaking bad'), { wrapper: makeWrapper() })
+    renderHook(() => useTmdbSearch('breaking bad'), { wrapper: makeWrapper() })
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     const url = vi.mocked(fetch).mock.calls[0][0] as string
     expect(url).toContain('query=breaking%20bad')
@@ -92,15 +93,40 @@ describe('useSearchShows', () => {
 
   test('includes media_type in the URL when mediaType is passed', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [], total_results: 0, total_pages: 0, page: 1 }))
-    renderHook(() => useSearchShows('breaking bad', 'multi'), { wrapper: makeWrapper() })
+    renderHook(() => useTmdbSearch('breaking bad', 'multi'), { wrapper: makeWrapper() })
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     const url = vi.mocked(fetch).mock.calls[0][0] as string
     expect(url).toContain('media_type=multi')
   })
 
   test('does not fire below the 2-character minimum', () => {
-    renderHook(() => useSearchShows('a', 'multi'), { wrapper: makeWrapper() })
+    renderHook(() => useTmdbSearch('a', 'multi'), { wrapper: makeWrapper() })
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('useLocalShowSearch', () => {
+  test('queries the local /shows/search endpoint, not the TMDB one', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
+    renderHook(() => useLocalShowSearch('  example show ', 8), { wrapper: makeWrapper() })
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    const url = vi.mocked(fetch).mock.calls[0][0] as string
+    expect(url).toContain('/shows/search?query=example%20show&limit=8')
+    expect(url).not.toContain('/tmdb/')
+  })
+
+  test('does not fire below the 2-character minimum', () => {
+    renderHook(() => useLocalShowSearch(' a '), { wrapper: makeWrapper() })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('useTmdbSearch URL', () => {
+  test('targets /shows/tmdb/search', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [], total_results: 0, total_pages: 0, page: 1 }))
+    renderHook(() => useTmdbSearch('breaking bad'), { wrapper: makeWrapper() })
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(vi.mocked(fetch).mock.calls[0][0] as string).toContain('/shows/tmdb/search?query=')
   })
 })
 
