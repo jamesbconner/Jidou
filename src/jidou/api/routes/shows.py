@@ -40,6 +40,7 @@ from jidou.schemas.show_schema import (
     ShowPatch,
     ShowPaths,
     ShowRead,
+    ShowSearchResult,
 )
 from jidou.services.cache import cache
 from jidou.services.episode_file_matching import match_entry_to_episode
@@ -56,6 +57,7 @@ from jidou.services.settings_service import (
     get_similar_titles_enabled,
     get_similar_titles_include_external,
 )
+from jidou.services.show_search import MIN_QUERY_LENGTH, search_local_shows
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
@@ -127,7 +129,8 @@ def _auto_local_path(content_type: str, sys_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# TMDB discovery endpoints (literal paths — must come before /{show_id})
+# TMDB proxy endpoints under /tmdb (literal paths — must come before /{show_id}).
+# The ``:int`` convertor on /tmdb/{tmdb_id} keeps it from capturing /tmdb/search etc.
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +139,7 @@ async def get_tmdb() -> TMDBService:
     return _tmdb
 
 
-@router.get("/trending")
+@router.get("/tmdb/trending")
 async def get_trending(
     media_type: str = "tv",
     time_window: str = "day",
@@ -155,8 +158,8 @@ async def get_trending(
     return await tmdb.get_trending(media_type=media_type, time_window=time_window)
 
 
-@router.get("/search")
-async def search_shows(
+@router.get("/tmdb/search")
+async def search_tmdb(
     query: str,
     media_type: str = "multi",
     tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
@@ -174,7 +177,7 @@ async def search_shows(
     return await tmdb.search(query=query, media_type=media_type)
 
 
-@router.get("/tmdb/{tmdb_id}")
+@router.get("/tmdb/{tmdb_id:int}")
 async def get_tmdb_details(
     tmdb_id: int,
     media_type: str = "tv",
@@ -257,7 +260,7 @@ def _to_discover_result(
     )
 
 
-@router.get("/discover", response_model=list[DiscoverResult])
+@router.get("/tmdb/discover", response_model=list[DiscoverResult])
 async def discover_shows(
     limit: int = Query(default=40, ge=1, le=100),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -367,6 +370,30 @@ _SORT_MAP: dict[str, ColumnElement[Any]] = {
     "episodes_desc": nullslast(Show.number_of_episodes.desc()),
     "episodes_added_desc": nullslast(_LATEST_EPISODE_ADDED_SQ.desc()),
 }
+
+
+@router.get("/search", response_model=list[ShowSearchResult])
+async def search_shows(
+    query: str = Query(min_length=MIN_QUERY_LENGTH, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[ShowSearchResult]:
+    """Search the local library by title, alias, ``sys_name`` or folder name.
+
+    Case-insensitive substring match; results are ranked exact > prefix >
+    substring. Folder matching uses only the final component of ``local_path``.
+    For TMDB search use ``GET /shows/tmdb/search``.
+
+    Args:
+        query: Search text (at least two characters).
+        limit: Maximum number of results.
+        db_session: Async database session (injected).
+
+    Returns:
+        Ranked matching shows, each tagged with the field that matched.
+    """
+    hits = await search_local_shows(db_session, query, limit=limit)
+    return [ShowSearchResult.model_validate(hit) for hit in hits]
 
 
 @router.get("", response_model=list[ShowList])

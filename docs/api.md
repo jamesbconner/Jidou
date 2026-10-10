@@ -72,7 +72,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 |--------|------|-------------|
 | GET | `/api/shows` | List tracked shows |
 | POST | `/api/shows` | Add a show from TMDB; fetches full details, auto-infers content type, and syncs episodes |
-| GET | `/api/shows/discover` | Personalized discovery feed — TMDB recommendations seeded from the watchlist, trending fallback, library-exclusion applied, cached 24h |
+| GET | `/api/shows/tmdb/discover` | Personalized discovery feed — TMDB recommendations seeded from the watchlist, trending fallback, library-exclusion applied, cached 24h |
 | GET | `/api/shows/{id}` | Get show detail |
 | GET | `/api/shows/{id}/similar` | "Similar Titles" for the detail page — merged TMDB recommendations + `/similar`, deduped, self-excluded; honours the `similar_titles_*` settings (disabled → `[]`), assembled list cached 24h |
 | GET | `/api/shows/{id}/images/posters` | Candidate posters from TMDB (English + textless) for the poster-picker modal |
@@ -80,8 +80,9 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | PUT | `/api/shows/{id}/paths` | Set local filesystem path |
 | PUT | `/api/shows/{id}/aliases` | Replace show aliases list |
 | DELETE | `/api/shows/{id}` | Remove show and all its data |
-| GET | `/api/shows/trending` | Trending TV or movie results from TMDB |
-| GET | `/api/shows/search` | Search TMDB by title |
+| GET | `/api/shows/search` | Search the local library by title, alias, `sys_name`, or folder name (final `local_path` component); ranked exact > prefix > substring, each hit tagged with `matched_on` (`title`/`alias`/`sys_name`/`path`) |
+| GET | `/api/shows/tmdb/trending` | Trending TV or movie results from TMDB |
+| GET | `/api/shows/tmdb/search` | Search TMDB by title |
 | GET | `/api/shows/tmdb/{tmdb_id}` | Fetch TMDB detail for a specific ID |
 | POST | `/api/shows/{id}/rematch` | Re-link show to a different TMDB entry |
 | POST | `/api/shows/{id}/sync-episodes` | Sync episode metadata from TMDB |
@@ -104,7 +105,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | POST | `/api/shows/{show_id}/episodes/watched` | Mark every episode in a show (or one season) watched |
 | DELETE | `/api/shows/{show_id}/episodes/watched` | Clear the watched flag on every episode in a show (or one season) |
 
-**`GET /api/shows/discover` query parameters:**
+**`GET /api/shows/tmdb/discover` query parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

@@ -1352,26 +1352,85 @@ def test_bulk_clear_episodes_watched_clears_every_episode() -> None:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/shows/trending  (TMDB proxy — no DB session needed)
+# GET /api/shows/tmdb/trending  (TMDB proxy — no DB session needed)
 # ---------------------------------------------------------------------------
 
 
 def test_get_trending_proxies_tmdb() -> None:
-    """GET /api/shows/trending returns TMDB response."""
+    """GET /api/shows/tmdb/trending returns TMDB response."""
     with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
         mock_tmdb.get_trending = AsyncMock(return_value={"results": []})
-        response = TestClient(app).get("/api/shows/trending?media_type=tv&time_window=day")
+        response = TestClient(app).get("/api/shows/tmdb/trending?media_type=tv&time_window=day")
     assert response.status_code == 200
     assert "results" in response.json()
 
 
-def test_search_shows_proxies_tmdb() -> None:
-    """GET /api/shows/search returns TMDB search results."""
+def test_tmdb_search_proxies_tmdb() -> None:
+    """GET /api/shows/tmdb/search returns TMDB search results."""
     with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
         mock_tmdb.search = AsyncMock(return_value={"results": [{"title": "Stuff"}]})
-        response = TestClient(app).get("/api/shows/search?query=stuff")
+        response = TestClient(app).get("/api/shows/tmdb/search?query=stuff")
     assert response.status_code == 200
     assert response.json()["results"][0]["title"] == "Stuff"
+
+
+def test_tmdb_literal_routes_not_captured_by_tmdb_id_route() -> None:
+    """/tmdb/search and /tmdb/trending must not be routed to /tmdb/{tmdb_id}."""
+    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+        mock_tmdb.search = AsyncMock(return_value={"results": []})
+        mock_tmdb.get_trending = AsyncMock(return_value={"results": []})
+        mock_tmdb.get_details = AsyncMock(return_value={})
+        client = TestClient(app)
+        assert client.get("/api/shows/tmdb/search?query=ab").status_code == 200
+        assert client.get("/api/shows/tmdb/trending").status_code == 200
+    mock_tmdb.get_details.assert_not_called()
+
+
+def test_search_local_shows_returns_ranked_hits() -> None:
+    """GET /api/shows/search serialises local search hits (not a TMDB proxy)."""
+    from jidou.database import get_session
+    from jidou.services.show_search import ShowSearchHit
+
+    hit = ShowSearchHit(
+        id=7,
+        tmdb_id=700,
+        title="Example Show",
+        media_type="tv",
+        content_type="anime",
+        local_path="/media/anime/Example Show (2019)",
+        sys_name="Example Show",
+        poster_path=None,
+        release_date="2019-04-01",
+        matched_on="path",
+    )
+
+    async def _session() -> object:
+        yield MagicMock()
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        with patch(
+            "jidou.api.routes.shows.search_local_shows", AsyncMock(return_value=[hit])
+        ) as mock_search:
+            response = TestClient(app).get("/api/shows/search?query=example&limit=5")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["id"] == 7
+    assert body[0]["local_path"] == "/media/anime/Example Show (2019)"
+    assert body[0]["matched_on"] == "path"
+    assert mock_search.await_args.args[1] == "example"
+    assert mock_search.await_args.kwargs == {"limit": 5}
+
+
+def test_search_local_shows_validates_query_and_limit() -> None:
+    """query needs >= 2 chars; limit is bounded to 1..100."""
+    client = TestClient(app)
+    assert client.get("/api/shows/search?query=a").status_code == 422
+    assert client.get("/api/shows/search").status_code == 422
+    assert client.get("/api/shows/search?query=ab&limit=0").status_code == 422
+    assert client.get("/api/shows/search?query=ab&limit=101").status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -4004,7 +4063,7 @@ def test_clear_episode_tracking_deletes_synthetic_file_instead_of_orphaning_it()
 
 
 # ---------------------------------------------------------------------------
-# GET /api/shows/discover
+# GET /api/shows/tmdb/discover
 # ---------------------------------------------------------------------------
 
 
@@ -4045,7 +4104,7 @@ def test_discover_cache_hit_skips_tmdb_calls() -> None:
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
         with patch.object(cache, "get", AsyncMock(return_value=cached_payload)):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -4089,7 +4148,7 @@ def test_discover_falls_back_to_trending_when_watchlist_empty() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()),
         ):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -4136,7 +4195,7 @@ def test_discover_seeds_from_watchlist_and_excludes_library() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()) as mock_cache_set,
         ):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -4179,7 +4238,7 @@ def test_discover_accumulates_seeded_from_across_seeds() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()),
         ):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -4219,7 +4278,7 @@ def test_discover_respects_limit() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()),
         ):
-            response = TestClient(app).get("/api/shows/discover?limit=2")
+            response = TestClient(app).get("/api/shows/tmdb/discover?limit=2")
         assert response.status_code == 200
         assert len(response.json()) == 2
     finally:
@@ -4262,7 +4321,7 @@ def test_discover_falls_back_to_trending_when_recommendations_fail() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()),
         ):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert len(body) == 1
@@ -4313,7 +4372,7 @@ def test_discover_sorts_by_seeded_count_then_rating() -> None:
             patch.object(cache, "get", AsyncMock(return_value=None)),
             patch.object(cache, "set", AsyncMock()),
         ):
-            response = TestClient(app).get("/api/shows/discover")
+            response = TestClient(app).get("/api/shows/tmdb/discover")
         assert response.status_code == 200
         body = response.json()
         assert [r["id"] for r in body] == [2, 1]

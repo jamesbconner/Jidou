@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
-import { useShows, useSearchShows, useLibraryIndex } from '@/hooks/useShows'
+import { useLocalShowSearch, useTmdbSearch, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { api } from '@/api/client'
 import { toHostPath, toContainerPath, sanitizeFolderName } from '@/utils/paths'
 import type {
   FileRead,
-  ShowList,
+  ShowSearchResult,
   TmdbResult,
   ContentType,
   AppConfig,
@@ -28,7 +28,7 @@ export function RematchModal({ file, onClose }: Props) {
   const initialQuery = file.parsed_show_name ?? ''
   const [searchQuery, setSearchQuery] = useState(initialQuery)
   const debouncedQuery = useDebounce(searchQuery, 300)
-  const [selectedLibraryShow, setSelectedLibraryShow] = useState<ShowList | null>(null)
+  const [selectedLibraryShow, setSelectedLibraryShow] = useState<ShowSearchResult | null>(null)
   const [selectedTmdb, setSelectedTmdb] = useState<TmdbResult | null>(null)
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [folderName, setFolderName] = useState('')
@@ -38,9 +38,8 @@ export function RematchModal({ file, onClose }: Props) {
     queryFn: () => api.get<AppConfig>('/config'),
     staleTime: 60_000,
   })
-  const { data: allShows = [] } = useShows('title_asc', 10000)
 
-  const { data: tmdbResults, isFetching: tmdbLoading } = useSearchShows(
+  const { data: tmdbResults, isFetching: tmdbLoading } = useTmdbSearch(
     mode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',
     'multi',
   )
@@ -48,12 +47,11 @@ export function RematchModal({ file, onClose }: Props) {
   const rematch = useRematchFile()
   const triggerRoute = useTriggerTask()
 
-  // Library search: filter in-memory for speed
-  const libraryResults = useMemo(() => {
-    if (searchQuery.trim().length < 2) return []
-    const q = searchQuery.toLowerCase()
-    return allShows.filter((s) => s.title.toLowerCase().includes(q)).slice(0, 8)
-  }, [allShows, searchQuery])
+  // Library search: server-side match on title, alias, sys_name and folder name
+  const { data: libraryResults = [] } = useLocalShowSearch(
+    mode === 'library' ? debouncedQuery : '',
+    8,
+  )
 
   const tmdbDisplayResults = useMemo(
     () =>

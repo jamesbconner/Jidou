@@ -72,7 +72,7 @@ function mockShowsPage(
 ) {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input)
-    if (url.startsWith('/api/shows/search?')) {
+    if (url.startsWith('/api/shows/tmdb/search?')) {
       return mockResponse({ results: tmdbResults, total_results: tmdbResults.length, total_pages: 1, page: 1 })
     }
     if (url.startsWith('/api/shows?')) return mockResponse(shows)
