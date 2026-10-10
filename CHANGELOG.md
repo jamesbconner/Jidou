@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - **TMDB endpoints moved under `/api/shows/tmdb/`.** `GET /api/shows/search`, `/trending`, and `/discover` are now `GET /api/shows/tmdb/search`, `/tmdb/trending`, and `/tmdb/discover`, alongside the existing `/tmdb/{tmdb_id}`. `/api/shows/search` now means the local search above.
 
+### Fixed
+- **Resolve modal no longer proposes a new folder for a show you already have.** The Files page Resolve modal now lists matching shows from your library (by title, alias, system name, or folder name) above the TMDB results, and assigns the file to the existing show and folder. Picking a TMDB result whose show is already tracked does the same, so a remake's `Show (2019)` folder is no longer shadowed by a suggested `Show` folder. Closes #644.
+
 ## [0.2.1] — 2026-10-09
 
 ### Fixed
