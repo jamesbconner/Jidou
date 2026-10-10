@@ -11,6 +11,8 @@ from jidou.services.rss_regex_suggestor import (
     MAX_PROMPT_TITLES,
     RegexSuggestionError,
     RssRegexSuggestor,
+    build_system_prompt,
+    has_feed_evidence,
     titles_prompt_suffix,
 )
 
@@ -176,12 +178,129 @@ async def test_provider_failure_is_503() -> None:
     assert exc_info.value.status_code == 503
 
 
-def test_titles_suffix_frames_titles_as_naming_evidence_not_a_target_set() -> None:
+def test_titles_suffix_is_authoritative_but_not_a_coverage_target() -> None:
     suffix = titles_prompt_suffix(["Show - 05 (1080p)", "Show - 05 (720p) FRENCH"])
 
-    # Must not instruct the model to cover every listed title: groups mix
-    # qualities/dubs that the system prompt's 1080p and exclude rules skip.
+    # Groups mix qualities/dubs, so the model must not be told to cover every title...
     assert "matches all of them" not in suffix
     assert "does not need to match every title" in suffix
-    assert "quality preferences" in suffix
-    assert "regex_exclude rules" in suffix
+    # ...and the titles, not a generic default, decide the naming.
+    assert "authoritative" in suffix
+    assert "quality preferences" not in suffix
+
+
+# ---------------------------------------------------------------------------
+# System prompt layering: generic defaults only when the feed has no evidence
+# ---------------------------------------------------------------------------
+
+_MECHANICS = ("exactly two keys", "unescaped period (.)", "^Attack.on.Titan.*", "After a colon")
+_DEFAULTS = ("1080p", "BluRay/WEB-DL/WEBRip", "FRENCH", "INTERNAL", "CAM, TS")
+
+
+def test_default_system_prompt_carries_generic_preferences_and_mechanics() -> None:
+    prompt = build_system_prompt(has_feed_evidence=False)
+
+    for needle in _MECHANICS + _DEFAULTS:
+        assert needle in prompt
+
+
+def test_evidence_system_prompt_drops_generic_preferences_but_keeps_mechanics() -> None:
+    prompt = build_system_prompt(has_feed_evidence=True)
+
+    for needle in _MECHANICS:
+        assert needle in prompt
+    for needle in _DEFAULTS:
+        assert needle not in prompt
+    assert "take precedence over any generic preference" in prompt
+
+
+def _feed_with(*, samples=None, exclude_hint=None) -> MagicMock:
+    feed = MagicMock(spec=RssFeed)
+    feed.regex_include_samples = samples
+    feed.regex_exclude_hint = exclude_hint
+    return feed
+
+
+@pytest.mark.parametrize(
+    ("feed", "titles_suffix", "expected"),
+    [
+        (None, "", False),
+        (_feed_with(), "", False),
+        (_feed_with(samples=[]), "", False),
+        (_feed_with(samples=[{"sample_name": "", "hint": "x"}]), "", True),
+        (_feed_with(exclude_hint=""), "", True),  # deliberate "no exclude needed"
+        (_feed_with(exclude_hint="DUBBED"), "", True),
+        (_feed_with(), " titles...", True),
+        (None, " titles...", True),
+    ],
+)
+def test_has_feed_evidence(feed, titles_suffix: str, expected: bool) -> None:
+    assert has_feed_evidence(feed, titles_suffix) is expected
+
+
+async def test_suggest_without_evidence_sends_default_system_prompt() -> None:
+    llm = _llm(JSON_OK)
+
+    await RssRegexSuggestor(llm).suggest(
+        label="Show", label_is_show=True, feed=_feed(), log_ref="r"
+    )
+
+    system = llm.complete.await_args.kwargs["system"]
+    assert "1080p" in system and "FRENCH" in system
+
+
+@pytest.mark.parametrize(
+    "feed_kwargs",
+    [
+        {"samples": [{"sample_name": "Show - 01 (720p)", "hint": "Show.*720p"}]},
+        {"exclude_hint": ""},
+        {"exclude_hint": "DUBBED"},
+    ],
+)
+async def test_suggest_with_feed_hints_does_not_impose_default_preferences(
+    feed_kwargs: dict,
+) -> None:
+    llm = _llm(JSON_OK)
+
+    await RssRegexSuggestor(llm).suggest(
+        label="Show", label_is_show=True, feed=_feed_with(**feed_kwargs), log_ref="r"
+    )
+
+    system = llm.complete.await_args.kwargs["system"]
+    assert "1080p" not in system and "FRENCH" not in system
+    assert "take precedence over any generic preference" in system
+
+
+async def test_suggest_with_only_real_titles_does_not_impose_default_preferences() -> None:
+    llm = _llm(JSON_OK)
+
+    await RssRegexSuggestor(llm).suggest(
+        label="Show",
+        label_is_show=True,
+        feed=_feed(),
+        titles=["[Grp] Show - 05 (720p).mkv"],
+        log_ref="r",
+    )
+
+    system = llm.complete.await_args.kwargs["system"]
+    assert "1080p" not in system and "FRENCH" not in system
+    assert "[Grp] Show - 05 (720p).mkv" in llm.complete.await_args.kwargs["prompt"]
+
+
+async def test_duplicate_retry_uses_the_same_system_prompt() -> None:
+    llm = _llm(
+        '{"regex_include": "Same", "regex_exclude": ""}',
+        '{"regex_include": "Different", "regex_exclude": ""}',
+    )
+
+    await RssRegexSuggestor(llm).suggest(
+        label="Show",
+        label_is_show=True,
+        feed=_feed_with(exclude_hint=""),
+        previous=["Same"],
+        log_ref="r",
+    )
+
+    first, second = llm.complete.await_args_list
+    assert first.kwargs["system"] == second.kwargs["system"]
+    assert "1080p" not in second.kwargs["system"]

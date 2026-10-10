@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - The subscription regex suggester now lives in `services/rss_regex_suggestor.py` (shared by the existing `POST /api/rss/subscriptions/{id}/suggest-regex`, whose behaviour is unchanged).
+- **Regex suggestions no longer impose a generic quality preference on feeds that supply their own guidance.** The suggester used to always tell the model to match 1080p BluRay/WEB-DL releases and exclude FRENCH/GERMAN/INTERNAL/CAM/TS tags, which fought a feed's regex samples and exclude hint. Those defaults now apply only when the feed has no regex include samples, no exclude hint (an empty hint counts), and no real release titles; otherwise the feed's own evidence is authoritative. Feeds without hints behave as before. Re-suggesting on a feed with hints may now return a different pattern than it used to.
 
 ## [0.3.2] — 2026-10-10
 

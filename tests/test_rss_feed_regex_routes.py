@@ -279,3 +279,19 @@ def test_test_regex_feed_fetch_timeout_is_504(fetcher: MagicMock) -> None:
     r = TestClient(app).post("/api/rss/feeds/7/test-regex", json={"parsed_name": "X"})
 
     assert r.status_code == 504
+
+
+def test_suggest_with_real_titles_drops_generic_preferences_from_system_prompt(
+    fetcher: MagicMock,
+) -> None:
+    llm = _llm('{"regex_include": "Brand.New.Show", "regex_exclude": ""}')
+    app.dependency_overrides[get_llm_service] = lambda: llm
+
+    r = TestClient(app).post(
+        "/api/rss/feeds/7/suggest-regex", json={"parsed_name": "Brand New Show"}
+    )
+
+    assert r.status_code == 200
+    system = llm.complete.await_args.kwargs["system"]
+    assert "1080p" not in system and "FRENCH" not in system
+    assert "unescaped period (.)" in system  # mechanics are still there
