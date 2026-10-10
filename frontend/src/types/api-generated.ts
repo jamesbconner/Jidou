@@ -2543,6 +2543,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rss/feeds/{feed_id}/suggest-regex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Feed Group Regex
+         * @description Suggest a filter for a feed group that has no subscription yet.
+         *
+         *     The model is shown the group's real release titles (re-read from the feed,
+         *     cache-first) so the pattern follows how the feed actually spells the show,
+         *     and the response reports which of those titles the suggestion selects.
+         *
+         *     Args:
+         *         feed_id: Feed the group belongs to.
+         *         body: Group key, optional picked show title, and prior suggestions.
+         *         db_session: DB session (injected).
+         *         llm: LLM service (injected).
+         *         fetcher: Feed fetch service (injected).
+         *
+         *     Returns:
+         *         The suggestion plus a match report over the group's current titles.
+         *
+         *     Raises:
+         *         HTTPException: 404 unknown feed or group no longer in the feed; 422 LLM
+         *             not configured; 502/504 feed fetch failed; 503 LLM call failed.
+         */
+        post: operations["suggest_feed_group_regex_api_rss_feeds__feed_id__suggest_regex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rss/feeds/{feed_id}/test-regex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Feed Group Regex
+         * @description Preview which of a feed group's current titles a filter would select.
+         *
+         *     Read-only and LLM-free; used while a user edits a suggested filter.
+         *
+         *     Args:
+         *         feed_id: Feed the group belongs to.
+         *         body: Group key and the include/exclude patterns with their flags.
+         *         db_session: DB session (injected).
+         *         fetcher: Feed fetch service (injected).
+         *
+         *     Returns:
+         *         Matched and unmatched titles.
+         *
+         *     Raises:
+         *         HTTPException: 404 unknown feed or group no longer in the feed; 422
+         *             invalid regex; 502/504 feed fetch failed.
+         */
+        post: operations["test_feed_group_regex_api_rss_feeds__feed_id__test_regex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rss/subscriptions": {
         parameters: {
             query?: never;
@@ -2742,6 +2815,7 @@ export interface paths {
          *             ``previous`` lists earlier suggestions; when present the LLM cache is
          *             bypassed and the model is told to differ.
          *         db_session: DB session (injected).
+         *         llm: LLM service (injected).
          *
          *     Returns:
          *         :class:`RssRegexSuggestion` with the suggested regex patterns.
@@ -3583,6 +3657,74 @@ export interface components {
             existing_subscription_id: number | null;
         };
         /**
+         * FeedRegexSuggestRequest
+         * @description Request a regex suggestion for a group of a feed's entries.
+         *
+         *     Attributes:
+         *         parsed_name: The group's ``parsed_name`` from the feed entries response.
+         *             The group's real release titles are re-read server-side (from the
+         *             short-lived feed cache), never trusted from the client.
+         *         show_title: Title of the show the user picked (library or TMDB). Used as
+         *             the prompt's show label; ``parsed_name`` is used when omitted.
+         *         previous: Earlier ``regex_include`` suggestions this session. When
+         *             non-empty the LLM cache is bypassed and the model must differ.
+         */
+        FeedRegexSuggestRequest: {
+            /** Parsed Name */
+            parsed_name: string;
+            /** Show Title */
+            show_title?: string | null;
+            /** Previous */
+            previous?: string[];
+        };
+        /**
+         * FeedRegexSuggestion
+         * @description A regex suggestion plus how it fares against the group's real titles.
+         *
+         *     Attributes:
+         *         match: Titles the suggested filter would and would not select.
+         */
+        FeedRegexSuggestion: {
+            /** Regex Include */
+            regex_include: string;
+            /** Regex Exclude */
+            regex_exclude: string;
+            /** Model */
+            model: string;
+            /** Cached */
+            cached: boolean;
+            match: components["schemas"]["RegexMatchReportRead"];
+        };
+        /**
+         * FeedRegexTestRequest
+         * @description Preview a hand-edited filter against a feed group's current titles.
+         *
+         *     Attributes:
+         *         parsed_name: The group's ``parsed_name`` from the feed entries response.
+         *         regex_include: Include pattern; empty/None means no include filter.
+         *         regex_exclude: Exclude pattern; empty/None means no exclude filter.
+         *         regex_include_ignorecase: Case-insensitive include matching.
+         *         regex_exclude_ignorecase: Case-insensitive exclude matching.
+         */
+        FeedRegexTestRequest: {
+            /** Parsed Name */
+            parsed_name: string;
+            /** Regex Include */
+            regex_include?: string | null;
+            /** Regex Exclude */
+            regex_exclude?: string | null;
+            /**
+             * Regex Include Ignorecase
+             * @default true
+             */
+            regex_include_ignorecase: boolean;
+            /**
+             * Regex Exclude Ignorecase
+             * @default true
+             */
+            regex_exclude_ignorecase: boolean;
+        };
+        /**
          * FileMatchRequest
          * @description Request body for assigning a show to an unmatched file.
          *
@@ -3924,6 +4066,23 @@ export interface components {
             sample_name: string;
             /** Hint */
             hint: string;
+        };
+        /**
+         * RegexMatchReportRead
+         * @description Which of a feed group's current titles a regex filter selects.
+         *
+         *     Attributes:
+         *         matched_titles: Titles the filter would download.
+         *         unmatched_titles: Titles the filter would skip.
+         *         total: Number of titles evaluated.
+         */
+        RegexMatchReportRead: {
+            /** Matched Titles */
+            matched_titles: string[];
+            /** Unmatched Titles */
+            unmatched_titles: string[];
+            /** Total */
+            total: number;
         };
         /**
          * RematchRequest
@@ -7970,6 +8129,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedEntriesRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_feed_group_regex_api_rss_feeds__feed_id__suggest_regex_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                feed_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedRegexSuggestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedRegexSuggestion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_feed_group_regex_api_rss_feeds__feed_id__test_regex_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                feed_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedRegexTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegexMatchReportRead"];
                 };
             };
             /** @description Validation Error */

@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Browse a feed's live entries from the RSS page.** A new **Browse** action on each Feeds-tab row fetches the feed URL server-side (read-only, nothing is saved) and lists what it currently publishes, grouped by the show name parsed from the release titles. Each group shows its season/episode range, whether the show is already in your library, and whether a subscription on that feed already exists. Backed by `GET /api/rss/feeds/{id}/entries`, which caps responses at 5 MiB / 200 entries and a 30 s total deadline, re-validates every redirect, connects only to the address it validated (no DNS rebinding), refuses link-local/multicast/reserved and cloud-metadata targets, shares one in-flight fetch per feed, caches results for 5 minutes (`?refresh=true` bypasses), and never logs, labels or returns the feed URL beyond its host — private-tracker passkeys can sit in the path or the query string.
 - `FEED_RATE_LIMIT_PER_SECOND` (default `0.5`) — shared budget for outbound feed fetches, separate from the TMDB and image limits.
 - `feedparser` runtime dependency for lenient RSS/Atom parsing.
+- **Regex suggestions from a feed group's real release titles.** `POST /api/rss/feeds/{id}/suggest-regex` shows the LLM the titles the feed actually publishes for a show (so the pattern follows the feed's spelling, not just the catalogue title) and reports which of them the suggestion selects; `POST /api/rss/feeds/{id}/test-regex` previews a hand-edited filter the same way without calling the LLM. Backend and client hooks only; the UI that uses them ships in a follow-up.
+
+### Changed
+- The subscription regex suggester now lives in `services/rss_regex_suggestor.py` (shared by the existing `POST /api/rss/subscriptions/{id}/suggest-regex`, whose behaviour is unchanged).
 
 ## [0.3.2] — 2026-10-10
 

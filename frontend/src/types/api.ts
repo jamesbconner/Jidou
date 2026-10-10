@@ -327,6 +327,20 @@ export type FeedEntriesRead = components['schemas']['FeedEntriesRead']
 
 export type FeedEntryGroupRead = components['schemas']['FeedEntryGroupRead']
 
+export type FeedRegexSuggestRequest = components['schemas']['FeedRegexSuggestRequest']
+
+export type FeedRegexSuggestion = components['schemas']['FeedRegexSuggestion']
+
+export type FeedRegexTestRequest = Omit<
+  components['schemas']['FeedRegexTestRequest'],
+  'regex_include_ignorecase' | 'regex_exclude_ignorecase'
+> & {
+  regex_include_ignorecase?: boolean
+  regex_exclude_ignorecase?: boolean
+}
+
+export type RegexMatchReportRead = components['schemas']['RegexMatchReportRead']
+
 export interface ConnectionTestResult {
   ok: boolean
   error?: string

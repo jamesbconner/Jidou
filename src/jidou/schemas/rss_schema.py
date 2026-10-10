@@ -301,3 +301,72 @@ class FeedEntriesRead(BaseModel):
     malformed: bool
     cached: bool
     groups: list[FeedEntryGroupRead]
+
+
+MAX_REGEX_PATTERN_LENGTH = 512
+
+
+class RegexMatchReportRead(BaseModel):
+    """Which of a feed group's current titles a regex filter selects.
+
+    Attributes:
+        matched_titles: Titles the filter would download.
+        unmatched_titles: Titles the filter would skip.
+        total: Number of titles evaluated.
+    """
+
+    matched_titles: list[str]
+    unmatched_titles: list[str]
+    total: int
+
+
+class FeedRegexSuggestRequest(BaseModel):
+    """Request a regex suggestion for a group of a feed's entries.
+
+    Attributes:
+        parsed_name: The group's ``parsed_name`` from the feed entries response.
+            The group's real release titles are re-read server-side (from the
+            short-lived feed cache), never trusted from the client.
+        show_title: Title of the show the user picked (library or TMDB). Used as
+            the prompt's show label; ``parsed_name`` is used when omitted.
+        previous: Earlier ``regex_include`` suggestions this session. When
+            non-empty the LLM cache is bypassed and the model must differ.
+    """
+
+    parsed_name: str = Field(min_length=1, max_length=300)
+    show_title: str | None = Field(default=None, max_length=300)
+    previous: list[str] = Field(default_factory=list, max_length=MAX_PREVIOUS_SUGGESTIONS)
+
+
+class FeedRegexSuggestion(RssRegexSuggestion):
+    """A regex suggestion plus how it fares against the group's real titles.
+
+    Attributes:
+        match: Titles the suggested filter would and would not select.
+    """
+
+    match: RegexMatchReportRead
+
+
+class FeedRegexTestRequest(BaseModel):
+    """Preview a hand-edited filter against a feed group's current titles.
+
+    Attributes:
+        parsed_name: The group's ``parsed_name`` from the feed entries response.
+        regex_include: Include pattern; empty/None means no include filter.
+        regex_exclude: Exclude pattern; empty/None means no exclude filter.
+        regex_include_ignorecase: Case-insensitive include matching.
+        regex_exclude_ignorecase: Case-insensitive exclude matching.
+    """
+
+    parsed_name: str = Field(min_length=1, max_length=300)
+    regex_include: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_exclude: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include_ignorecase: bool = True
+    regex_exclude_ignorecase: bool = True
+
+    @field_validator("regex_include", "regex_exclude")
+    @classmethod
+    def validate_regex(cls, v: str | None) -> str | None:
+        """Reject patterns that fail to compile as Python regexes."""
+        return _validate_regex(v)
