@@ -50,7 +50,7 @@ def test_titles_suffix_lists_distinct_sanitized_titles_up_to_the_cap() -> None:
 
     assert suffix.count('"Show.Name.S01E') == MAX_PROMPT_TITLES
     assert suffix.count('"Show.Name.S01E00.1080p"') == 1
-    assert "exactly as it is spelled" in suffix
+    assert "how this feed spells the show name" in suffix
 
 
 def test_titles_suffix_sanitizes_untrusted_feed_content() -> None:
@@ -174,3 +174,14 @@ async def test_provider_failure_is_503() -> None:
         await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
 
     assert exc_info.value.status_code == 503
+
+
+def test_titles_suffix_frames_titles_as_naming_evidence_not_a_target_set() -> None:
+    suffix = titles_prompt_suffix(["Show - 05 (1080p)", "Show - 05 (720p) FRENCH"])
+
+    # Must not instruct the model to cover every listed title: groups mix
+    # qualities/dubs that the system prompt's 1080p and exclude rules skip.
+    assert "matches all of them" not in suffix
+    assert "does not need to match every title" in suffix
+    assert "quality preferences" in suffix
+    assert "regex_exclude rules" in suffix

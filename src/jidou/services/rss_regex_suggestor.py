@@ -172,7 +172,9 @@ def titles_prompt_suffix(titles: Sequence[str]) -> str:
     The show's catalogue title often differs from the release naming (aliases,
     romanisation, punctuation), which is the main reason a title-only regex
     misses. Titles are untrusted feed content, so each is sanitized and
-    length-capped, and the count is bounded.
+    length-capped, and the count is bounded. They are framed as evidence of
+    naming only, never as a set the pattern must cover: a group mixes
+    qualities and dubs that the system prompt's rules deliberately skip.
 
     Args:
         titles: Raw release titles currently published for the show.
@@ -192,9 +194,11 @@ def titles_prompt_suffix(titles: Sequence[str]) -> str:
     listed = "; ".join(f'"{t}"' for t in cleaned)
     return (
         f" The feed currently publishes these release titles for this show: {listed}. "
-        "Write regex_include so it matches the show name exactly as it is spelled in these "
-        "release titles, which may differ from the show title above, and so that it matches "
-        "all of them."
+        "Use them only to learn how this feed spells the show name and orders its release "
+        "tokens; the name may differ from the show title above. regex_include must still "
+        "follow the quality preferences and regex_exclude rules above, so it does not need "
+        "to match every title listed — some may be lower-quality or dubbed releases that "
+        "should be skipped."
     )
 
 
