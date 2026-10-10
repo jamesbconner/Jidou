@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # slot (see services/rate_limiter.py's image_rate_limiter).
     image_rate_limit_per_second: float = Field(default=5.0, ge=0.1, le=20.0)
 
+    # Outbound RSS feed fetches (services/feed_fetch.py). One shared budget for
+    # every feed host: fetches are user-triggered and cached, so a conservative
+    # 1-per-2s default keeps us well clear of tracker abuse thresholds.
+    feed_rate_limit_per_second: float = Field(default=0.5, ge=0.1, le=2.0)
+
     # Image cache — disk-backed proxy for TMDB poster/backdrop images so the
     # frontend never hotlinks image.tmdb.org directly (see api/routes/images.py).
     image_cache_backend: str = "disk"  # future: "garage" (self-hosted S3-compatible)

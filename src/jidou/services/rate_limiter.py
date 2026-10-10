@@ -172,3 +172,10 @@ image_rate_limiter = RateLimiter(
     redis_url=settings.redis_url or None,
     key="tmdb_image",
 )
+
+# Shared budget for outbound RSS feed fetches (see services/feed_fetch.py).
+feed_rate_limiter = RateLimiter(
+    rate=settings.feed_rate_limit_per_second,
+    redis_url=settings.redis_url or None,
+    key="rss_feed",
+)

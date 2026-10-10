@@ -195,6 +195,14 @@ Poster/backdrop images are proxied and cached to disk rather than the frontend h
 | `IMAGE_CACHE_EXPIRATION_ENABLED` | `true` | Whether the daily purge task runs at all; `false` keeps cached images indefinitely |
 | `IMAGE_CACHE_RETENTION_DAYS` | `180` | How long a cached image is kept before the purge task deletes it (ignored if expiration is disabled) |
 
+### RSS feed browsing
+
+The RSS page's **Browse** action fetches feed URLs from the backend — see [RSS feed integration](features.md#rss-feed-integration).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FEED_RATE_LIMIT_PER_SECOND` | `0.5` | Max outbound RSS feed fetches per second (range 0.1–2.0), shared across all feed hosts — separate from `TMDB_RATE_LIMIT_PER_SECOND` and `IMAGE_RATE_LIMIT_PER_SECOND` |
+
 ### Celery worker
 
 | Variable | Default | Description |

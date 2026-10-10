@@ -195,6 +195,17 @@ curl http://localhost:8192/api/config
 
 ---
 
+## RSS feed Browse shows an error (502 / 504)
+
+The **Browse** action on the RSS page's Feeds tab fetches the feed from the Jidou backend, not from your browser or the Deluge host, so the backend must be able to reach the URL.
+
+- **502** — the feed is unreachable from the API container, the response isn't an RSS/Atom feed (an HTML error or challenge page), the body is over 5 MiB, the server returned an error status, or the host resolves to a blocked address range (link-local such as `169.254.x.x`, multicast, reserved). Private LAN and loopback addresses are allowed.
+- **504** — the fetch timed out (15 s per network operation, 30 s overall).
+
+Test reachability from inside the API container (not your desktop). **Refresh** in the modal bypasses the 5-minute cache. If the feed loads but a banner says the XML is malformed, some entries may be missing — that is a problem with the tracker's feed output, not Jidou.
+
+---
+
 ## Wiping and reinitializing the database
 
 **When to use:** You want a clean slate — all show, episode, file, and task records deleted.

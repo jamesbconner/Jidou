@@ -10,7 +10,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from jidou.api.dependencies import get_llm_service
+from jidou.api.dependencies import get_feed_fetch_service, get_llm_service
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
@@ -18,12 +18,15 @@ from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 from jidou.schemas.rss_schema import (
+    FeedEntriesRead,
+    FeedEntryGroupRead,
     RssConfigDiff,
     RssFeedCreate,
     RssFeedRead,
     RssFeedUpdate,
     RssRegexSuggestion,
     RssRegexSuggestRequest,
+    RssShowBrief,
     RssSubscriptionBulkPatchItem,
     RssSubscriptionCreate,
     RssSubscriptionRead,
@@ -31,6 +34,8 @@ from jidou.schemas.rss_schema import (
     RssSubscriptionUpdate,
 )
 from jidou.schemas.task_schema import TaskRead
+from jidou.services.feed_entry_grouping import group_entries
+from jidou.services.feed_fetch import FeedFetchError, FeedFetchService
 from jidou.services.llm_service import LLMResponse, LLMService
 from jidou.services.progress import TaskDispatchError, enqueue_task
 from jidou.services.rss_config import (
@@ -38,6 +43,7 @@ from jidou.services.rss_config import (
     fill_missing_yarss2_defaults,
     parse_rss_config,
 )
+from jidou.services.show_lookup import find_show_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +163,92 @@ async def delete_feed(
 
     await db_session.delete(feed)
     logger.info("Deleted RSS feed id=%d name=%r", feed_id, feed.name)
+
+
+@router.get("/feeds/{feed_id}/entries", response_model=FeedEntriesRead)
+async def browse_feed_entries(
+    feed_id: int,
+    refresh: bool = False,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    fetcher: FeedFetchService = Depends(get_feed_fetch_service),  # noqa: B008
+) -> FeedEntriesRead:
+    """Fetch a feed's current entries, grouped by parsed show name.
+
+    Read-only: nothing is persisted. Each group is annotated with the library
+    show whose alias/title exactly matches the parsed name, and with any
+    subscription on this feed already linked to that show.
+
+    Args:
+        feed_id: Database primary key of the feed.
+        refresh: Bypass the short-lived entry cache and refetch.
+        db_session: DB session (injected).
+        fetcher: Feed fetch service (injected).
+
+    Returns:
+        Entries grouped by show name.
+
+    Raises:
+        HTTPException: 404 if the feed is not found; 502 if the feed cannot be
+            fetched or is not a feed; 504 if the fetch timed out.
+    """
+    feed = (
+        await db_session.execute(select(RssFeed).where(RssFeed.id == feed_id))
+    ).scalar_one_or_none()
+    if feed is None:
+        raise HTTPException(status_code=404, detail="RSS feed not found")
+
+    try:
+        result = await fetcher.fetch_entries(feed.url, bypass_cache=refresh)
+    except FeedFetchError as exc:
+        status = 504 if exc.timed_out else 502
+        raise HTTPException(status_code=status, detail=str(exc)) from None
+
+    groups = group_entries(result.entries)
+
+    shows: dict[int, Show] = {}
+    show_by_group: dict[int, int] = {}
+    for idx, group in enumerate(groups):
+        if not group.parsed_name:
+            continue
+        show = await find_show_by_name(db_session, group.parsed_name)
+        if show is not None:
+            shows[show.id] = show
+            show_by_group[idx] = show.id
+
+    sub_by_show: dict[int, int] = {}
+    if shows:
+        sub_rows = await db_session.execute(
+            select(RssSubscription.show_id, func.min(RssSubscription.id))
+            .where(RssSubscription.feed_id == feed_id, RssSubscription.show_id.in_(shows))
+            .group_by(RssSubscription.show_id)
+        )
+        sub_by_show = {sid: sub_id for sid, sub_id in sub_rows.all() if sid is not None}
+
+    return FeedEntriesRead(
+        feed_id=feed_id,
+        total_entries=len(result.entries),
+        truncated=result.truncated,
+        malformed=result.malformed,
+        cached=result.cached,
+        groups=[
+            FeedEntryGroupRead(
+                parsed_name=g.parsed_name,
+                entry_count=g.entry_count,
+                season_min=g.season_min,
+                season_max=g.season_max,
+                episode_min=g.episode_min,
+                episode_max=g.episode_max,
+                sample_titles=g.sample_titles,
+                library_show=(
+                    RssShowBrief.model_validate(shows[show_by_group[idx]])
+                    if idx in show_by_group
+                    else None
+                ),
+                existing_subscription_id=sub_by_show.get(show_by_group.get(idx, -1)),
+            )
+            for idx, g in enumerate(groups)
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------

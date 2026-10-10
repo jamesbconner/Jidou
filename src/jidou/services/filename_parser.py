@@ -233,6 +233,24 @@ def _heuristic_parse(filename: str) -> FilenameParseResult:
     )
 
 
+def parse_release_title(title: str) -> FilenameParseResult:
+    """Heuristically parse an RSS/torrent release title (not a filesystem path).
+
+    ``_heuristic_parse`` treats its input as a filename and takes the
+    basename first, which would truncate a title such as ``"Fate/stay night -
+    05"`` to ``"stay night - 05"``. Path separators are therefore replaced with
+    spaces before parsing. Regex only — no LLM call — so it is cheap enough to
+    run on every entry of a feed.
+
+    Args:
+        title: Raw release title as published in a feed entry.
+
+    Returns:
+        FilenameParseResult with content_type always None and llm_ok=False.
+    """
+    return _heuristic_parse(title.replace("/", " ").replace("\\", " "))
+
+
 def heuristic_se(filename: str) -> tuple[int, int] | None:
     """Return (season, episode) via regex, or None if no match."""
     for pattern in _SE_PATTERNS:

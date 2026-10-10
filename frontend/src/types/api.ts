@@ -323,6 +323,10 @@ export type RssSubscriptionBulkPatchItem = components['schemas']['RssSubscriptio
 
 export type RssConfigDiff = components['schemas']['RssConfigDiff']
 
+export type FeedEntriesRead = components['schemas']['FeedEntriesRead']
+
+export type FeedEntryGroupRead = components['schemas']['FeedEntryGroupRead']
+
 export interface ConnectionTestResult {
   ok: boolean
   error?: string

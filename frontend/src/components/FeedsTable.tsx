@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { usePatchRssFeed, useDeleteRssFeed } from '@/hooks/useRss'
 import { Badge } from '@/components/ui/Badge'
 import { FeedFormModal } from '@/components/FeedFormModal'
+import { FeedEntriesModal } from '@/components/FeedEntriesModal'
 import type { RssFeedRead } from '@/types/api'
 
 /** Compact set/unset indicator for a column whose full value would be too wide to show inline. */
@@ -23,11 +24,13 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
   const del = useDeleteRssFeed()
   const [editFeed, setEditFeed] = useState<RssFeedRead | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [browseFeed, setBrowseFeed] = useState<RssFeedRead | null>(null)
 
   return (
     <>
       {createOpen && <FeedFormModal feed={null} onClose={() => setCreateOpen(false)} />}
       {editFeed && <FeedFormModal feed={editFeed} onClose={() => setEditFeed(null)} />}
+      {browseFeed && <FeedEntriesModal feed={browseFeed} onClose={() => setBrowseFeed(null)} />}
 
       <div className="flex justify-end mb-2">
         <button
@@ -100,6 +103,13 @@ export function FeedsTable({ feeds }: { feeds: RssFeedRead[] }) {
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => setBrowseFeed(f)}
+                      className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
+                      title="Fetch this feed and list the shows it currently publishes"
+                    >
+                      Browse
+                    </button>
                     <button onClick={() => setEditFeed(f)} className="text-xs text-gray-500 dark:text-gray-400 hover:underline">Edit</button>
                     <button
                       onClick={() => { if (confirm(`Delete feed "${f.name}"?`)) del.mutate(f.id) }}

@@ -2506,6 +2506,43 @@ export interface paths {
         patch: operations["update_feed_api_rss_feeds__feed_id__patch"];
         trace?: never;
     };
+    "/api/rss/feeds/{feed_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse Feed Entries
+         * @description Fetch a feed's current entries, grouped by parsed show name.
+         *
+         *     Read-only: nothing is persisted. Each group is annotated with the library
+         *     show whose alias/title exactly matches the parsed name, and with any
+         *     subscription on this feed already linked to that show.
+         *
+         *     Args:
+         *         feed_id: Database primary key of the feed.
+         *         refresh: Bypass the short-lived entry cache and refetch.
+         *         db_session: DB session (injected).
+         *         fetcher: Feed fetch service (injected).
+         *
+         *     Returns:
+         *         Entries grouped by show name.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the feed is not found; 502 if the feed cannot be
+         *             fetched or is not a feed; 504 if the fetch timed out.
+         */
+        get: operations["browse_feed_entries_api_rss_feeds__feed_id__entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rss/subscriptions": {
         parameters: {
             query?: never;
@@ -3481,6 +3518,69 @@ export interface components {
              *     is only for showing to a user.
              */
             readonly tracked_filename_display: string | null;
+        };
+        /**
+         * FeedEntriesRead
+         * @description Response for browsing a feed's entries.
+         *
+         *     Attributes:
+         *         feed_id: Feed the entries were fetched from.
+         *         total_entries: Entries returned (after the server-side cap).
+         *         truncated: The feed had more entries than the cap.
+         *         malformed: The feed XML was not well-formed; entries may be incomplete.
+         *         cached: Served from the short-lived entry cache.
+         *         groups: Entries grouped by parsed show name.
+         */
+        FeedEntriesRead: {
+            /** Feed Id */
+            feed_id: number;
+            /** Total Entries */
+            total_entries: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Malformed */
+            malformed: boolean;
+            /** Cached */
+            cached: boolean;
+            /** Groups */
+            groups: components["schemas"]["FeedEntryGroupRead"][];
+        };
+        /**
+         * FeedEntryGroupRead
+         * @description Feed entries grouped by the show name parsed from their titles.
+         *
+         *     Attributes:
+         *         parsed_name: Parsed show name, or None for entries that could not be
+         *             parsed.
+         *         entry_count: Number of entries in the group.
+         *         season_min: Lowest season seen, if any.
+         *         season_max: Highest season seen, if any.
+         *         episode_min: Lowest episode seen, if any.
+         *         episode_max: Highest episode seen, if any.
+         *         sample_titles: Up to three raw entry titles.
+         *         library_show: Library show whose alias/title exactly matches the parsed
+         *             name, if any.
+         *         existing_subscription_id: A subscription on this feed already linked to
+         *             ``library_show``, if any.
+         */
+        FeedEntryGroupRead: {
+            /** Parsed Name */
+            parsed_name: string | null;
+            /** Entry Count */
+            entry_count: number;
+            /** Season Min */
+            season_min: number | null;
+            /** Season Max */
+            season_max: number | null;
+            /** Episode Min */
+            episode_min: number | null;
+            /** Episode Max */
+            episode_max: number | null;
+            /** Sample Titles */
+            sample_titles: string[];
+            library_show: components["schemas"]["RssShowBrief"] | null;
+            /** Existing Subscription Id */
+            existing_subscription_id: number | null;
         };
         /**
          * FileMatchRequest
@@ -7835,6 +7935,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RssFeedRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_feed_entries_api_rss_feeds__feed_id__entries_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                feed_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedEntriesRead"];
                 };
             };
             /** @description Validation Error */
