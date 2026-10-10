@@ -73,7 +73,7 @@ After a file is downloaded to staging, the match task attempts to link it to the
 
 If both fail, the file is marked `unmatched` for manual review.
 
-**Manual match:** Use the **Resolve** button on the Files page to search TMDB and pick the correct show/episode manually.
+**Manual match:** Use the **Resolve** button on the Files page to pick the correct show manually. Shows already in your library (matched by title, alias, system name, or folder name) are listed first and reuse their existing folder; a TMDB result whose show is already tracked is assigned to that existing show and folder instead of deriving a new folder name from the TMDB title.
 
 ![Files page Resolve modal](screenshots/files-resolve-modal.png)
 

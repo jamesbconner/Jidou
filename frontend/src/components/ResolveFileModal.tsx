@@ -2,16 +2,23 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
-import { useTmdbSearch, useTmdbDetails } from '@/hooks/useShows'
+import { useTmdbSearch, useTmdbDetails, useLocalShowSearch, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
-import type { FileRead, TmdbSuggestion, ContentType, AppConfig } from '@/types/api'
+import type { FileRead, TmdbSuggestion, ContentType, AppConfig, ShowSearchResult } from '@/types/api'
 
 type SearchMode = 'suggestions' | 'title' | 'tmdb_id'
 
 const TMDB_IMAGE_BASE = '/api/images/w185'
+
+/** A show already in the local library that this file can be assigned to. */
+interface ExistingShow {
+  id: number
+  title: string
+  local_path?: string | null
+}
 
 interface Props {
   file: FileRead
@@ -20,6 +27,7 @@ interface Props {
 
 export function ResolveFileModal({ file, onClose }: Props) {
   const [selected, setSelected] = useState<TmdbSuggestion | null>(null)
+  const [selectedLocal, setSelectedLocal] = useState<ShowSearchResult | null>(null)
   const [contentType, setContentType] = useState<ContentType>('anime')
   const [folderName, setFolderName] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
@@ -55,6 +63,21 @@ export function ResolveFileModal({ file, onClose }: Props) {
     isFetching: tmdbIdLoading,
     error: tmdbIdError,
   } = useTmdbDetails(searchMode === 'tmdb_id' ? parsedTmdbId : null, tmdbIdMediaType)
+
+  // Local library candidates: the parsed name in suggestions mode, the typed
+  // query in refine mode. Gated on the live input (not just the debounced
+  // value) so switching modes never replays a stale query.
+  const localQuery =
+    searchMode === 'title'
+      ? searchQuery.trim().length >= 2
+        ? debouncedQuery
+        : ''
+      : searchMode === 'suggestions'
+        ? (file.parsed_show_name ?? '')
+        : ''
+  const { data: localResults = [], isFetching: localLoading } = useLocalShowSearch(localQuery, 6)
+
+  const libraryIndex = useLibraryIndex()
 
   const rematch = useRematchFile()
 
@@ -102,11 +125,40 @@ export function ResolveFileModal({ file, onClose }: Props) {
   // instead of in an effect.
   function selectSuggestion(suggestion: TmdbSuggestion) {
     setSelected(suggestion)
+    setSelectedLocal(null)
     setContentType(suggestion.media_type === 'movie' ? 'movie' : 'anime')
     setFolderName(sanitizeFolderName(suggestion.title ?? ''))
   }
 
+  function year(date: string | null | undefined): string | null {
+    return date ? new Date(date).getFullYear().toString() : null
+  }
+
+  function selectLocal(show: ShowSearchResult) {
+    setSelectedLocal(show)
+    setSelected(null)
+  }
+
+  // The show this file will be assigned to when it already exists locally:
+  // either picked directly from the library, or a TMDB pick whose TMDB id is
+  // already tracked. In both cases the existing folder is used as-is instead
+  // of deriving a new one from the TMDB title.
+  const libraryMatch: ExistingShow | null = selected
+    ? (libraryIndex.get(`${selected.tmdb_id}:${selected.media_type}`) ?? null)
+    : null
+  const existing: ExistingShow | null = selectedLocal ?? libraryMatch
+  const selectedTitle = selectedLocal?.title ?? selected?.title ?? null
+  const selectedYear = year(selectedLocal?.release_date ?? selected?.first_air_date)
+  const canConfirm =
+    !rematch.isPending &&
+    (existing ? Boolean(existing.local_path) : Boolean(selected && folderName.trim() && config))
+
   function handleConfirm() {
+    if (existing) {
+      if (!existing.local_path) return
+      rematch.mutate({ id: file.id, payload: { show_id: existing.id } }, { onSuccess: onClose })
+      return
+    }
     if (!selected || !config) return
     const containerPath = folderName.trim()
       ? toContainerPath(contentType, folderName.trim(), config.media_paths)
@@ -130,9 +182,6 @@ export function ResolveFileModal({ file, onClose }: Props) {
   function handleReset() {
     rematch.mutate({ id: file.id, payload: {} }, { onSuccess: onClose })
   }
-
-  const year = (date: string | null | undefined) =>
-    date ? new Date(date).getFullYear().toString() : null
 
   return (
     <Modal
@@ -223,8 +272,58 @@ export function ResolveFileModal({ file, onClose }: Props) {
             )}
           </div>
 
+          {/* Local library matches */}
+          {(localLoading || localResults.length > 0) && (
+            <div className="space-y-2">
+              <div className="text-xs text-zinc-400">In your library</div>
+              {localLoading && localResults.length === 0 && (
+                <div className="text-xs text-zinc-500 py-1">Searching library…</div>
+              )}
+              <div className="space-y-1.5">
+                {localResults.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => selectLocal(s)}
+                    className={`w-full flex items-center gap-3 rounded border px-3 py-2 text-left transition-colors ${
+                      selectedLocal?.id === s.id
+                        ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
+                        : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-zinc-200 truncate">
+                        {s.title}
+                        {year(s.release_date) ? ` (${year(s.release_date)})` : ''}
+                      </div>
+                      <div className="text-xs text-zinc-500 font-mono truncate">
+                        {s.local_path
+                          ? config
+                            ? toHostPath(s.local_path, config.media_paths)
+                            : s.local_path
+                          : 'no local path set'}
+                      </div>
+                    </div>
+                    {s.matched_on !== 'title' && (
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-400 shrink-0">
+                        matched{' '}
+                        {s.matched_on === 'path'
+                          ? 'folder'
+                          : s.matched_on === 'sys_name'
+                            ? 'system name'
+                            : 'alias'}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* TMDB results grid */}
           <div className="space-y-2">
+            {(localLoading || localResults.length > 0) && (
+              <div className="text-xs text-zinc-400">From TMDB</div>
+            )}
             {isLoading && (
               <div className="text-xs text-zinc-500 py-2">Loading suggestions…</div>
             )}
@@ -282,7 +381,36 @@ export function ResolveFileModal({ file, onClose }: Props) {
           </div>
 
           {/* Selected show details + path config */}
-          {selected && (
+          {existing && (
+            <div className="border border-zinc-700 rounded p-3 space-y-2">
+              <div className="text-xs font-medium text-zinc-300">
+                Selected: {selectedTitle}
+                {selectedYear ? ` (${selectedYear})` : ''}
+              </div>
+              <div className="text-xs text-emerald-400">
+                {selectedLocal
+                  ? 'In your library — the file will be assigned to this show.'
+                  : `Already in your library as "${existing.title}" — the file will be assigned to it.`}
+              </div>
+              {existing.local_path ? (
+                <div className="space-y-1">
+                  <div className="text-xs text-zinc-400">Existing show folder</div>
+                  <div className="text-xs text-zinc-300 font-mono break-all">
+                    {config ? toHostPath(existing.local_path, config.media_paths) : existing.local_path}
+                  </div>
+                  <div className="text-xs text-zinc-500">
+                    Files will be placed in Season NN/ subdirectories under this folder.
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-amber-400">
+                  This show has no local path — set one on the show detail page first.
+                </div>
+              )}
+            </div>
+          )}
+
+          {selected && !existing && (
             <div className="border border-zinc-700 rounded p-3 space-y-3">
               <div className="text-xs font-medium text-zinc-300">
                 Selected: {selected.title} ({year(selected.first_air_date)})
@@ -358,7 +486,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={!selected || !folderName.trim() || !config || rematch.isPending}
+              disabled={!canConfirm}
               variant="primary"
               tone="dark"
               size="sm"
