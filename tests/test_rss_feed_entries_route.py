@@ -159,3 +159,23 @@ def test_entries_timeout_is_504(fetcher: MagicMock) -> None:
     r = TestClient(app).get("/api/rss/feeds/7/entries")
 
     assert r.status_code == 504
+
+
+def test_entries_slash_titled_show_is_looked_up_by_its_exact_name(fetcher: MagicMock) -> None:
+    fetcher.fetch_entries.return_value = FeedFetchResult(
+        entries=[_entry("[Grp] Fate/stay night - 05 (1080p).mkv")], malformed=False, cached=False
+    )
+    app.dependency_overrides[get_session] = _session(_feed(), sub_rows=[])
+    looked_up: list[str] = []
+
+    async def _find(_session_, name: str, **_kw):
+        looked_up.append(name)
+        return _show(11, "Fate/stay night")
+
+    with patch("jidou.api.routes.rss.find_show_by_name", new=_find):
+        r = TestClient(app).get("/api/rss/feeds/7/entries")
+
+    assert looked_up == ["Fate/stay night"]
+    group = r.json()["groups"][0]
+    assert group["parsed_name"] == "Fate/stay night"
+    assert group["library_show"]["id"] == 11

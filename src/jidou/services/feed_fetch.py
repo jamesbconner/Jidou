@@ -280,13 +280,15 @@ def parse_feed_bytes(data: bytes) -> FeedFetchResult:
         Parsed result with ``cached=False``.
 
     Raises:
-        FeedFetchError: If the body is not a feed (no entries and no feed
-            title — e.g. an HTML error or challenge page, which feedparser
-            accepts silently).
+        FeedFetchError: If feedparser did not recognise a feed format (e.g.
+            an HTML error or challenge page, which it accepts silently).
     """
     parsed = feedparser.parse(data)
-    feed_title = parsed.feed.get("title") if parsed.get("feed") else None
-    if not parsed.entries and not feed_title:
+    # ``version`` is feedparser's detected format ("rss20", "atom10", ...) and
+    # is empty for anything that isn't a feed. Recoverable-but-malformed feeds
+    # still report their format, so this does not reject them. A title is *not*
+    # a safe signal: HTML error/challenge pages carry a <title> too.
+    if not parsed.get("version"):
         raise FeedFetchError("Response was not an RSS or Atom feed")
 
     entries: list[FeedEntry] = []

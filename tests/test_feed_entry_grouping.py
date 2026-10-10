@@ -68,11 +68,19 @@ def test_empty_input() -> None:
 @pytest.mark.parametrize(
     ("title", "expected"),
     [
-        ("Fate/stay night - 05", "Fate stay night"),
-        ("Fate\\Zero - 01", "Fate Zero"),
+        ("Fate/stay night - 05", "Fate/stay night"),
+        ("Fate\\Zero - 01", "Fate\\Zero"),
+        ("[Grp] Fate/stay night - 05 (1080p).mkv", "Fate/stay night"),
     ],
 )
-def test_parse_release_title_does_not_truncate_at_path_separators(
+def test_parse_release_title_preserves_path_separators_in_the_name(
     title: str, expected: str
 ) -> None:
     assert parse_release_title(title).show_name == expected
+
+
+def test_slash_titled_show_keeps_its_exact_name_so_library_lookup_can_match() -> None:
+    (g,) = group_entries([_e("Fate/stay night - 05"), _e("Fate/Stay Night - 06")])
+
+    assert g.parsed_name == "Fate/stay night"
+    assert g.entry_count == 2

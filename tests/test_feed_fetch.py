@@ -597,3 +597,42 @@ async def test_inflight_failure_propagates_to_every_waiter_and_is_cleared() -> N
     assert calls == 1
     assert all(isinstance(r, FeedFetchError) for r in results)
     assert svc._inflight == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"<html><head><title>Just a moment...</title></head><body>x</body></html>",
+        b'<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head>'
+        b"<title>Login</title></head><body/></html>",
+        b'<?xml version="1.0"?><root><title>Just a title</title></root>',
+        b'{"title": "not xml at all"}',
+    ],
+)
+def test_parse_non_feed_documents_with_a_title_are_rejected(body: bytes) -> None:
+    with pytest.raises(FeedFetchError, match="not an RSS or Atom feed"):
+        parse_feed_bytes(body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # whitespace before the XML declaration
+        b"\n  " + _rss(_item("Ws - 01")),
+        # body cut off mid-item
+        (
+            _HDR + '<rss version="2.0"><channel><title>T</title><item><title>Cut - 01</title>'
+            "<link>http://x/1"
+        ).encode(),
+        # Atom and RSS 1.0 (RDF)
+        b'<feed xmlns="http://www.w3.org/2005/Atom"><title>A</title><id>u</id>'
+        b"<entry><title>E - 01</title><id>e</id></entry></feed>",
+        b'<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" '
+        b'xmlns="http://purl.org/rss/1.0/"><channel><title>R</title></channel>'
+        b"<item><title>I - 01</title></item></rdf:RDF>",
+    ],
+)
+def test_parse_recoverable_and_alternate_formats_are_still_feeds(body: bytes) -> None:
+    result = parse_feed_bytes(body)
+
+    assert len(result.entries) == 1
