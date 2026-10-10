@@ -142,3 +142,17 @@ class TestSearchLocalShows:
         assert "jsonb_array_elements_text" in sql
         assert "regexp_replace" in sql
         assert "%50\\%\\_off%" in compiled.params.values()
+
+    async def test_non_array_aliases_are_guarded_in_sql(self) -> None:
+        """Regression: a JSON-null `aliases` made jsonb_array_elements_text raise.
+
+        Postgres errors with "cannot extract elements from a scalar" for a
+        JSON null / scalar / object, which 500'd the whole search. The
+        statement must only expand values that are arrays.
+        """
+        session = _session([])
+        await search_local_shows(session, "the")
+        stmt = session.execute.await_args.args[0]
+        sql = str(stmt.compile(dialect=postgresql.dialect()))
+        assert "jsonb_typeof" in sql
+        assert "CASE WHEN" in sql
