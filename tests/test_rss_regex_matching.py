@@ -30,15 +30,18 @@ def test_exclude_drops_titles_the_include_selected() -> None:
 
 
 @pytest.mark.parametrize("include", [None, ""])
-def test_empty_include_means_no_include_filter(include: str | None) -> None:
+def test_empty_include_selects_nothing_like_yarss2(include: str | None) -> None:
+    # YaRSS2 only marks an item as matching when an include pattern exists and
+    # matches, so a subscription without one never downloads anything. An
+    # exclude pattern cannot resurrect titles.
     report = evaluate_regex(TITLES, include=include, exclude="720p")
 
-    assert report.matched == [TITLES[0], TITLES[2], TITLES[3]]
-    assert report.unmatched == [TITLES[1]]
+    assert report.matched == []
+    assert report.unmatched == TITLES
 
 
-def test_no_filters_matches_everything() -> None:
-    report = evaluate_regex(TITLES, include=None, exclude=None)
+def test_empty_exclude_excludes_nothing() -> None:
+    report = evaluate_regex(TITLES, include="Show", exclude="")
 
     assert report.matched == TITLES
     assert report.unmatched == []

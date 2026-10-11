@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { showKeys } from '@/hooks/useShows'
+import { dashboardKeys } from '@/hooks/useDashboard'
 import type {
   RssFeedRead,
   RssFeedCreate,
@@ -12,6 +14,8 @@ import type {
   RssRegexSuggestion,
   RssConfigDiff,
   FeedEntriesRead,
+  FeedAddShowRequest,
+  FeedAddShowResult,
   FeedRegexSuggestRequest,
   FeedRegexSuggestion,
   FeedRegexTestRequest,
@@ -261,5 +265,24 @@ export function useTestFeedRegex(feedId: number) {
   return useMutation({
     mutationFn: (body: FeedRegexTestRequest) =>
       api.post<RegexMatchReportRead>(`/rss/feeds/${feedId}/test-regex`, body),
+  })
+}
+
+/**
+ * Add a feed group's show to the library (or reuse one) and create its
+ * subscription in one step. Invalidates the feed's entry groups so the group
+ * flips to "Subscribed", plus subscriptions, shows and the dashboard.
+ */
+export function useAddShowFromFeed(feedId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: FeedAddShowRequest) =>
+      api.post<FeedAddShowResult>(`/rss/feeds/${feedId}/add-show`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rssKeys.feedEntries(feedId) })
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+      qc.invalidateQueries({ queryKey: showKeys.all })
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
   })
 }

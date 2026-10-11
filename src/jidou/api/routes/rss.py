@@ -11,13 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_feed_fetch_service, get_llm_service
+from jidou.api.routes.shows import get_tmdb
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
+from jidou.orchestrators.feed_onboarding_orchestrator import (
+    FeedOnboardingError,
+    FeedOnboardingOrchestrator,
+)
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 from jidou.schemas.rss_schema import (
+    FeedAddShowRequest,
+    FeedAddShowResult,
     FeedEntriesRead,
     FeedEntryGroupRead,
     FeedRegexSuggestion,
@@ -54,6 +61,7 @@ from jidou.services.rss_regex_suggestor import (
     RssRegexSuggestor,
 )
 from jidou.services.show_lookup import find_show_by_name
+from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +414,60 @@ async def test_feed_group_regex(
         exclude_ignorecase=body.regex_exclude_ignorecase,
     )
     return _match_report_read(report.matched, report.unmatched)
+
+
+@router.post("/feeds/{feed_id}/add-show", response_model=FeedAddShowResult)
+async def add_show_from_feed(
+    feed_id: int,
+    body: FeedAddShowRequest,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+    llm: LLMService = Depends(get_llm_service),  # noqa: B008
+) -> FeedAddShowResult:
+    """Add a show to the library and subscribe it to this feed in one step.
+
+    Resolves or creates the show, teaches the group's parsed name as an alias,
+    and creates the feed subscription (or links an unlinked stub left by an
+    import). Idempotent: a subscription already linking the show to this feed
+    is returned unchanged. Nothing is published to YaRSS2.
+
+    Args:
+        feed_id: Feed the group came from.
+        body: The group key, the show to use or add, and the filter.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+        llm: LLM service (injected).
+
+    Returns:
+        What was done, or with ``dry_run`` what would be done.
+
+    Raises:
+        HTTPException: 404 if the feed or ``show_id`` does not exist.
+    """
+    feed = await _get_feed_or_404(db_session, feed_id)
+    try:
+        outcome = await FeedOnboardingOrchestrator(db_session, tmdb, llm).add_show_from_feed(
+            feed, body
+        )
+    except FeedOnboardingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    subscription: RssSubscription | None = None
+    if outcome.subscription_id is not None:
+        subscription = (
+            await db_session.execute(
+                _sub_stmt().where(RssSubscription.id == outcome.subscription_id)
+            )
+        ).scalar_one()
+    return FeedAddShowResult(
+        show=RssShowBrief.model_validate(outcome.show) if outcome.show is not None else None,
+        show_created=outcome.show_created,
+        subscription=RssSubscriptionRead.model_validate(subscription) if subscription else None,
+        subscription_created=outcome.subscription_created,
+        adopted_stub=outcome.adopted_stub,
+        alias_added=outcome.alias_added,
+        dry_run=outcome.dry_run,
+    )
 
 
 # ---------------------------------------------------------------------------

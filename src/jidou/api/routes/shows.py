@@ -9,7 +9,6 @@ from typing import Any, Literal
 import httpx2 as httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, nullslast, select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,7 +48,6 @@ from jidou.services.episode_watching import clear_episode_watched, mark_episode_
 from jidou.services.file_reconciliation import reconcile_local_file_existence
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
-from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
 from jidou.services.rss_stub import ensure_rss_stub
 from jidou.services.settings_service import (
@@ -57,9 +55,9 @@ from jidou.services.settings_service import (
     get_similar_titles_enabled,
     get_similar_titles_include_external,
 )
+from jidou.services.show_creation import get_or_create_show_from_tmdb
 from jidou.services.show_search import MIN_QUERY_LENGTH, search_local_shows
 from jidou.services.synthetic_file import create_synthetic_import_file
-from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
@@ -69,63 +67,6 @@ router = APIRouter(prefix="/shows", tags=["shows"])
 
 
 _tmdb = TMDBService()
-
-
-# TMDB genre ID 16 = Animation
-_ANIMATION_GENRE_ID = 16
-
-
-def _infer_content_type(payload: ShowCreate) -> str:
-    """Infer routing content type from TMDB metadata.
-
-    Rules (applied in order):
-    - ``movie`` media type → ``"movie"``
-    - Animation genre AND (Japanese language OR JP origin) → ``"anime"``
-    - Everything else → ``"tv"``
-
-    Accepts both TMDB response shapes:
-    - Search/trending cards supply ``genre_ids: [16, 18]`` (flat int list).
-    - Detail endpoints supply ``genres: [{"id": 16, "name": "Animation"}]``.
-
-    Args:
-        payload: Show creation payload containing TMDB metadata.
-
-    Returns:
-        One of ``"movie"``, ``"anime"``, or ``"tv"``.
-    """
-    if payload.media_type == "movie":
-        return "movie"
-    # Collect genre IDs from whichever field the caller populated.
-    ids_from_objects = {g.get("id") for g in (payload.genres or [])}
-    ids_from_list = set(payload.genre_ids or [])
-    all_genre_ids = ids_from_objects | ids_from_list
-    is_animated = _ANIMATION_GENRE_ID in all_genre_ids
-    is_japanese = payload.original_language == "ja" or "JP" in (payload.origin_country or [])
-    if is_animated and is_japanese:
-        return "anime"
-    return "tv"
-
-
-def _auto_local_path(content_type: str, sys_name: str) -> str:
-    """Compute the default local path for a new show from configured media roots.
-
-    Args:
-        content_type: One of ``"anime"``, ``"movie"``, or ``"tv"``.
-        sys_name: Filesystem-safe show directory name.
-
-    Returns:
-        Absolute container-side path string.
-    """
-    from jidou.config import settings
-
-    return resolve_show_local_path(
-        content_type=content_type,
-        media_type=None,
-        sys_name=sys_name,
-        local_tv_path=settings.local_tv_path,
-        local_anime_path=settings.local_anime_path,
-        local_movie_path=settings.local_movie_path,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -791,134 +732,22 @@ async def create_show(
 ) -> Show:
     """Add a show to the database (upsert by TMDB ID).
 
-    If the show already exists it is returned unchanged.  ``sys_name`` is
-    auto-derived from the title if not provided.  The payload is typically a
-    TMDB search/trending card, which only carries a sparse field set
-    (``genre_ids`` rather than full ``genres`` objects, no
-    ``external_ids``/``episode_groups``/etc.) — a full TMDB details fetch is
-    attempted so the created show gets complete metadata, matching what the
-    manual-match and path-import show-creation paths already do.  A TMDB
-    episode sync is then attempted inline so the show detail page shows
-    episodes immediately.  Both TMDB steps are best-effort: failures are
-    logged but do not abort the response — the show is still returned,
-    falling back to the sparse search-card fields if the details fetch
-    itself fails.
+    If the show already exists it is returned unchanged. Otherwise the show is
+    created with full TMDB metadata, its episodes are synced and aliases are
+    generated; see :func:`jidou.services.show_creation.get_or_create_show_from_tmdb`
+    for the best-effort semantics of those steps.
 
     Args:
         payload: Show data from a TMDB search/trending result.
         db_session: DB session (injected).
         tmdb: TMDB service (injected).
+        llm: LLM service (injected).
 
     Returns:
         The created or existing :class:`Show` record.
     """
-    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
-    from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
-
-    stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
-    existing = (await db_session.execute(stmt)).scalar_one_or_none()
-    if existing is not None:
-        logger.debug("Show tmdb_id=%d already exists (id=%d)", payload.tmdb_id, existing.id)
-        await TMDBOrchestrator(db_session, tmdb).ensure_episode_group_map(existing)
-        return existing
-
-    data = payload.model_dump()
-    sys_name = data.get("sys_name") or sanitize_sys_name(payload.title)
-    content_type = data.get("content_type") or _infer_content_type(payload)
-    local_path = data.get("local_path") or _auto_local_path(content_type, sys_name)
-    # genre_ids only feeds _infer_content_type above; Show has no such column.
-    # sys_name/content_type/local_path are applied explicitly below instead,
-    # so drop all four here to keep `data` a plain TMDB-field fallback dict.
-    for key in ("genre_ids", "sys_name", "content_type", "local_path"):
-        data.pop(key, None)
-
-    try:
-        tmdb_data = await fetch_show_metadata(tmdb, payload.tmdb_id, payload.media_type)
-        fields = build_show_fields(
-            tmdb_data, payload.tmdb_id, payload.media_type, title_fallback=payload.title
-        )
-    except Exception:
-        logger.warning(
-            "TMDB details fetch failed for tmdb_id=%d; creating show from search-card "
-            "fields only (genres/external_ids/etc. will be incomplete)",
-            payload.tmdb_id,
-            exc_info=True,
-        )
-        fields = data
-    # build_show_fields derives its own sys_name from the fetched title;
-    # the caller-computed one (payload-provided, or derived above) is the
-    # one actually used, so it doesn't fight the explicit kwarg below.
-    fields.pop("sys_name", None)
-
-    show = Show(
-        **fields,
-        content_type=content_type,
-        local_path=local_path,
-        sys_name=sys_name,
-        cached=False,
-        track_missing_episodes=True,
-    )
-    db_session.add(show)
-    try:
-        await db_session.flush()
-    except IntegrityError:
-        await db_session.rollback()
-        stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
-        existing = (await db_session.execute(stmt)).scalar_one_or_none()
-        if existing is not None:
-            logger.debug(
-                "Show tmdb_id=%d inserted concurrently, returning existing (id=%d)",
-                payload.tmdb_id,
-                existing.id,
-            )
-            await TMDBOrchestrator(db_session, tmdb).ensure_episode_group_map(existing)
-            return existing
-        raise
-
-    logger.info("Added show tmdb_id=%d title=%r (id=%d)", show.tmdb_id, show.title, show.id)
-
-    if show.media_type != "movie":
-        try:
-            await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show)
-            logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
-        except SQLAlchemyError:
-            # DB failure during sync's internal flush leaves the session's
-            # transaction in a broken state; propagate so the caller gets a
-            # 500 rather than silently issuing more queries against a dead
-            # transaction.
-            raise
-        except Exception:
-            logger.warning(
-                "Episode sync failed for new show id=%d tmdb_id=%d"
-                " — user can retry via Sync Episodes",
-                show.id,
-                show.tmdb_id,
-                exc_info=True,
-            )
-
-    # Commit the show (and any synced episodes) now, independent of alias
-    # generation below. sync_show_episodes only flushes, so without this
-    # commit a later DB-level failure in alias generation would roll back
-    # an already-successful sync too -- both steps are meant to be
-    # independently best-effort, not able to undo each other.
-    await db_session.commit()
-
-    try:
-        from jidou.orchestrators.alias_orchestrator import generate_aliases
-
-        await generate_aliases(show, tmdb, llm=llm)
-        await db_session.flush()
-    except Exception:
-        logger.warning(
-            "Alias generation failed for new show id=%d tmdb_id=%d"
-            " — aliases can be regenerated via POST /shows/{id}/aliases/regenerate",
-            show.id,
-            show.tmdb_id,
-            exc_info=True,
-        )
-
-    await db_session.refresh(show)
-    return show
+    result = await get_or_create_show_from_tmdb(db_session, tmdb, payload, llm=llm)
+    return result.show
 
 
 @router.get("/{show_id}", response_model=ShowRead)

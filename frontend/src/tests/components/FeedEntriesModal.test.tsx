@@ -208,3 +208,138 @@ describe('FeedEntriesModal', () => {
     expect(await screen.findByText('This feed has no entries.')).toBeInTheDocument()
   })
 })
+
+describe('FeedEntriesModal add action', () => {
+  test('offers Add only for new and in-library groups with a parsed name', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse([]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(
+        entries([
+          group({ parsed_name: 'Brand New Show' }),
+          group({
+            parsed_name: 'Known Show',
+            library_show: { id: 42, title: 'Known Show', status: null, poster_path: null },
+          }),
+          group({
+            parsed_name: 'Already Subscribed',
+            library_show: { id: 9, title: 'Already Subscribed', status: null, poster_path: null },
+            existing_subscription_id: 3,
+          }),
+          group({ parsed_name: null, sample_titles: ['[1080p]'] }),
+        ]),
+      ),
+    )
+
+    renderModal()
+    await screen.findByText('Brand New Show')
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }))
+
+    // New + In library get an action; Subscribed and Unrecognized do not.
+    expect(screen.getAllByRole('button', { name: /^Add/ })).toHaveLength(2)
+  })
+
+  test('Add opens the pane for that group and hides the button', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse([]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(entries([group({ parsed_name: 'Brand New Show' })])),
+    )
+
+    renderModal()
+    await screen.findByText('Brand New Show')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+
+    expect(screen.getByLabelText('Search for the show')).toHaveValue('Brand New Show')
+    expect(screen.queryByRole('button', { name: 'Add…' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Search for the show')).not.toBeInTheDocument()
+  })
+})
+
+
+describe('FeedEntriesModal after a successful add', () => {
+  test('keeps the added group and its outcome on screen despite the default filter', async () => {
+    let subscribed = false
+    const route = (url: string, init?: RequestInit): Response => {
+      if (url.includes('/add-show')) {
+        subscribed = true
+        return mockResponse({
+          show: { id: 42, title: 'Brand New Show', status: null, poster_path: null },
+          show_created: true,
+          subscription: null,
+          subscription_created: true,
+          adopted_stub: false,
+          alias_added: false,
+          dry_run: false,
+        })
+      }
+      if (url.includes('/suggest-regex')) {
+        return mockResponse({
+          regex_include: 'Brand.New.Show',
+          regex_exclude: '',
+          model: 'm',
+          cached: false,
+          match: { matched_titles: [], unmatched_titles: [], total: 0 },
+        })
+      }
+      if (url.includes('/shows/tmdb/search')) {
+        return mockResponse({
+          results: [
+            {
+              id: 555,
+              name: 'Brand New Show',
+              media_type: 'tv',
+              overview: '',
+              poster_path: null,
+              backdrop_path: null,
+              vote_average: 1,
+              vote_count: 1,
+              original_language: 'en',
+            },
+          ],
+          total_results: 1,
+          total_pages: 1,
+          page: 1,
+        })
+      }
+      if (url.includes('/entries')) {
+        // After the add, the server reports the group as subscribed.
+        return mockResponse(
+          entries([
+            group({
+              parsed_name: 'Brand New Show',
+              library_show: subscribed
+                ? { id: 42, title: 'Brand New Show', status: null, poster_path: null }
+                : null,
+              existing_subscription_id: subscribed ? 5 : null,
+            }),
+          ]),
+        )
+      }
+      void init
+      return mockResponse([])
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      route(String(input), init),
+    ) as typeof fetch
+
+    renderModal()
+    await screen.findByText('Brand New Show')
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /Brand New Show.*TMDB/ }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Include regex')).toHaveValue('Brand.New.Show'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add show + subscription' }))
+
+    // The refetch makes the group "Subscribed"; its outcome must still be readable.
+    expect(await screen.findByRole('status')).toHaveTextContent(/Added “Brand New Show”/)
+    // 'Subscribed' is both the filter button and the row's badge once it flips.
+    await waitFor(() => expect(screen.getAllByText('Subscribed').length).toBeGreaterThanOrEqual(2))
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open show' })).toHaveAttribute('href', '/shows/42')
+  })
+})
+

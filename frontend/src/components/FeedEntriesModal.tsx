@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { AddShowFromFeedPane } from '@/components/AddShowFromFeedPane'
 import type { FeedEntryGroupRead, RssFeedRead } from '@/types/api'
 
 type GroupStatus = 'new' | 'in_library' | 'subscribed'
@@ -45,11 +46,22 @@ const STATUS_BADGE: Record<GroupStatus, { label: string; color: string }> = {
   },
 }
 
-function GroupRow({ group }: { group: FeedEntryGroupRead }) {
+function GroupRow({
+  group,
+  feed,
+  onAdded,
+}: {
+  group: FeedEntryGroupRead
+  feed: RssFeedRead
+  onAdded: (parsedName: string) => void
+}) {
+  const [adding, setAdding] = useState(false)
   const status = groupStatus(group)
   const badge = STATUS_BADGE[status]
   const span = spanLabel(group)
   const name = group.parsed_name ?? 'Unrecognized titles'
+  // Needs a group key to re-read the feed's titles server-side.
+  const canAdd = group.parsed_name != null && status !== 'subscribed'
 
   return (
     <li className="py-3 flex items-start gap-3">
@@ -77,7 +89,20 @@ function GroupRow({ group }: { group: FeedEntryGroupRead }) {
             </li>
           ))}
         </ul>
+        {adding && (
+          <AddShowFromFeedPane
+            feed={feed}
+            group={group}
+            onDone={() => setAdding(false)}
+            onAdded={() => group.parsed_name && onAdded(group.parsed_name)}
+          />
+        )}
       </div>
+      {canAdd && !adding && (
+        <Button variant="secondary" tone="light" size="sm" onClick={() => setAdding(true)}>
+          Add…
+        </Button>
+      )}
     </li>
   )
 }
@@ -86,9 +111,14 @@ export function FeedEntriesModal({ feed, onClose }: { feed: RssFeedRead; onClose
   const { data, isLoading, error } = useFeedEntries(feed.id)
   const refresh = useRefreshFeedEntries(feed.id)
   const [filter, setFilter] = useState<Filter>('unsubscribed')
+  // Groups added this session stay listed even though adding makes them
+  // "Subscribed" (and so filtered out by default); otherwise the row, and the
+  // outcome it is showing, would vanish the moment the entries refetch.
+  const [added, setAdded] = useState<ReadonlySet<string>>(new Set())
 
   const groups = data?.groups ?? []
   const visible = groups.filter((g) => {
+    if (g.parsed_name && added.has(g.parsed_name)) return true
     const subscribed = groupStatus(g) === 'subscribed'
     if (filter === 'all') return true
     return filter === 'subscribed' ? subscribed : !subscribed
@@ -167,7 +197,12 @@ export function FeedEntriesModal({ feed, onClose }: { feed: RssFeedRead; onClose
         {visible.length > 0 && (
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {visible.map((g) => (
-              <GroupRow key={g.parsed_name ?? '__unparsed__'} group={g} />
+              <GroupRow
+                key={g.parsed_name ?? '__unparsed__'}
+                group={g}
+                feed={feed}
+                onAdded={(name) => setAdded((prev) => new Set(prev).add(name))}
+              />
             ))}
           </ul>
         )}

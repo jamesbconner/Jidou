@@ -341,6 +341,19 @@ export type FeedRegexTestRequest = Omit<
 
 export type RegexMatchReportRead = components['schemas']['RegexMatchReportRead']
 
+export type FeedAddShowRequest = Omit<
+  components['schemas']['FeedAddShowRequest'],
+  'show' | 'regex_include_ignorecase' | 'regex_exclude_ignorecase' | 'enabled' | 'dry_run'
+> & {
+  show?: ShowCreate | null
+  regex_include_ignorecase?: boolean
+  regex_exclude_ignorecase?: boolean
+  enabled?: boolean
+  dry_run?: boolean
+}
+
+export type FeedAddShowResult = components['schemas']['FeedAddShowResult']
+
 export interface ConnectionTestResult {
   ok: boolean
   error?: string
