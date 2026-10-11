@@ -331,4 +331,61 @@ describe('AddShowFromFeedPane', () => {
     expect(screen.getByRole('button', { name: 'Add show + subscription' })).toBeDisabled()
     expect(screen.queryByLabelText('Include regex')).not.toBeInTheDocument()
   })
+
+  test('a movie and a TV result sharing a TMDB id are distinct options', async () => {
+    const base = {
+      overview: '',
+      poster_path: null,
+      backdrop_path: null,
+      vote_average: 1,
+      vote_count: 1,
+      original_language: 'en',
+    }
+    handlers['/suggest-regex'] = { body: suggestion }
+    handlers['/shows/tmdb/search'] = {
+      body: {
+        results: [
+          { ...base, id: 555, name: 'Same Id Show', media_type: 'tv' },
+          { ...base, id: 555, title: 'Same Id Movie', media_type: 'movie' },
+        ],
+        total_results: 2,
+        total_pages: 1,
+        page: 1,
+      },
+    }
+    renderPane(group())
+
+    const tv = await screen.findByRole('option', { name: /Same Id Show/ })
+    const movie = await screen.findByRole('option', { name: /Same Id Movie/ })
+    fireEvent.click(movie)
+
+    expect(movie).toHaveAttribute('aria-selected', 'true')
+    expect(tv).toHaveAttribute('aria-selected', 'false')
+    fireEvent.click(tv)
+    expect(tv).toHaveAttribute('aria-selected', 'true')
+    expect(movie).toHaveAttribute('aria-selected', 'false')
+  })
+
+  test('onAdded is called once the add succeeds', async () => {
+    handlers['/suggest-regex'] = { body: suggestion }
+    handlers['/add-show'] = { body: addResult }
+    const onAdded = vi.fn()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <AddShowFromFeedPane feed={feed} group={libraryGroup()} onAdded={onAdded} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText('Include regex')).toHaveValue(suggestion.regex_include),
+    )
+
+    expect(onAdded).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Add show + subscription' }))
+
+    await screen.findByRole('status')
+    expect(onAdded).toHaveBeenCalledTimes(1)
+  })
 })

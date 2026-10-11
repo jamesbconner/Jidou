@@ -42,9 +42,10 @@ function pickTitle(p: Pick): string {
 
 function isSamePick(a: Pick | null, b: Pick): boolean {
   if (a === null || a.kind !== b.kind) return false
-  return a.kind === 'library'
-    ? a.id === (b as typeof a).id
-    : a.result.id === (b as typeof a).result.id
+  if (a.kind === 'library') return a.id === (b as typeof a).id
+  // A movie and a TV show can share a TMDB id, so identity includes media_type.
+  const other = (b as typeof a).result
+  return a.result.id === other.id && a.result.media_type === other.media_type
 }
 
 /** "N of M titles selected" copy for a match report, with the empty-include caveat. */
@@ -66,10 +67,13 @@ export function AddShowFromFeedPane({
   feed,
   group,
   onDone,
+  onAdded,
 }: {
   feed: RssFeedRead
   group: FeedEntryGroupRead
   onDone?: () => void
+  /** Called once the add succeeds, so the parent can keep this row on screen. */
+  onAdded?: () => void
 }) {
   const parsedName = group.parsed_name ?? ''
   const [query, setQuery] = useState(parsedName)
@@ -126,7 +130,7 @@ export function AddShowFromFeedPane({
       }
       const year = (r.first_air_date ?? r.release_date ?? '').slice(0, 4)
       out.push({
-        key: `tmdb-${r.id}`,
+        key: `tmdb-${mediaType}-${r.id}`,
         label: tmdbTitle(r),
         detail: `TMDB · ${mediaType === 'tv' ? 'TV' : 'Movie'}${year ? ` · ${year}` : ''}`,
         pick: { kind: 'tmdb', result: r },
@@ -199,7 +203,12 @@ export function AddShowFromFeedPane({
         regex_exclude_ignorecase: ignoreExclude,
         enabled,
       },
-      { onSuccess: setResult },
+      {
+        onSuccess: (r) => {
+          setResult(r)
+          onAdded?.()
+        },
+      },
     )
   }
 

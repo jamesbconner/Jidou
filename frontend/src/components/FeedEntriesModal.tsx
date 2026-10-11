@@ -46,7 +46,15 @@ const STATUS_BADGE: Record<GroupStatus, { label: string; color: string }> = {
   },
 }
 
-function GroupRow({ group, feed }: { group: FeedEntryGroupRead; feed: RssFeedRead }) {
+function GroupRow({
+  group,
+  feed,
+  onAdded,
+}: {
+  group: FeedEntryGroupRead
+  feed: RssFeedRead
+  onAdded: (parsedName: string) => void
+}) {
   const [adding, setAdding] = useState(false)
   const status = groupStatus(group)
   const badge = STATUS_BADGE[status]
@@ -82,7 +90,12 @@ function GroupRow({ group, feed }: { group: FeedEntryGroupRead; feed: RssFeedRea
           ))}
         </ul>
         {adding && (
-          <AddShowFromFeedPane feed={feed} group={group} onDone={() => setAdding(false)} />
+          <AddShowFromFeedPane
+            feed={feed}
+            group={group}
+            onDone={() => setAdding(false)}
+            onAdded={() => group.parsed_name && onAdded(group.parsed_name)}
+          />
         )}
       </div>
       {canAdd && !adding && (
@@ -98,9 +111,14 @@ export function FeedEntriesModal({ feed, onClose }: { feed: RssFeedRead; onClose
   const { data, isLoading, error } = useFeedEntries(feed.id)
   const refresh = useRefreshFeedEntries(feed.id)
   const [filter, setFilter] = useState<Filter>('unsubscribed')
+  // Groups added this session stay listed even though adding makes them
+  // "Subscribed" (and so filtered out by default); otherwise the row, and the
+  // outcome it is showing, would vanish the moment the entries refetch.
+  const [added, setAdded] = useState<ReadonlySet<string>>(new Set())
 
   const groups = data?.groups ?? []
   const visible = groups.filter((g) => {
+    if (g.parsed_name && added.has(g.parsed_name)) return true
     const subscribed = groupStatus(g) === 'subscribed'
     if (filter === 'all') return true
     return filter === 'subscribed' ? subscribed : !subscribed
@@ -179,7 +197,12 @@ export function FeedEntriesModal({ feed, onClose }: { feed: RssFeedRead; onClose
         {visible.length > 0 && (
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {visible.map((g) => (
-              <GroupRow key={g.parsed_name ?? '__unparsed__'} group={g} feed={feed} />
+              <GroupRow
+                key={g.parsed_name ?? '__unparsed__'}
+                group={g}
+                feed={feed}
+                onAdded={(name) => setAdded((prev) => new Set(prev).add(name))}
+              />
             ))}
           </ul>
         )}
