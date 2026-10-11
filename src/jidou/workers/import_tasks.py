@@ -23,7 +23,7 @@ def _host_root_for_content_type(content_type: str) -> str:
     """Return the configured host-side library root for a content type.
 
     Mirrors the container-side mapping in
-    :func:`jidou.api.routes.shows._auto_local_path`, but for the host path —
+    :func:`jidou.services.show_creation.auto_local_path`, but for the host path —
     the import file's raw paths are Windows/POSIX host paths, not
     container-internal ones.
 

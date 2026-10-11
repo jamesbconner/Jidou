@@ -2578,8 +2578,8 @@ def test_infer_content_type(
     expected: str,
 ) -> None:
     """_infer_content_type returns the correct routing category for each TMDB profile."""
-    from jidou.api.routes.shows import _infer_content_type
     from jidou.schemas.show_schema import ShowCreate
+    from jidou.services.show_creation import infer_content_type as _infer_content_type
 
     payload = ShowCreate(
         tmdb_id=1,
