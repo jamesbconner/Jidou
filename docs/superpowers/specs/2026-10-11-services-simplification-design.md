@@ -28,7 +28,7 @@ docstrings and dedicated tests. There are four kinds of problems:
    directory-entry filter, five copies of "call the LLM, then parse and
    validate the JSON", four copies of "open a Redis client, use it, close
    it", and two copies of the YaRSS2 include/exclude regex rules.
-2. **A few large functions with long if/elif ladders.** Eleven functions
+2. **A few large functions with long if/elif ladders.** Twelve functions
    score above 8. The worst are `TMDBService._request` (17),
    `path_parser._parse_episode` (16), `path_parser.scan_show_directory`
    (15) and `LLMService.complete` (14).
