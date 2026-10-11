@@ -233,11 +233,12 @@ def test_test_regex_honours_case_flags(fetcher: MagicMock) -> None:
     assert r.json()["matched_titles"] == []
 
 
-def test_test_regex_empty_filters_match_everything(fetcher: MagicMock) -> None:
+def test_test_regex_empty_include_selects_nothing_like_yarss2(fetcher: MagicMock) -> None:
     r = TestClient(app).post("/api/rss/feeds/7/test-regex", json={"parsed_name": "Brand New Show"})
 
     assert r.json()["total"] == 3
-    assert len(r.json()["matched_titles"]) == 3
+    assert r.json()["matched_titles"] == []
+    assert len(r.json()["unmatched_titles"]) == 3
 
 
 @pytest.mark.parametrize("field", ["regex_include", "regex_exclude"])

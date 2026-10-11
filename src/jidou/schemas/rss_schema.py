@@ -353,7 +353,8 @@ class FeedRegexTestRequest(BaseModel):
 
     Attributes:
         parsed_name: The group's ``parsed_name`` from the feed entries response.
-        regex_include: Include pattern; empty/None means no include filter.
+        regex_include: Include pattern. Empty/None selects nothing, matching
+            YaRSS2 (a subscription without an include pattern never matches).
         regex_exclude: Exclude pattern; empty/None means no exclude filter.
         regex_include_ignorecase: Case-insensitive include matching.
         regex_exclude_ignorecase: Case-insensitive exclude matching.
