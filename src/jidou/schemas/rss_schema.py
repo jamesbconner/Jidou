@@ -4,7 +4,9 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from jidou.schemas.show_schema import ShowCreate
 
 
 def _validate_regex(v: str | None) -> str | None:
@@ -371,3 +373,73 @@ class FeedRegexTestRequest(BaseModel):
     def validate_regex(cls, v: str | None) -> str | None:
         """Reject patterns that fail to compile as Python regexes."""
         return _validate_regex(v)
+
+
+class FeedAddShowRequest(BaseModel):
+    """Create (or reuse) a show and its subscription from one feed group.
+
+    Exactly one of ``show_id`` (a show already in the library) or ``show`` (a
+    TMDB result to add) must be given.
+
+    Attributes:
+        parsed_name: The group's ``parsed_name`` from the entries response.
+            Taught as an alias of the chosen show so later files and entries
+            named that way match it directly.
+        show_id: Existing library show to subscribe.
+        show: TMDB result to add to the library first.
+        name: Subscription name; defaults to the show title.
+        regex_include: Include pattern (empty/None selects nothing in YaRSS2).
+        regex_exclude: Exclude pattern.
+        regex_include_ignorecase: Case-insensitive include matching.
+        regex_exclude_ignorecase: Case-insensitive exclude matching.
+        enabled: When true the subscription is active and included in the next
+            publish; when false it is saved in Jidou only.
+        dry_run: Validate and report what would happen without writing.
+    """
+
+    parsed_name: str = Field(min_length=1, max_length=300)
+    show_id: int | None = None
+    show: ShowCreate | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    regex_include: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_exclude: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include_ignorecase: bool = True
+    regex_exclude_ignorecase: bool = True
+    enabled: bool = False
+    dry_run: bool = False
+
+    @field_validator("regex_include", "regex_exclude")
+    @classmethod
+    def validate_regex(cls, v: str | None) -> str | None:
+        """Reject patterns that fail to compile as Python regexes."""
+        return _validate_regex(v)
+
+    @model_validator(mode="after")
+    def exactly_one_show_source(self) -> "FeedAddShowRequest":
+        """Require exactly one of ``show_id`` and ``show``."""
+        if (self.show_id is None) == (self.show is None):
+            raise ValueError("Provide exactly one of show_id or show")
+        return self
+
+
+class FeedAddShowResult(BaseModel):
+    """What an add-show-from-feed call did (or, for a dry run, would do).
+
+    Attributes:
+        show: The show; None when a dry run would create it.
+        show_created: The show was (or would be) newly added to the library.
+        subscription: The subscription; None when a dry run would create it.
+        subscription_created: A new subscription was (or would be) created.
+        adopted_stub: An unlinked subscription from an import was linked to the
+            feed instead of creating a duplicate.
+        alias_added: The parsed name was (or would be) added as a show alias.
+        dry_run: Nothing was written.
+    """
+
+    show: RssShowBrief | None
+    show_created: bool
+    subscription: "RssSubscriptionRead | None"
+    subscription_created: bool
+    adopted_stub: bool
+    alias_added: bool
+    dry_run: bool
