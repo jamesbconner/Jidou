@@ -36,11 +36,12 @@ export function connectTaskProgress(
     }
 
     ws.onclose = () => {
+      // An intentional close() fires onclose asynchronously; reporting
+      // 'closed' here would clobber the caller's own state (e.g. 'idle').
+      if (stopped) return
       onStateChange('closed')
-      if (!stopped) {
-        reconnectTimer = setTimeout(connect, retryDelay)
-        retryDelay = Math.min(retryDelay * 2, MAX_DELAY)
-      }
+      reconnectTimer = setTimeout(connect, retryDelay)
+      retryDelay = Math.min(retryDelay * 2, MAX_DELAY)
     }
 
     ws.onerror = () => {
