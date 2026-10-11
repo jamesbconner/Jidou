@@ -270,8 +270,9 @@ class FeedEntryGroupRead(BaseModel):
         sample_titles: Up to three raw entry titles.
         library_show: Library show whose alias/title exactly matches the parsed
             name, if any.
-        existing_subscription_id: A subscription on this feed already linked to
-            ``library_show``, if any.
+        existing_subscription_id: An active subscription on this feed that
+            already covers the group (its regexes match the group's titles, or
+            it is linked to ``library_show``), if any.
     """
 
     parsed_name: str | None

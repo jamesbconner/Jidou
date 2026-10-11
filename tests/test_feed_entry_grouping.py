@@ -84,3 +84,46 @@ def test_slash_titled_show_keeps_its_exact_name_so_library_lookup_can_match() ->
 
     assert g.parsed_name == "Fate/stay night"
     assert g.entry_count == 2
+
+
+_TRACKER_TITLE = (
+    "{name} - TV Series [2026] :: Web | MKV | h264 | 1080p | AAC 2.0 | "
+    "Softsubs (Group) | Episode {ep} | Freeleech"
+)
+
+
+@pytest.mark.parametrize(
+    ("title", "name", "episode"),
+    [
+        (_TRACKER_TITLE.format(name="Example Show", ep=7), "Example Show", 7),
+        (_TRACKER_TITLE.format(name="#Hashtag Show", ep=12), "#Hashtag Show", 12),
+        (_TRACKER_TITLE.format(name="Show [Re] Name", ep=1), "Show [Re] Name", 1),
+        (
+            "Example Show - ONA :: Web | MKV | h265 | 1080p | Episode 3 | Freeleech",
+            "Example Show",
+            3,
+        ),
+        ("Other Show - TV Series :: Web | MKV | h265", "Other Show", None),
+    ],
+)
+def test_tracker_formatted_title_yields_show_name_and_episode(
+    title: str, name: str, episode: int | None
+) -> None:
+    parsed = parse_release_title(title)
+
+    assert parsed.show_name == name
+    assert parsed.episode == episode
+
+
+def test_tracker_formatted_titles_of_one_show_share_a_group() -> None:
+    entries = [
+        _e(_TRACKER_TITLE.format(name="Example Show", ep=7).replace("1080p", "720p")),
+        _e(_TRACKER_TITLE.format(name="Example Show", ep=7)),
+        _e(_TRACKER_TITLE.format(name="Example Show", ep=8)),
+    ]
+
+    (g,) = group_entries(entries)
+
+    assert g.parsed_name == "Example Show"
+    assert g.entry_count == 3
+    assert (g.episode_min, g.episode_max) == (7, 8)

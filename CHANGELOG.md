@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-11
+
+### Fixed
+- **Browse no longer lists subscribed shows under "Not subscribed".** A group is now "Subscribed" when an active, published subscription on that feed has include/exclude regexes that match the group's titles (the same filter YaRSS2 applies), falling back to a subscription linked to the matched library show. Previously it required the parsed name to exactly match a library alias/title, which failed for every show on trackers whose titles read `Name - TV Series [year] :: Web | MKV | ...`. Those titles now parse to the bare show name and a real episode number (instead of a name carrying the format suffix and an episode taken from `AAC 2.0`).
+
 ## [0.4.0] — 2026-10-10
 
 ### Added
