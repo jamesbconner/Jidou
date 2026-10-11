@@ -263,23 +263,16 @@ export interface paths {
          * Create Show
          * @description Add a show to the database (upsert by TMDB ID).
          *
-         *     If the show already exists it is returned unchanged.  ``sys_name`` is
-         *     auto-derived from the title if not provided.  The payload is typically a
-         *     TMDB search/trending card, which only carries a sparse field set
-         *     (``genre_ids`` rather than full ``genres`` objects, no
-         *     ``external_ids``/``episode_groups``/etc.) — a full TMDB details fetch is
-         *     attempted so the created show gets complete metadata, matching what the
-         *     manual-match and path-import show-creation paths already do.  A TMDB
-         *     episode sync is then attempted inline so the show detail page shows
-         *     episodes immediately.  Both TMDB steps are best-effort: failures are
-         *     logged but do not abort the response — the show is still returned,
-         *     falling back to the sparse search-card fields if the details fetch
-         *     itself fails.
+         *     If the show already exists it is returned unchanged. Otherwise the show is
+         *     created with full TMDB metadata, its episodes are synced and aliases are
+         *     generated; see :func:`jidou.services.show_creation.get_or_create_show_from_tmdb`
+         *     for the best-effort semantics of those steps.
          *
          *     Args:
          *         payload: Show data from a TMDB search/trending result.
          *         db_session: DB session (injected).
          *         tmdb: TMDB service (injected).
+         *         llm: LLM service (injected).
          *
          *     Returns:
          *         The created or existing :class:`Show` record.
@@ -2616,6 +2609,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rss/feeds/{feed_id}/add-show": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Show From Feed
+         * @description Add a show to the library and subscribe it to this feed in one step.
+         *
+         *     Resolves or creates the show, teaches the group's parsed name as an alias,
+         *     and creates the feed subscription (or links an unlinked stub left by an
+         *     import). Idempotent: a subscription already linking the show to this feed
+         *     is returned unchanged. Nothing is published to YaRSS2.
+         *
+         *     Args:
+         *         feed_id: Feed the group came from.
+         *         body: The group key, the show to use or add, and the filter.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *         llm: LLM service (injected).
+         *
+         *     Returns:
+         *         What was done, or with ``dry_run`` what would be done.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the feed or ``show_id`` does not exist.
+         */
+        post: operations["add_show_from_feed_api_rss_feeds__feed_id__add_show_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rss/subscriptions": {
         parameters: {
             query?: never;
@@ -3594,6 +3625,89 @@ export interface components {
             readonly tracked_filename_display: string | null;
         };
         /**
+         * FeedAddShowRequest
+         * @description Create (or reuse) a show and its subscription from one feed group.
+         *
+         *     Exactly one of ``show_id`` (a show already in the library) or ``show`` (a
+         *     TMDB result to add) must be given.
+         *
+         *     Attributes:
+         *         parsed_name: The group's ``parsed_name`` from the entries response.
+         *             Taught as an alias of the chosen show so later files and entries
+         *             named that way match it directly.
+         *         show_id: Existing library show to subscribe.
+         *         show: TMDB result to add to the library first.
+         *         name: Subscription name; defaults to the show title.
+         *         regex_include: Include pattern (empty/None selects nothing in YaRSS2).
+         *         regex_exclude: Exclude pattern.
+         *         regex_include_ignorecase: Case-insensitive include matching.
+         *         regex_exclude_ignorecase: Case-insensitive exclude matching.
+         *         enabled: When true the subscription is active and included in the next
+         *             publish; when false it is saved in Jidou only.
+         *         dry_run: Validate and report what would happen without writing.
+         */
+        FeedAddShowRequest: {
+            /** Parsed Name */
+            parsed_name: string;
+            /** Show Id */
+            show_id?: number | null;
+            show?: components["schemas"]["ShowCreate"] | null;
+            /** Name */
+            name?: string | null;
+            /** Regex Include */
+            regex_include?: string | null;
+            /** Regex Exclude */
+            regex_exclude?: string | null;
+            /**
+             * Regex Include Ignorecase
+             * @default true
+             */
+            regex_include_ignorecase: boolean;
+            /**
+             * Regex Exclude Ignorecase
+             * @default true
+             */
+            regex_exclude_ignorecase: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
+         * FeedAddShowResult
+         * @description What an add-show-from-feed call did (or, for a dry run, would do).
+         *
+         *     Attributes:
+         *         show: The show; None when a dry run would create it.
+         *         show_created: The show was (or would be) newly added to the library.
+         *         subscription: The subscription; None when a dry run would create it.
+         *         subscription_created: A new subscription was (or would be) created.
+         *         adopted_stub: An unlinked subscription from an import was linked to the
+         *             feed instead of creating a duplicate.
+         *         alias_added: The parsed name was (or would be) added as a show alias.
+         *         dry_run: Nothing was written.
+         */
+        FeedAddShowResult: {
+            show: components["schemas"]["RssShowBrief"] | null;
+            /** Show Created */
+            show_created: boolean;
+            subscription: components["schemas"]["RssSubscriptionRead"] | null;
+            /** Subscription Created */
+            subscription_created: boolean;
+            /** Adopted Stub */
+            adopted_stub: boolean;
+            /** Alias Added */
+            alias_added: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+        };
+        /**
          * FeedEntriesRead
          * @description Response for browsing a feed's entries.
          *
@@ -3701,7 +3815,8 @@ export interface components {
          *
          *     Attributes:
          *         parsed_name: The group's ``parsed_name`` from the feed entries response.
-         *         regex_include: Include pattern; empty/None means no include filter.
+         *         regex_include: Include pattern. Empty/None selects nothing, matching
+         *             YaRSS2 (a subscription without an include pattern never matches).
          *         regex_exclude: Exclude pattern; empty/None means no exclude filter.
          *         regex_include_ignorecase: Case-insensitive include matching.
          *         regex_exclude_ignorecase: Case-insensitive exclude matching.
@@ -8203,6 +8318,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegexMatchReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_show_from_feed_api_rss_feeds__feed_id__add_show_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                feed_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedAddShowRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedAddShowResult"];
                 };
             };
             /** @description Validation Error */

@@ -208,3 +208,51 @@ describe('FeedEntriesModal', () => {
     expect(await screen.findByText('This feed has no entries.')).toBeInTheDocument()
   })
 })
+
+describe('FeedEntriesModal add action', () => {
+  test('offers Add only for new and in-library groups with a parsed name', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse([]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(
+        entries([
+          group({ parsed_name: 'Brand New Show' }),
+          group({
+            parsed_name: 'Known Show',
+            library_show: { id: 42, title: 'Known Show', status: null, poster_path: null },
+          }),
+          group({
+            parsed_name: 'Already Subscribed',
+            library_show: { id: 9, title: 'Already Subscribed', status: null, poster_path: null },
+            existing_subscription_id: 3,
+          }),
+          group({ parsed_name: null, sample_titles: ['[1080p]'] }),
+        ]),
+      ),
+    )
+
+    renderModal()
+    await screen.findByText('Brand New Show')
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }))
+
+    // New + In library get an action; Subscribed and Unrecognized do not.
+    expect(screen.getAllByRole('button', { name: /^Add/ })).toHaveLength(2)
+  })
+
+  test('Add opens the pane for that group and hides the button', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse([]))
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockResponse(entries([group({ parsed_name: 'Brand New Show' })])),
+    )
+
+    renderModal()
+    await screen.findByText('Brand New Show')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+
+    expect(screen.getByLabelText('Search for the show')).toHaveValue('Brand New Show')
+    expect(screen.queryByRole('button', { name: 'Add…' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Search for the show')).not.toBeInTheDocument()
+  })
+})
