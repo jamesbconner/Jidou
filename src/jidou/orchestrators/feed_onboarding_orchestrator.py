@@ -146,7 +146,8 @@ class FeedOnboardingOrchestrator:
     async def _resolve_show(self, request: FeedAddShowRequest) -> tuple[Show, bool]:
         if request.show_id is not None:
             return await self._load_show(request.show_id), False
-        assert request.show is not None  # guaranteed by the request validator
+        if request.show is None:  # unreachable via the validated request model
+            raise FeedOnboardingError(422, "Provide exactly one of show_id or show")
         result = await get_or_create_show_from_tmdb(
             self.session, self.tmdb, request.show, llm=self.llm
         )
@@ -236,7 +237,8 @@ class FeedOnboardingOrchestrator:
         if request.show_id is not None:
             show = await self._load_show(request.show_id)
         else:
-            assert request.show is not None  # guaranteed by the request validator
+            if request.show is None:  # unreachable via the validated request model
+                raise FeedOnboardingError(422, "Provide exactly one of show_id or show")
             show = (
                 await self.session.execute(select(Show).where(Show.tmdb_id == request.show.tmdb_id))
             ).scalar_one_or_none()

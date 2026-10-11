@@ -288,3 +288,26 @@ async def test_dry_run_sees_an_existing_subscription_and_a_stub() -> None:
         _feed(7), _req(dry_run=True)
     )
     assert (out.subscription_id, out.subscription_created, out.adopted_stub) == (5, False, True)
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_request_without_any_show_source_is_a_422_not_an_assertion(dry_run: bool) -> None:
+    # Unreachable through the validated model; model_construct bypasses it to
+    # prove the guard is a real error rather than a strippable assert.
+    bad = FeedAddShowRequest.model_construct(
+        parsed_name="x",
+        show_id=None,
+        show=None,
+        name=None,
+        regex_include=None,
+        regex_exclude=None,
+        regex_include_ignorecase=True,
+        regex_exclude_ignorecase=True,
+        enabled=False,
+        dry_run=dry_run,
+    )
+
+    with pytest.raises(FeedOnboardingError) as exc_info:
+        await _orch(_Session()).add_show_from_feed(_feed(), bad)
+
+    assert exc_info.value.status_code == 422
