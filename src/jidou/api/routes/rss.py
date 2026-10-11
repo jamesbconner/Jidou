@@ -47,6 +47,7 @@ from jidou.schemas.rss_schema import (
 from jidou.schemas.task_schema import TaskRead
 from jidou.services.feed_entry_grouping import FeedEntryGroup, group_entries
 from jidou.services.feed_fetch import FeedFetchError, FeedFetchService
+from jidou.services.feed_subscription_match import SubscriptionMatcher, SubscriptionRule
 from jidou.services.llm_service import LLMService
 from jidou.services.progress import TaskDispatchError, enqueue_task
 from jidou.services.rss_config import (
@@ -193,8 +194,9 @@ async def browse_feed_entries(
     """Fetch a feed's current entries, grouped by parsed show name.
 
     Read-only: nothing is persisted. Each group is annotated with the library
-    show whose alias/title exactly matches the parsed name, and with any
-    subscription on this feed already linked to that show.
+    show whose alias/title exactly matches the parsed name, and with any active
+    subscription on this feed that already covers it: one whose include/exclude
+    regexes match the group's titles, or failing that one linked to that show.
 
     Args:
         feed_id: Database primary key of the feed.
@@ -233,14 +235,26 @@ async def browse_feed_entries(
             shows[show.id] = show
             show_by_group[idx] = show.id
 
-    sub_by_show: dict[int, int] = {}
-    if shows:
-        sub_rows = await db_session.execute(
-            select(RssSubscription.show_id, func.min(RssSubscription.id))
-            .where(RssSubscription.feed_id == feed_id, RssSubscription.show_id.in_(shows))
-            .group_by(RssSubscription.show_id)
+    # Only subscriptions that are actually published and active count: stubs and
+    # disabled rules will not download anything.
+    sub_rows = await db_session.execute(
+        select(
+            RssSubscription.id,
+            RssSubscription.show_id,
+            RssSubscription.regex_include,
+            RssSubscription.regex_exclude,
+            RssSubscription.regex_include_ignorecase,
+            RssSubscription.regex_exclude_ignorecase,
+        ).where(
+            RssSubscription.feed_id == feed_id,
+            RssSubscription.active.is_(True),
+            RssSubscription.enabled_in_config.is_(True),
         )
-        sub_by_show = {sid: sub_id for sid, sub_id in sub_rows.all() if sid is not None}
+    )
+    matcher = SubscriptionMatcher([SubscriptionRule(*row) for row in sub_rows.all()])
+    sub_by_group = {
+        idx: matcher.find(g.titles, show_id=show_by_group.get(idx)) for idx, g in enumerate(groups)
+    }
 
     return FeedEntriesRead(
         feed_id=feed_id,
@@ -262,7 +276,7 @@ async def browse_feed_entries(
                     if idx in show_by_group
                     else None
                 ),
-                existing_subscription_id=sub_by_show.get(show_by_group.get(idx, -1)),
+                existing_subscription_id=sub_by_group[idx],
             )
             for idx, g in enumerate(groups)
         ],

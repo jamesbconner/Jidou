@@ -36,7 +36,17 @@ def _show(show_id: int = 42, title: str = "Show Name") -> MagicMock:
     return s
 
 
-def _session(feed: MagicMock | None, sub_rows: list[tuple[int, int]] | None = None):
+def _sub_row(
+    sub_id: int,
+    show_id: int | None = None,
+    include: str | None = None,
+    exclude: str | None = None,
+) -> tuple[int, int | None, str | None, str | None, bool, bool]:
+    """A row as selected by the route: id, show_id, include/exclude regex + ignorecase flags."""
+    return (sub_id, show_id, include, exclude, True, True)
+
+
+def _session(feed: MagicMock | None, sub_rows: list[tuple] | None = None):
     async def _mock_session():
         session = AsyncMock()
         feed_result = MagicMock()
@@ -80,7 +90,7 @@ def test_entries_groups_annotates_library_and_existing_subscription(
         malformed=True,
         cached=False,
     )
-    app.dependency_overrides[get_session] = _session(_feed(), sub_rows=[(42, 99)])
+    app.dependency_overrides[get_session] = _session(_feed(), sub_rows=[_sub_row(99, show_id=42)])
     show = _show(42, "Show Name")
 
     async def _find(_session_, name: str, **_kw):
@@ -179,3 +189,54 @@ def test_entries_slash_titled_show_is_looked_up_by_its_exact_name(fetcher: Magic
     group = r.json()["groups"][0]
     assert group["parsed_name"] == "Fate/stay night"
     assert group["library_show"]["id"] == 11
+
+
+def test_entries_tracker_titled_group_is_subscribed_via_regex_without_library_link(
+    fetcher: MagicMock,
+) -> None:
+    """Regression: parsed names that miss the library must not hide a subscription."""
+    fetcher.fetch_entries.return_value = FeedFetchResult(
+        entries=[
+            _entry(
+                "Example Show - TV Series [2026] :: Web | MKV | h264 | 1080p | AAC 2.0 | "
+                "Softsubs (Group) | Episode 3 | Freeleech"
+            ),
+            _entry("Unwatched Show - TV Series [2026] :: Web | MKV | h264 | 1080p | Episode 1"),
+        ],
+        malformed=False,
+        cached=False,
+    )
+    app.dependency_overrides[get_session] = _session(
+        _feed(), sub_rows=[_sub_row(55, show_id=None, include=r"^Example.Show.*1080p")]
+    )
+
+    with patch("jidou.api.routes.rss.find_show_by_name", new=AsyncMock(return_value=None)):
+        r = TestClient(app).get("/api/rss/feeds/7/entries")
+
+    by_name = {g["parsed_name"]: g for g in r.json()["groups"]}
+    assert by_name["Example Show"]["library_show"] is None
+    assert by_name["Example Show"]["existing_subscription_id"] == 55
+    assert by_name["Unwatched Show"]["existing_subscription_id"] is None
+
+
+def test_entries_subscription_query_only_considers_active_published_rules(
+    fetcher: MagicMock,
+) -> None:
+    fetcher.fetch_entries.return_value = FeedFetchResult(entries=[], malformed=False, cached=False)
+    session = AsyncMock()
+    feed_result = MagicMock()
+    feed_result.scalar_one_or_none.return_value = _feed()
+    subs_result = MagicMock()
+    subs_result.all.return_value = []
+    session.execute = AsyncMock(side_effect=[feed_result, subs_result])
+
+    async def _mock_session():
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+
+    TestClient(app).get("/api/rss/feeds/7/entries")
+
+    sql = str(session.execute.await_args_list[1].args[0].compile()).lower()
+    assert "active" in sql
+    assert "enabled_in_config" in sql
