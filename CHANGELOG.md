@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-10-11
+
+### Fixed
+- **Nav connection badge no longer sticks on "Reconnecting…" after a task finishes.** An intentional socket close fired `onclose` asynchronously and reported `closed`, overwriting the `idle` state set on cleanup. `onclose` now ignores closes the client requested itself; real network drops still show "Reconnecting…" and retry.
+
 ## [0.4.1] — 2026-10-11
 
 ### Fixed
