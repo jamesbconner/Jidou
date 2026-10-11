@@ -69,6 +69,20 @@ describe('connectTaskProgress — reconnect timer lifecycle', () => {
     expect(FakeWebSocket.instances[0].closeCallCount).toBe(1)
   })
 
+  test('onclose firing after an intentional close() does not report "closed"', () => {
+    // Regression test: a real WebSocket fires onclose asynchronously after
+    // close(). Reporting 'closed' then overwrote the caller's 'idle' state, so
+    // the nav badge stayed on "Reconnecting…" after a task finished.
+    const onStateChange = vi.fn()
+    const managed = connectTaskProgress('task-1', vi.fn(), onStateChange)
+
+    managed.close()
+    onStateChange.mockClear()
+    FakeWebSocket.instances[0].onclose?.()
+
+    expect(onStateChange).not.toHaveBeenCalled()
+  })
+
   test('onStateChange is not called again by a reconnect timer that fired after close()', () => {
     const onStateChange = vi.fn()
     const managed = connectTaskProgress('task-1', vi.fn(), onStateChange)
