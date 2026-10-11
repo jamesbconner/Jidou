@@ -12,6 +12,10 @@ import type {
   RssRegexSuggestion,
   RssConfigDiff,
   FeedEntriesRead,
+  FeedRegexSuggestRequest,
+  FeedRegexSuggestion,
+  FeedRegexTestRequest,
+  RegexMatchReportRead,
   TaskRead,
 } from '@/types/api'
 
@@ -237,5 +241,25 @@ export function useRefreshFeedEntries(feedId: number) {
     onSuccess: (data) => {
       qc.setQueryData(rssKeys.feedEntries(feedId), data)
     },
+  })
+}
+
+/**
+ * LLM regex suggestion for a feed group that has no subscription yet. The
+ * server re-reads the group's real release titles, so the client sends only
+ * the group key (`parsed_name`), the picked show title, and prior suggestions.
+ */
+export function useSuggestFeedRegex(feedId: number) {
+  return useMutation({
+    mutationFn: (body: FeedRegexSuggestRequest) =>
+      api.post<FeedRegexSuggestion>(`/rss/feeds/${feedId}/suggest-regex`, body),
+  })
+}
+
+/** Preview which of a feed group's current titles a hand-edited filter selects. */
+export function useTestFeedRegex(feedId: number) {
+  return useMutation({
+    mutationFn: (body: FeedRegexTestRequest) =>
+      api.post<RegexMatchReportRead>(`/rss/feeds/${feedId}/test-regex`, body),
   })
 }

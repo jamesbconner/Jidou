@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from jidou.api.dependencies import get_llm_service
-from jidou.api.routes.rss import _DUPLICATE_RETRY_SUFFIX
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
+from jidou.services.rss_regex_suggestor import DUPLICATE_RETRY_SUFFIX as _DUPLICATE_RETRY_SUFFIX
 
 # ---------------------------------------------------------------------------
 # Helpers
