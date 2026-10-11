@@ -238,6 +238,46 @@ _SLASH = "\ue000"
 _BACKSLASH = "\ue001"
 
 
+# Tracker release titles such as
+# "Show Name - TV Series [2026] :: Web | MKV | h264 | 1080p | Episode 4 | Freeleech".
+# The "::" separator is what distinguishes them from a filename; the name is
+# everything before " - <kind> [year]".
+_TRACKER_TITLE_PAT = re.compile(
+    r"^(?P<name>.+?)\s+-\s+[A-Za-z][A-Za-z0-9 ]{0,30}?(?:\s*\[[^\]]*\])*\s*::\s*(?P<rest>.*)$"
+)
+_TRACKER_EPISODE_PAT = re.compile(r"\bEpisode\s+(\d{1,3})\b", re.IGNORECASE)
+
+
+def _parse_tracker_title(title: str) -> FilenameParseResult | None:
+    """Parse a ``Name - Kind [year] :: details | Episode N`` tracker title.
+
+    The name is kept verbatim (including bracketed tokens such as ``[Re]``) so
+    it can match a library title exactly.
+
+    Args:
+        title: Raw release title.
+
+    Returns:
+        FilenameParseResult, or None when *title* is not in tracker format.
+    """
+    m = _TRACKER_TITLE_PAT.match(title)
+    if m is None:
+        return None
+    name = _WHITESPACE_PAT.sub(" ", m.group("name")).strip(" -_")
+    if not name:
+        return None
+    ep = _TRACKER_EPISODE_PAT.search(m.group("rest"))
+    return FilenameParseResult(
+        show_name=name,
+        season=None,
+        episode=int(ep.group(1)) if ep else None,
+        crc32=None,
+        content_type=None,
+        confidence=0.6,
+        llm_ok=False,
+    )
+
+
 def parse_release_title(title: str) -> FilenameParseResult:
     """Heuristically parse an RSS/torrent release title (not a filesystem path).
 
@@ -255,6 +295,9 @@ def parse_release_title(title: str) -> FilenameParseResult:
     Returns:
         FilenameParseResult with content_type always None and llm_ok=False.
     """
+    tracker = _parse_tracker_title(title)
+    if tracker is not None:
+        return tracker
     result = _heuristic_parse(title.replace("/", _SLASH).replace("\\", _BACKSLASH))
     if result.show_name:
         restored = result.show_name.replace(_SLASH, "/").replace(_BACKSLASH, "\\")
