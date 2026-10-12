@@ -12,7 +12,7 @@ from sqlalchemy import ColumnElement, func, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from jidou.api.dependencies import get_llm_service
+from jidou.api.dependencies import get_llm_service, get_tmdb
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
@@ -66,18 +66,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/shows", tags=["shows"])
 
 
-_tmdb = TMDBService()
-
-
 # ---------------------------------------------------------------------------
 # TMDB proxy endpoints under /tmdb (literal paths — must come before /{show_id}).
 # The ``:int`` convertor on /tmdb/{tmdb_id} keeps it from capturing /tmdb/search etc.
 # ---------------------------------------------------------------------------
-
-
-async def get_tmdb() -> TMDBService:
-    """Return the shared TMDB service instance."""
-    return _tmdb
 
 
 @router.get("/tmdb/trending")
