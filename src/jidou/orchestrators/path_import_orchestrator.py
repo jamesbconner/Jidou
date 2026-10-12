@@ -22,16 +22,15 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators._events import EventSink
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_file_matching import match_entry_to_episode
+from jidou.services.episode_lookup import count_show_episodes
 from jidou.services.episode_match_llm import llm_pick_candidate
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
@@ -458,9 +457,7 @@ class PathImportOrchestrator:
         Args:
             show: An already-committed Show row to check/sync.
         """
-        ep_count = await self.session.scalar(
-            select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
-        )
+        ep_count = await count_show_episodes(self.session, show.id)
         if ep_count == 0:
             if not self.dry_run:
                 await self._emit(
@@ -893,9 +890,7 @@ class PathImportOrchestrator:
         await self._emit("info", f"Syncing episodes for '{title}' from TMDB")
         try:
             await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
-            ep_count = await self.session.scalar(
-                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
-            )
+            ep_count = await count_show_episodes(self.session, show.id)
             await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
         except Exception as exc:
             await self.session.rollback()

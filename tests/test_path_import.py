@@ -4095,3 +4095,90 @@ async def test_episodes_only_skips_per_file_mismatch_check() -> None:
     parse_filename_spy.assert_not_called()
     assert len(results) == 1
     assert results[0].show_dir == "Gurren Lagann"
+
+
+# ---------------------------------------------------------------------------
+# Episode-count reporting in _tmdb_create_show / _sync_episodes_if_needed
+# (ORC-9 characterization: pins the emitted count text and the failure path).
+# ---------------------------------------------------------------------------
+
+
+async def _run_create_show(
+    *, scalar_value: object, sync_error: Exception | None = None
+) -> tuple[list[tuple[str, str]], AsyncMock]:
+    """Drive a non-dry-run ``_tmdb_create_show`` and capture its (level, message) events."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    events: list[tuple[str, str]] = []
+
+    async def capture_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg))
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.scalar = AsyncMock(return_value=scalar_value)
+    tmdb = AsyncMock()
+    tmdb.search.return_value = {"results": [{"id": 61889, "name": "Daredevil", "media_type": "tv"}]}
+    tmdb.get_details.return_value = {"name": "Daredevil", "id": 61889}
+    tmdb.get_external_ids.return_value = {}
+    tmdb.get_episode_groups.return_value = {"results": []}
+    orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
+
+    with (
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+        ) as mock_tmdb_orch_cls,
+        patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()),
+    ):
+        mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(side_effect=sync_error)
+        _, action = await orch._tmdb_create_show("Daredevil")
+
+    assert action == "created"
+    return events, session.scalar
+
+
+@pytest.mark.asyncio
+async def test_create_show_reports_synced_episode_count() -> None:
+    """After a successful episode sync, the event carries the show's episode count."""
+    events, scalar = await _run_create_show(scalar_value=13)
+
+    assert ("info", "Synced 13 episodes for 'Daredevil'") in events
+    scalar.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_show_reports_zero_synced_episodes() -> None:
+    """A show whose sync produced no rows reports 0 rather than skipping the event."""
+    events, _ = await _run_create_show(scalar_value=0)
+
+    assert ("info", "Synced 0 episodes for 'Daredevil'") in events
+
+
+@pytest.mark.asyncio
+async def test_create_show_sync_failure_emits_error_and_skips_count() -> None:
+    """A failed sync is reported as an error; the count is never queried or emitted."""
+    events, scalar = await _run_create_show(scalar_value=5, sync_error=RuntimeError("boom"))
+
+    assert ("error", "Episode sync failed for 'Daredevil': boom") in events
+    assert not any(msg.startswith("Synced ") for _, msg in events)
+    scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolve_show_found_with_episodes_does_not_resync() -> None:
+    """A positive episode count skips the sync even though the show already exists."""
+    from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=1)
+    orch = PathImportOrchestrator(session, AsyncMock())
+    show = _make_show()
+
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
+        await orch._sync_episodes_if_needed(show)
+
+    mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
+    session.scalar.assert_awaited_once()
