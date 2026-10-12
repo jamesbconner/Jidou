@@ -165,8 +165,10 @@ misspelled field is a 422 `extra_forbidden` error instead of being silently
 dropped, and the OpenAPI schema gets `additionalProperties: false`. New
 request bodies (and request-only models nested inside them) must use it.
 Response models must not, because a stored record with an extra key would then
-fail with a 500. `tests/test_request_body_extra_forbidden.py` covers the
-existing bodies.
+fail with a 500. `tests/test_request_body_extra_forbidden.py` discovers every JSON request body
+from the OpenAPI document and requires an exact match with its `_MINIMAL_BODIES`
+table, so a new request body fails that test until you add a minimal valid
+example for it there.
 
 ---
 
@@ -302,7 +304,7 @@ uv run pytest tests/test_shows.py::test_add_show -v
 cd frontend && npm run test
 ```
 
-Coverage target is **85%**. New behaviour requires new tests; bug fixes require regression tests.
+CI enforces **70%** coverage (`fail_under` in `pyproject.toml`); aim higher for new code. New behaviour requires new tests; bug fixes require regression tests.
 
 ### Test conventions
 
@@ -316,7 +318,7 @@ Coverage target is **85%**. New behaviour requires new tests; bug fixes require 
 ## Adding a new API endpoint
 
 1. Add the route handler to the appropriate `src/jidou/api/routes/*.py` file.
-2. Add a Pydantic request/response schema in `src/jidou/schemas/`. Request bodies subclass `RequestModel` (see [Guardrails](#request-bodies-reject-unknown-fields)).
+2. Add a Pydantic request/response schema in `src/jidou/schemas/`. Request bodies subclass `RequestModel` and get an entry in `_MINIMAL_BODIES` in `tests/test_request_body_extra_forbidden.py` (see [Guardrails](#request-bodies-reject-unknown-fields)).
 3. Register the router in `src/jidou/main.py` if it's a new file.
 4. Write tests in `tests/`.
 5. Regenerate the OpenAPI snapshot (see [OpenAPI snapshot](#openapi-snapshot)).
