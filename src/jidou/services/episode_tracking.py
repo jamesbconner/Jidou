@@ -33,12 +33,15 @@ def mark_episode_tracked(
         ep: Episode ORM object to mutate in place.
         filename: Path or name of the file that tracks this episode.
             May be ``None`` when restoring from a snapshot that had no filename.
-        source: Origin of the tracking event (``"match"``, ``"import"``, etc.).
+        source: Origin of the tracking event (``"match"`` or ``"import"``).
             May be ``None`` when restoring an orphan record that had no source.
         tracked_at: Explicit timestamp for ``file_tracked_at``.  Omit (or do
             not pass the keyword) to use ``datetime.now(UTC)``.  Pass ``None``
             to restore a snapshot that had a NULL timestamp — this is distinct
             from omitting the argument.
+
+    Raises:
+        ValueError: If *source* is neither ``None`` nor a ``TrackedSource`` value.
     """
     ep.file_tracked = True
     ep.file_tracked_at = datetime.now(UTC) if tracked_at is _UNSET else tracked_at

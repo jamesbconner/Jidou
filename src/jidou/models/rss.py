@@ -142,7 +142,6 @@ class RssConfigSnapshot(TimestampMixin, Base):
     __tablename__ = "rss_config_snapshots"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # "import" | "pre_publish" | "post_publish"
     # VARCHAR(32), no native enum: same DDL as the plain-string column it replaces.
     snapshot_type: Mapped[SnapshotType] = mapped_column(
         str_enum(SnapshotType, native_enum=False, length=32)
@@ -152,6 +151,6 @@ class RssConfigSnapshot(TimestampMixin, Base):
     def __repr__(self) -> str:
         """Return a concise representation of the RssConfigSnapshot."""
         return (
-            f"<RssConfigSnapshot(id={self.id}, type={self.snapshot_type!r}, "
+            f"<RssConfigSnapshot(id={self.id}, type={self.snapshot_type.value!r}, "
             f"len={len(self.raw_content)})>"
         )

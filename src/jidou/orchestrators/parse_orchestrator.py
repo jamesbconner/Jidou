@@ -323,7 +323,20 @@ class ParseOrchestrator:
                         add_alias(show, show_name)
                     # Backfill show.content_type from the parsed value if unset
                     if content_type and not show.content_type:
-                        show.content_type = ContentType(content_type)
+                        try:
+                            show.content_type = ContentType(content_type)
+                        except ValueError:
+                            # Not every provider enforces the response schema. Storing the
+                            # raw string would make the show unloadable (LookupError), and
+                            # raising would flip an otherwise good match to ERROR, so skip
+                            # only the backfill. parsed_content_type keeps the raw answer.
+                            logger.warning(
+                                "Ignoring out-of-vocabulary content_type %r for file id=%s "
+                                "(show id=%d)",
+                                content_type,
+                                file.id,
+                                show.id,
+                            )
                     # Auto-populate show.local_path when the content type is
                     # unambiguous.  media_type="movie" is always safe; media_type="tv"
                     # is not (TMDB uses "tv" for both TV series and anime), so for
