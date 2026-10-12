@@ -926,7 +926,7 @@ def test_import_endpoint_202_when_path_configured() -> None:
     try:
         with (
             patch("jidou.api.routes.rss.settings") as mock_settings,
-            patch("jidou.api.routes.rss.enqueue_task", _fake_enqueue(task)),
+            patch("jidou.services.progress.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):
             mock_settings.rss_config_remote_path = "/remote/yarss2.conf"
@@ -961,7 +961,7 @@ def test_import_endpoint_503_when_broker_unavailable() -> None:
     try:
         with (
             patch("jidou.api.routes.rss.settings") as mock_settings,
-            patch("jidou.api.routes.rss.enqueue_task", _fake_enqueue(task)),
+            patch("jidou.services.progress.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):
             mock_settings.rss_config_remote_path = "/remote/yarss2.conf"

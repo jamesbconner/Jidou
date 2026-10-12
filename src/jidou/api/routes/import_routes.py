@@ -1,14 +1,13 @@
 """API routes for batch imports (path text file and database JSON)."""
 
-import uuid
-
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.database import get_session
 from jidou.models.task import BackgroundTask
 from jidou.schemas.task_schema import TaskRead
-from jidou.services.progress import TaskDispatchError, enqueue_task
+from jidou.services.progress import TaskDispatchError
+from jidou.services.task_dispatch import CeleryTaskRef, enqueue_celery_task
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -117,19 +116,14 @@ async def import_text(
     # Decode; tolerate Windows / Unix line endings and BOM.
     file_content = _decode_upload(raw)
 
-    # Delayed import to avoid circular references with the Celery app.
-    from jidou.workers.import_tasks import path_import_task
-
-    task_id = str(uuid.uuid4())
-
-    def _dispatch() -> None:
-        path_import_task.apply_async(
-            args=[file_content, content_type, dry_run, mode],
-            task_id=task_id,
-        )
-
     try:
-        return await enqueue_task(db_session, task_id, "import", _dispatch, dry_run=dry_run)
+        return await enqueue_celery_task(
+            db_session,
+            "import",
+            CeleryTaskRef("jidou.workers.import_tasks", "path_import_task"),
+            args=[file_content, content_type, dry_run, mode],
+            dry_run=dry_run,
+        )
     except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
 
@@ -170,14 +164,13 @@ async def import_database(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}") from exc
 
-    from jidou.workers.db_import_tasks import db_import_task
-
-    task_id = str(uuid.uuid4())
-
-    def _dispatch() -> None:
-        db_import_task.apply_async(args=[file_content], task_id=task_id)
-
     try:
-        return await enqueue_task(db_session, task_id, "db_import", _dispatch, dry_run=False)
+        return await enqueue_celery_task(
+            db_session,
+            "db_import",
+            CeleryTaskRef("jidou.workers.db_import_tasks", "db_import_task"),
+            args=[file_content],
+            dry_run=False,
+        )
     except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
