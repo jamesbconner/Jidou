@@ -1763,7 +1763,7 @@ def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
     app.dependency_overrides[get_session] = _rematch_session(show)
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock(
                 side_effect=Exception("Sync failed")
             )

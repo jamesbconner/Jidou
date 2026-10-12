@@ -118,7 +118,7 @@ def test_rematch_episode_sync_failure_is_502() -> None:
     )
     app.dependency_overrides[get_session] = _rematch_session(_make_show(id=1, tmdb_id=100))
     app.dependency_overrides[get_tmdb] = lambda: tmdb
-    with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as orch:
+    with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as orch:
         orch.return_value.sync_show_episodes = AsyncMock(side_effect=Exception("Sync failed"))
         r = TestClient(app).post("/api/shows/1/rematch", json={"tmdb_id": 200})
     assert (r.status_code, r.json()) == (
