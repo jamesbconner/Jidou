@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (P1 recorded).
+Last updated: 2026-10-12 (Wave 0 released as 0.4.3).
 
 ---
 
@@ -20,11 +20,14 @@ Last updated: 2026-10-12 (P1 recorded).
 
 - **Planning is complete.** All 33 decisions in roadmap §7 have an
   outcome; none are open.
-- **Execution has not started.** No implementation branch or PR exists
-  yet.
-- **Next step:** Wave 0. Its six guard PRs (API-1, MDL-1, SVC-1, ORC-1,
-  WRK-1, FE-1) run as parallel sub-agents, at most 4 at a time
-  (roadmap §4A).
+- **Wave 0 is released** (0.4.3, `chore/release-wave-0`). All six guard
+  items merged; see §3.
+- **Next step:** Wave 1. Lanes per roadmap §4A: MDL-2 → WRK-2 (WRK-2
+  also needs ORC-2) · ORC-2 · SVC-2 → SVC-3 · API-2 → API-3 · SCH-1 ·
+  FE-2. At most 4 sub-agents at once.
+- **Carry into Wave 1:** ORC-2 must first add event-failure pins for the
+  RSS import and RSS publish orchestrators (ORC-1 left them unpinned),
+  then refactor onto `EventSink`. See §3A.
 - **Execution method (decided):** parallel sub-agents.
   - The main session acts as **coordinator**. It dispatches one
     sub-agent per item, each in its own git worktree, using
@@ -70,7 +73,7 @@ item is its open or merged PR on GitHub.
 
 | Wave | Items | Status |
 |---|---|---|
-| 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | todo |
+| 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | released (0.4.3) |
 | 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | todo |
 | 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | todo |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | todo |
@@ -78,6 +81,37 @@ item is its open or merged PR on GitHub.
 | 5 | DF-1 … DF-20, then XL-3 | todo |
 
 Per-item rows (item → PR) are added by the release PR of each wave.
+
+| Item | PR(s) | Status | Notes |
+|---|---|---|---|
+| — | jamesbconner/Jidou#656 | released | `ruff format` on the plan docs' Python snippets; `main` lint was red before it |
+| API-1 | jamesbconner/Jidou#657, jamesbconner/Jidou#662 | released | #662 fixed a vacuous route-shadowing guard (FastAPI 0.142.2 wraps routers in `_IncludedRouter`) |
+| SVC-1 | jamesbconner/Jidou#658 | released | |
+| ORC-1 | jamesbconner/Jidou#659 | released | RSS import/publish event-failure pins deferred to ORC-2 (§3A) |
+| MDL-1 | jamesbconner/Jidou#660 | released | `celery_task_id` declared as a unique constraint only (the DB has no plain index) |
+| WRK-1 | jamesbconner/Jidou#661 | released | includes an extra `shows_only` import golden |
+| FE-1 | jamesbconner/Jidou#663 | released | |
+
+### 3A. Decisions and deferred findings from Wave 0
+
+- **ORC-2 pins RSS import/publish first.** ORC-1's brief omitted them, so
+  ORC-2 adds pins for their current event-failure behaviour before moving
+  them onto `EventSink`. DF-7 later flips them to "swallowed".
+- **Guard hardening for XL-3.** The services and orchestrators AST
+  guards skip relative imports (`from ..api import x`) and
+  `from jidou import api`; none exist today. The workers include-list
+  guard has no non-empty assertion on its disk-derived module set, and
+  its `"@shared_task"` substring match would also hit comments. Fix all
+  of these together in XL-3.
+- **Test-strength minors (not blocking):** the settings-PATCH
+  characterization test checks only the execute count; the dispatch test
+  doesn't assert the other workers were not called; the scan
+  event-failure pin asserts only `result is not None`; ORC-1's tests
+  import private helpers from five sibling test modules; no frontend test
+  covers a non-string `detail` in `ensureOk`.
+- **Flaky frontend test:** `src/tests/components/AddShowFromFeedPane.test.tsx:257`
+  failed once in CI (`regex_include` read as `null`) and passed on the
+  re-run. Harden it in FE-2 or a standalone fix.
 
 ## 4. Process conventions (beyond roadmap §1)
 
@@ -135,6 +169,16 @@ Per-item rows (item → PR) are added by the release PR of each wave.
   docker-compose job (MDL-1 adds the step).
 - **graphify:** run `graphify update .` after code changes (CLAUDE.md).
   Use `graphify query` for codebase questions when `graphify-out/` exists.
+  **It is not installed in the cloud container**; there the step is
+  skipped and the owner refreshes the graph locally.
+- **Dev extras:** the repo-root `.venv` may lack the dev extras (no
+  `bandit`, noisy `mypy`). Run `uv sync --extra dev` first.
+- **Testing another worktree's code:** `uv run --project /home/user/Jidou`
+  imports `jidou` from the main checkout. Set
+  `PYTHONPATH=<worktree>/src` to test a worktree's own source.
+- **Session restarts kill sub-agents.** In-flight implementers and
+  reviewers stop without output. On resume, check `git ls-remote` and the
+  report files, then re-dispatch whatever is missing.
 
 ## 6. Related work outside the program
 

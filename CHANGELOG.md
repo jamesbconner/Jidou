@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-10-12
+
+Wave 0 of the simplification roadmap (`docs/superpowers/plans/2026-10-12-simplification-roadmap.md`) adds guards only: tests and CI gates that pin current behaviour before any layer is refactored. No user-visible behaviour changes.
+
+### Added
+- **API contract guards** (#657, #662). An OpenAPI snapshot test (`tests/fixtures/openapi_snapshot.json`) fails on any unreviewed schema change; regenerate it with `JIDOU_UPDATE_OPENAPI_SNAPSHOT=1` and justify the change in the PR. A route-shadowing guard checks all 104 served routes (walking FastAPI's included routers in match order), so a parameterised route can never silently capture a literal one. Characterization tests pin the task-dispatch and settings-PATCH hotspots.
+- **Complexity ratchets** for each layer: API 16 (#657), services 17 (#658), orchestrators 28 (#659), workers 16 (#661), and ESLint `complexity` 92 for the frontend (#663). Each limit is today's worst function; later waves lower them, never raise them.
+- **Layering guards.** Services may not import from the API, orchestrators or workers (#658); orchestrators may not import FastAPI or another module's private names (#659); every worker task module must be in Celery's `include` list, and no task's time limit may exceed the broker visibility timeout (#661).
+- **Golden tests** pin the `path_parser._parse_episode` rules (#658), each orchestrator's behaviour when event logging fails (#659), and the worker task summaries (#661).
+- **`alembic check` in CI** (#660). The models now declare the five indexes and constraints the migrations already created (the `aliases` GIN index, the unique stub-subscription index, `rss_feeds.remote_key`, the episode tracking index and `background_tasks.celery_task_id`), so model/migration drift fails CI. No migration and no database change.
+
+### Changed
+- `frontend/src/api/client.ts`: the four copies of the "non-OK response → `ApiError`" block now share one `ensureOk` helper (#663). Errors are unchanged: same status, parsed `detail` and fallback message, and successful responses are untouched.
+- The Python snippets in the simplification plan documents are `ruff format`-clean, so `ruff format --check .` passes on `main` again (#656).
+
 ## [0.4.2] — 2026-10-11
 
 ### Fixed
