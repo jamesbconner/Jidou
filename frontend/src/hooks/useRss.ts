@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { showKeys } from '@/hooks/useShows'
 import { dashboardKeys } from '@/hooks/useDashboard'
+import { useTaskUntilDone } from '@/hooks/useTasks'
 import type {
   RssFeedRead,
   RssFeedCreate,
@@ -176,6 +178,40 @@ export function useTriggerRssPublish(dryRun = false) {
       qc.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
+}
+
+/**
+ * Poll the task started by "Import from server" and, once it completes,
+ * refetch the feeds and subscriptions it just rewrote. Keeps the page free of
+ * the query client.
+ */
+export function useRssImportTask(taskId: number | null) {
+  const qc = useQueryClient()
+  const query = useTaskUntilDone(taskId)
+  const status = query.data?.status
+  useEffect(() => {
+    if (status === 'completed') {
+      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    }
+  }, [status, qc])
+  return query
+}
+
+/**
+ * Poll the task started by "Publish to server" and refetch subscriptions
+ * when it completes (publishing can stamp remote keys onto stub rows).
+ */
+export function useRssPublishTask(taskId: number | null) {
+  const qc = useQueryClient()
+  const query = useTaskUntilDone(taskId)
+  const status = query.data?.status
+  useEffect(() => {
+    if (status === 'completed') {
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    }
+  }, [status, qc])
+  return query
 }
 
 export function useRssDownload() {

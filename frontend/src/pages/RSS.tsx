@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import {
   useRssFeeds,
   useRssSubscriptions,
@@ -8,9 +7,9 @@ import {
   useTriggerRssPublish,
   useRssDownload,
   useRssDiff,
-  rssKeys,
+  useRssImportTask,
+  useRssPublishTask,
 } from '@/hooks/useRss'
-import { useTaskUntilDone } from '@/hooks/useTasks'
 import type { TaskRead } from '@/types/api'
 import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
@@ -69,7 +68,6 @@ export default function RSS() {
 
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
-  const qc = useQueryClient()
 
   const { data: feeds = [] } = useRssFeeds()
   const { data: subs, isLoading } = useRssSubscriptions()
@@ -78,21 +76,8 @@ export default function RSS() {
   const download = useRssDownload()
   const diff = useRssDiff()
 
-  const { data: importTask } = useTaskUntilDone(importTaskId)
-  const { data: publishTask } = useTaskUntilDone(publishTaskId)
-
-  useEffect(() => {
-    if (importTask?.status === 'completed') {
-      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
-      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
-    }
-  }, [importTask?.status, qc])
-
-  useEffect(() => {
-    if (publishTask?.status === 'completed') {
-      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
-    }
-  }, [publishTask?.status, qc])
+  const { data: importTask } = useRssImportTask(importTaskId)
+  const { data: publishTask } = useRssPublishTask(publishTaskId)
 
   const filteredSubs = (subs ?? []).filter((s) => {
     if (nameSearch && !s.name.toLowerCase().includes(nameSearch.toLowerCase())) return false
