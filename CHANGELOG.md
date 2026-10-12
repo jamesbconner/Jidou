@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-10-12
+
+Wave 4 of the simplification roadmap finishes the lower-priority cleanups in every layer. It moves shared helpers into one place, makes request vocabularies typed, splits the remaining large frontend components, and removes dead or redundant frontend types. As in earlier waves, every item first added characterization tests that passed on the unchanged code. The model change was also checked against a real PostgreSQL 16 database, where the schema dumps were identical. There is one approved behaviour change, listed below; everything else is unchanged.
+
+### Changed (behaviour and contract)
+- **Request vocabularies are typed** (#716, approved B4). These request fields now accept only `"tv"` or `"movie"` (a `Literal`):
+  - `ShowCreate.media_type`
+  - `RematchRequest.media_type`
+  - `FileMatchRequest.tmdb_media_type`
+
+  `FileMatchRequest.content_type` now uses the `ContentType` enum. A rematch with an invalid `media_type` now returns 422 instead of 502. For an invalid value in the other fields, the 422 error `type` changes from `string_pattern_mismatch` to `enum`/`literal_error`. Valid requests behave exactly as before. The OpenAPI snapshot and `api-generated.ts` were regenerated.
+
+### Changed (refactors, no behaviour change)
+- **Orchestrators** (#715):
+  - Show rematch imports its collaborators at module level.
+  - RSS import and the RSS stub picker share one fuzzy matcher, `services/fuzzy_match.py`. A 120,000-case old-against-new comparison was identical.
+  - The alias response schema is defined once.
+  - One DEBUG line now comes from `jidou.services.fuzzy_match` and no longer includes the score.
+- **Workers** (#713):
+  - The image-cache purge uses a new `redis_try_lock` helper.
+  - Library roots resolve through one `library_root` helper.
+  - The sync and import tasks share `LONG_TASK_LIMITS`. The Celery task options are identical.
+- **Models** (#714):
+  - `database.py` and `alembic/env.py` register mappers with one `import jidou.models`.
+  - 45 redundant `nullable=True` arguments on optional columns are removed.
+
+  The generated DDL is unchanged, and `alembic check` is clean.
+- **Frontend** (#717, #718):
+  - The remaining large components are split into smaller pieces: ShowDetail, Shows, FeaturesTab, ResolveFileModal, AddShowFromFeedPane, Files, RSS, LinkFileModal, RematchModal, ServiceRow, ScanLocalFilesModal and FeedFormModal.
+  - Dead API types are removed, and `ContentType` aliases the generated type.
+  - Overrides that the generated schema now provides are replaced by aliases.
+  - `docs/developer.md` gains a "Frontend structure" section.
+- **Build** (#712): `frontend/.dockerignore` keeps host `node_modules` and build output out of the Docker build context. This fixes a `vite build` failure in the frontend image. CI now runs `npm run build`.
+- **Complexity ratchets:**
+
+  | Layer | Before | After |
+  |---|---|---|
+  | ESLint | 51 | 25 |
+
+  API stays at 10, services at 9, orchestrators at 9 and workers at 8.
+
 ## [0.4.6] — 2026-10-12
 
 Wave 3 of the simplification roadmap splits the two largest route modules, moves show creation into the orchestrator layer, and gives orchestrators shared building blocks and one HTTP error handler. As in earlier waves, every item first added characterization tests that passed on the unchanged code. The orchestrator items were also compared old against new on a real PostgreSQL 16 database. The few observable changes are listed below; everything else is unchanged.

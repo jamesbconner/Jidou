@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (Wave 3 released as 0.4.6).
+Last updated: 2026-10-12 (Wave 4 released as 0.4.7).
 
 ---
 
@@ -28,11 +28,13 @@ Last updated: 2026-10-12 (Wave 3 released as 0.4.6).
   merged; see §3 and §3C.
 - **Wave 3 is released** (0.4.6, `chore/release-wave-3`). All 11 items
   merged; see §3 and §3D.
-- **Next step:** Wave 4 (ORC-12, WRK-6, MDL-6, FE-7 → FE-8, SCH-5), lanes
-  per roadmap §4A. FE-8 runs after SCH-5's type regeneration. At most 4
-  sub-agents at once. Starts after the owner's go-ahead.
+- **Wave 4 is released** (0.4.7, `chore/release-wave-4`). All six items
+  merged; see §3 and §3E.
+- **Next step:** Wave 5 (DF-1 … DF-20, then XL-3), lanes per roadmap
+  §4A and §5A. At most 4 sub-agents at once. Starts after the owner's
+  go-ahead.
 - **Current ratchets:** API 10, services 9, orchestrators 9, workers 8,
-  ESLint 51.
+  ESLint 25.
 - **Execution method (decided):** parallel sub-agents.
   - The main session acts as **coordinator**. It dispatches one
     sub-agent per item, each in its own git worktree, using
@@ -82,7 +84,7 @@ item is its open or merged PR on GitHub.
 | 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | released (0.4.4) |
 | 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | released (0.4.5) |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | released (0.4.6) |
-| 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | todo |
+| 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | released (0.4.7) |
 | 5 | DF-1 … DF-20, then XL-3 | todo |
 
 Per-item rows (item → PR) are added by the release PR of each wave.
@@ -140,6 +142,13 @@ Per-item rows (item → PR) are added by the release PR of each wave.
 | ORC-8 | jamesbconner/Jidou#708 | released | one error handler; manual match gets the injected TMDB service |
 | ORC-11 | jamesbconner/Jidou#709 | released | ratchet 21 → 9; 35 PG 16 old/new scenarios identical |
 | XL-2 | jamesbconner/Jidou#710 | released | domain errors moved to `jidou/errors.py` (ruling, §3D) |
+| — | jamesbconner/Jidou#712 | released | out of band: `frontend/.dockerignore`; CI runs `npm run build` |
+| WRK-6 | jamesbconner/Jidou#713 | released | `redis_try_lock`, `library_root`, `LONG_TASK_LIMITS`; 12 lock scenarios and 15 tasks' options identical |
+| MDL-6 | jamesbconner/Jidou#714 | released | 45 redundant `nullable=True` removed; PG 16 schema dump and metadata identical |
+| ORC-12 | jamesbconner/Jidou#715 | released | shared fuzzy matcher (120k cases identical); 10 stale patch targets fixed in review |
+| SCH-5 | jamesbconner/Jidou#716 | released | approved B4: bad rematch `media_type` 502 → 422; types regenerated |
+| FE-7 | jamesbconner/Jidou#717 | released | ratchet 51 → 25; new characterization tests pass unchanged on the old code |
+| FE-8 | jamesbconner/Jidou#718 | released | dead types and two redundant overrides removed; "Frontend structure" docs |
 
 ### 3A. Decisions and deferred findings from Wave 0
 
@@ -282,6 +291,63 @@ Per-item rows (item → PR) are added by the release PR of each wave.
     - ORC-7's misnamed gap-fill test;
     - SCH-4's serialization guard checks only the first member of two
       of the enums.
+
+### 3E. Decisions and deferred findings from Wave 4
+
+- **Approved changes** (also in `CHANGELOG.md` 0.4.7):
+  - **SCH-5 (B4):** `ShowCreate.media_type`, `RematchRequest.media_type`
+    and `FileMatchRequest.tmdb_media_type` are a `Literal["tv", "movie"]`,
+    and `FileMatchRequest.content_type` uses `ContentType`. A rematch with
+    a bad `media_type` returns 422 instead of 502. For the other fields,
+    the 422 error `type` changes from `string_pattern_mismatch` to
+    `enum`/`literal_error`. Valid values behave as before (43 cases
+    checked against a real app and PG 16).
+- **Coordinator rulings:**
+  - **Lane order.** ORC-12, WRK-6, MDL-6 and FE-7 ran first; SCH-5
+    took the next free slot. FE-8 ran last, after FE-7 and SCH-5 merged
+    (R7).
+  - **ORC-12 ratchet.** The measured orchestrator maximum is 9, so the
+    ratchet stays at 9 (the brief allowed 10). One DEBUG line moved to
+    the `jidou.services.fuzzy_match` logger and lost its score field.
+  - **ORC-12 patch targets.** Ten rematch route tests patched the old
+    `tmdb_orchestrator.TMDBOrchestrator`; whether they passed depended
+    on test order. The coordinator retargeted them, proved with a probe.
+  - **FE-7 scope.** The planned `useReducer` migrations and
+    "data block → hook" extractions were skipped: the no-behaviour-change
+    rule and the rule that stateful hooks stay in their component take
+    precedence. `CacheCard` was not extracted (ServicesTab is already
+    under the budget).
+  - **FE-7 `media_paths` guard.** Five sites now check
+    `config?.media_paths` instead of `config`. Output differs only when
+    config loads without `media_paths`, which the backend never sends;
+    the old code crashed in that case.
+  - **FE-8 overrides.** Only `FileMatchRequest` and
+    `OrphanedTrackingRecord` were identical to the generated types; the
+    other 18 overrides still differ and stay. `ShowImportResult` was
+    removed with `PathImportResult`, its only user.
+  - **SVC-9 dead branch** (`LLMService.test_connection`) was not in the
+    ORC-12 or WRK-6 briefs, so it stays a follow-up.
+- **Follow-ups (separate PRs, not yet filed)**, in addition to §3C's
+  and §3D's:
+  - **Rematch modal shows `[object Object]`** when the backend returns a
+    non-string `detail` (for example a 422 list). `client.ts` should
+    format non-string `detail` values. Found in the SCH-5 review.
+  - **Stale comments from WRK-6:** `image_cache_tasks.py` still says
+    "SET NX PX"; the workers ratchet comment says "Measured max is 9";
+    the `_host_root_for_content_type` docstring.
+  - **`RecentShowItem`** is hand-written, but a looser generated type now
+    exists. Decide which one is right.
+  - **FE-7 minors:** a needless `body as RssFeedUpdate` cast in
+    `FeedFormModal.tsx`; small helpers duplicated across the new files;
+    some new components lack the short JSDoc comment.
+  - **`docs/developer.md`** says `npm ci` needs Node 24. `engines` is not
+    enforced (no `engine-strict`); the real failure on older Node is the
+    lockfile. Reword if it confuses anyone.
+  - **`VITE_API_KEY`** is read at build time, so `frontend/.env` is
+    deliberately not in `.dockerignore`. The key ends up in the built
+    bundle; consider a runtime config instead.
+  - **`prettier --check`** fails on `frontend/src/types/api.ts` on
+    `main`; the frontend is not prettier-clean.
 
 ## 4. Process conventions (beyond roadmap §1)
 
