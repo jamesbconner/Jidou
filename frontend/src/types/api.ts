@@ -7,7 +7,7 @@
 // backend schema is looser than what the frontend actually relies on —
 // most commonly a bare `string` where the frontend narrows to a literal
 // union (e.g. TaskStatus), or a generic dict where the frontend narrows to
-// a known shape (e.g. TmdbGenre[] instead of Record<string, unknown>[]).
+// a known shape (e.g. ShowRead.aliases_sources instead of a bare record).
 // It stays a fully hand-written interface (no `components["schemas"]`
 // reference at all) when there is no corresponding backend schema — TMDB
 // proxy endpoints return raw `dict[str, Any]`, WebSocket payloads aren't
@@ -22,29 +22,15 @@ import type { components } from './api-generated'
 
 // ─── Shows ────────────────────────────────────────────────────────────────
 
-export interface TmdbGenre {
-  id: number
-  name: string
-}
+// Every key is optional and unknown TMDB keys pass through: the backend
+// echoes the stored TMDB object verbatim, whatever its source.
+export type TmdbGenre = components['schemas']['TmdbGenre']
 
-export interface TmdbNetwork {
-  id: number
-  name: string
-  logo_path: string | null
-  origin_country: string
-}
+export type TmdbNetwork = components['schemas']['TmdbNetwork']
 
-export type ShowList = Omit<components['schemas']['ShowList'], 'genres' | 'networks'> & {
-  genres: TmdbGenre[] | null
-  networks: TmdbNetwork[] | null
-}
+export type ShowList = components['schemas']['ShowList']
 
-export type ShowRead = Omit<
-  components['schemas']['ShowRead'],
-  'genres' | 'networks' | 'aliases_sources'
-> & {
-  genres: TmdbGenre[] | null
-  networks: TmdbNetwork[] | null
+export type ShowRead = Omit<components['schemas']['ShowRead'], 'aliases_sources'> & {
   aliases_sources: { tmdb: string[]; llm: string[]; user: string[] } | null
 }
 
@@ -250,16 +236,9 @@ export interface RecentShowItem {
   adult: boolean | null
 }
 
-export type DashboardShowSummary = Omit<
-  components['schemas']['DashboardShowSummary'],
-  'genres'
-> & {
-  genres: TmdbGenre[] | null
-}
+export type DashboardShowSummary = components['schemas']['DashboardShowSummary']
 
-export type RecentEpisodeItem = Omit<components['schemas']['RecentEpisodeItem'], 'show'> & {
-  show: DashboardShowSummary
-}
+export type RecentEpisodeItem = components['schemas']['RecentEpisodeItem']
 
 // ─── RSS ──────────────────────────────────────────────────────────────────────
 
@@ -496,8 +475,6 @@ export type DiscoverResult = Omit<
 
 // ─── Calendar ─────────────────────────────────────────────────────────────
 
-export type CalendarEpisode = Omit<components['schemas']['CalendarEpisode'], 'genres'> & {
-  genres: TmdbGenre[] | null
-}
+export type CalendarEpisode = components['schemas']['CalendarEpisode']
 
 export type CalendarSyncResult = components['schemas']['CalendarSyncResult']
