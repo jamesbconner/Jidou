@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service, get_tmdb
+from jidou.api.lookups import get_or_404, get_show_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
@@ -759,10 +760,7 @@ async def get_show(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
     return show
 
 
@@ -797,10 +795,7 @@ async def get_similar_shows(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     if not await get_similar_titles_enabled(db_session):
         return []
@@ -893,10 +888,7 @@ async def list_show_posters(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     images = await tmdb.get_images(show.tmdb_id, media_type=show.media_type)
     return _filter_and_rank_images(images.get("posters", []))
@@ -927,10 +919,7 @@ async def list_show_backdrops(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     images = await tmdb.get_images(show.tmdb_id, media_type=show.media_type)
     return _filter_and_rank_images(images.get("backdrops", []))
@@ -957,10 +946,7 @@ async def update_show_paths(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     if "local_path" in payload.model_fields_set:
         show.local_path = payload.local_path
@@ -992,10 +978,7 @@ async def update_show_aliases(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     from jidou.orchestrators.alias_orchestrator import _build_flat_aliases
 
@@ -1048,10 +1031,7 @@ async def regenerate_show_aliases(
     """
     from jidou.orchestrators.alias_orchestrator import generate_aliases
 
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     await generate_aliases(show, tmdb, llm=llm)
     await db_session.flush()
@@ -1073,10 +1053,7 @@ async def delete_show(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     await db_session.delete(show)
     logger.info("Deleted show id=%d title=%r", show_id, show.title)
@@ -1104,10 +1081,7 @@ async def patch_show(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     for field in payload.model_fields_set:
         setattr(show, field, getattr(payload, field))
@@ -1150,10 +1124,7 @@ async def rematch_show(
     """
     from jidou.orchestrators.show_rematch_orchestrator import ShowRematchOrchestrator
 
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     if payload.tmdb_id != show.tmdb_id:
         conflict = (
@@ -1192,10 +1163,7 @@ async def sync_episodes(
     """
     from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 
-    stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     orchestrator = TMDBOrchestrator(db_session, tmdb)
     # User-triggered "sync now": bypass the TMDB response cache so a season
@@ -1237,9 +1205,7 @@ async def list_episode_groups(
         HTTPException: 404 if the show is not found. 422 if the show is a
             movie -- movies have no TMDB episode_groups.
     """
-    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
     if show.media_type == "movie":
         raise HTTPException(status_code=422, detail="Movies have no TMDB episode_groups")
 
@@ -1287,9 +1253,7 @@ async def apply_episode_group(
     """
     from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 
-    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
     if show.media_type == "movie":
         raise HTTPException(status_code=422, detail="Movies have no TMDB episode_groups")
 
@@ -1336,9 +1300,7 @@ async def create_rss_stub(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     sub = await ensure_rss_stub(db_session, show_id, show.title)
     await db_session.flush()
@@ -1366,9 +1328,7 @@ async def list_episodes(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
     ep_stmt = select(Episode).where(Episode.show_id == show_id)
     if season is not None:
@@ -1421,15 +1381,15 @@ async def _get_episode_or_404(db_session: AsyncSession, show_id: int, episode_id
     Raises:
         HTTPException: 404 if the show or episode is not found.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
-    ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
-    ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
-    if ep is None:
-        raise HTTPException(status_code=404, detail="Episode not found")
-    return ep
+    return await get_or_404(
+        db_session,
+        Episode,
+        Episode.id == episode_id,
+        Episode.show_id == show_id,
+        detail="Episode not found",
+    )
 
 
 async def _get_show_episodes_or_404(
@@ -1448,9 +1408,7 @@ async def _get_show_episodes_or_404(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    if (await db_session.execute(show_stmt)).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
     ep_stmt = select(Episode).where(Episode.show_id == show_id)
     if season_number is not None:
@@ -1605,10 +1563,7 @@ async def begin_episode_rematch(
         HTTPException: 404 if the show, episode, or specified file is not found.
         HTTPException: 422 if the episode is not tracked or has no backing file.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
     ep_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
     ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
@@ -1782,10 +1737,7 @@ async def assign_import_episode(
         HTTPException: 422 if ``payload.filename`` is not currently tracked
             by any episode in this show.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
     target_stmt = select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
     target_ep = (await db_session.execute(target_stmt)).scalar_one_or_none()
@@ -1903,10 +1855,7 @@ async def link_episode_file(
         HTTPException: 422 if the episode is already tracked and *replace* is
             False, or *path* does not point to an existing file.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    await get_show_or_404(db_session, show_id)
 
     # Locked so two concurrent link-file calls targeting the same episode
     # (e.g. a bulk "Confirm All Matched" batch) can't both read
@@ -2028,10 +1977,7 @@ async def scan_show_local_files(
         HTTPException: 404 if the show is not found.
         HTTPException: 422 if the show has no local path configured.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
     if not show.local_path:
         raise HTTPException(status_code=422, detail="Show has no local path configured")
 
@@ -2138,10 +2084,7 @@ async def scan_show_local_movie_file(
         HTTPException: 422 if the show is not a movie, or has no local path
             configured.
     """
-    show_stmt = select(Show).where(Show.id == show_id)
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
     if (show.content_type or show.media_type) != "movie":
         raise HTTPException(
             status_code=422,
@@ -2249,10 +2192,7 @@ async def link_movie_file(
     """
     # Locked so two concurrent link-movie-file calls targeting the same show
     # can't both read "no linked file yet" before either commit lands.
-    show_stmt = select(Show).where(Show.id == show_id).with_for_update()
-    show = (await db_session.execute(show_stmt)).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id, for_update=True)
     if (show.content_type or show.media_type) != "movie":
         raise HTTPException(status_code=422, detail="This endpoint is for movies only")
     if not show.local_path:
