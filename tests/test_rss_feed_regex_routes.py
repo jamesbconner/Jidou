@@ -296,3 +296,43 @@ def test_suggest_with_real_titles_drops_generic_preferences_from_system_prompt(
     system = llm.complete.await_args.kwargs["system"]
     assert "1080p" not in system and "FRENCH" not in system
     assert "unescaped period (.)" in system  # mechanics are still there
+
+
+# ---------------------------------------------------------------------------
+# suggest-regex: exact error bodies (status + full JSON), pinned across the error-type move
+# ---------------------------------------------------------------------------
+
+
+def test_suggest_llm_not_configured_exact_body(fetcher: MagicMock) -> None:
+    app.dependency_overrides[get_llm_service] = lambda: _llm(available=False)
+
+    r = TestClient(app).post(
+        "/api/rss/feeds/7/suggest-regex", json={"parsed_name": "Brand New Show"}
+    )
+
+    assert r.status_code == 422
+    assert r.json() == {
+        "detail": "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)."
+    }
+
+
+def test_suggest_llm_failure_exact_body(fetcher: MagicMock) -> None:
+    app.dependency_overrides[get_llm_service] = lambda: _llm(None)
+
+    r = TestClient(app).post(
+        "/api/rss/feeds/7/suggest-regex", json={"parsed_name": "Brand New Show"}
+    )
+
+    assert r.status_code == 503
+    assert r.json() == {"detail": "LLM provider call failed."}
+
+
+def test_suggest_unparseable_response_exact_body(fetcher: MagicMock) -> None:
+    app.dependency_overrides[get_llm_service] = lambda: _llm("not json at all")
+
+    r = TestClient(app).post(
+        "/api/rss/feeds/7/suggest-regex", json={"parsed_name": "Brand New Show"}
+    )
+
+    assert r.status_code == 503
+    assert r.json() == {"detail": "LLM returned an unparseable response."}

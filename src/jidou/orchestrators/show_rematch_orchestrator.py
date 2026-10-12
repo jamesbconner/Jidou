@@ -7,11 +7,11 @@ from typing import Any, TypedDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.errors import UpstreamError
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
-from jidou.orchestrators.errors import UpstreamError
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService

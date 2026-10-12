@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jidou.errors import InvalidRequestError, NotFoundError
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.feed_onboarding_orchestrator import FeedOnboardingOrchestrator
 from jidou.orchestrators.show_creation_orchestrator import ShowCreationResult
 from jidou.schemas.rss_schema import FeedAddShowRequest

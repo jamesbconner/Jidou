@@ -2,9 +2,8 @@
 
 Extracted from the RSS routes so the same prompt, retry and validation logic
 serves both a persisted subscription and a feed group that has no subscription
-yet. The service is transport-agnostic: failures raise
-:class:`RegexSuggestionError` (carrying an HTTP-style status) and the route
-layer translates it.
+yet. The service is transport-agnostic: failures raise the domain errors in
+``jidou.errors`` and the HTTP layer maps them to statuses.
 """
 
 import logging
@@ -12,6 +11,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from jidou.errors import InvalidRequestError, ServiceUnavailableError
 from jidou.models.rss import RssFeed
 from jidou.services.llm_json import json_schema_format, sanitize_for_prompt
 from jidou.services.llm_service import LLMResponse, LLMService
@@ -119,21 +119,6 @@ DUPLICATE_RETRY_SUFFIX = (
     " Your last answer repeated a rejected pattern. Change the structure of the "
     "pattern, not just whitespace or escaping."
 )
-
-
-class RegexSuggestionError(Exception):
-    """A regex suggestion could not be produced.
-
-    Attributes:
-        status_code: HTTP status the route layer should answer with
-            (422 not configured, 503 provider/response failure).
-        detail: User-safe explanation.
-    """
-
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -288,13 +273,13 @@ class RssRegexSuggestor:
             A validated suggestion.
 
         Raises:
-            RegexSuggestionError: 422 if the LLM provider is not configured;
-                503 if the call fails, is truncated, or returns unparseable
+            InvalidRequestError: If the LLM provider is not configured.
+            ServiceUnavailableError: If the call fails, is truncated, or returns unparseable
                 JSON or an uncompilable regex.
         """
         if not self._llm.is_available():
-            raise RegexSuggestionError(
-                422, "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)."
+            raise InvalidRequestError(
+                "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL)."
             )
 
         safe_label = sanitize_for_prompt(label)
@@ -327,7 +312,7 @@ class RssRegexSuggestor:
                     bypass_cache=True,
                     validate_exclude=not use_exclude_hint,
                 )
-            except RegexSuggestionError as exc:
+            except ServiceUnavailableError as exc:
                 logger.warning(
                     "Duplicate-retry failed for %s (%s); keeping first result", log_ref, exc.detail
                 )
@@ -367,7 +352,7 @@ class RssRegexSuggestor:
         """Call the LLM once and return validated (include, exclude, response).
 
         Raises:
-            RegexSuggestionError: 503 on provider failure, truncation,
+            ServiceUnavailableError: On provider failure, truncation,
                 unparseable JSON, or an uncompilable regex.
         """
         result = await request_json_object(
@@ -383,7 +368,7 @@ class RssRegexSuggestor:
             # decides how to surface them.
             raise result.error
         if result.response is None:
-            raise RegexSuggestionError(503, "LLM provider call failed.")
+            raise ServiceUnavailableError("LLM provider call failed.")
 
         # Checked before the parse failures: a truncated reply is usually
         # invalid JSON too, and "truncated" is the actionable diagnosis.
@@ -394,8 +379,7 @@ class RssRegexSuggestor:
                 response.completion_tokens,
                 log_ref,
             )
-            raise RegexSuggestionError(
-                503,
+            raise ServiceUnavailableError(
                 f"LLM response was truncated at {response.completion_tokens} tokens "
                 f"(max_tokens={REGEX_MAX_TOKENS}). "
                 "Try a model with a larger context window.",
@@ -404,14 +388,14 @@ class RssRegexSuggestor:
         parsed = result.data
         if parsed is None:
             logger.warning("LLM returned unparseable regex JSON for %s", log_ref)
-            raise RegexSuggestionError(503, "LLM returned an unparseable response.")
+            raise ServiceUnavailableError("LLM returned an unparseable response.")
 
         try:
             regex_include = str(parsed["regex_include"])
             regex_exclude = str(parsed["regex_exclude"])
         except KeyError as exc:
             logger.warning("LLM returned unparseable regex JSON for %s: %s", log_ref, exc)
-            raise RegexSuggestionError(503, "LLM returned an unparseable response.") from exc
+            raise ServiceUnavailableError("LLM returned an unparseable response.") from exc
 
         try:
             re.compile(regex_include)
@@ -419,6 +403,6 @@ class RssRegexSuggestor:
                 re.compile(regex_exclude)
         except re.error as exc:
             logger.warning("LLM returned invalid regex for %s: %s", log_ref, exc)
-            raise RegexSuggestionError(503, "LLM returned an invalid regex pattern.") from exc
+            raise ServiceUnavailableError("LLM returned an invalid regex pattern.") from exc
 
         return regex_include, regex_exclude, response

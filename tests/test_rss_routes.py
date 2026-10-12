@@ -2189,3 +2189,50 @@ def test_suggest_request_caps_previous_at_five() -> None:
     assert RssRegexSuggestRequest().previous == []
     with pytest.raises(ValidationError):
         RssRegexSuggestRequest(previous=["a"] * 6)
+
+
+@pytest.mark.parametrize(
+    ("available", "content", "status", "detail"),
+    [
+        (
+            False,
+            "{}",
+            422,
+            "LLM provider is not configured (set LLM_PROVIDER and LLM_MODEL).",
+        ),
+        (True, "not json at all", 503, "LLM returned an unparseable response."),
+        (
+            True,
+            '{"regex_include": "(unclosed", "regex_exclude": ""}',
+            503,
+            "LLM returned an invalid regex pattern.",
+        ),
+    ],
+)
+def test_subscription_suggest_regex_error_bodies_are_exact(
+    available: bool, content: str, status: int, detail: str
+) -> None:
+    """Pin status and full JSON body of the suggest-regex failure responses."""
+    from jidou.database import get_session
+    from jidou.services.llm_service import LLMProvider, LLMResponse
+
+    sub = _make_sub(id=1, name="Attack on Titan")
+    sub.show = None
+    sub_result = MagicMock()
+    sub_result.scalar_one_or_none.return_value = sub
+    mock_llm = MagicMock()
+    mock_llm.is_available.return_value = available
+    mock_llm.complete = AsyncMock(
+        return_value=LLMResponse(
+            content=content, model="m", provider=LLMProvider.OPENAI, cached=False
+        )
+    )
+    app.dependency_overrides[get_session] = _session_override(execute_side_effect=[sub_result])
+    app.dependency_overrides[get_llm_service] = lambda: mock_llm
+    try:
+        r = TestClient(app).post("/api/rss/subscriptions/1/suggest-regex")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == status
+    assert r.json() == {"detail": detail}

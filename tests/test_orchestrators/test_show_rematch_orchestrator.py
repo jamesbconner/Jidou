@@ -171,7 +171,7 @@ async def test_fetch_tmdb_details_returns_data() -> None:
 @pytest.mark.asyncio
 async def test_fetch_tmdb_details_raises_502_on_error() -> None:
     """_fetch_tmdb_details wraps TMDB exceptions as UpstreamError."""
-    from jidou.orchestrators.errors import UpstreamError
+    from jidou.errors import UpstreamError
 
     session = MagicMock()
     tmdb = MagicMock()
@@ -624,7 +624,7 @@ async def test_rematch_skips_restore_when_preserve_tracking_false() -> None:
 @pytest.mark.asyncio
 async def test_sync_new_episodes_raises_502_on_failure() -> None:
     """_sync_new_episodes wraps TMDBOrchestrator failures as UpstreamError."""
-    from jidou.orchestrators.errors import UpstreamError
+    from jidou.errors import UpstreamError
 
     show = _make_show()
     session = MagicMock()

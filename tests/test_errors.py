@@ -1,16 +1,20 @@
 """Tests for orchestrator domain errors and the single HTTP handler that maps them."""
 
+import ast
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from jidou.main import orchestrator_error_handler
-from jidou.orchestrators.errors import (
+from jidou.errors import (
     InvalidRequestError,
     NotFoundError,
     OrchestratorError,
+    ServiceUnavailableError,
     UpstreamError,
 )
+from jidou.main import orchestrator_error_handler
 
 
 class _UnmappedError(OrchestratorError):
@@ -35,7 +39,12 @@ def _client_raising(exc: OrchestratorError) -> TestClient:
 
 @pytest.mark.parametrize(
     ("error_cls", "status_code"),
-    [(NotFoundError, 404), (InvalidRequestError, 422), (UpstreamError, 502)],
+    [
+        (NotFoundError, 404),
+        (InvalidRequestError, 422),
+        (UpstreamError, 502),
+        (ServiceUnavailableError, 503),
+    ],
 )
 def test_each_error_maps_to_its_status_and_http_exception_body(
     error_cls: type[OrchestratorError], status_code: int
@@ -63,3 +72,20 @@ def test_detail_is_kept_as_attribute_and_exception_message() -> None:
 
     assert exc.detail == "Show not found"
     assert str(exc) == "Show not found"
+
+
+def test_errors_module_is_import_free() -> None:
+    """``jidou.errors`` sits below every layer, so it must import nothing at all.
+
+    It lives outside ``services/`` and ``orchestrators/``, so no layering guard covers it; this
+    one stops FastAPI, Starlette or any ``jidou`` module creeping in and re-creating a cycle.
+    """
+    path = Path(__file__).resolve().parent.parent / "src" / "jidou" / "errors.py"
+    assert path.is_file()
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    # Non-vacuous: the file really parsed and defines the error classes.
+    classes = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+    assert {"OrchestratorError", "ServiceUnavailableError"} <= classes
+
+    imports = [n for n in ast.walk(tree) if isinstance(n, ast.Import | ast.ImportFrom)]
+    assert imports == [], f"jidou.errors must not import anything: {ast.dump(imports[0])}"

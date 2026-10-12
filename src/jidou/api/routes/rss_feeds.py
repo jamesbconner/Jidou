@@ -36,7 +36,6 @@ from jidou.services.llm_service import LLMService
 from jidou.services.rss_regex_matching import evaluate_regex
 from jidou.services.rss_regex_suggestor import (
     MAX_PROMPT_TITLES,
-    RegexSuggestionError,
     RssRegexSuggestor,
 )
 from jidou.services.show_lookup import find_show_by_name
@@ -327,17 +326,14 @@ async def suggest_feed_group_regex(
         )
     group = await _feed_group_or_http_error(fetcher, feed, body.parsed_name)
 
-    try:
-        suggestion = await RssRegexSuggestor(llm).suggest(
-            label=body.show_title or group.parsed_name or body.parsed_name,
-            label_is_show=True,
-            feed=feed,
-            previous=body.previous,
-            titles=group.titles[:MAX_PROMPT_TITLES],
-            log_ref=f"feed_id={feed_id}",
-        )
-    except RegexSuggestionError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    suggestion = await RssRegexSuggestor(llm).suggest(
+        label=body.show_title or group.parsed_name or body.parsed_name,
+        label_is_show=True,
+        feed=feed,
+        previous=body.previous,
+        titles=group.titles[:MAX_PROMPT_TITLES],
+        log_ref=f"feed_id={feed_id}",
+    )
 
     # The model's pattern is compile-checked by the suggestor; the exclude hint
     # may be an arbitrary stored string, so guard the evaluation too.

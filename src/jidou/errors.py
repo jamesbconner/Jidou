@@ -1,9 +1,10 @@
-"""Domain errors raised by orchestrators.
+"""Domain errors raised by services and orchestrators.
 
-Orchestrators must not import FastAPI, so they signal "the request cannot be satisfied" with
-these exceptions instead of ``HTTPException``. The HTTP layer maps each class to a status code
-in exactly one place (``jidou.main``); adding a new error class is a subclass here plus a
-one-line entry in that table.
+Neither layer may import FastAPI, so they signal "the request cannot be satisfied" with
+these exceptions instead of ``HTTPException``. This module sits below every layer (it imports
+nothing from ``jidou``) so services and orchestrators can both raise these errors. The HTTP
+layer maps each class to a status code in exactly one place (``jidou.main``); adding a new
+error class is a subclass here plus a one-line entry in that table.
 """
 
 
@@ -29,3 +30,7 @@ class InvalidRequestError(OrchestratorError):
 
 class UpstreamError(OrchestratorError):
     """An upstream dependency such as TMDB failed (HTTP 502)."""
+
+
+class ServiceUnavailableError(OrchestratorError):
+    """A required capability is temporarily unusable, e.g. an LLM call failed (HTTP 503)."""

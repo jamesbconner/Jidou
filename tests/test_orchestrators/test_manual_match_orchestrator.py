@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
 
+from jidou.errors import InvalidRequestError, NotFoundError
 from jidou.models.downloaded_file import FileStatus, MatchedBy
-from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.services.tmdb import TMDBService
