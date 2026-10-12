@@ -926,18 +926,81 @@ def test_tmdb_sync_result_empty():
     assert TMDBSyncResult.empty() is not first
 
 
-async def test_sync_tmdb_phase_missing_show_returns_empty_and_orchestrator():
-    """Spec section 6 item 5: a missing show gives an empty result AND a built orchestrator."""
+async def test_sync_tmdb_phase_missing_show_returns_empty_and_orchestrator(
+    caplog: pytest.LogCaptureFixture,
+):
+    """D17: a missing show gives an empty result, a built orchestrator, a warn event and a log."""
     calls: list[str] = []
+    events: list[tuple[str, str]] = []
+
+    async def on_event(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        events.append((level, message))
+
     session = _scripted_session(calls, [_scalar_one_or_none(None)])
-    with patch(f"{_PATCH_BASE}.TMDBOrchestrator") as tmdb_cls:
+    with (
+        patch(f"{_PATCH_BASE}.TMDBOrchestrator") as tmdb_cls,
+        caplog.at_level("WARNING", logger=_PATCH_BASE),
+    ):
         orch = SyncOrchestrator(session, _sftp(), MagicMock())
-        result, tmdb_orch = await orch._sync_tmdb_phase(99, False)
+        result, tmdb_orch = await orch._sync_tmdb_phase(99, False, on_event)
 
     assert result == TMDBSyncResult(0, 0, 0)
     assert tmdb_orch is tmdb_cls.return_value
     tmdb_cls.return_value.sync_show_episodes.assert_not_called()
     assert calls == ["db.execute"]
+    assert events == [("warn", "Show id=99 not found; TMDB phase skipped")]
+    assert "Show id=99 not found; TMDB phase skipped" in caplog.text
+
+
+async def test_sync_tmdb_phase_missing_show_event_goes_through_swallowing_sink():
+    """D17: a raising on_event is swallowed by the phase, which still returns normally."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalar_one_or_none(None)])
+
+    async def boom(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        calls.append(f"event:{level}")
+        raise RuntimeError("sink down")
+
+    with patch(f"{_PATCH_BASE}.TMDBOrchestrator") as tmdb_cls:
+        result, tmdb_orch = await SyncOrchestrator(session, _sftp(), MagicMock())._sync_tmdb_phase(
+            99, False, boom
+        )
+
+    assert calls == ["db.execute", "event:warn"]
+    assert result == TMDBSyncResult(0, 0, 0)
+    assert tmdb_orch is tmdb_cls.return_value
+
+
+async def test_run_missing_show_event_sequence_has_one_extra_warn():
+    """D17: a full sync with a missing show emits exactly one new warn, before the TMDB summary."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalar_one_or_none(None), _scalars_all([])])
+    on_phase, on_event = _recorders(calls)
+    stack, _ = _patched_pipeline(calls)
+    with stack:
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(
+            show_id=99, on_phase=on_phase, on_event=on_event
+        )
+
+    assert calls == [
+        "phase:1/5:Syncing TMDB episode data",
+        "db.execute",  # select show
+        "event:warn:Show id=99 not found; TMDB phase skipped",
+        "event:info:TMDB sync: 0 shows refreshed, 0 episodes upserted",
+        "phase:2/5:Scanning remote files",
+        "scan.run",
+        "event:info:Scan: 3 new file(s) discovered, 0 already known",
+        "phase:3/5:Downloading new files",
+        "download.run",
+        "event:info:Download: 3 file(s) downloaded",
+        "phase:4/5:Parsing and matching files to shows",
+        "parse.run",
+        "event:info:Parse: 3 file(s) matched to shows",
+        "db.execute",  # gap query
+        "phase:5/5:Routing matched files",
+        "route.run",
+        "event:info:Route: 3 file(s) routed to final paths",
+    ]
 
 
 async def test_sync_tmdb_phase_dry_run_returns_empty_and_no_orchestrator():

@@ -196,13 +196,15 @@ class SyncOrchestrator:
             await self.session.commit()
 
     async def _sync_tmdb_phase(
-        self, show_id: int | None, dry_run: bool
+        self, show_id: int | None, dry_run: bool, on_event: OnEvent | None = None
     ) -> tuple[TMDBSyncResult, TMDBOrchestrator | None]:
         """Phase 1: refresh the TMDB episode cache.
 
         Args:
             show_id: When given, sync only this show; otherwise sync every show.
             dry_run: When ``True`` nothing is built or fetched.
+            on_event: Optional event callback; used to warn when *show_id* names a
+                show that does not exist.  Failures it raises are logged, not raised.
 
         Returns:
             ``(result, tmdb_orchestrator)``.  The orchestrator is ``None`` only
@@ -220,6 +222,10 @@ class SyncOrchestrator:
         show_stmt = select(Show).where(Show.id == show_id)
         show = (await self.session.execute(show_stmt)).scalar_one_or_none()
         if show is None:
+            # Surface a mistyped or stale id instead of a silent "0 shows refreshed".
+            message = f"Show id={show_id} not found; TMDB phase skipped"
+            logger.warning(message)
+            await EventSink(on_event, swallow_errors=True)("warn", message, {"show_id": show_id})
             return TMDBSyncResult.empty(), tmdb_orch
 
         ep_exists = exists(select(Episode).where(Episode.show_id == show.id))
@@ -264,7 +270,7 @@ class SyncOrchestrator:
         """
         # Phase 1: TMDB episode cache — skipped entirely in dry_run.
         await _tick(on_phase, 1, "Syncing TMDB episode data")
-        tmdb_result, tmdb_orch = await self._sync_tmdb_phase(show_id, dry_run)
+        tmdb_result, tmdb_orch = await self._sync_tmdb_phase(show_id, dry_run, on_event)
         await _summary(
             on_event,
             f"TMDB sync: {tmdb_result.shows_synced} shows refreshed, "
