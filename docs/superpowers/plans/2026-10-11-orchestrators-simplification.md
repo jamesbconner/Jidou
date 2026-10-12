@@ -232,6 +232,8 @@ The value only goes down. It never goes up.
   class EventSink:
       def __init__(self, callback: OnEvent | None, *, swallow_errors: bool) -> None: ...
       async def __call__(self, level: str, msg: str, ctx: dict[str, Any] | None = None) -> None: ...
+
+
   async def log_only_event(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None: ...
   ```
   - `callback is None` → no-op.
@@ -277,19 +279,33 @@ The value only goes down. It never goes up.
 - Produces:
   ```python
   async def insert_show_or_existing(
-      session: AsyncSession, show: Show, *, refind: Callable[[], Awaitable[Show | None]],
+      session: AsyncSession,
+      show: Show,
+      *,
+      refind: Callable[[], Awaitable[Show | None]],
   ) -> tuple[Show | None, bool]:
       """add + flush; on IntegrityError: rollback, return (await refind(), False). (show, True) on success."""
 
+
   async def sync_episodes_best_effort(
-      session: AsyncSession, tmdb: TMDBService, show: Show, *,
-      reraise_db_errors: bool, rollback_on_failure: bool,
+      session: AsyncSession,
+      tmdb: TMDBService,
+      show: Show,
+      *,
+      reraise_db_errors: bool,
+      rollback_on_failure: bool,
   ) -> Exception | None:
       """TMDBOrchestrator(session, tmdb).sync_show_episodes(show); returns the swallowed error, if any."""
 
+
   async def generate_aliases_best_effort(
-      session: AsyncSession, tmdb: TMDBService, llm: LLMService | None, show: Show, *,
-      reraise_db_errors: bool, rollback_on_failure: bool,
+      session: AsyncSession,
+      tmdb: TMDBService,
+      llm: LLMService | None,
+      show: Show,
+      *,
+      reraise_db_errors: bool,
+      rollback_on_failure: bool,
   ) -> Exception | None:
       """generate_aliases(show, tmdb, llm=llm) then session.flush(); returns the swallowed error, if any."""
   ```
@@ -578,10 +594,16 @@ The value only goes down. It never goes up.
 - Produces:
   ```python
   class OrchestratorError(Exception):
-      def __init__(self, detail: str) -> None: ...   # self.detail = detail
-  class NotFoundError(OrchestratorError): ...       # → 404
-  class InvalidRequestError(OrchestratorError): ... # → 422
-  class UpstreamError(OrchestratorError): ...       # → 502
+      def __init__(self, detail: str) -> None: ...  # self.detail = detail
+
+
+  class NotFoundError(OrchestratorError): ...  # → 404
+
+
+  class InvalidRequestError(OrchestratorError): ...  # → 422
+
+
+  class UpstreamError(OrchestratorError): ...  # → 502
   ```
   `main.py` defines
   `async def orchestrator_error_handler(request: Request, exc: OrchestratorError) -> JSONResponse`

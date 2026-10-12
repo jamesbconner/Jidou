@@ -163,11 +163,13 @@ The value only goes down. It never goes up.
 
   ```python
   # Shrinks to empty: Task 9 removes the first entry, Task 10 the other two.
-  _KNOWN_UPWARD_IMPORTS = frozenset({
-      ("pubsub_subscriber", "jidou.api.websocket.task_progress"),
-      ("show_creation", "jidou.orchestrators.tmdb_orchestrator"),
-      ("show_creation", "jidou.orchestrators.alias_orchestrator"),
-  })
+  _KNOWN_UPWARD_IMPORTS = frozenset(
+      {
+          ("pubsub_subscriber", "jidou.api.websocket.task_progress"),
+          ("show_creation", "jidou.orchestrators.tmdb_orchestrator"),
+          ("show_creation", "jidou.orchestrators.alias_orchestrator"),
+      }
+  )
   ```
 
   Use exact equality, so a stale allowlist entry also fails.
@@ -378,17 +380,25 @@ The value only goes down. It never goes up.
 - Produces, in `llm_json.py`. This module stays free of any `LLMService`
   import.
   ```python
-  NULLABLE_INT: dict[str, object]     # {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+  NULLABLE_INT: dict[str, object]  # {"anyOf": [{"type": "integer"}, {"type": "null"}]}
   NULLABLE_STRING: dict[str, object]  # {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+
   def json_schema_format(name: str, properties: dict[str, object]) -> dict[str, object]: ...
-  def optional_int(value: object) -> int | None: ...  # None -> None, else int(value); propagates TypeError/ValueError
+  def optional_int(
+      value: object,
+  ) -> int | None: ...  # None -> None, else int(value); propagates TypeError/ValueError
   ```
   `json_schema_format` returns
   `{"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}}}`.
 - Produces, in `llm_structured.py`:
   ```python
   class JsonCallFailure(StrEnum):
-      RAISED = "raised"; NO_RESPONSE = "no_response"; INVALID_JSON = "invalid_json"; NOT_OBJECT = "not_object"
+      RAISED = "raised"
+      NO_RESPONSE = "no_response"
+      INVALID_JSON = "invalid_json"
+      NOT_OBJECT = "not_object"
+
 
   @dataclass(frozen=True)
   class JsonCallResult:
@@ -397,9 +407,15 @@ The value only goes down. It never goes up.
       failure: JsonCallFailure | None
       error: Exception | None = None
 
+
   async def request_json_object(
-      llm: LLMService, *, prompt: str, system: str,
-      response_format: dict[str, object], max_tokens: int = 1024, bypass_cache: bool = False,
+      llm: LLMService,
+      *,
+      prompt: str,
+      system: str,
+      response_format: dict[str, object],
+      max_tokens: int = 1024,
+      bypass_cache: bool = False,
   ) -> JsonCallResult: ...
   ```
   It catches `Exception` from `llm.complete` and returns `RAISED`. It
@@ -581,8 +597,11 @@ The value only goes down. It never goes up.
   ```python
   TASK_PROGRESS_CHANNEL: Final = "task_progress"
 
+
   @asynccontextmanager
-  async def redis_session(url: str, *, decode_responses: bool = False) -> AsyncIterator["aioredis.Redis"]: ...
+  async def redis_session(
+      url: str, *, decode_responses: bool = False
+  ) -> AsyncIterator["aioredis.Redis"]: ...
   ```
   It must call `aioredis.from_url` (where `import redis.asyncio as aioredis`
   is a module-level import) at call time, so existing
