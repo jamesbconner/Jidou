@@ -25,6 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import InvalidRequestError
+from sqlalchemy.orm import make_transient_to_detached
 
 from jidou.database import get_session
 from jidou.main import app
@@ -289,3 +291,18 @@ def test_file_read_routes_include_show_and_episode(case: _Case, tmp_path: Path) 
     item = payload[0] if case.is_list else payload
     assert item["show"] == _EXPECTED_SHOW
     assert item["episode"] == _EXPECTED_EPISODE
+
+
+@pytest.mark.parametrize("attribute", ["show", "episode"])
+def test_unloaded_file_relationship_raises_instead_of_returning_none(attribute: str) -> None:
+    """Reading ``show`` / ``episode`` without loading them fails loudly (``lazy="raise"``).
+
+    A file "loaded" without the relationship (detached with an identity, the
+    state a plain ``select(DownloadedFile)`` leaves it in) must not quietly
+    report ``None`` for a linked show or episode.
+    """
+    file = DownloadedFile(id=1, show_id=_SHOW_ID, episode_id=_EPISODE_ID)
+    make_transient_to_detached(file)
+
+    with pytest.raises(InvalidRequestError, match="lazy='raise'"):
+        getattr(file, attribute)

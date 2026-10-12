@@ -164,11 +164,14 @@ class DownloadedFile(TimestampMixin, Base):
     parsed_confidence: Mapped[float | None] = mapped_column(Float)
     parsed_content_type: Mapped[str | None] = mapped_column(String(20))
 
-    # Relationships — use selectinload() in async queries; lazy="noload" prevents
-    # accidental synchronous lazy-load (MissingGreenlet) if not explicitly loaded.
-    show: Mapped[Show | None] = relationship("Show", foreign_keys=[show_id], lazy="noload")
+    # Relationships — never loaded implicitly: load them with selectinload() in
+    # async queries (see api/file_read_query.py for FileRead responses).
+    # lazy="raise" makes a missed load fail loudly instead of silently reading
+    # as None, and still prevents an accidental synchronous lazy-load
+    # (MissingGreenlet).
+    show: Mapped[Show | None] = relationship("Show", foreign_keys=[show_id], lazy="raise")
     episode: Mapped[Episode | None] = relationship(
-        "Episode", foreign_keys=[episode_id], lazy="noload"
+        "Episode", foreign_keys=[episode_id], lazy="raise"
     )
 
     def __repr__(self) -> str:
