@@ -1,0 +1,1852 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Shows characterization: search modal > library mode states: short, searching, results, empty > library debouncing 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search your library…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="sho">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > library mode states: short, searching, results, empty > library results 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search your library…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="sho">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > library mode states: short, searching, results, empty > library search requests 1`] = `[]`;
+
+exports[`Shows characterization: search modal > library mode states: short, searching, results, empty > library short 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search your library…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > library mode with no hits > library empty 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search your library…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="zzzz">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-500 dark:text-gray-400">No shows found for "zzzz".</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > search modal on a non-library tab renders in the page-level slot > modal over data tab 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search your library…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
+</div>
+</div>
+</div>
+<section class="space-y-6">
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+<button title="Route task cannot place files without a destination path." class="text-left rounded-lg border p-3 transition-colors border-amber-200 bg-white hover:bg-amber-50 dark:bg-gray-900 dark:hover:bg-amber-950/30">
+<p class="text-2xl font-bold text-amber-600 dark:text-amber-400">1</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">No local path</p>
+</button>
+<button title="Routing category (Anime / TV / Movie) is required for correct folder placement." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">Content type unset</p>
+</button>
+<button title="No episode records in the local database — run Sync Episodes from the show detail page." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">Episodes not synced</p>
+</button>
+<button title="TV or anime show with no episodes and no downloaded files — nothing from either the download or import pipeline. May be a stale or accidental library entry." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">No files tracked</p>
+</button>
+</div>
+<table class="w-full text-sm border-collapse">
+<thead>
+<tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
+<th class="pb-2 pr-4 font-medium">Title</th>
+<th class="pb-2 font-medium">Issues</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="py-2 pr-4 whitespace-nowrap">
+<a class="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium" href="/shows/2" data-discover="true">Show Beta</a>
+</td>
+<td class="py-2">
+<div class="flex gap-2 flex-wrap">
+<button title="Route task cannot place files without a destination path." class="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-900/70">No local path</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > tmdb card click opens the detail modal over the search modal > detail over search 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search TMDB…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="brand">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+<div class="card h-full flex flex-col overflow-hidden border cursor-pointer hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow">
+<div class="relative">
+<img alt="Brand New" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w185/t.jpg">
+</div>
+<div class="p-2 flex flex-col flex-1">
+<p class="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">Brand New</p>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] mt-2 w-full">Add</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+<div class="overlay" role="dialog" aria-modal="true" aria-label="Brand New">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h2 class="font-semibold text-gray-900 dark:text-gray-100 truncate">Brand New</h2>
+<button type="button" aria-label="Close" class="-mt-2 -mr-2 -mb-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="flex gap-4">
+<img alt="Brand New" class="w-24 h-36 object-cover rounded shrink-0" src="/api/images/w300/t.jpg">
+<div class="space-y-1.5 min-w-0">
+<p class="font-semibold text-sm text-gray-900 dark:text-gray-100">Brand New</p>
+<div class="flex items-center gap-1.5 flex-wrap text-xs text-gray-500 dark:text-gray-500">
+<span class="uppercase tracking-wide bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">tv</span>
+<span>★ 8.0</span>
+<span>2021-05-01</span>
+</div>
+<p class="text-sm text-gray-700 dark:text-gray-300">Overview text.</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add</button>
+<a href="https://www.themoviedb.org/tv/900" target="_blank" rel="noreferrer" class="inline-block text-sm text-[var(--color-ocean-600)] hover:underline">View on TMDB →</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > tmdb mode empty, card click opens detail, closing the search clears query > tmdb empty 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search TMDB…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="nothing">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-500 dark:text-gray-400">No results for "nothing".</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > tmdb mode: short, results (in-library + add), empty; query retained across modes > tmdb results 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search TMDB…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="brand">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+<div class="card h-full flex flex-col overflow-hidden border ring-2 ring-green-400 cursor-pointer hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow">
+<div class="relative">
+<img alt="Show Beta" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w185/t.jpg">
+<span class="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
+</div>
+<div class="p-2 flex flex-col flex-1">
+<p class="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">Show Beta</p>
+<a class="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 rounded px-2 py-1 hover:bg-green-100 dark:hover:bg-green-900/40" href="/shows/2" data-discover="true">View in Library</a>
+</div>
+</div>
+<div class="card h-full flex flex-col overflow-hidden border cursor-pointer hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow">
+<div class="relative">
+<img alt="Brand New" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w185/t.jpg">
+</div>
+<div class="p-2 flex flex-col flex-1">
+<p class="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">Brand New</p>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] mt-2 w-full">Add</button>
+</div>
+</div>
+<div class="card h-full flex flex-col overflow-hidden border ring-2 ring-green-400 cursor-pointer hover:ring-2 hover:ring-[var(--color-ocean-400)] transition-shadow">
+<div class="relative">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w185/t.jpg">
+<span class="absolute top-1 right-1 bg-green-500 text-white text-xs font-medium px-1.5 py-0.5 rounded">In Library</span>
+</div>
+<div class="p-2 flex flex-col flex-1">
+<p class="text-xs font-medium line-clamp-2 flex-1 text-gray-900 dark:text-gray-100">Show Gamma</p>
+<a class="mt-2 block w-full text-center text-xs bg-green-50 text-green-700 border border-green-300 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800 rounded px-2 py-1 hover:bg-green-100 dark:hover:bg-green-900/40" href="/shows/3" data-discover="true">View in Library</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: search modal > tmdb mode: short, results (in-library + add), empty; query retained across modes > tmdb search requests 1`] = `
+[
+  "GET /api/shows/tmdb/search?query=brand&media_type=multi",
+  "GET /api/shows/tmdb/search?query=brand&media_type=multi",
+]
+`;
+
+exports[`Shows characterization: search modal > tmdb mode: short, results (in-library + add), empty; query retained across modes > tmdb short 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-2xl panel-light max-h-[80vh] flex flex-col">
+<div class="flex items-center justify-between px-5 py-4 border-b">
+<h3 class="font-semibold dark:text-gray-100">Search Shows</h3>
+<button type="button" aria-label="Close" class="-m-2 p-2 shrink-0 leading-none text-lg transition-colors text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+</div>
+<div class="px-5 pt-4">
+<div class="flex rounded-lg border text-sm overflow-hidden">
+<button class="flex-1 py-2 font-medium transition-colors bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">Library</button>
+<button class="flex-1 py-2 font-medium transition-colors bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+</div>
+<div class="px-5 pt-3 pb-3 border-b">
+<input placeholder="Search TMDB…" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+</div>
+<div class="overflow-y-auto flex-1 p-5">
+<p class="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search TMDB.</p>
+</div>
+</div>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > active filters show Clear filters per tab with counts, and clearing resets > cleared stored filters 1`] = `
+{
+  "filterContentType": "",
+  "filterGenre": "",
+  "filterLanguage": "",
+  "filterMinRating": "",
+  "filterStatus": "",
+  "filterUpcoming": false,
+  "sort": "title_asc",
+}
+`;
+
+exports[`Shows characterization: tabs and filters > active filters show Clear filters per tab with counts, and clearing resets > library filtered dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Clear filters (5)</button>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (0)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox" checked="">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">0 of 0 shows</p>
+<p class="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > active filters show Clear filters per tab with counts, and clearing resets > missing filtered dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Clear filters (3)</button>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<section class="space-y-3">
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any missing</option>
+<option value="eq1">Exactly 1 missing</option>
+<option value="2">2+ missing</option>
+<option value="5">5+ missing</option>
+<option value="10">10+ missing</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any</option>
+<option value="1">Missing a whole season</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any owned</option>
+<option value="1">≤1 owned</option>
+<option value="2">≤2 owned</option>
+<option value="3">≤3 owned</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox" checked="">
+<span class="text-gray-700 dark:text-gray-300">Watchlist only</span>
+</label>
+<input placeholder="Filter by title…" class="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+</div>
+<p class="text-xs text-gray-500 dark:text-gray-400">0 of 1 shows match the current filters.</p>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > active filters show Clear filters per tab with counts, and clearing resets > requests 1`] = `
+[
+  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/orphans",
+  "GET /api/watchlist?limit=10000",
+]
+`;
+
+exports[`Shows characterization: tabs and filters > data quality and missing tabs DOM; library state survives a tab round trip > data dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<section class="space-y-6">
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+<button title="Route task cannot place files without a destination path." class="text-left rounded-lg border p-3 transition-colors border-amber-200 bg-white hover:bg-amber-50 dark:bg-gray-900 dark:hover:bg-amber-950/30">
+<p class="text-2xl font-bold text-amber-600 dark:text-amber-400">1</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">No local path</p>
+</button>
+<button title="Routing category (Anime / TV / Movie) is required for correct folder placement." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">Content type unset</p>
+</button>
+<button title="No episode records in the local database — run Sync Episodes from the show detail page." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">Episodes not synced</p>
+</button>
+<button title="TV or anime show with no episodes and no downloaded files — nothing from either the download or import pipeline. May be a stale or accidental library entry." class="text-left rounded-lg border p-3 transition-colors border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800">
+<p class="text-2xl font-bold text-gray-400 dark:text-gray-500">0</p>
+<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">No files tracked</p>
+</button>
+</div>
+<table class="w-full text-sm border-collapse">
+<thead>
+<tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
+<th class="pb-2 pr-4 font-medium">Title</th>
+<th class="pb-2 font-medium">Issues</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="py-2 pr-4 whitespace-nowrap">
+<a class="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium" href="/shows/2" data-discover="true">Show Beta</a>
+</td>
+<td class="py-2">
+<div class="flex gap-2 flex-wrap">
+<button title="Route task cannot place files without a destination path." class="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-900/70">No local path</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > data quality and missing tabs DOM; library state survives a tab round trip > missing dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<section class="space-y-3">
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any missing</option>
+<option value="eq1">Exactly 1 missing</option>
+<option value="2">2+ missing</option>
+<option value="5">5+ missing</option>
+<option value="10">10+ missing</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any</option>
+<option value="1">Missing a whole season</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any owned</option>
+<option value="1">≤1 owned</option>
+<option value="2">≤2 owned</option>
+<option value="3">≤3 owned</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Watchlist only</span>
+</label>
+<input placeholder="Filter by title…" class="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+</div>
+<p class="text-xs text-gray-500 dark:text-gray-400">4 missing episodes across 1 of 1 show.</p>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2 text-left">Missing Episodes</th>
+<th class="px-4 py-2 text-left">Episodes Matched</th>
+<th class="px-4 py-2 text-left">Total Episodes</th>
+<th class="px-4 py-2 text-left">Missing Seasons</th>
+<th class="px-4 py-2 text-left">Seasons Matched</th>
+<th class="px-4 py-2 text-left">Total Seasons</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2">
+<a class="font-medium hover:underline text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)]" href="/shows/2" data-discover="true">Show Beta</a>
+<span class="block text-xs text-gray-400 dark:text-gray-500">TMDB #200</span>
+</td>
+<td class="px-4 py-2">
+<span class="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium rounded-full px-2 py-0.5">4</span>
+</td>
+<td class="px-4 py-2 text-gray-600 dark:text-gray-300">10</td>
+<td class="px-4 py-2 text-gray-600 dark:text-gray-300">10</td>
+<td class="px-4 py-2">
+<span class="text-gray-300 dark:text-gray-600">—</span>
+</td>
+<td class="px-4 py-2 text-gray-600 dark:text-gray-300">1</td>
+<td class="px-4 py-2 text-gray-600 dark:text-gray-300">1</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > library tab DOM and mount request order > library dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Shows</h1>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="title_asc">Title A → Z</option>
+<option value="title_desc">Title Z → A</option>
+<option value="added_desc">Recently Added</option>
+<option value="added_asc">Oldest Added</option>
+<option value="release_desc">Newest Release</option>
+<option value="release_asc">Oldest Release</option>
+<option value="last_aired_desc">Recently Aired</option>
+<option value="rating_desc">Highest Rated</option>
+<option value="episodes_desc">Most Episodes</option>
+<option value="episodes_added_desc">Recently Added Episodes</option>
+</select>
+<button class="border rounded-lg px-3 py-2 text-sm w-64 text-left text-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-500 dark:hover:bg-gray-800">Search shows…</button>
+</div>
+<div class="flex border-b">
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]">Shows in Library (3)</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Data Quality<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">1</span>
+</button>
+<button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300">Missing Episodes<span class="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">4</span>
+</button>
+</div>
+<div class="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All types</option>
+<option value="anime">Anime</option>
+<option value="tv">TV</option>
+<option value="movie">Movie</option>
+<option value="__unset__">Unset</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="Ended">Ended</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All languages</option>
+<option value="en">EN</option>
+</select>
+<select class="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">Any rating</option>
+<option value="6">6+</option>
+<option value="7">7+</option>
+<option value="8">8+</option>
+<option value="9">9+</option>
+</select>
+<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+<input class="rounded" type="checkbox">
+<span class="text-gray-700 dark:text-gray-300">Upcoming episode</span>
+</label>
+</div>
+<section>
+<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">3 shows</p>
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/1" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/1" data-discover="true">Show Alpha</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/2" data-discover="true">
+<div class="w-full aspect-[2/3] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">No image</div>
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-[var(--color-ocean-500)] text-white hover:bg-[var(--color-ocean-600)]" title="Remove from watchlist" aria-label="Remove from watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z">
+</path>
+</svg>
+</button>
+<span class="absolute top-1.5 right-1.5 bg-amber-400 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow" title="No local path">!</span>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/2" data-discover="true">Show Beta</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · tv · ★ 7.1</p>
+</div>
+</div>
+<div class="card overflow-hidden">
+<div class="relative">
+<a class="block" href="/shows/3" data-discover="true">
+<img alt="Show Gamma" class="w-full aspect-[2/3] object-cover" loading="lazy" src="/api/images/w300/g.jpg">
+</a>
+<button class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow transition-colors disabled:opacity-50 disabled:cursor-wait bg-black/40 text-white hover:bg-black/60" title="Add to watchlist" aria-label="Add to watchlist">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z">
+</path>
+<circle cx="12" cy="12" r="3">
+</circle>
+</svg>
+</button>
+<div class="absolute bottom-0 left-0 right-0">
+<div class="h-1 w-full overflow-hidden bg-black/40">
+<div class="transition-[width] h-full bg-green-500" style="width: 20%;">
+</div>
+</div>
+</div>
+</div>
+<div class="p-3">
+<a class="font-semibold text-sm text-gray-900 dark:text-gray-100 hover:underline line-clamp-2" href="/shows/3" data-discover="true">Show Gamma</a>
+<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">2020 · movie · ★ 7.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>"
+`;
+
+exports[`Shows characterization: tabs and filters > library tab DOM and mount request order > mount requests 1`] = `
+[
+  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/orphans",
+  "GET /api/watchlist?limit=10000",
+]
+`;
