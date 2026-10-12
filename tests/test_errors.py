@@ -4,13 +4,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from jidou.main import orchestrator_error_handler
-from jidou.orchestrators.errors import (
+from jidou.errors import (
     InvalidRequestError,
     NotFoundError,
     OrchestratorError,
+    ServiceUnavailableError,
     UpstreamError,
 )
+from jidou.main import orchestrator_error_handler
 
 
 class _UnmappedError(OrchestratorError):
@@ -35,7 +36,12 @@ def _client_raising(exc: OrchestratorError) -> TestClient:
 
 @pytest.mark.parametrize(
     ("error_cls", "status_code"),
-    [(NotFoundError, 404), (InvalidRequestError, 422), (UpstreamError, 502)],
+    [
+        (NotFoundError, 404),
+        (InvalidRequestError, 422),
+        (UpstreamError, 502),
+        (ServiceUnavailableError, 503),
+    ],
 )
 def test_each_error_maps_to_its_status_and_http_exception_body(
     error_cls: type[OrchestratorError], status_code: int

@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from jidou.errors import InvalidRequestError, ServiceUnavailableError
 from jidou.models.rss import RssFeed
 from jidou.services.llm_service import LLMProvider, LLMResponse
 from jidou.services.rss_regex_suggestor import (
     DUPLICATE_RETRY_SUFFIX,
     MAX_PROMPT_TITLES,
-    RegexSuggestionError,
     RssRegexSuggestor,
     build_system_prompt,
     has_feed_evidence,
@@ -106,10 +106,9 @@ async def test_suggest_subscription_name_wording() -> None:
 async def test_not_configured_is_422_and_makes_no_call() -> None:
     llm = _llm(available=False)
 
-    with pytest.raises(RegexSuggestionError) as exc_info:
+    with pytest.raises(InvalidRequestError):
         await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
 
-    assert exc_info.value.status_code == 422
     llm.complete.assert_not_called()
 
 
@@ -161,10 +160,8 @@ async def test_bad_llm_output_is_503(content: str, finish_reason: str, expected:
         )
     )
 
-    with pytest.raises(RegexSuggestionError, match=expected) as exc_info:
+    with pytest.raises(ServiceUnavailableError, match=expected):
         await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
-
-    assert exc_info.value.status_code == 503
 
 
 async def test_provider_failure_is_503() -> None:
@@ -172,10 +169,8 @@ async def test_provider_failure_is_503() -> None:
     llm.is_available.return_value = True
     llm.complete = AsyncMock(return_value=None)
 
-    with pytest.raises(RegexSuggestionError) as exc_info:
+    with pytest.raises(ServiceUnavailableError):
         await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
-
-    assert exc_info.value.status_code == 503
 
 
 def test_titles_suffix_is_authoritative_but_not_a_coverage_target() -> None:
@@ -330,10 +325,8 @@ async def test_truncation_is_reported_before_json_parse_failure() -> None:
         )
     )
 
-    with pytest.raises(RegexSuggestionError, match="truncated") as exc_info:
+    with pytest.raises(ServiceUnavailableError, match="truncated"):
         await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
-
-    assert exc_info.value.status_code == 503
 
 
 async def test_request_arguments_are_pinned() -> None:
@@ -357,7 +350,7 @@ async def test_unparseable_response_logs_are_pinned(caplog: pytest.LogCaptureFix
         caplog.clear()
         with (
             caplog.at_level("WARNING", logger="jidou.services.rss_regex_suggestor"),
-            pytest.raises(RegexSuggestionError),
+            pytest.raises(ServiceUnavailableError),
         ):
             await RssRegexSuggestor(_llm(content)).suggest(
                 label="X", label_is_show=True, feed=None, log_ref="r"

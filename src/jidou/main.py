@@ -37,10 +37,11 @@ from jidou.api.websocket import ws_router
 from jidou.api.websocket.task_progress import manager
 from jidou.config import settings
 from jidou.database import close_db, init_db
-from jidou.orchestrators.errors import (
+from jidou.errors import (
     InvalidRequestError,
     NotFoundError,
     OrchestratorError,
+    ServiceUnavailableError,
     UpstreamError,
 )
 from jidou.services.llm_service import create_llm_service
@@ -49,11 +50,12 @@ from jidou.services.pubsub_subscriber import pubsub_subscriber
 logger = logging.getLogger(__name__)
 
 # The one place orchestrator domain errors become HTTP statuses. To map a new error class, add
-# a subclass of OrchestratorError in ``jidou.orchestrators.errors`` and one line here.
+# a subclass of OrchestratorError in ``jidou.errors`` and one line here.
 _ORCHESTRATOR_ERROR_STATUS: dict[type[OrchestratorError], int] = {
     NotFoundError: 404,
     InvalidRequestError: 422,
     UpstreamError: 502,
+    ServiceUnavailableError: 503,
 }
 
 

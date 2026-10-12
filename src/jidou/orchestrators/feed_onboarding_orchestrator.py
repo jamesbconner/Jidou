@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.errors import InvalidRequestError, NotFoundError
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias

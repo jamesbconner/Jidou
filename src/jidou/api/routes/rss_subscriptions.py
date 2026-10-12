@@ -28,7 +28,6 @@ from jidou.services.rss_config import (
     fill_missing_yarss2_defaults,
 )
 from jidou.services.rss_regex_suggestor import (
-    RegexSuggestionError,
     RssRegexSuggestor,
 )
 
@@ -365,16 +364,13 @@ async def suggest_regex(
             feed = await get_feed_or_404(db_session, body.feed_id)
 
     show_title = sub.show.title if sub.show else None
-    try:
-        suggestion = await RssRegexSuggestor(llm).suggest(
-            label=show_title or sub.name,
-            label_is_show=bool(show_title),
-            feed=feed,
-            previous=body.previous if body is not None else [],
-            log_ref=f"sub_id={sub_id}",
-        )
-    except RegexSuggestionError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    suggestion = await RssRegexSuggestor(llm).suggest(
+        label=show_title or sub.name,
+        label_is_show=bool(show_title),
+        feed=feed,
+        previous=body.previous if body is not None else [],
+        log_ref=f"sub_id={sub_id}",
+    )
     return RssRegexSuggestion(
         regex_include=suggestion.regex_include,
         regex_exclude=suggestion.regex_exclude,

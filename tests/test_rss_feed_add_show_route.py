@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 
 from jidou.api.dependencies import get_llm_service, get_tmdb
 from jidou.database import get_session
+from jidou.errors import NotFoundError
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.errors import NotFoundError
 from jidou.orchestrators.feed_onboarding_orchestrator import OnboardingOutcome
 
 ORCH = "jidou.api.routes.rss_feeds.FeedOnboardingOrchestrator"
