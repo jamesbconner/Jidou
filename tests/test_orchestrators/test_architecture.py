@@ -12,9 +12,9 @@ from pathlib import Path
 
 _ORCH_DIR = Path(__file__).resolve().parents[2] / "src" / "jidou" / "orchestrators"
 
-# Measured on main: the worst offender is DownloadOrchestrator.run. Lower this
+# Measured: the worst offender is seed_orchestrator.py SeedOrchestrator.run (26). Lower this
 # as orchestrators are simplified; never raise it.
-_ORCH_MAX_COMPLEXITY = 28
+_ORCH_MAX_COMPLEXITY = 26
 
 # Task 9 empties this.
 _KNOWN_FASTAPI_IMPORTERS: frozenset[str] = frozenset(
