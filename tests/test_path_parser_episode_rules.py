@@ -41,13 +41,13 @@ GOLDEN: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] 
 
 # DF-6 (D20): the roadmap's 4-digit-episode table, one row per input.
 DF6_TABLE: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] = [
-    ("Show S01E1001", None, (1, 100, None)),
-    ("Show 1x1000", None, (None, None, None)),
-    ("Show - 1071 [1080p]", None, (10, 71, 1071)),
+    ("Show S01E1001", None, (1, 1001, None)),
+    ("Show 1x1000", None, (1, 1000, None)),
+    ("Show - 1071 [1080p]", None, (None, 1071, None)),
     ("One Piece 1071", None, (10, 71, 1071)),
     ("Show 2024", None, (None, None, None)),
     ("Show 1080p", None, (None, None, None)),
-    ("Episode 1100", None, (None, None, None)),
+    ("Episode 1100", None, (None, 1100, None)),
 ]
 
 # DF-6 broad sample: every explicit marker, bare numbers, years, resolutions, quality words,
@@ -60,38 +60,38 @@ SAMPLE: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] 
     ("Show 42", None, (None, 42, None)),
     ("Show 999", None, (9, 99, 999)),
     ("[Group] Show - 999 [ABCD1234]", None, (None, 999, None)),
-    ("[HorribleSubs] One Piece - 1001 [ABCD1234]", None, (10, 1, 1001)),
+    ("[HorribleSubs] One Piece - 1001 [ABCD1234]", None, (None, 1001, None)),
     ("Show S01E02", None, (1, 2, None)),
     ("Show.S01E02.1080p.WEB-DL", None, (1, 2, None)),
     ("Show S1E5", None, (1, 5, None)),
     ("Show S10E100", None, (10, 100, None)),
     ("Show S01E999", None, (1, 999, None)),
-    ("Show S01E2024", None, (1, 202, None)),
-    ("Show S01E1080", None, (1, 108, None)),
+    ("Show S01E2024", None, (1, 2024, None)),
+    ("Show S01E1080", None, (1, 1080, None)),
     ("Show E05", None, (None, None, None)),
     ("Show E1001", None, (None, None, None)),
     ("Show 1x05", None, (1, 5, None)),
     ("Show.2x10.720p", None, (2, 10, None)),
-    ("Show 1x100", None, (None, None, None)),
-    ("Show 12x999", None, (None, None, None)),
-    ("Show 2x1080", None, (None, None, None)),
+    ("Show 1x100", None, (1, 100, None)),
+    ("Show 12x999", None, (12, 999, None)),
+    ("Show 2x1080", None, (2, 1080, None)),
     ("ShowName.1920x1080", None, (None, None, None)),
     ("Episode 5", None, (None, 5, None)),
     ("Episode 123", None, (None, 123, None)),
-    ("Show Episode 2024", None, (None, None, None)),
-    ("Show Season 2 Episode 1001", None, (10, 1, 1001)),
+    ("Show Episode 2024", None, (None, 2024, None)),
+    ("Show Season 2 Episode 1001", None, (2, 1001, None)),
     ("Show Ep 100", None, (None, 100, None)),
-    ("Show Ep 1000", None, (None, None, None)),
-    ("Show Ep.1234", None, (12, 34, 1234)),
-    ("Show - 1000", None, (None, None, None)),
-    ("Show - 2024", None, (None, None, None)),
-    ("Show - 1080 [x]", None, (None, None, None)),
-    ("Show - 9999", None, (99, 99, 9999)),
+    ("Show Ep 1000", None, (None, 1000, None)),
+    ("Show Ep.1234", None, (None, 1234, None)),
+    ("Show - 1000", None, (None, 1000, None)),
+    ("Show - 2024", None, (None, 2024, None)),
+    ("Show - 1080 [x]", None, (None, 1080, None)),
+    ("Show - 9999", None, (None, 9999, None)),
     ("Show Part 2 - 05", None, (None, 5, None)),
-    ("Show 1001 - Big Title", None, (10, 1, 1001)),
-    ("Show 2024 - Title", None, (None, None, None)),
-    ("1001 - Big Special", None, (10, 1, 1001)),
-    ("2024 - Year in Review", None, (None, None, None)),
+    ("Show 1001 - Big Title", None, (None, 1001, None)),
+    ("Show 2024 - Title", None, (None, 2024, None)),
+    ("1001 - Big Special", None, (None, 1001, None)),
+    ("2024 - Year in Review", None, (None, 2024, None)),
     ("Show 1999", None, (None, None, None)),
     (f"Show {_Y + 2}", None, (None, None, None)),
     (f"Show {_Y + 3}", None, _AFTER_EXCLUSION_COMPACT),
@@ -126,7 +126,7 @@ SAMPLE: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] 
     ("Show - 05v2 [1080p]", None, (None, None, None)),
     ("Show 1071v2", None, (None, None, None)),
     ("Show - 1071v2 [x]", None, (None, None, None)),
-    ("[Group] Show - 1071 [ABCD1234]", None, (10, 71, 1071)),
+    ("[Group] Show - 1071 [ABCD1234]", None, (None, 1071, None)),
     ("Show 1071 [ABCD1234]", None, (10, 71, 1071)),
     ("Show S01 Complete", None, (None, None, None)),
     ("Show S01 1080p", None, (None, None, None)),
@@ -147,8 +147,8 @@ SAMPLE: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] 
     ("Show 2nd Season 1001", None, (10, 1, 1001)),
     ("Show 1071", 10, (10, 71, 1071)),
     ("One Piece 1071", 10, (10, 71, 1071)),
-    ("Show 1x1000", 10, (None, None, None)),
-    ("Show - 1071 [1080p]", 10, (10, 71, 1071)),
+    ("Show 1x1000", 10, (1, 1000, None)),
+    ("Show - 1071 [1080p]", 10, (None, 1071, None)),
 ]
 
 
@@ -177,3 +177,18 @@ def test_df6_tables_are_not_empty() -> None:
 def test_compact_quality_tokens_are_pinned() -> None:
     """The compact guess skips exactly these resolution tokens (D21 must not change the set)."""
     assert frozenset({"480", "576", "720", "1080", "2160", "4320"}) == _COMPACT_QUALITY
+
+
+class _FrozenDate(date):
+    """``date`` whose ``today()`` is pinned to 2040-06-01."""
+
+    @classmethod
+    def today(cls) -> "_FrozenDate":
+        return cls(2040, 6, 1)
+
+
+def test_compact_year_exclusion_follows_the_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The compact guess reads the year bound from the clock at call time."""
+    monkeypatch.setattr("jidou.services.file_filters.date", _FrozenDate)
+    assert _parse_episode("Show 2042") == (None, None, None)
+    assert _parse_episode("Show 2043") == (20, 43, 2043)

@@ -13,11 +13,12 @@ import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from jidou.services.file_filters import (
     MEDIA_EXTENSIONS,
+    RESOLUTION_TOKENS,
+    is_release_year,
     is_valid_directory,
     is_valid_media_file,
 )
@@ -26,37 +27,40 @@ from jidou.services.path_transport import encode_path_bytes
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 
+# Every explicit-marker pattern below (SxxE, NxN, Episode, Ep, "- N", "N - Title")
+# takes 1-4 episode digits: long-running shows have passed episode 1,000 (D20).
+
 # Standard SxxExx notation — always carries both season and episode.
-_SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})")
+_SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})")
 
 # NxNN / NNxNN — common release-group format (e.g. Criminal.Minds.01x01).
-_SxE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,2})(?!\d)")
+_SxE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,4})(?!\d)")
 
 # "Season N Episode N" — long-form text label (e.g. "Breaking Bad Season 2 Episode 09").
 _SEASON_EPISODE_WORD = re.compile(
-    r"\bSeason\s+(\d{1,2})\b.*?\bEpisode\s+(\d{1,3})\b", re.IGNORECASE
+    r"\bSeason\s+(\d{1,2})\b.*?\bEpisode\s+(\d{1,4})\b", re.IGNORECASE
 )
 
 # "Episode N" — standalone episode label (e.g. "Episode 11 - 25 to Life").
-_EPISODE_WORD = re.compile(r"\bEpisode\s+(\d{1,3})\b", re.IGNORECASE)
+_EPISODE_WORD = re.compile(r"\bEpisode\s+(\d{1,4})\b", re.IGNORECASE)
 
 # "Ep N" or "Ep. N" (Yawara-style).
-_EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,3})\b", re.IGNORECASE)
+_EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,4})\b", re.IGNORECASE)
 
 # "- N" followed by end-of-string or a quality/hash bracket.
 # Handles SubsPlease, HorribleSubs, and plain "Show - 06".
-_DASH_EP = re.compile(r"[-–]\s*(\d{1,3})\s*(?:$|[\(\[])")  # noqa: RUF001
+_DASH_EP = re.compile(r"[-–]\s*(\d{1,4})\s*(?:$|[\(\[])")  # noqa: RUF001
 
 # "N - Title" where N is the episode number *before* a title separator.
 # Handles encoders that use "Show 01 - Episode Title [hash]" naming.
 # Requires a letter immediately after the separator to avoid matching
 # resolution strings or hashes that contain "NN - NN".
-_PREDASH_EP = re.compile(r"(?<!\d)(\d{1,3})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
+_PREDASH_EP = re.compile(r"(?<!\d)(\d{1,4})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
 
 # "N - Title" at start of stem where the title begins with a digit or word
 # (e.g. "32 - 100th Dirty Job Special", "19 - 200 Jobs Look-Back").
 # More permissive than _PREDASH_EP; anchored to ^ to limit false positives.
-_LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
+_LEADING_EP = re.compile(r"^(\d{1,4})\s+[-–]\s+")  # noqa: RUF001
 
 # "Title NN" — a bare trailing 1-2 digit number with nothing but whitespace
 # separating it from the title (e.g. "Bamboo Blade 20", "Yawara 6"). No dash,
@@ -64,7 +68,8 @@ _LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
 # non-word character (so "v2" or "S02" — glued directly to a letter — never
 # match), and the "season" lookbehind excludes a lone trailing season number
 # with no episode (e.g. "Show Season 2"). Limited to 1-2 digits so it can
-# never collide with the 3-4 digit compact SEEE/SSEEE heuristic below.
+# never collide with the 3-4 digit compact SEEE/SSEEE heuristic below, which is
+# where a bare 3-4 digit number goes (with years and resolution tokens excluded).
 _BARE_TRAILING_EP = re.compile(r"(?<!season\s)\b(\d{1,2})$", re.IGNORECASE)
 
 # Non-credit opening/ending and other bonus-content markers (e.g.
@@ -78,15 +83,8 @@ _NON_EPISODE_ASSET_WORD = re.compile(r"\b(NCED|NCOP|OP|ED|PV|CM|SP|OVA|OAD)\b", 
 # (e.g. criminal.minds.201 → S02E01, criminal.minds.1001 → S10E01).
 # Applied last because it is the most ambiguous pattern.
 _COMPACT_EP = re.compile(r"\b(\d{3,4})\b")
-_COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
-
-# A bare 3-4 digit token that looks like a scene-release year tag (e.g.
-# "Show.Name.2024.1080p.WEB-DL.mkv" — a near-universal release convention) is
-# excluded from the compact SxxExx guess below. The upper bound tracks the
-# current year (plus headroom for near-future release dates) instead of a
-# fixed cutoff, so it never silently goes stale.
-_YEAR_EXCLUSION_MIN = 1900
-_YEAR_EXCLUSION_HEADROOM_YEARS = 2
+# Resolution tokens are never a compact code; shared with filename_parser (D21).
+_COMPACT_QUALITY = frozenset(RESOLUTION_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -707,7 +705,8 @@ def _compact_guess(stem: str, dir_season: int | None) -> tuple[int, int, int] | 
         if raw in _COMPACT_QUALITY:
             continue
         n = int(raw)
-        if _YEAR_EXCLUSION_MIN <= n <= date.today().year + _YEAR_EXCLUSION_HEADROOM_YEARS:
+        # A scene-release year tag (e.g. "Show.Name.2024.1080p.WEB-DL.mkv") is not a code.
+        if is_release_year(n):
             continue
         s_num = int(raw[:-2])
         e_num = int(raw[-2:])
@@ -724,7 +723,8 @@ def _parse_episode(
     """Extract (season, episode) from a filename stem (no extension).
 
     Priority order (first match wins):
-    1. ``SxxExx`` / ``SxxEyyy`` standard notation.
+    1. ``SxxExx`` / ``SxxEyyyy`` standard notation (explicit markers take 1-4
+       episode digits).
     2. ``NNxNN`` release-group notation (e.g. ``01x01``).
     3. ``Season N … Episode N`` long-form text.
     4. ``Episode N`` standalone label.

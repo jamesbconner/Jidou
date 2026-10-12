@@ -251,7 +251,7 @@ class TestParseLine:
     def test_compact_excludes_current_year_release_tag(self) -> None:
         # A scene-release year tag for "this year" must never be treated as
         # a compact SxxExx guess. The exclusion upper bound tracks the
-        # current year dynamically (see _YEAR_EXCLUSION_HEADROOM_YEARS)
+        # current year dynamically (see file_filters.RELEASE_YEAR_HEADROOM_YEARS)
         # rather than a fixed cutoff that would eventually go stale.
         year = date.today().year
         line = rf"Z:\tv\Show\Show.Name.{year}.1080p.WEB-DL.mkv"
