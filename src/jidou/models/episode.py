@@ -33,6 +33,11 @@ class Episode(TimestampMixin, Base):
         # Composite index for per-show tracked/missing episode counts; created
         # by hand in a migration, declared here so ``alembic check`` sees it.
         Index("ix_episodes_show_id_file_tracked", "show_id", "file_tracked"),
+        # Episode resolution looks up by (show, season, episode) and by
+        # (show, absolute number); without these it scans every episode of the
+        # show (issue #313). Non-unique: TMDB data can repeat numbers.
+        Index("ix_episodes_show_season_episode", "show_id", "season_number", "episode_number"),
+        Index("ix_episodes_show_absolute", "show_id", "absolute_episode_number"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

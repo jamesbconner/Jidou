@@ -182,3 +182,17 @@ def test_show_column_provenance_tagging() -> None:
         "banner_path",
         "track_missing_episodes",
     }
+
+
+@pytest.mark.parametrize(
+    ("name", "columns"),
+    [
+        ("ix_episodes_show_season_episode", ["show_id", "season_number", "episode_number"]),
+        ("ix_episodes_show_absolute", ["show_id", "absolute_episode_number"]),
+    ],
+)
+def test_episode_lookup_indexes_are_declared(name: str, columns: list[str]) -> None:
+    """Episode declares the non-unique lookup indexes used by episode resolution (#313)."""
+    index = _index_by_name(Episode.__table__, name)  # type: ignore[arg-type]
+    assert index.unique is False
+    assert [c.name for c in index.columns] == columns
