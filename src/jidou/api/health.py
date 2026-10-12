@@ -4,7 +4,6 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -12,6 +11,7 @@ from sqlalchemy import text
 from jidou import __version__
 from jidou.config import settings
 from jidou.database import engine
+from jidou.services.health_probes import ping_redis, run_probe
 
 logger = logging.getLogger(__name__)
 
@@ -28,34 +28,23 @@ async def health_check() -> JSONResponse:
     reports the running application ``version``.
     """
     services: dict[str, dict[str, Any]] = {}
-    overall_healthy = True
 
-    # Check PostgreSQL
-    try:
+    async def check_postgres() -> None:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        services["postgres"] = {"status": "healthy"}
-    except Exception as exc:
-        logger.error("PostgreSQL health check failed: %s", exc)
-        services["postgres"] = {"status": "unhealthy", "error": str(exc)}
-        overall_healthy = False
 
-    # Check Redis
-    try:
-        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        try:
-            await redis_client.ping()
-            services["redis"] = {"status": "healthy"}
-        except Exception as exc:
-            logger.error("Redis health check failed: %s", exc)
-            services["redis"] = {"status": "unhealthy", "error": str(exc)}
-            overall_healthy = False
-        finally:
-            await redis_client.aclose()
-    except Exception as exc:
-        logger.error("Redis client creation failed: %s", exc)
-        services["redis"] = {"status": "unhealthy", "error": str(exc)}
-        overall_healthy = False
+    probes = {
+        "postgres": await run_probe(check_postgres),
+        # Redis is required for this probe (Docker HEALTHCHECK): failure -> 503.
+        "redis": await run_probe(lambda: ping_redis(settings.redis_url, decode_responses=True)),
+    }
+    for name, result in probes.items():
+        if result.ok:
+            services[name] = {"status": "healthy"}
+        else:
+            logger.error("%s health check failed: %s", name, result.error)
+            services[name] = {"status": "unhealthy", "error": result.error or ""}
+    overall_healthy = all(r.ok for r in probes.values())
 
     # Check TMDB API key configured
     services["tmdb"] = {

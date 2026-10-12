@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,6 +18,7 @@ from jidou.models.show import Show
 from jidou.models.task import BackgroundTask
 from jidou.models.watchlist import WatchlistEntry
 from jidou.schemas.admin_schema import StatsResponse
+from jidou.services.health_probes import ProbeFailedError, ping_redis, run_probe
 from jidou.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -217,6 +217,53 @@ async def flush_cache() -> dict[str, Any]:
     return {"ok": True, "cleared": count}
 
 
+async def _read_alembic_version(db_session: AsyncSession) -> str | None:
+    """Return the applied alembic revision, or None if it can't be read.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        The revision id, or None when the lookup fails (the session is rolled back).
+    """
+    try:
+        result = await db_session.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+        return result.scalar_one_or_none()
+    except Exception as exc:
+        logger.warning("Could not read alembic_version: %s", exc)
+        await db_session.rollback()
+        return None
+
+
+def _config_checks() -> dict[str, dict[str, Any]]:
+    """Presence-only checks for TMDB, SFTP and LLM configuration.
+
+    No network calls: TMDB is rate-limited, and live SFTP/LLM tests are available via
+    POST /config/test/*.
+
+    Returns:
+        Per-service result dicts keyed ``tmdb``, ``sftp``, ``llm``.
+    """
+    results: dict[str, dict[str, Any]] = {
+        "tmdb": {"ok": bool(settings.tmdb_api_key), "configured": bool(settings.tmdb_api_key)},
+        "sftp": {"ok": bool(settings.sftp_host), "configured": bool(settings.sftp_host)},
+    }
+    if not settings.tmdb_api_key:
+        results["tmdb"]["error"] = "TMDB_API_KEY not set"
+    if not settings.sftp_host:
+        results["sftp"]["error"] = "SFTP_HOST not set"
+    llm_configured = settings.llm_provider.lower() != "none" and bool(settings.llm_model)
+    results["llm"] = {"ok": True, "configured": llm_configured}
+    if llm_configured:
+        results["llm"]["provider"] = settings.llm_provider
+        results["llm"]["model"] = settings.llm_model
+    else:
+        results["llm"]["error"] = (
+            "LLM_MODEL not set" if settings.llm_provider.lower() != "none" else "not configured"
+        )
+    return results
+
+
 @router.get("/health")
 async def system_health(
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -234,107 +281,31 @@ async def system_health(
         Dictionary with an overall ``healthy`` flag, the running application
         ``version``, and per-service results.
     """
-    results: dict[str, Any] = {}
 
-    # Database
-    t0 = time.monotonic()
-    try:
+    async def check_database() -> dict[str, Any]:
         await db_session.execute(text("SELECT 1"))
-        results["database"] = {"ok": True, "latency_ms": round((time.monotonic() - t0) * 1000, 1)}
-
         # Surface the applied migration revision so a stale schema after a deploy
         # is visible here instead of only showing up as a downstream 500.
-        try:
-            version_result = await db_session.execute(
-                text("SELECT version_num FROM alembic_version LIMIT 1")
-            )
-            results["database"]["alembic_version"] = version_result.scalar_one_or_none()
-        except Exception as exc:
-            logger.warning("Could not read alembic_version: %s", exc)
-            await db_session.rollback()
-            results["database"]["alembic_version"] = None
-    except Exception as exc:
-        results["database"] = {
-            "ok": False,
-            "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-            "error": str(exc),
-        }
+        return {"alembic_version": await _read_alembic_version(db_session)}
 
-    # Redis
-    redis_url = settings.redis_url
-    if redis_url:
-        t0 = time.monotonic()
-        try:
-            import redis.asyncio as aioredis
-
-            r = aioredis.from_url(redis_url)
-            try:
-                await r.ping()
-                results["redis"] = {
-                    "ok": True,
-                    "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-                }
-            finally:
-                await r.aclose()
-        except Exception as exc:
-            results["redis"] = {
-                "ok": False,
-                "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-                "error": str(exc),
-            }
-    else:
-        # Redis is optional — mark as not configured, not failed.
-        # An unconfigured optional service must not drag overall health to false.
-        results["redis"] = {"ok": True, "configured": False}
-
-    # Celery worker liveness. A reachable Redis broker doesn't prove a worker is
-    # actually consuming tasks, so ping workers directly rather than relying on
-    # the Redis check above to stand in for worker health.
-    t0 = time.monotonic()
-    try:
+    async def check_celery() -> dict[str, Any]:
+        # A reachable broker doesn't prove a worker is consuming; ping workers directly.
         pong = await asyncio.to_thread(celery_app.control.inspect(timeout=2.0).ping)
-        latency_ms = round((time.monotonic() - t0) * 1000, 1)
-        if pong:
-            results["celery"] = {"ok": True, "latency_ms": latency_ms, "workers": list(pong.keys())}
-        else:
-            results["celery"] = {
-                "ok": False,
-                "latency_ms": latency_ms,
-                "error": "No Celery workers responded to ping",
-            }
-    except Exception as exc:
-        results["celery"] = {
-            "ok": False,
-            "latency_ms": round((time.monotonic() - t0) * 1000, 1),
-            "error": str(exc),
-        }
+        if not pong:
+            raise ProbeFailedError("No Celery workers responded to ping")
+        return {"workers": list(pong.keys())}
 
-    # TMDB (config check only — no network call to avoid rate limit)
-    results["tmdb"] = {
-        "ok": bool(settings.tmdb_api_key),
-        "configured": bool(settings.tmdb_api_key),
+    redis_url = settings.redis_url
+    results: dict[str, Any] = {
+        "database": (await run_probe(check_database)).as_dict(),
+        # Redis is optional here: unconfigured must not drag overall health to false.
+        "redis": (
+            (await run_probe(lambda: ping_redis(redis_url))).as_dict()
+            if redis_url
+            else {"ok": True, "configured": False}
+        ),
+        "celery": (await run_probe(check_celery)).as_dict(),
+        **_config_checks(),
     }
-    if not settings.tmdb_api_key:
-        results["tmdb"]["error"] = "TMDB_API_KEY not set"
-
-    # SFTP (config check only — live test available via POST /config/test/sftp)
-    results["sftp"] = {
-        "ok": bool(settings.sftp_host),
-        "configured": bool(settings.sftp_host),
-    }
-    if not settings.sftp_host:
-        results["sftp"]["error"] = "SFTP_HOST not set"
-
-    # LLM (config check only — live test available via POST /config/test/llm)
-    llm_configured = settings.llm_provider.lower() != "none" and bool(settings.llm_model)
-    results["llm"] = {"ok": True, "configured": llm_configured}
-    if llm_configured:
-        results["llm"]["provider"] = settings.llm_provider
-        results["llm"]["model"] = settings.llm_model
-    else:
-        results["llm"]["error"] = (
-            "LLM_MODEL not set" if settings.llm_provider.lower() != "none" else "not configured"
-        )
-
     overall = all(v.get("ok") for v in results.values())
     return {"healthy": overall, "version": __version__, "services": results}

@@ -33,11 +33,7 @@ def test_main_runs() -> None:
 
     with (
         patch.object(HEALTH_MODULE, "engine", mock_engine),
-        patch.object(
-            HEALTH_MODULE,
-            "aioredis",
-            MagicMock(from_url=MagicMock(return_value=mock_redis)),
-        ),
+        patch("redis.asyncio.from_url", return_value=mock_redis),
         TestClient(app) as client,
     ):
         response = client.get("/api/health")
