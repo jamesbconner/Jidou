@@ -1,4 +1,4 @@
-# Keep the Docker build context to tracked sources only.
+# Keep host-installed dependencies and build output out of the Docker build context.
 #
 # The Dockerfile runs `npm ci` and then `COPY . .`. Without this file the
 # host's frontend/node_modules (installed by a different npm/Node, OS or
