@@ -1,0 +1,581 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AddShowFromFeedPane characterization > add failure shows the server error and keeps the form > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<p class="text-xs text-gray-700 dark:text-gray-200">Selected: <strong>Brand New Show</strong>
+</p>
+</section>
+<section aria-label="Filter" class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Re-suggest</button>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include (regex)</label>
+<input aria-label="Include regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="Brand.New.Show.*1080p">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude (regex, optional)</label>
+<input aria-label="Exclude regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="FRENCH">
+</div>
+<div class="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (include)</label>
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (exclude)</label>
+</div>
+<p aria-live="polite" class="text-xs text-gray-600 dark:text-gray-300">1 of 2 current titles selected</p>
+<details class="text-xs text-gray-600 dark:text-gray-300">
+<summary class="cursor-pointer">Show which titles</summary>
+<ul class="mt-1 space-y-0.5 font-mono">
+<li class="text-green-700 dark:text-green-400 truncate" title="[G] Brand New Show - 05 (1080p).mkv">✓ [G] Brand New Show - 05 (1080p).mkv</li>
+<li class="text-gray-500 dark:text-gray-400 truncate" title="[G] Brand New Show - 06 (720p).mkv">– [G] Brand New Show - 06 (720p).mkv</li>
+</ul>
+</details>
+<p class="text-xs text-gray-400 dark:text-gray-500">Preview shows which of the feed's current titles the filter selects; YaRSS2 also skips items it has already seen.</p>
+</section>
+<section aria-label="Subscription" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription name</label>
+<input placeholder="Brand New Show" aria-label="Subscription name" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Defaults to the show title.</p>
+</div>
+<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+<input class="mt-0.5" type="checkbox">
+<span>Enable now<span class="block text-xs text-gray-500 dark:text-gray-400">Active and included the next time you publish. Leave off to save it in Jidou only.</span>
+</span>
+</label>
+</section>
+<p role="alert" class="text-sm text-red-600 dark:text-red-400">Show not found</p>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > hand edit previews after the debounce; checkbox toggles retest > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<p class="text-xs text-gray-700 dark:text-gray-200">Selected: <strong>Brand New Show</strong>
+</p>
+</section>
+<section aria-label="Filter" class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Re-suggest</button>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include (regex)</label>
+<input aria-label="Include regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="Edited">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude (regex, optional)</label>
+<input aria-label="Exclude regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="FRENCH">
+</div>
+<div class="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (include)</label>
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (exclude)</label>
+</div>
+<p aria-live="polite" class="text-xs text-gray-600 dark:text-gray-300">1 of 2 current titles selected</p>
+<details class="text-xs text-gray-600 dark:text-gray-300">
+<summary class="cursor-pointer">Show which titles</summary>
+<ul class="mt-1 space-y-0.5 font-mono">
+<li class="text-green-700 dark:text-green-400 truncate" title="[G] Brand New Show - 05 (1080p).mkv">✓ [G] Brand New Show - 05 (1080p).mkv</li>
+<li class="text-gray-500 dark:text-gray-400 truncate" title="[G] Brand New Show - 06 (720p).mkv">– [G] Brand New Show - 06 (720p).mkv</li>
+</ul>
+</details>
+<p class="text-xs text-gray-400 dark:text-gray-500">Preview shows which of the feed's current titles the filter selects; YaRSS2 also skips items it has already seen.</p>
+</section>
+<section aria-label="Subscription" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription name</label>
+<input placeholder="Brand New Show" aria-label="Subscription name" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Defaults to the show title.</p>
+</div>
+<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+<input class="mt-0.5" type="checkbox">
+<span>Enable now<span class="block text-xs text-gray-500 dark:text-gray-400">Active and included the next time you publish. Leave off to save it in Jidou only.</span>
+</span>
+</label>
+</section>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > hand edit previews after the debounce; checkbox toggles retest > request bodies 1`] = `
+{
+  "/api/rss/feeds/7/suggest-regex": [
+    {
+      "parsed_name": "Brand New Show",
+      "previous": [],
+      "show_title": "Brand New Show",
+    },
+  ],
+  "/api/rss/feeds/7/test-regex": [
+    {
+      "parsed_name": "Brand New Show",
+      "regex_exclude": "FRENCH",
+      "regex_exclude_ignorecase": true,
+      "regex_include": null,
+      "regex_include_ignorecase": true,
+    },
+    {
+      "parsed_name": "Brand New Show",
+      "regex_exclude": "FRENCH",
+      "regex_exclude_ignorecase": true,
+      "regex_include": "Edited",
+      "regex_include_ignorecase": true,
+    },
+    {
+      "parsed_name": "Brand New Show",
+      "regex_exclude": "FRENCH",
+      "regex_exclude_ignorecase": true,
+      "regex_include": "Edited",
+      "regex_include_ignorecase": false,
+    },
+  ],
+}
+`;
+
+exports[`AddShowFromFeedPane characterization > hand edit previews after the debounce; checkbox toggles retest > requests 1`] = `
+[
+  "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
+  "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
+  "GET /api/shows?sort=title_asc&limit=10000",
+  "POST /api/rss/feeds/7/suggest-regex",
+  "POST /api/rss/feeds/7/test-regex",
+  "POST /api/rss/feeds/7/test-regex",
+  "POST /api/rss/feeds/7/test-regex",
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > library pick: suggestion fills the filter and previews the match > request bodies 1`] = `
+{
+  "/api/rss/feeds/7/suggest-regex": [
+    {
+      "parsed_name": "Brand New Show",
+      "previous": [],
+      "show_title": "Brand New Show",
+    },
+  ],
+}
+`;
+
+exports[`AddShowFromFeedPane characterization > library pick: suggestion fills the filter and previews the match > suggest requests 1`] = `
+[
+  "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
+  "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
+  "GET /api/shows?sort=title_asc&limit=10000",
+  "POST /api/rss/feeds/7/suggest-regex",
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > library pick: suggestion fills the filter and previews the match > suggested dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<p class="text-xs text-gray-700 dark:text-gray-200">Selected: <strong>Brand New Show</strong>
+</p>
+</section>
+<section aria-label="Filter" class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Re-suggest</button>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include (regex)</label>
+<input aria-label="Include regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="Brand.New.Show.*1080p">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude (regex, optional)</label>
+<input aria-label="Exclude regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="FRENCH">
+</div>
+<div class="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (include)</label>
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (exclude)</label>
+</div>
+<p aria-live="polite" class="text-xs text-gray-600 dark:text-gray-300">1 of 2 current titles selected</p>
+<details class="text-xs text-gray-600 dark:text-gray-300">
+<summary class="cursor-pointer">Show which titles</summary>
+<ul class="mt-1 space-y-0.5 font-mono">
+<li class="text-green-700 dark:text-green-400 truncate" title="[G] Brand New Show - 05 (1080p).mkv">✓ [G] Brand New Show - 05 (1080p).mkv</li>
+<li class="text-gray-500 dark:text-gray-400 truncate" title="[G] Brand New Show - 06 (720p).mkv">– [G] Brand New Show - 06 (720p).mkv</li>
+</ul>
+</details>
+<p class="text-xs text-gray-400 dark:text-gray-500">Preview shows which of the feed's current titles the filter selects; YaRSS2 also skips items it has already seen.</p>
+</section>
+<section aria-label="Subscription" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription name</label>
+<input placeholder="Brand New Show" aria-label="Subscription name" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Defaults to the show title.</p>
+</div>
+<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+<input class="mt-0.5" type="checkbox">
+<span>Enable now<span class="block text-xs text-gray-500 dark:text-gray-400">Active and included the next time you publish. Leave off to save it in Jidou only.</span>
+</span>
+</label>
+</section>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > nothing picked: search results from library and TMDB (mixed, deduped) > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<ul role="listbox" aria-label="Show matches" class="space-y-1">
+<li>
+<button type="button" role="option" aria-selected="false" class="w-full text-left rounded border px-2 py-1.5 text-sm border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800">
+<span class="font-medium text-gray-900 dark:text-gray-100">Brand New Show</span>
+<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">In your library</span>
+</button>
+</li>
+<li>
+<button type="button" role="option" aria-selected="false" class="w-full text-left rounded border px-2 py-1.5 text-sm border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800">
+<span class="font-medium text-gray-900 dark:text-gray-100">Brand New TMDB</span>
+<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">TMDB · TV · 2022</span>
+</button>
+</li>
+<li>
+<button type="button" role="option" aria-selected="false" class="w-full text-left rounded border px-2 py-1.5 text-sm border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800">
+<span class="font-medium text-gray-900 dark:text-gray-100">Indexed Show</span>
+<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">In your library</span>
+</button>
+</li>
+<li>
+<button type="button" role="option" aria-selected="false" class="w-full text-left rounded border px-2 py-1.5 text-sm border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800">
+<span class="font-medium text-gray-900 dark:text-gray-100">Some Movie</span>
+<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">TMDB · Movie · 2022</span>
+</button>
+</li>
+</ul>
+</section>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]" disabled="">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > nothing picked: search results from library and TMDB (mixed, deduped) > requests 1`] = `
+[
+  "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
+  "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
+  "GET /api/shows?sort=title_asc&limit=10000",
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: adopted stub > add body 1`] = `
+[
+  {
+    "enabled": true,
+    "name": "Custom",
+    "parsed_name": "Brand New Show",
+    "regex_exclude": "FRENCH",
+    "regex_exclude_ignorecase": true,
+    "regex_include": "Brand.New.Show.*1080p",
+    "regex_include_ignorecase": true,
+    "show_id": 42,
+  },
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: adopted stub > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200" role="status">
+<p class="font-medium">Using “Brand New Show” from your library and linked its existing subscription to this feed.</p>
+<p class="mt-1 text-xs">It will be included the next time you publish.</p>
+<div class="mt-2 flex items-center gap-3">
+<a class="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline" href="/shows/42" data-discover="true">Open show</a>
+<button class="text-xs text-gray-600 dark:text-gray-300 hover:underline">Close</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: already subscribed > add body 1`] = `
+[
+  {
+    "enabled": false,
+    "name": "Custom",
+    "parsed_name": "Brand New Show",
+    "regex_exclude": "FRENCH",
+    "regex_exclude_ignorecase": true,
+    "regex_include": "Brand.New.Show.*1080p",
+    "regex_include_ignorecase": true,
+    "show_id": 42,
+  },
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: already subscribed > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200" role="status">
+<p class="font-medium">Using “Brand New Show” from your library — it was already subscribed to this feed.</p>
+<p class="mt-1 text-xs">Nothing was changed.</p>
+<div class="mt-2 flex items-center gap-3">
+<a class="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline" href="/shows/42" data-discover="true">Open show</a>
+<button class="text-xs text-gray-600 dark:text-gray-300 hover:underline">Close</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: created > add body 1`] = `
+[
+  {
+    "enabled": false,
+    "name": "Custom",
+    "parsed_name": "Brand New Show",
+    "regex_exclude": "FRENCH",
+    "regex_exclude_ignorecase": true,
+    "regex_include": "Brand.New.Show.*1080p",
+    "regex_include_ignorecase": true,
+    "show_id": 42,
+  },
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: created > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200" role="status">
+<p class="font-medium">Using “Brand New Show” from your library and created its subscription.</p>
+<p class="mt-1 text-xs">It is saved in Jidou only; enable it to include it in the next publish. “Brand New Show” was added as an alias.</p>
+<div class="mt-2 flex items-center gap-3">
+<a class="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline" href="/shows/42" data-discover="true">Open show</a>
+<button class="text-xs text-gray-600 dark:text-gray-300 hover:underline">Close</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: created and enabled > add body 1`] = `
+[
+  {
+    "enabled": true,
+    "name": "Custom",
+    "parsed_name": "Brand New Show",
+    "regex_exclude": "FRENCH",
+    "regex_exclude_ignorecase": true,
+    "regex_include": "Brand.New.Show.*1080p",
+    "regex_include_ignorecase": true,
+    "show_id": 42,
+  },
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: created and enabled > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200" role="status">
+<p class="font-medium">Added “Brand New Show” to your library and created its subscription.</p>
+<p class="mt-1 text-xs">It will be included the next time you publish. “Brand New Show” was added as an alias.</p>
+<div class="mt-2 flex items-center gap-3">
+<a class="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline" href="/shows/42" data-discover="true">Open show</a>
+<button class="text-xs text-gray-600 dark:text-gray-300 hover:underline">Close</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: no show returned > add body 1`] = `
+[
+  {
+    "enabled": false,
+    "name": "Custom",
+    "parsed_name": "Brand New Show",
+    "regex_exclude": "FRENCH",
+    "regex_exclude_ignorecase": true,
+    "regex_include": "Brand.New.Show.*1080p",
+    "regex_include_ignorecase": true,
+    "show_id": 42,
+  },
+]
+`;
+
+exports[`AddShowFromFeedPane characterization > outcome: no show returned > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200" role="status">
+<p class="font-medium">Using “Brand New Show” from your library and created its subscription.</p>
+<p class="mt-1 text-xs">It is saved in Jidou only; enable it to include it in the next publish. “Brand New Show” was added as an alias.</p>
+<div class="mt-2 flex items-center gap-3">
+<button class="text-xs text-gray-600 dark:text-gray-300 hover:underline">Close</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > re-suggest sends the previous include > request bodies 1`] = `
+{
+  "/api/rss/feeds/7/suggest-regex": [
+    {
+      "parsed_name": "Brand New Show",
+      "previous": [],
+      "show_title": "Brand New Show",
+    },
+    {
+      "parsed_name": "Brand New Show",
+      "previous": [
+        "Brand.New.Show.*1080p",
+      ],
+      "show_title": "Brand New Show",
+    },
+  ],
+}
+`;
+
+exports[`AddShowFromFeedPane characterization > suggest failure keeps the form with the error and the empty-include caveat > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<p class="text-xs text-gray-700 dark:text-gray-200">Selected: <strong>Brand New Show</strong>
+</p>
+</section>
+<section aria-label="Filter" class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Suggest filter</button>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include (regex)</label>
+<input aria-label="Include regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude (regex, optional)</label>
+<input aria-label="Exclude regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="">
+</div>
+<div class="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (include)</label>
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (exclude)</label>
+</div>
+<p aria-live="polite" class="text-xs text-amber-600 dark:text-amber-400">No include pattern — YaRSS2 will not select any release until one is set.</p>
+<p class="text-xs text-gray-400 dark:text-gray-500">Preview shows which of the feed's current titles the filter selects; YaRSS2 also skips items it has already seen.</p>
+</section>
+<section aria-label="Subscription" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription name</label>
+<input placeholder="Brand New Show" aria-label="Subscription name" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Defaults to the show title.</p>
+</div>
+<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+<input class="mt-0.5" type="checkbox">
+<span>Enable now<span class="block text-xs text-gray-500 dark:text-gray-400">Active and included the next time you publish. Leave off to save it in Jidou only.</span>
+</span>
+</label>
+</section>
+<p role="alert" class="text-sm text-red-600 dark:text-red-400">LLM provider is not configured</p>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
+
+exports[`AddShowFromFeedPane characterization > tmdb pick shows the will-be-added note and the name placeholder > dom 1`] = `
+"<div>
+<div class="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
+<section aria-label="Show" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Show</label>
+<input placeholder="Search your library and TMDB" aria-label="Search for the show" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Brand New Show">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias.</p>
+</div>
+<p class="text-xs text-gray-700 dark:text-gray-200">Selected: <strong>Brand New TMDB</strong> (will be added to your library)</p>
+<ul role="listbox" aria-label="Show matches" class="space-y-1">
+<li>
+<button type="button" role="option" aria-selected="true" class="w-full text-left rounded border px-2 py-1.5 text-sm border-[var(--color-ocean-500)] bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-900)]/40">
+<span class="font-medium text-gray-900 dark:text-gray-100">Brand New TMDB</span>
+<span class="ml-2 text-xs text-gray-500 dark:text-gray-400">TMDB · TV · 2022</span>
+</button>
+</li>
+</ul>
+</section>
+<section aria-label="Filter" class="space-y-2">
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Re-suggest</button>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Include (regex)</label>
+<input aria-label="Include regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="Brand.New.Show.*1080p">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Exclude (regex, optional)</label>
+<input aria-label="Exclude regex" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] font-mono" value="FRENCH">
+</div>
+<div class="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (include)</label>
+<label class="flex items-center gap-1">
+<input type="checkbox" checked="">Ignore case (exclude)</label>
+</div>
+<p aria-live="polite" class="text-xs text-gray-600 dark:text-gray-300">1 of 2 current titles selected</p>
+<details class="text-xs text-gray-600 dark:text-gray-300">
+<summary class="cursor-pointer">Show which titles</summary>
+<ul class="mt-1 space-y-0.5 font-mono">
+<li class="text-green-700 dark:text-green-400 truncate" title="[G] Brand New Show - 05 (1080p).mkv">✓ [G] Brand New Show - 05 (1080p).mkv</li>
+<li class="text-gray-500 dark:text-gray-400 truncate" title="[G] Brand New Show - 06 (720p).mkv">– [G] Brand New Show - 06 (720p).mkv</li>
+</ul>
+</details>
+<p class="text-xs text-gray-400 dark:text-gray-500">Preview shows which of the feed's current titles the filter selects; YaRSS2 also skips items it has already seen.</p>
+</section>
+<section aria-label="Subscription" class="space-y-2">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription name</label>
+<input placeholder="Brand New TMDB" aria-label="Subscription name" class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Defaults to the show title.</p>
+</div>
+<label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+<input class="mt-0.5" type="checkbox">
+<span>Enable now<span class="block text-xs text-gray-500 dark:text-gray-400">Active and included the next time you publish. Leave off to save it in Jidou only.</span>
+</span>
+</label>
+</section>
+<div class="flex justify-end gap-2">
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)]">Add show + subscription</button>
+</div>
+</div>
+</div>"
+`;
