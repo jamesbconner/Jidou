@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.8] — 2026-10-12
+
+Wave 5 completes the simplification roadmap. It carries out the 20 approved decision follow-ups (DF-1 … DF-20), which change behaviour on purpose, and closes the program with a documentation and verification pass (XL-3). Each DF item first added a test pinning the new behaviour and showed it failing on the old code; every existing assertion that encoded the old behaviour is named in its PR. Items touching the database were also checked against a real PostgreSQL 16 database.
+
+### Added
+- **`GET /api/shows/index`** (#737, DF-18): a lightweight show index (`ShowIndexEntry`: `id`, `tmdb_id`, `title`, `sys_name`, `aliases`, `media_type`, `content_type`, `local_path`) for pickers and lookups. On 3,000 shows it returns 602 KB in 45 ms instead of 3.78 MB in 314 ms. `useLibraryIndex` and the subscription editor use it. `GET /api/watchlist` accepts `?show_id=`, so Show Detail checks watchlist membership without fetching up to 10,000 entries.
+- **Duplicate files are flagged** (#738, DF-13). Migration `e5f6a7b8c9d0` adds `downloaded_files.duplicate_of_file_id` (a foreign key to `downloaded_files.id`, `ON DELETE SET NULL`, indexed). When parse links a file to an episode that already has a non-synthetic file in `MATCHED`, `ROUTING` or `ROUTED`, it sets the column and emits a warning event. Both files are kept, and routing is unchanged. `FileRead` gains `duplicate_of_file_id`, `GET /api/files` gains `duplicates_only`, and the Files page shows a "Duplicate" badge with a filter.
+- **CI type-drift check** (#732, DF-19). `make.py export-openapi <file>` writes the OpenAPI spec without starting a server. The CI frontend job regenerates the types with `openapi-typescript@7.13.0` and fails if they differ from `frontend/src/types/api-generated.ts`.
+
+### Changed (behaviour and contract)
+- **Unknown request fields are rejected** (#739, DF-20). JSON request bodies (28 schemas and their nested models) now extend `RequestModel` (`extra="forbid"`), so an unknown field returns 422 `extra_forbidden` instead of being ignored. `RegexHintSample` is split, and `RegexHintSampleRequest` is used for requests. Multipart import uploads are unchanged. The frontend already sent only declared fields.
+- **Episode numbers up to 4 digits** (#727, DF-6):
+  - Every explicit-marker pattern accepts 1–4 digits: `SxxEyyyy`, `NxNNNN`, `Episode N`, `Ep N`, `- N`, `N - Title`.
+  - Bare numbers accept 4 digits only after excluding release years (1900 to the current year + 2) and resolution tokens.
+  - Owner rulings: the dash markers (`- N`, `N - Title`) also skip release years and the 4-digit resolutions 1080, 2160 and 4320. The 3-digit tokens 480, 576 and 720 still parse as episodes, as before. The word markers and the `SxxE`/`NxN` markers have no exclusion.
+  - The resolution and quality tokens live in one place (`file_filters.RESOLUTION_TOKENS` / `QUALITY_TOKENS`). `DD5.1x264` is no longer read as season 1, episode 264.
+- **Event-logging failures never abort work** (#725, DF-7). Sync, path import, RSS import and RSS publish swallow and log a failed event write instead of failing the task. The LLM episode matcher logs `"Event logging failed; continuing"`.
+- **Race recovery by `tmdb_id`** (#728, DF-8). When a concurrent create wins, path import now finds the show again by `tmdb_id` instead of by title, so a different show with the same title is never picked. Manual match now also ensures the episode-group map.
+- **One name-agreement rule** (#731, DF-9). Parse and path import use `alias_handling.names_agree`: equality against the title or any alias that ignores case and punctuation, and never a substring match. Punctuation variants such as "Daredevil Born Again" now count as an alias match.
+- **Duplicate exact titles are ambiguous** (#735, DF-12). When two or more shows match a title exactly, RSS import and the RSS stub picker no longer link either one, the same as a fuzzy tie.
+- **Changing a file's show clears old tracking** (#724, DF-2). `PATCH /api/files/{id}` with a new `show_id` and no `episode_id` now clears the old episode's tracking when no other file still references it.
+- **Redis is required in admin health** (#730, DF-3). An unconfigured Redis now makes `/api/admin/health` report `{"ok": false, "configured": false, "error": "REDIS_URL not set"}`, matching `/api/health`. The HTTP status and response shape are unchanged, and the UI shows "Degraded".
+- **One 503 dispatch message** (#721, DF-1). `POST /api/tasks/trigger` answers a broker failure with `detail="Task broker unavailable"` (was `"Failed to dispatch task to broker"`), like every other dispatch route.
+- **Sync warns about a missing show** (#734, DF-11): `"Show id=<n> not found; TMDB phase skipped"`.
+- **Typed TMDB sub-objects** (#729, DF-17). `genres`, `networks`, `last_episode_to_air` and `next_episode_to_air` are typed as `TmdbGenre`, `TmdbNetwork` and `TmdbEpisodeRef` (`extra="allow"`). JSON output is unchanged, and a wrong-typed stored value still reads back. The matching `Omit<>` overrides in `api.ts` are removed.
+- **More media extensions** (#720, DF-5). The path parser uses the scanner's extension list, so `.iso`, `.av1` and `.ogm` lines are accepted.
+- **File responses are loaded eagerly** (#733, DF-4). Every route that returns `FileRead` loads `show` and `episode` up front, and the relationships are `lazy="raise"`. Eleven responses that returned `null` for a linked `show`/`episode` now include it.
+
+The OpenAPI snapshot and `api-generated.ts` were regenerated by DF-3, DF-13, DF-17, DF-18 and DF-20.
+
+### Changed (refactors, no behaviour change)
+- **Show creation** (#722, DF-16) takes a frozen `ShowSeed` built at the route boundary, instead of calling `model_dump()` on an HTTP schema.
+- **SFTP connection test** (#723, DF-14) builds its service with `create_sftp_service(settings, remote_base_path=...)`.
+- **Worker harness** (#726, DF-15). Work functions receive `set_total(total, message)`, and the import workers stop updating the task row directly.
+- **`local_path` auto-population** (#736, DF-10) is one helper, `path_resolution.auto_local_path_for`.
+- **Program closeout** (#740, XL-3). `docs/architecture.md` and `docs/developer.md` describe the layer boundaries, the layering guards, the complexity ratchets, the `alembic check` gate, OpenAPI snapshot and type regeneration, and `RequestModel`. `docs/setup.md` and `docs/developer.md` state that frontend work needs Node 24 (`.nvmrc`).
+- **Complexity ratchets** are unchanged: API 10, services 9, orchestrators 9, workers 8, ESLint 25.
+
 ## [0.4.7] — 2026-10-12
 
 Wave 4 of the simplification roadmap finishes the lower-priority cleanups in every layer. It moves shared helpers into one place, makes request vocabularies typed, splits the remaining large frontend components, and removes dead or redundant frontend types. As in earlier waves, every item first added characterization tests that passed on the unchanged code. The model change was also checked against a real PostgreSQL 16 database, where the schema dumps were identical. There is one approved behaviour change, listed below; everything else is unchanged.
