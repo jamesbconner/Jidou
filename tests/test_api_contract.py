@@ -17,11 +17,14 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi.routing import APIRoute
+from fastapi import APIRouter, FastAPI
+from fastapi.routing import APIRoute, _IncludedRouter
 from starlette.routing import Match
 
 from jidou.main import app
@@ -62,16 +65,109 @@ def test_openapi_contract_unchanged() -> None:
     )
 
 
-def test_literal_routes_are_not_shadowed() -> None:
-    """Every literal (parameter-free) route is the first full match for its own path."""
-    api_routes = [r for r in app.routes if isinstance(r, APIRoute)]
-    for route in api_routes:
+@dataclass(frozen=True)
+class _ServedRoute:
+    """One HTTP operation the app serves, in the position the router tries it."""
+
+    path: str  # Full mounted path, including every include_router prefix.
+    methods: frozenset[str]
+    endpoint: Callable[..., Any]
+    matches: Callable[[dict[str, Any]], tuple[Match, dict[str, Any]]]
+
+
+def _served_routes(application: FastAPI) -> list[_ServedRoute]:
+    """Collect every ``APIRoute`` the app serves, in real dispatch order.
+
+    FastAPI 0.142 no longer flattens ``include_router`` into ``app.routes``:
+    included routers appear as opaque ``_IncludedRouter`` entries, so a naive
+    ``isinstance(r, APIRoute)`` filter finds nothing (and a guard built on it is
+    vacuous). ``_IncludedRouter.effective_route_contexts()`` yields the routes
+    in match order with the prefix-resolved ``path``, which is what dispatch
+    uses. This depends on a private FastAPI API; the non-empty/coverage
+    assertions in the tests fail loudly if it changes shape.
+
+    Args:
+        application: The FastAPI app to inspect.
+
+    Returns:
+        Served API routes in the order the router tries them.
+    """
+    served: list[_ServedRoute] = []
+    for route in application.routes:
+        if isinstance(route, APIRoute):  # registered directly on the app
+            served.append(
+                _ServedRoute(route.path, frozenset(route.methods), route.endpoint, route.matches)
+            )
+        elif isinstance(route, _IncludedRouter):
+            for ctx in route.effective_route_contexts():
+                if isinstance(ctx.original_route, APIRoute) and ctx.endpoint is not None:
+                    served.append(
+                        _ServedRoute(ctx.path, frozenset(ctx.methods), ctx.endpoint, ctx.matches)
+                    )
+    return served
+
+
+def _find_shadowed_literal_routes(routes: list[_ServedRoute]) -> list[str]:
+    """Report literal routes whose own path+method dispatches to another endpoint.
+
+    Starlette-style routers pick the first route that fully matches, so a
+    parameterized route (``/shows/{id}``) registered before a literal one
+    (``/shows/search``) swallows its requests.
+
+    Args:
+        routes: Served routes in dispatch order, from ``_served_routes``.
+
+    Returns:
+        One human-readable message per shadowed ``(method, path)``; empty if none.
+    """
+    problems: list[str] = []
+    for route in routes:
         if "{" in route.path:
             continue
-        for method in route.methods:
-            scope = {"type": "http", "path": route.path, "method": method, "root_path": ""}
-            first = next(r for r in api_routes if r.matches(scope)[0] == Match.FULL)
-            assert first is route, f"{method} {route.path} is shadowed by {first.path}"
+        for method in sorted(route.methods):
+            scope: dict[str, Any] = {
+                "type": "http",
+                "path": route.path,
+                "method": method,
+                "root_path": "",
+            }
+            first = next((r for r in routes if r.matches(scope)[0] == Match.FULL), None)
+            if first is None or first.endpoint is not route.endpoint:
+                winner = first.path if first else "nothing"
+                problems.append(f"{method} {route.path} is dispatched to {winner}")
+    return problems
+
+
+def test_literal_routes_are_not_shadowed() -> None:
+    """Every literal route of the real app dispatches to its own endpoint."""
+    routes = _served_routes(app)
+    operations = sum(len(item) for item in _normalized_openapi()["paths"].values())
+    # Guard against going vacuous again: we must see at least every documented operation.
+    assert routes, "no APIRoute collected; route introspection is broken"
+    assert sum(len(r.methods) for r in routes) >= operations
+    assert _find_shadowed_literal_routes(routes) == []
+
+
+def test_shadowing_guard_detects_shadowed_route() -> None:
+    """The helper flags a literal route registered after a parameterized one."""
+    router = APIRouter()
+
+    @router.get("/items/{item_id}")
+    def get_item(item_id: str) -> str:
+        return item_id
+
+    @router.get("/items/special")
+    def get_special() -> str:
+        return "special"
+
+    throwaway = FastAPI()
+    throwaway.include_router(router, prefix="/api")
+
+    routes = _served_routes(throwaway)
+    assert len(routes) == 2
+    assert _find_shadowed_literal_routes(routes) == [
+        "GET /api/items/special is dispatched to /api/items/{item_id}"
+    ]
 
 
 _API_DIR = Path(__file__).parent.parent / "src" / "jidou" / "api"
