@@ -14,6 +14,7 @@ from jidou.workers._harness import (
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,13 +61,7 @@ async def _match_files(
             progress_current=total_processed,
             progress_total=total_processed,
             message=f"Parse complete: {result.files_matched} matched",
-            result_summary={
-                "files_processed": result.files_processed,
-                "files_matched": result.files_matched,
-                "files_unmatched": result.files_unmatched,
-                "files_failed": result.files_failed,
-                "dry_run": dry_run,
-            },
+            result_summary=summarize(result, dry_run=dry_run),
             complete_summary={"files_matched": result.files_matched, "dry_run": dry_run},
         )
 

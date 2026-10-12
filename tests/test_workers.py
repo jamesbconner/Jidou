@@ -248,7 +248,7 @@ async def test_sync_all_wires_on_event_to_orchestrator() -> None:
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
         patch("jidou.workers._harness.append_task_event", new_callable=AsyncMock) as mock_append,
-        patch("jidou.workers.sync_tasks.SFTPService"),
+        patch("jidou.workers.sync_tasks.create_sftp_service"),
         patch("jidou.workers.sync_tasks.TMDBService"),
         patch("jidou.workers.sync_tasks.create_llm_service"),
         patch("jidou.workers.sync_tasks.SyncOrchestrator.run", side_effect=fake_run),
@@ -472,7 +472,7 @@ async def test_sync_all_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.sync_tasks.SFTPService"),
+        patch("jidou.workers.sync_tasks.create_sftp_service"),
         patch("jidou.workers.sync_tasks.TMDBService"),
         patch("jidou.workers.sync_tasks.create_llm_service"),
         patch(
@@ -571,7 +571,7 @@ async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.scan_tasks.SFTPService") as mock_sftp,
+        patch("jidou.workers.scan_tasks.create_sftp_service") as mock_sftp,
         patch(
             "jidou.workers.scan_tasks.ScanOrchestrator.run",
             new_callable=AsyncMock,
@@ -622,7 +622,7 @@ async def test_download_files_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.download_tasks.SFTPService") as mock_sftp,
+        patch("jidou.workers.download_tasks.create_sftp_service") as mock_sftp,
         patch(
             "jidou.workers.download_tasks.DownloadOrchestrator.run",
             new_callable=AsyncMock,
@@ -1069,7 +1069,7 @@ async def test_seed_remote_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.seed_tasks.SFTPService") as mock_sftp,
+        patch("jidou.workers.seed_tasks.create_sftp_service") as mock_sftp,
         patch(
             "jidou.workers.seed_tasks.SeedOrchestrator.run",
             new_callable=AsyncMock,

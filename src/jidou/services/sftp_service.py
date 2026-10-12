@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import asyncssh
 
@@ -31,6 +31,9 @@ from jidou.services.file_filters import (
     is_valid_directory,
     is_valid_media_file,
 )
+
+if TYPE_CHECKING:
+    from jidou.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -971,3 +974,28 @@ class SFTPService:
             dry_run=False,
             elapsed_seconds=elapsed,
         )
+
+
+def create_sftp_service(settings: Settings) -> SFTPService:
+    """Build an SFTPService from application settings.
+
+    Host-key verification stays disabled (``known_hosts=None``), matching the
+    private-network deployment the workers have always assumed.
+
+    Args:
+        settings: Application settings supplying the ``sftp_*`` values.
+
+    Returns:
+        A configured, not-yet-connected SFTPService.
+    """
+    return SFTPService(
+        host=settings.sftp_host or "",
+        port=settings.sftp_port,
+        username=settings.sftp_username,
+        password=settings.sftp_password,
+        key_path=settings.sftp_key_path,
+        known_hosts=None,
+        max_workers=settings.sftp_max_workers,
+        max_retries=settings.sftp_max_retries,
+        retry_delay=settings.sftp_retry_delay,
+    )

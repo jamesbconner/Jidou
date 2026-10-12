@@ -269,7 +269,7 @@ async def test_download_summary() -> None:
         lambda: download_tasks._download_files(_TASK_ID, dry_run=False),
         "DownloadOrchestrator",
         DownloadResult(2, 2048, 1, False),
-        extra_patches=("SFTPService",),
+        extra_patches=("create_sftp_service",),
     )
     assert _snapshot(wr) == GOLDEN["download"]
 
@@ -280,7 +280,7 @@ async def test_scan_summary() -> None:
         lambda: scan_tasks._scan_remote(_TASK_ID, dry_run=False),
         "ScanOrchestrator",
         ScanResult(2, 10, 4, 6, 1),
-        extra_patches=("SFTPService",),
+        extra_patches=("create_sftp_service",),
     )
     assert _snapshot(wr) == GOLDEN["scan"]
 
@@ -291,7 +291,7 @@ async def test_seed_summary() -> None:
         lambda: seed_tasks._seed_remote(_TASK_ID, dry_run=True),
         "SeedOrchestrator",
         SeedResult(2, 0, 9, 7, 2, {"routed": 2}, True),
-        extra_patches=("SFTPService",),
+        extra_patches=("create_sftp_service",),
     )
     assert _snapshot(wr) == GOLDEN["seed"]
 

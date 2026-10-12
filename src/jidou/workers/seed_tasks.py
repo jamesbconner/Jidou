@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
 from jidou.orchestrators.seed_orchestrator import SeedOrchestrator
-from jidou.services.sftp_service import SFTPService
+from jidou.services.sftp_service import create_sftp_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,17 +43,7 @@ async def _seed_remote(celery_task_id: str, dry_run: bool = False) -> str:
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        sftp = SFTPService(
-            host=settings.sftp_host or "",
-            port=settings.sftp_port,
-            username=settings.sftp_username,
-            password=settings.sftp_password,
-            key_path=settings.sftp_key_path,
-            known_hosts=None,
-            max_workers=settings.sftp_max_workers,
-            max_retries=settings.sftp_max_retries,
-            retry_delay=settings.sftp_retry_delay,
-        )
+        sftp = create_sftp_service(settings)
 
         remote_paths = settings.sftp_remote_paths_list or ["/"]
         result = await SeedOrchestrator(
@@ -61,15 +52,7 @@ async def _seed_remote(celery_task_id: str, dry_run: bool = False) -> str:
             remote_paths,
         ).run(dry_run=dry_run, on_progress=on_progress)
 
-        summary: dict[str, object] = {
-            "paths_scanned": result.paths_scanned,
-            "paths_failed": result.paths_failed,
-            "files_found": result.files_found,
-            "files_seeded": result.files_seeded,
-            "files_skipped": result.files_skipped,
-            "skipped_by_status": result.skipped_by_status,
-            "dry_run": dry_run,
-        }
+        summary = summarize(result, dry_run=dry_run)
 
         return WorkflowResult(
             progress_current=result.files_found,

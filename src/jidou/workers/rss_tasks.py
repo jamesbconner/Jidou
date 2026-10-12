@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.config import settings
 from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
-from jidou.services.sftp_service import SFTPService
+from jidou.services.sftp_service import create_sftp_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
@@ -18,21 +18,6 @@ from jidou.workers._harness import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _build_sftp() -> SFTPService:
-    """Instantiate SFTPService from application settings."""
-    return SFTPService(
-        host=settings.sftp_host or "",
-        port=settings.sftp_port,
-        username=settings.sftp_username,
-        password=settings.sftp_password,
-        key_path=settings.sftp_key_path,
-        known_hosts=None,
-        max_workers=settings.sftp_max_workers,
-        max_retries=settings.sftp_max_retries,
-        retry_delay=settings.sftp_retry_delay,
-    )
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
@@ -58,7 +43,7 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        sftp = _build_sftp()
+        sftp = create_sftp_service(settings)
         orchestrator = RssImportOrchestrator(
             session=session,
             sftp=sftp,
@@ -134,7 +119,7 @@ async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        sftp = _build_sftp()
+        sftp = create_sftp_service(settings)
         orchestrator = RssPublishOrchestrator(
             session=session,
             sftp=sftp,

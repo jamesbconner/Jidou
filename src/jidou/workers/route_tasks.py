@@ -12,6 +12,7 @@ from jidou.workers._harness import (
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,7 @@ async def _route_files(
             progress_current=total_processed,
             progress_total=total_processed,
             message=f"Route complete: {result.files_routed} files",
-            result_summary={
-                "files_routed": result.files_routed,
-                "files_failed": result.files_failed,
-                "dry_run": dry_run,
-            },
+            result_summary=summarize(result, dry_run=dry_run),
             complete_summary={"files_routed": result.files_routed, "dry_run": dry_run},
         )
 

@@ -103,7 +103,7 @@ async def test_rss_import_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks._build_sftp") as mock_build_sftp,
+        patch("jidou.workers.rss_tasks.create_sftp_service") as mock_build_sftp,
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
@@ -142,7 +142,7 @@ async def test_rss_import_error_result_becomes_soft_failure() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks.create_sftp_service"),
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
@@ -176,7 +176,7 @@ async def test_rss_import_wires_on_event_to_orchestrator() -> None:
         real_init(self, **kwargs)  # type: ignore[arg-type]
 
     with (
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks.create_sftp_service"),
         patch.object(RssImportOrchestrator, "__init__", fake_init),
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
@@ -249,7 +249,7 @@ async def test_rss_publish_wires_orchestrator_and_returns_summary() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks._build_sftp") as mock_build_sftp,
+        patch("jidou.workers.rss_tasks.create_sftp_service") as mock_build_sftp,
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,
@@ -285,7 +285,7 @@ async def test_rss_publish_error_result_becomes_soft_failure() -> None:
     on_progress = AsyncMock()
     on_event = AsyncMock()
     with (
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks.create_sftp_service"),
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,
@@ -319,7 +319,7 @@ async def test_rss_publish_wires_on_event_to_orchestrator() -> None:
         real_init(self, **kwargs)  # type: ignore[arg-type]
 
     with (
-        patch("jidou.workers.rss_tasks._build_sftp"),
+        patch("jidou.workers.rss_tasks.create_sftp_service"),
         patch.object(RssPublishOrchestrator, "__init__", fake_init),
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",

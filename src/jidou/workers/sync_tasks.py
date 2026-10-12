@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.config import settings
 from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
 from jidou.services.llm_service import create_llm_service
-from jidou.services.sftp_service import SFTPService
+from jidou.services.sftp_service import create_sftp_service
 from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
     EventFn,
@@ -56,17 +56,7 @@ async def _sync_all(
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        sftp = SFTPService(
-            host=settings.sftp_host or "",
-            port=settings.sftp_port,
-            username=settings.sftp_username,
-            password=settings.sftp_password,
-            key_path=settings.sftp_key_path,
-            known_hosts=None,
-            max_workers=settings.sftp_max_workers,
-            max_retries=settings.sftp_max_retries,
-            retry_delay=settings.sftp_retry_delay,
-        )
+        sftp = create_sftp_service(settings)
         tmdb_svc = TMDBService()
         llm = create_llm_service(settings)
 

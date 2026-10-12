@@ -21,6 +21,7 @@ from jidou.services.sftp_service import (
     SFTPService,
     UploadResult,
     _EntryKind,
+    create_sftp_service,
 )
 
 
@@ -1721,3 +1722,45 @@ class TestEntryClassificationAcrossListings:
         assert result.recently_modified_skipped == 1
         assert result.io_failures == 0
         assert [c.args[0] for c in mock_sftp.readdir.await_args_list] == ["/r", "/r/Settled Dir"]
+
+
+class TestCreateSftpService:
+    """create_sftp_service maps Settings onto the SFTPService constructor."""
+
+    def test_create_sftp_service_maps_settings(self) -> None:
+        """Every connection and retry setting lands on the service."""
+        cfg = SimpleNamespace(
+            sftp_host="sftp.example.org",
+            sftp_port=2222,
+            sftp_username="alice",
+            sftp_password="s3cret",
+            sftp_key_path="/keys/id",
+            sftp_max_workers=5,
+            sftp_max_retries=7,
+            sftp_retry_delay=2.5,
+        )
+        svc = create_sftp_service(cfg)  # type: ignore[arg-type]
+
+        assert svc.host == "sftp.example.org"
+        assert svc.port == 2222
+        assert svc.username == "alice"
+        assert svc._password == "s3cret"
+        assert svc._key_path == "/keys/id"
+        assert svc._known_hosts is None
+        assert svc.max_workers == 5
+        assert svc._max_retries == 7
+        assert svc._retry_delay == 2.5
+
+    def test_create_sftp_service_unset_host_becomes_empty_string(self) -> None:
+        """A None sftp_host is passed through as an empty host."""
+        cfg = SimpleNamespace(
+            sftp_host=None,
+            sftp_port=22,
+            sftp_username=None,
+            sftp_password=None,
+            sftp_key_path=None,
+            sftp_max_workers=8,
+            sftp_max_retries=3,
+            sftp_retry_delay=1.0,
+        )
+        assert create_sftp_service(cfg).host == ""  # type: ignore[arg-type]
