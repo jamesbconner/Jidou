@@ -378,4 +378,115 @@ describe('ShowDetail — modal state machine', () => {
     expect(await screen.findByText('Set Content Type')).toBeInTheDocument()
     expect(screen.queryByText('nope')).not.toBeInTheDocument()
   })
+
+  describe('late async modal requests', () => {
+    // Holds one matching request open until the test resolves it.
+    function deferRequest(matches: (url: string, init?: RequestInit) => boolean, body: unknown) {
+      let resolve!: () => void
+      const gate = new Promise<void>((r) => {
+        resolve = r
+      })
+      const base = vi.mocked(fetch).getMockImplementation()!
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (matches(String(input), init)) {
+          await gate
+          return mockResponse(body)
+        }
+        return base(input, init)
+      })
+      return resolve
+    }
+
+    function withEpisodes(episodes: unknown[]) {
+      const base = vi.mocked(fetch).getMockImplementation()!
+      vi.mocked(fetch).mockImplementation(async (input, init) =>
+        String(input).endsWith('/shows/1/episodes') ? mockResponse(episodes) : base(input, init),
+      )
+    }
+
+    const REMATCH_FILE = { id: 3, show_id: 1, filename: 'a.mkv', file_path: '/x/a.mkv' }
+    const backedEpisode = () =>
+      makeEpisode({
+        id: 11,
+        name: 'Episode A',
+        file_tracked: true,
+        tracked_source: 'download',
+        backing_files: [{ id: 3, filename: 'a.mkv' }],
+      })
+
+    async function openAliasesAndType(text: string) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Manage Aliases' }))
+      const input = await screen.findByPlaceholderText('Add alias…')
+      fireEvent.change(input, { target: { value: text } })
+      return input
+    }
+
+    test('a late RSS stub does not replace an open modal or its typed input', async () => {
+      mockShowDetail(baseShow())
+      const release = deferRequest((u, i) => u.includes('/rss-stub') && i?.method === 'POST', {
+        id: 5, show_id: 1, feed_id: null,
+      })
+      render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Add RSS' }))
+      const input = await openAliasesAndType('typed alias')
+      release()
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Add RSS' })).toBeEnabled())
+
+      expect(screen.getByPlaceholderText('Add alias…')).toBe(input)
+      expect(input).toHaveValue('typed alias')
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    })
+
+    test('a late begin-rematch does not replace an open modal', async () => {
+      mockShowDetail(baseShow())
+      withEpisodes([backedEpisode()])
+      const release = deferRequest((u) => u.includes('/begin-rematch'), REMATCH_FILE)
+      render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+      const fixMatch = await screen.findAllByRole('button', { name: 'Fix Match' })
+      fireEvent.click(fixMatch[fixMatch.length - 1])
+      const input = await openAliasesAndType('typed alias')
+      release()
+      await waitFor(() => {
+        expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).includes('/begin-rematch'))).toBe(true)
+      })
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(input).toHaveValue('typed alias')
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+      expect(screen.queryByText('Fix show assignment')).not.toBeInTheDocument()
+    })
+
+    test('a late begin-rematch for Fix Eps does not replace an open modal', async () => {
+      mockShowDetail(baseShow())
+      withEpisodes([backedEpisode()])
+      const release = deferRequest((u) => u.includes('/begin-rematch'), REMATCH_FILE)
+      render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Fix Eps' }))
+      const input = await openAliasesAndType('typed alias')
+      release()
+      await waitFor(() => {
+        expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).includes('/begin-rematch'))).toBe(true)
+      })
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(input).toHaveValue('typed alias')
+      expect(screen.queryByText('Fix episode assignment')).not.toBeInTheDocument()
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    })
+
+    test('a request resolving with no modal open still opens its modal', async () => {
+      mockShowDetail(baseShow())
+      withEpisodes([backedEpisode()])
+      const release = deferRequest((u) => u.includes('/begin-rematch'), REMATCH_FILE)
+      render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+      const fixMatch = await screen.findAllByRole('button', { name: 'Fix Match' })
+      fireEvent.click(fixMatch[fixMatch.length - 1])
+      release()
+      expect(await screen.findByText('Fix show assignment')).toBeInTheDocument()
+    })
+  })
 })

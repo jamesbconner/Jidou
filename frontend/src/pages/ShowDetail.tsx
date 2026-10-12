@@ -190,11 +190,18 @@ export default function ShowDetail() {
       ? [...rssSubs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
       : null
 
+  // Async completions (a request the user started earlier) must not replace a
+  // modal the user has since opened: keep the open one untouched and drop the
+  // late one; the user can click again. User-click paths use plain setModal.
+  function openModalIfIdle(next: ShowDetailModal) {
+    setModal((current) => (current === null ? next : current))
+  }
+
   function handleRssButtonClick() {
     if (existingRssSub) {
       setModal({ kind: 'rssSubscription', subscription: existingRssSub })
     } else {
-      ensureRssStub.mutate(showId, { onSuccess: (sub) => setModal({ kind: 'rssSubscription', subscription: sub }) })
+      ensureRssStub.mutate(showId, { onSuccess: (sub) => openModalIfIdle({ kind: 'rssSubscription', subscription: sub }) })
     }
   }
 
@@ -251,7 +258,7 @@ export default function ShowDetail() {
   async function handleEpisodeFix(ep: EpisodeList, fileId?: number) {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
-      setModal({ kind: 'fileRematch', file })
+      openModalIfIdle({ kind: 'fileRematch', file })
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
     }
@@ -275,7 +282,7 @@ export default function ShowDetail() {
       beginRematch
         .mutateAsync({ showId, episodeId: ep.id, fileId })
         .then((file) => {
-          setModal({ kind: 'fileFixEps', file })
+          openModalIfIdle({ kind: 'fileFixEps', file })
         })
         .catch(() => {})
     }
