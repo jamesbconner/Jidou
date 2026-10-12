@@ -51,6 +51,11 @@ exports[`Files characterization > inline episode picker lists seasons, marks tak
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -259,6 +264,11 @@ exports[`Files characterization > inline show id editor: assign, clear, reject, 
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -458,6 +468,11 @@ exports[`Files characterization > inline show id editor: assign, clear, reject, 
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -663,6 +678,11 @@ exports[`Files characterization > loading, empty and filtered-empty states > emp
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <p class="text-gray-500 dark:text-gray-400 text-sm">No files found.</p>
 </div>
@@ -714,6 +734,11 @@ exports[`Files characterization > loading, empty and filtered-empty states > loa
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <p class="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
 </div>
@@ -765,6 +790,11 @@ exports[`Files characterization > mixed rows DOM and mount requests > dom 1`] = 
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -971,6 +1001,11 @@ exports[`Files characterization > pagination, page reset on filter change and la
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -1360,6 +1395,11 @@ exports[`Files characterization > row actions open their modals > resolve modal 
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">
@@ -1600,6 +1640,11 @@ exports[`Files characterization > show-ignored switch and persisted filters > do
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-3.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <p class="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
 </div>
@@ -1608,6 +1653,7 @@ exports[`Files characterization > show-ignored switch and persisted filters > do
 
 exports[`Files characterization > show-ignored switch and persisted filters > stored 1`] = `
 {
+  "duplicatesOnly": false,
   "maxRecords": null,
   "pageSize": 50,
   "showIgnored": true,
@@ -1660,6 +1706,11 @@ exports[`Files characterization > summary line reflects filters and the max-reco
 <span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
 </span>
 </span>Show ignored</button>
+<button type="button" role="switch" aria-checked="false" aria-label="Show only duplicate files" title="Show only duplicate files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Duplicates only</button>
 </div>
 <div class="card overflow-hidden">
 <table class="w-full text-sm">

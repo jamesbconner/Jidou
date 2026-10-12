@@ -10,6 +10,7 @@ interface FilesFilterState {
   pageSize: number
   maxRecords: number | null
   showIgnored: boolean
+  duplicatesOnly: boolean
 }
 
 const DEFAULT_FILES_FILTERS: FilesFilterState = {
@@ -17,6 +18,7 @@ const DEFAULT_FILES_FILTERS: FilesFilterState = {
   pageSize: 50,
   maxRecords: null,
   showIgnored: false,
+  duplicatesOnly: false,
 }
 
 /**
@@ -42,11 +44,12 @@ export default function Files() {
     'jidou:files-filters',
     DEFAULT_FILES_FILTERS,
   )
-  const { status: statusFilter, pageSize, maxRecords, showIgnored } = filters
+  const { status: statusFilter, pageSize, maxRecords, showIgnored, duplicatesOnly } = filters
   const setStatusFilter = (v: FileStatus | '') => setFilters({ ...filters, status: v })
   const setPageSize = (v: number) => setFilters({ ...filters, pageSize: v })
   const setMaxRecords = (v: number | null) => setFilters({ ...filters, maxRecords: v })
   const setShowIgnored = (v: boolean) => setFilters({ ...filters, showIgnored: v })
+  const setDuplicatesOnly = (v: boolean) => setFilters({ ...filters, duplicatesOnly: v })
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -61,9 +64,9 @@ export default function Files() {
   // is used below so this render's own offset/limit reflect the reset
   // immediately, instead of momentarily computing against the old page.
   const [prevFilterKey, setPrevFilterKey] = useState(
-    [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const,
+    [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored, duplicatesOnly] as const,
   )
-  const filterKey = [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const
+  const filterKey = [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored, duplicatesOnly] as const
   let effectivePage = page
   if (filterKey.some((value, i) => value !== prevFilterKey[i])) {
     setPrevFilterKey(filterKey)
@@ -78,6 +81,7 @@ export default function Files() {
     offset,
     search: debouncedSearch || undefined,
     showIgnored,
+    duplicatesOnly,
   })
   const files = filesQuery.data?.data ?? []
   const total = filesQuery.data?.total ?? 0
@@ -105,6 +109,8 @@ export default function Files() {
         onMaxRecordsChange={setMaxRecords}
         showIgnored={showIgnored}
         onShowIgnoredChange={setShowIgnored}
+        duplicatesOnly={duplicatesOnly}
+        onDuplicatesOnlyChange={setDuplicatesOnly}
       />
 
       {isLoading ? (
@@ -119,7 +125,7 @@ export default function Files() {
         <FilesSummary
           total={total}
           maxRecords={maxRecords}
-          filtered={Boolean(debouncedSearch || statusFilter)}
+          filtered={Boolean(debouncedSearch || statusFilter || duplicatesOnly)}
           page={page}
           totalPages={totalPages}
           onPageChange={setPage}

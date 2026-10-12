@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -210,5 +210,54 @@ describe('Files page — filter persistence', () => {
       const stored = JSON.parse(window.localStorage.getItem('jidou:files-filters') ?? '{}')
       expect(stored).toMatchObject({ pageSize: 20, maxRecords: 100, showIgnored: true })
     })
+  })
+})
+
+describe('Files page — duplicate files (D33)', () => {
+  function mockRows(rows: FileRead[]) {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/files?')) return mockResponse(rows, rows.length)
+      return mockResponse([], 0)
+    })
+  }
+
+  test('a flagged file shows a "Duplicate" badge; an unflagged one does not', async () => {
+    mockRows([
+      makeFile({ id: 1, original_filename: 'original.mkv', status: 'routed' }),
+      makeFile({ id: 2, original_filename: 'copy.mkv', status: 'matched', duplicate_of_file_id: 1 }),
+    ])
+    render(<Files />, { wrapper: makeWrapper() })
+
+    const copyRow = (await screen.findByText('copy.mkv')).closest('tr') as HTMLElement
+    const originalRow = screen.getByText('original.mkv').closest('tr') as HTMLElement
+    const badge = within(copyRow).getByText('Duplicate')
+    expect(badge).toHaveAttribute('title', 'Duplicate of file #1')
+    expect(within(originalRow).queryByText('Duplicate')).toBeNull()
+  })
+
+  test('does not request duplicates_only by default', async () => {
+    mockFiles(1)
+    render(<Files />, { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(0))
+    const params = new URLSearchParams(lastFilesUrl().split('?')[1])
+    expect(params.get('duplicates_only')).toBeNull()
+  })
+
+  test('toggling "Duplicates only" requests duplicates_only=true and persists', async () => {
+    mockFiles(1)
+    render(<Files />, { wrapper: makeWrapper() })
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(0))
+    fireEvent.click(screen.getByRole('switch', { name: /show only duplicate files/i }))
+
+    await waitFor(() => {
+      const params = new URLSearchParams(lastFilesUrl().split('?')[1])
+      expect(params.get('duplicates_only')).toBe('true')
+      expect(params.get('offset')).toBe('0')
+    })
+    const stored = JSON.parse(window.localStorage.getItem('jidou:files-filters') ?? '{}')
+    expect(stored).toMatchObject({ duplicatesOnly: true })
   })
 })

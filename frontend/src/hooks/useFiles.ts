@@ -10,6 +10,8 @@ interface FilesListParams {
   offset: number
   search?: string
   showIgnored?: boolean
+  /** Only files flagged as a duplicate of an earlier file for the same episode. */
+  duplicatesOnly?: boolean
 }
 
 export const fileKeys = {
@@ -23,6 +25,7 @@ export const fileKeys = {
       params.offset,
       params.search ?? '',
       params.showIgnored ?? false,
+      params.duplicatesOnly ?? false,
     ] as const,
   detail: (id: number) => [...fileKeys.all, 'detail', id] as const,
 }
@@ -33,11 +36,12 @@ export interface FilesPage {
 }
 
 export function useFiles(params: FilesListParams) {
-  const { status, limit, offset, search, showIgnored = false } = params
+  const { status, limit, offset, search, showIgnored = false, duplicatesOnly = false } = params
   const qs = new URLSearchParams()
   if (status) qs.set('status', status)
   if (search) qs.set('search', search)
   if (showIgnored) qs.set('show_ignored', 'true')
+  if (duplicatesOnly) qs.set('duplicates_only', 'true')
   qs.set('limit', String(limit))
   qs.set('offset', String(offset))
   return useQuery({
