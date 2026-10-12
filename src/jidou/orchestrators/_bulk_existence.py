@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from jidou.models.downloaded_file import DownloadedFile
+
 logger = logging.getLogger(__name__)
 
 # Number of paths to batch into a single existence-check query.
@@ -48,6 +50,35 @@ async def chunked_existing_paths(
         stmt = select(column).where(column.in_(chunk))
         rows = (await session.execute(stmt)).scalars().all()
         existing.update(rows)
+    return existing
+
+
+async def chunked_existing_statuses(
+    session: AsyncSession,
+    paths: list[str],
+    chunk_size: int = EXISTENCE_CHUNK,
+) -> dict[str, str]:
+    """Return ``{remote_path: status}`` for the *paths* already tracked as files.
+
+    Like :func:`chunked_existing_paths`, but also reports each row's status so a
+    caller can break skipped files down by status.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        paths: Candidate remote paths. May be empty.
+        chunk_size: Maximum paths per IN() query.
+
+    Returns:
+        Mapping from each already-tracked path to ``str(status)``.
+    """
+    existing: dict[str, str] = {}
+    for i in range(0, len(paths), chunk_size):
+        chunk = paths[i : i + chunk_size]
+        stmt = select(DownloadedFile.remote_path, DownloadedFile.status).where(
+            DownloadedFile.remote_path.in_(chunk)
+        )
+        for row in (await session.execute(stmt)).all():
+            existing[row.remote_path] = str(row.status)
     return existing
 
 

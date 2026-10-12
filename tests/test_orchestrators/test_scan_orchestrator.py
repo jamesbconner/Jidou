@@ -815,3 +815,166 @@ def test_noscan_nested_inside_scan_path_logs_no_warning(
         ScanOrchestrator(session, sftp, ["/downloads"], ["/downloads/documentaries"])
 
     assert caplog.records == []
+
+
+# ---------------------------------------------------------------------------
+# Characterization: full mixed run (pins progress, events, SFTP calls, counts)
+# ---------------------------------------------------------------------------
+
+
+def _mixed_scan_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[MagicMock, MagicMock, MagicMock]:
+    """Build a scan with one failing root, known/new files, and four kinds of new dir."""
+    top_new = _make_file("new.mkv", "/remote/new.mkv", size=7)
+    top_old = _make_file("old.mkv", "/remote/old.mkv")
+    dir_ok = _make_dir("Ok", "/remote/Ok")
+    dir_bad = _make_dir("Bad", "/remote/Bad")
+    dir_part = _make_dir("Part", "/remote/Part")
+    dir_known = _make_dir("Known", "/remote/Known")
+    ok_new = _make_file("ok1.mkv", "/remote/Ok/ok1.mkv", size=3)
+    ok_old = _make_file("ok2.mkv", "/remote/Ok/ok2.mkv")
+    part_new = _make_file("p1.mkv", "/remote/Part/p1.mkv", size=5)
+
+    session = _make_session()
+    sftp = _make_sftp(
+        children_by_path={"/remote": [top_new, top_old, dir_ok, dir_bad, dir_part, dir_known]},
+        walk_by_path={
+            "/remote/Ok": _walk_result([ok_new, ok_old]),
+            "/remote/Bad": RuntimeError("boom"),
+            "/remote/Part": _walk_result([part_new], io_failures=2, directories_deferred=1),
+        },
+    )
+    real_children = sftp.list_remote_children.side_effect
+
+    async def children(path=None):
+        if path == "/gone":
+            raise OSError("no route")
+        return await real_children(path)
+
+    sftp.list_remote_children = AsyncMock(side_effect=children)
+    existing = _patch_existing(
+        monkeypatch,
+        existing_files={"/remote/old.mkv", "/remote/Ok/ok2.mkv"},
+        existing_dirs={"/remote/Known"},
+    )
+    return session, sftp, existing
+
+
+async def test_mixed_run_events_progress_and_sftp_calls_are_pinned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One run exercising every scan phase keeps its exact events, order and counts."""
+    session, sftp, existing = _mixed_scan_setup(monkeypatch)
+    events: list[tuple[str, str, object]] = []
+    progress: list[tuple[int, int, str]] = []
+
+    async def on_event(level, msg, ctx=None):
+        events.append((level, msg, ctx))
+
+    async def on_progress(cur, total, msg):
+        progress.append((cur, total, msg))
+
+    result = await ScanOrchestrator(session, sftp, ["/gone", "/remote"]).run(
+        on_progress=on_progress, on_event=on_event
+    )
+
+    assert progress == [(1, 2, "Scanning /gone"), (2, 2, "Scanning /remote")]
+    assert [c.args[0] for c in sftp.list_remote_children.await_args_list] == ["/gone", "/remote"]
+    sftp.list_remote_files_recursive_batch.assert_awaited_once_with(
+        ["/remote/Ok", "/remote/Bad", "/remote/Part"]
+    )
+    assert events == [
+        (
+            "error",
+            "Failed to list '/gone': no route",
+            {"remote_path": "/gone", "error": "no route"},
+        ),
+        ("info", "Discovered 'new.mkv'", {"remote_path": "/remote/new.mkv", "size": 7}),
+        (
+            "error",
+            "Failed to walk directory '/remote/Bad': boom",
+            {"remote_path": "/remote/Bad", "error": "boom"},
+        ),
+        ("info", "Discovered 'ok1.mkv'", {"remote_path": "/remote/Ok/ok1.mkv", "size": 3}),
+        ("info", "Discovered 'p1.mkv'", {"remote_path": "/remote/Part/p1.mkv", "size": 5}),
+        (
+            "info",
+            "Directory fully walked and marked known: '/remote/Ok'",
+            {"remote_path": "/remote/Ok"},
+        ),
+        (
+            "warn",
+            "Directory '/remote/Part' not fully walked (io_failures=2, "
+            "recently_modified_skipped=0, directories_deferred=1) — will retry on next scan",
+            {"remote_path": "/remote/Part"},
+        ),
+    ]
+    assert (
+        result.paths_scanned,
+        result.files_found,
+        result.files_created,
+        result.files_skipped,
+        result.dirs_discovered,
+    ) == (2, 5, 3, 2, 1)
+    # Three existence checks (top files, top dirs, walked files), each across all roots.
+    assert existing.call_count == 3
+    added = [c.args[0] for c in session.add.call_args_list]
+    assert [type(o).__name__ for o in added] == [
+        "DownloadedFile",
+        "DownloadedFile",
+        "DownloadedFile",
+        "ScannedDirectory",
+    ]
+    session.commit.assert_awaited_once()
+
+
+async def test_mixed_run_dry_run_events_and_no_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dry run emits the same discovery events plus a would-mark event, and writes nothing."""
+    session, sftp, _ = _mixed_scan_setup(monkeypatch)
+    events: list[tuple[str, str, object]] = []
+
+    async def on_event(level, msg, ctx=None):
+        events.append((level, msg, ctx))
+
+    result = await ScanOrchestrator(session, sftp, ["/remote"]).run(dry_run=True, on_event=on_event)
+
+    assert [e[1] for e in events] == [
+        "Discovered 'new.mkv'",
+        "Failed to walk directory '/remote/Bad': boom",
+        "Discovered 'ok1.mkv'",
+        "Discovered 'p1.mkv'",
+        "[Dry run] Would mark directory known: '/remote/Ok'",
+        "Directory '/remote/Part' not fully walked (io_failures=2, "
+        "recently_modified_skipped=0, directories_deferred=1) — will retry on next scan",
+    ]
+    assert (result.files_created, result.files_skipped, result.dirs_discovered) == (3, 2, 1)
+    session.add.assert_not_called()
+    session.commit.assert_not_called()
+
+
+async def test_race_skipped_top_level_file_emits_concurrent_scan_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A top-level insert race emits the 'concurrent scan' info event and counts as skipped."""
+    from sqlalchemy.exc import IntegrityError
+
+    session = _make_session()
+    orig = Exception("unique")
+    orig.pgcode = "23505"  # type: ignore[attr-defined]
+    nested_ctx = AsyncMock()
+    nested_ctx.__aenter__.return_value = None
+    nested_ctx.__aexit__.side_effect = IntegrityError("stmt", {}, orig)
+    session.begin_nested = MagicMock(return_value=nested_ctx)
+    sftp = _make_sftp(children_by_path={"/remote": [_make_file("a.mkv", "/remote/a.mkv")]})
+    _patch_existing(monkeypatch)
+    on_event = AsyncMock()
+
+    result = await ScanOrchestrator(session, sftp, ["/remote"]).run(on_event=on_event)
+
+    assert (result.files_created, result.files_skipped) == (0, 1)
+    on_event.assert_awaited_once_with(
+        "info",
+        "Skipped 'a.mkv': concurrent scan already created it",
+        {"remote_path": "/remote/a.mkv"},
+    )

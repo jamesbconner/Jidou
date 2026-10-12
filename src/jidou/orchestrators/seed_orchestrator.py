@@ -39,20 +39,31 @@ database regardless of its current status and never mutates existing rows.
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.scanned_directory import ScannedDirectory
 from jidou.orchestrators._bulk_existence import (
-    EXISTENCE_CHUNK,
     chunked_existing_paths,
+    chunked_existing_statuses,
     insert_or_skip_duplicate,
 )
+from jidou.orchestrators._remote_inventory import WalkOutcome, list_roots, walk_directories
 from jidou.services.callbacks import OnProgress
 from jidou.services.sftp_service import RemoteFile, SFTPService
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_listing(idx: int, total: int, remote_path: str) -> None:
+    """Log that the shallow listing of *remote_path* is about to start.
+
+    Args:
+        idx: 1-based position of *remote_path* among the configured paths.
+        total: Number of configured paths.
+        remote_path: The path about to be listed.
+    """
+    logger.info("Listing remote path %d/%d: %s", idx, total, remote_path)
 
 
 @dataclass
@@ -113,143 +124,34 @@ class SeedOrchestrator:
             SeedResult with counts and per-status skip breakdown.
         """
         total_paths = len(self.remote_paths)
-        paths_failed = 0
-        all_remote: list[tuple[str, str, int]] = []  # (name, path, size)
-        all_top_level_dirs: list[RemoteFile] = []
 
         # Phase 1: shallow-list every configured remote path, collecting
         # top-level files directly and top-level directories to deep-walk.
-        for idx, remote_path in enumerate(self.remote_paths, 1):
-            logger.info("Listing remote path %d/%d: %s", idx, total_paths, remote_path)
-            try:
-                children = await self.sftp.list_remote_children(remote_path)
-            except Exception:
-                logger.exception("Failed to list remote path %s; skipping", remote_path)
-                paths_failed += 1
-                continue
-
-            for f in children:
-                if not f.is_dir:
-                    all_remote.append((f.name, f.path, f.size))
-            all_top_level_dirs.extend(d for d in children if d.is_dir)
+        listing = await list_roots(self.sftp, self.remote_paths, before_each=_log_listing)
 
         # Phase 2: deep-walk every top-level directory found across ALL remote
         # paths, concurrently in one batch (bounded by sftp.max_workers).
-        eligible_dirs: set[str] = set()
-        if all_top_level_dirs:
-            outcomes = await self.sftp.list_remote_files_recursive_batch(
-                [d.path for d in all_top_level_dirs]
-            )
-            for dir_path, outcome in outcomes:
-                if isinstance(outcome, BaseException):
-                    logger.warning("Failed to deep-walk directory %s: %s", dir_path, outcome)
-                    continue
-                for rf in outcome.files:
-                    all_remote.append((rf.name, rf.path, rf.size))
-                if outcome.fully_walked:
-                    eligible_dirs.add(dir_path)
-                else:
-                    logger.info(
-                        "Directory %s not fully walked (io_failures=%d, "
-                        "recently_modified_skipped=%d, directories_deferred=%d) "
-                        "— will retry on next seed run",
-                        dir_path,
-                        outcome.io_failures,
-                        outcome.recently_modified_skipped,
-                        outcome.directories_deferred,
-                    )
+        walk = await walk_directories(self.sftp, [d.path for d in listing.dirs])
+        all_remote, eligible_dirs = self._collect_walked(listing.files, walk)
 
-        files_found = len(all_remote)
-        files_seeded = 0
-        files_skipped = 0
-        skipped_by_status: dict[str, int] = {}
-
-        if files_found > 0:
-            # Bulk existence check: chunk paths to avoid oversized IN() clauses.
-            # Needs the status per path (for skipped_by_status), not just a
-            # bare existence set, so this stays a direct query rather than
-            # routing through chunked_existing_paths (which only returns a
-            # set[str]) — but reuses its chunk-size constant.
-            all_paths = [path for _, path, _ in all_remote]
-            existing: dict[str, str] = {}  # remote_path → status
-            for i in range(0, len(all_paths), EXISTENCE_CHUNK):
-                chunk = all_paths[i : i + EXISTENCE_CHUNK]
-                stmt = select(DownloadedFile.remote_path, DownloadedFile.status).where(
-                    DownloadedFile.remote_path.in_(chunk)
-                )
-                rows = (await self.session.execute(stmt)).all()
-                for row in rows:
-                    existing[row.remote_path] = str(row.status)
-
-            pending: list[tuple[str, str, int]] = []
-            for name, path, size in all_remote:
-                if path in existing:
-                    status_str = existing[path]
-                    files_skipped += 1
-                    skipped_by_status[status_str] = skipped_by_status.get(status_str, 0) + 1
-                    logger.debug("Skipping already-tracked file (status=%s): %s", status_str, path)
-                else:
-                    pending.append((name, path, size))
-
-            if dry_run:
-                for _name, path, size in pending:
-                    logger.info("[DRY RUN] Would seed %s (%d bytes)", path, size)
-                files_seeded = len(pending)
-            else:
-                # Insert in batches for bounded transactions and crash
-                # resumability. Directory-marking (below) only happens after
-                # this loop fully completes, so a crash here never leaves a
-                # directory marked known with unseeded files.
-                total_pending = len(pending)
-                for batch_start in range(0, total_pending, self.batch_size):
-                    batch = pending[batch_start : batch_start + self.batch_size]
-                    for name, path, size in batch:
-                        new_file = DownloadedFile.new_from_remote(
-                            name=name, remote_path=path, size=size, status=FileStatus.SEEDED
-                        )
-                        if await insert_or_skip_duplicate(self.session, new_file):
-                            files_seeded += 1
-                        else:
-                            # Concurrent scan won the race — counts as skipped.
-                            files_skipped += 1
-                            skipped_by_status["discovered"] = (
-                                skipped_by_status.get("discovered", 0) + 1
-                            )
-
-                    await self.session.commit()
-
-                    progress_done = min(batch_start + self.batch_size, total_pending)
-                    if on_progress:
-                        await on_progress(
-                            progress_done,
-                            total_pending,
-                            f"Seeded {progress_done}/{total_pending} files",
-                        )
+        files_seeded, files_skipped, skipped_by_status = await self._seed_files(
+            all_remote, dry_run, on_progress
+        )
 
         # Directory marking always happens last, strictly after every file
-        # batch above has been committed (or, if files_found == 0, there was
+        # batch above has been committed (or, if there were no files, there was
         # nothing to seed first) — never before, so a crash never leaves a
         # directory marked known before its files exist. Runs independent of
-        # files_found, since a directory with zero eligible media files is
+        # the file count, since a directory with zero eligible media files is
         # exactly the case eligible_dirs exists to cover.
-        if eligible_dirs:
-            existing_dirs = await chunked_existing_paths(
-                self.session, ScannedDirectory.remote_path, sorted(eligible_dirs)
-            )
-            new_dirs = sorted(eligible_dirs - existing_dirs)
-            if dry_run:
-                for d in new_dirs:
-                    logger.info("[DRY RUN] Would mark directory as known: %s", d)
-            elif new_dirs:
-                for d in new_dirs:
-                    await insert_or_skip_duplicate(self.session, ScannedDirectory(remote_path=d))
-                await self.session.commit()
+        await self._mark_directories(eligible_dirs, dry_run)
 
+        files_found = len(all_remote)
         logger.info(
             "Seed complete: %d paths scanned (%d failed), %d/%d files seeded, "
             "%d skipped (dry_run=%s)",
             total_paths,
-            paths_failed,
+            listing.failed_roots,
             files_seeded,
             files_found,
             files_skipped,
@@ -257,10 +159,148 @@ class SeedOrchestrator:
         )
         return SeedResult(
             paths_scanned=total_paths,
-            paths_failed=paths_failed,
+            paths_failed=listing.failed_roots,
             files_found=files_found,
             files_seeded=files_seeded,
             files_skipped=files_skipped,
             skipped_by_status=skipped_by_status,
             dry_run=dry_run,
         )
+
+    @staticmethod
+    def _collect_walked(
+        top_level_files: list[RemoteFile], walk: WalkOutcome
+    ) -> tuple[list[RemoteFile], set[str]]:
+        """Gather every file to consider and the directories safe to mark known.
+
+        Args:
+            top_level_files: Files found directly under the configured roots.
+            walk: Outcome of deep-walking the top-level directories.
+
+        Returns:
+            ``(all_files, eligible_dirs)``: the top-level files followed by every
+            walked file, and the directories whose walk completed cleanly.
+        """
+        for dir_path, error in walk.failures:
+            logger.warning("Failed to deep-walk directory %s: %s", dir_path, error)
+        all_files = list(top_level_files)
+        eligible_dirs: set[str] = set()
+        for dir_path, outcome in walk.walked:
+            all_files.extend(outcome.files)
+            if outcome.fully_walked:
+                eligible_dirs.add(dir_path)
+            else:
+                logger.info(
+                    "Directory %s not fully walked (io_failures=%d, "
+                    "recently_modified_skipped=%d, directories_deferred=%d) "
+                    "— will retry on next seed run",
+                    dir_path,
+                    outcome.io_failures,
+                    outcome.recently_modified_skipped,
+                    outcome.directories_deferred,
+                )
+        return all_files, eligible_dirs
+
+    async def _seed_files(
+        self, all_files: list[RemoteFile], dry_run: bool, on_progress: OnProgress | None
+    ) -> tuple[int, int, dict[str, int]]:
+        """Seed the untracked *all_files*, counting the tracked ones by status.
+
+        Args:
+            all_files: Every file found by the inventory.
+            dry_run: When True, log what would be seeded without writing.
+            on_progress: Optional progress callback, called after each batch commit.
+
+        Returns:
+            ``(seeded, skipped, skipped_by_status)``.
+        """
+        files_skipped = 0
+        skipped_by_status: dict[str, int] = {}
+        if not all_files:
+            return 0, files_skipped, skipped_by_status
+
+        # Bulk existence check: chunk paths to avoid oversized IN() clauses.
+        existing = await chunked_existing_statuses(self.session, [f.path for f in all_files])
+        pending: list[RemoteFile] = []
+        for rf in all_files:
+            if rf.path in existing:
+                status_str = existing[rf.path]
+                files_skipped += 1
+                skipped_by_status[status_str] = skipped_by_status.get(status_str, 0) + 1
+                logger.debug("Skipping already-tracked file (status=%s): %s", status_str, rf.path)
+            else:
+                pending.append(rf)
+
+        if dry_run:
+            for rf in pending:
+                logger.info("[DRY RUN] Would seed %s (%d bytes)", rf.path, rf.size)
+            return len(pending), files_skipped, skipped_by_status
+
+        files_seeded, race_lost = await self._insert_seeded_batches(pending, on_progress)
+        if race_lost:
+            # Concurrent scan won the race — counts as skipped.
+            files_skipped += race_lost
+            skipped_by_status["discovered"] = skipped_by_status.get("discovered", 0) + race_lost
+        return files_seeded, files_skipped, skipped_by_status
+
+    async def _insert_seeded_batches(
+        self, pending: list[RemoteFile], on_progress: OnProgress | None
+    ) -> tuple[int, int]:
+        """Insert SEEDED rows for *pending* in committed batches.
+
+        Insert in batches for bounded transactions and crash resumability.
+        Directory marking only happens after this fully completes, so a crash
+        here never leaves a directory marked known with unseeded files.
+
+        Args:
+            pending: Untracked files to seed.
+            on_progress: Optional progress callback, called after each batch commit.
+
+        Returns:
+            ``(seeded, race_lost)``: rows inserted, and rows a concurrent writer
+            created first.
+        """
+        seeded = 0
+        race_lost = 0
+        total_pending = len(pending)
+        for batch_start in range(0, total_pending, self.batch_size):
+            for rf in pending[batch_start : batch_start + self.batch_size]:
+                new_file = DownloadedFile.new_from_remote(
+                    name=rf.name, remote_path=rf.path, size=rf.size, status=FileStatus.SEEDED
+                )
+                if await insert_or_skip_duplicate(self.session, new_file):
+                    seeded += 1
+                else:
+                    race_lost += 1
+
+            await self.session.commit()
+
+            progress_done = min(batch_start + self.batch_size, total_pending)
+            if on_progress:
+                await on_progress(
+                    progress_done,
+                    total_pending,
+                    f"Seeded {progress_done}/{total_pending} files",
+                )
+        return seeded, race_lost
+
+    async def _mark_directories(self, eligible_dirs: set[str], dry_run: bool) -> None:
+        """Mark the cleanly walked, not-yet-known directories as known.
+
+        Args:
+            eligible_dirs: Directories whose deep walk completed without gaps.
+            dry_run: When True, log what would be marked without writing.
+        """
+        if not eligible_dirs:
+            return
+        existing_dirs = await chunked_existing_paths(
+            self.session, ScannedDirectory.remote_path, sorted(eligible_dirs)
+        )
+        new_dirs = sorted(eligible_dirs - existing_dirs)
+        if dry_run:
+            for d in new_dirs:
+                logger.info("[DRY RUN] Would mark directory as known: %s", d)
+        elif new_dirs:
+            for d in new_dirs:
+                await insert_or_skip_duplicate(self.session, ScannedDirectory(remote_path=d))
+            await self.session.commit()
