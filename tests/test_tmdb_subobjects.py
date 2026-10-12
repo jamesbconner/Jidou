@@ -18,7 +18,7 @@ with ``extra="allow"`` sub-models. The tests below pin two things:
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -54,6 +54,10 @@ _GENRE_VALUES: list[list[dict[str, object]] | None] = [
     [{"name": "Animation", "id": 16}],
     # An unknown, future TMDB key must pass through untouched.
     [{"id": 16, "name": "Animation", "tmdb_future_key": {"nested": [1, None, "x"]}}],
+    # Values lax validation would coerce ("16" -> 16, 16.0 -> 16): the output
+    # must still carry the stored value, not the coerced one.
+    [{"id": "16", "name": "Animation"}],
+    [{"id": 16.0, "name": "Animation"}],
 ]
 
 _NETWORK_VALUES: list[list[dict[str, object]] | None] = [
@@ -72,6 +76,8 @@ _NETWORK_VALUES: list[list[dict[str, object]] | None] = [
     [{"id": 5, "name": "HBO"}],
     [{}],
     [{"id": 49, "name": "HBO", "logo_path": None, "origin_country": "US", "brand_new": True}],
+    [{"id": "49", "name": "HBO"}],
+    [{"id": 49.0, "name": "HBO"}],
 ]
 
 _FULL_EPISODE_REF: dict[str, object] = {
@@ -101,6 +107,8 @@ _EPISODE_REF_VALUES: list[dict[str, object] | None] = [
     {"id": 1, "episode_number": 12},
     {"air_date": "2030-01-01"},
     {"id": 2, "air_date": None, "runtime": None, "tmdb_future_key": [1, 2]},
+    # Coercible values: "1" -> 1, 12.0 -> 12, int 7 -> float 7.0, "24" -> 24.
+    {"id": "1", "episode_number": 12.0, "vote_average": 7, "runtime": "24"},
 ]
 
 # --- Minimal valid payloads per response schema -----------------------------
@@ -176,8 +184,8 @@ def _field_bytes(schema: type[BaseModel], field: str, value: object) -> bytes:
 
 def test_case_tables_are_populated() -> None:
     """Guard against the parametrized byte-identity tests silently running zero cases."""
-    assert len(_LIST_CASES) >= 50
-    assert len(_OBJECT_CASES) >= 30
+    assert len(_LIST_CASES) >= 60
+    assert len(_OBJECT_CASES) >= 36
 
 
 @pytest.mark.parametrize(("schema", "field", "value"), _LIST_CASES)
@@ -345,3 +353,117 @@ def test_routes_return_stored_tmdb_objects_unchanged(path: str) -> None:
         assert _legacy_json(stored) in response.text
     episode_keys = list(_FULL_EPISODE_REF)[::-1]
     assert list(record["last_episode_to_air"]) == episode_keys
+
+
+# --- Wrong-typed stored values are echoed, never rejected ---------------------
+# POST /shows (when the TMDB details fetch fails) and DB import store client
+# JSON as-is, so a declared key can hold a value of the wrong type. Before
+# DF-17 such rows were echoed unchanged; a typed read must not turn them into a
+# 500 on one show or a 400 for the whole library.
+_WRONG_TYPED: dict[str, object] = {
+    "genres": [{"id": "abc", "name": 7}, {"id": 16.5, "name": {"en": "Drama"}}],
+    "networks": [{"id": 5, "name": 7, "logo_path": 5, "origin_country": ["US"]}],
+    "last_episode_to_air": {"air_date": 20240101, "id": "abc", "name": {"x": 1}},
+    "next_episode_to_air": {"runtime": 23.5, "vote_average": "n/a"},
+}
+
+_WRONG_TYPED_CASES = [
+    pytest.param(schema, field, id=f"{schema.__name__}.{field}")
+    for schema, field, _values in _LIST_FIELDS
+] + [
+    pytest.param(schema, field, id=f"{schema.__name__}.{field}") for schema, field in _OBJECT_FIELDS
+]
+
+
+@pytest.mark.parametrize(("schema", "field"), _WRONG_TYPED_CASES)
+def test_wrong_typed_values_are_echoed_by_every_schema(schema: type[BaseModel], field: str) -> None:
+    """A declared key holding the wrong type validates and serializes byte-identically."""
+    value = _WRONG_TYPED[field]
+    adapter: TypeAdapter[Any] = _LEGACY_LIST if isinstance(value, list) else _LEGACY_OBJECT
+    expected = b'{"' + field.encode() + b'":' + adapter.dump_json(value) + b"}"
+    assert _field_bytes(schema, field, value) == expected
+
+
+def test_non_object_items_are_still_rejected() -> None:
+    """Leniency covers mappings only: a non-object item was rejected before DF-17 too."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ShowList.model_validate({**_BASES[ShowList], "genres": ["Drama"]})
+
+
+def _episode_row() -> MagicMock:
+    """Build an aired, file-tracked Episode mock for the calendar and dashboard routes."""
+    from jidou.models.episode import Episode
+
+    ep = MagicMock(spec=Episode)
+    ep.id = 10
+    ep.show_id = 1
+    ep.season_number = 1
+    ep.episode_number = 1
+    ep.name = "Pilot"
+    ep.overview = None
+    ep.air_date = date(2026, 1, 1)
+    ep.file_tracked = True
+    ep.file_tracked_at = _NOW
+    ep.still_path = None
+    ep.runtime = None
+    return ep
+
+
+def _session_for(path: str, show: MagicMock) -> Callable[[], Any]:
+    """Dependency override whose single query result fits the route under test."""
+    episode = _episode_row()
+    rows: list[tuple[Any, ...]]
+    if path.startswith("/api/shows/calendar"):
+        rows = [(episode, show, True)]
+    elif path.startswith("/api/dashboard/recent-episodes"):
+        rows = [(episode, show)]
+    else:
+        rows = [(show, 0, 0, 0, 0, 0, 0, 0, 0, 0, False, None)]
+
+    async def _mock_session() -> Any:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = show
+        result.scalars.return_value.all.return_value = [show]
+        result.all.return_value = rows
+        session.execute = AsyncMock(return_value=result)
+        yield session
+
+    return _mock_session
+
+
+_WRONG_TYPED_ROUTES = [
+    "/api/shows",
+    "/api/shows/1",
+    "/api/shows/calendar?start=2026-01-01&end=2026-01-31&today=2026-01-15",
+    "/api/dashboard/recent-shows",
+    "/api/dashboard/recent-movies",
+    "/api/dashboard/recent-episodes",
+]
+
+
+@pytest.mark.parametrize("path", _WRONG_TYPED_ROUTES)
+def test_routes_echo_wrong_typed_stored_values(path: str) -> None:
+    """Wrong-typed stored values come back 200 and byte-identical on every carrying route."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_for(path, _show_row(**_WRONG_TYPED))
+    try:
+        with patch(
+            "jidou.api.routes.dashboard.get_show_adult_content", AsyncMock(return_value=False)
+        ):
+            response = TestClient(app).get(path)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    record = body[0] if isinstance(body, list) else body
+    record = record.get("show", record)  # recent-episodes nests the show summary
+    echoed = [field for field in _WRONG_TYPED if field in record]
+    assert "genres" in echoed
+    for field in echoed:
+        assert record[field] == _WRONG_TYPED[field]
+        assert _legacy_json(_WRONG_TYPED[field]) in response.text

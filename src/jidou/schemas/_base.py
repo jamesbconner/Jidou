@@ -11,6 +11,7 @@ from pydantic import (
     ModelWrapValidatorHandler,
     PrivateAttr,
     SerializerFunctionWrapHandler,
+    ValidationError,
     model_serializer,
     model_validator,
 )
@@ -44,6 +45,14 @@ class _TmdbObject(BaseModel):
     ahead of extras, changing bytes the API has always returned. Treat
     instances as read-only: the received mapping, not the attributes, is what
     gets serialized.
+
+    The declared types are best-effort documentation, not a gate. ``POST
+    /shows`` (when the TMDB details fetch fails) and DB import store client
+    JSON as-is, so a stored mapping can hold a declared key with the wrong type
+    (``{"id": "abc"}``). Such a mapping is still accepted and echoed unchanged,
+    with every declared attribute left at ``None``; rejecting it would turn one
+    bad row into a 500 on the show and a 400 for the whole library listing.
+    Anything that is not a mapping is still rejected, as it was before.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -55,8 +64,17 @@ class _TmdbObject(BaseModel):
     @model_validator(mode="wrap")
     @classmethod
     def _remember_received(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
-        """Validate *data* and keep a shallow copy of it for serialization."""
-        instance = handler(data)
+        """Validate *data* and keep a shallow copy of it for serialization.
+
+        A mapping that fails validation falls back to an empty instance that
+        still echoes the mapping (see the class docstring).
+        """
+        try:
+            instance = handler(data)
+        except ValidationError:
+            if not isinstance(data, dict):
+                raise
+            instance = cls.model_construct()
         if isinstance(data, dict):
             instance._received = dict(data)
         return instance
