@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
 from jidou.services.callbacks import OnEvent
+from jidou.services.episode_lookup import resolve_episode
 from jidou.services.llm_json import (
     NULLABLE_INT,
     json_schema_format,
@@ -447,12 +448,9 @@ async def llm_match_episode(
         return None, None, None
     season, episode_num = proposed
 
-    stmt = select(Episode).where(
-        Episode.show_id == show_id,
-        Episode.season_number == season,
-        Episode.episode_number == episode_num,
-    )
-    ep = (await session.execute(stmt)).scalar_one_or_none()
+    # Same lookup (and lowest-id tie-break on duplicate rows) as every other
+    # season/episode resolution.
+    ep = await resolve_episode(session, show_id, season, episode_num)
     if ep is not None:
         logger.info(
             "LLM matched %r -> S%02dE%02d for show %r",

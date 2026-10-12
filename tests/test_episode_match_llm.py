@@ -1012,3 +1012,31 @@ async def test_llm_match_episode_call_arguments_are_pinned() -> None:
     assert kwargs["response_format"]["json_schema"]["name"] == "episode_match"
     assert kwargs.get("max_tokens", 1024) == 1024
     assert kwargs.get("bypass_cache", False) is False
+
+
+@pytest.mark.asyncio
+async def test_llm_match_episode_final_lookup_is_ordered_and_limited() -> None:
+    """Regression (B1, issue #313): duplicate (show, season, episode) rows must not raise.
+
+    The final S/E lookup has to be ordered by id and capped at one row so the
+    lowest id wins, exactly like ``resolve_episode``; otherwise the ORM's
+    one-row check raises ``MultipleResultsFound``.
+    """
+    llm = _llm_returning('{"season": 1, "episode": 2}')
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 2, "Two")]
+    match_result = MagicMock()
+    match_result.scalar_one_or_none.return_value = _make_episode(9, 1, 1, 2)
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[eps_result, match_result])
+
+    ep, season, episode_num = await llm_match_episode(
+        session, llm, show_id=1, show_title="Show", filename="ep.mkv"
+    )
+
+    assert (season, episode_num) == (1, 2)
+    assert ep is match_result.scalar_one_or_none.return_value
+    last_stmt = session.execute.await_args_list[-1].args[0]
+    compiled = str(last_stmt.compile())
+    assert "ORDER BY episodes.id" in compiled
+    assert "LIMIT" in compiled

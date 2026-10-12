@@ -17,6 +17,75 @@ from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry
 
 
+async def _llm_list_fallback(
+    session: AsyncSession,
+    llm: LLMService | None,
+    show_id: int,
+    show_title: str,
+    filename: str,
+    *,
+    default_season: int | None,
+    default_episode: int | None,
+    on_event: OnEvent | None,
+) -> tuple[Episode | None, int | None, int | None]:
+    """Run the LLM episode-list match and fill gaps in its answer with defaults.
+
+    The LLM may propose only part of a season/episode (or nothing); the
+    caller's best-effort values are kept for whichever half it left empty so
+    the "No match" diagnostics still say what was attempted.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        llm: Optional LLMService; None or unavailable yields no proposal.
+        show_id: Database ID of the parent show.
+        show_title: Show title for the LLM prompt context.
+        filename: Basename (or path) of the file being matched.
+        default_season: Season reported when the LLM proposes none.
+        default_episode: Episode number reported when the LLM proposes none.
+        on_event: Optional async callback for progress/log reporting.
+
+    Returns:
+        ``(episode, season, episode_number)`` with defaults applied.
+    """
+    ep, llm_season, llm_episode = await llm_match_episode(
+        session, llm, show_id, show_title, filename, on_event=on_event
+    )
+    return (
+        ep,
+        llm_season if llm_season is not None else default_season,
+        llm_episode if llm_episode is not None else default_episode,
+    )
+
+
+async def _resolve_via_group_remap(
+    session: AsyncSession,
+    show_id: int,
+    episode_group_map: dict[str, object] | None,
+    season: int,
+    episode: int,
+) -> tuple[Episode, int, int] | None:
+    """Resolve a declared season/episode TMDB does not have via its episode groups.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        show_id: Database ID of the parent show.
+        episode_group_map: The show's stored episode-group map, or None.
+        season: Declared season (> 1) that missed a direct lookup.
+        episode: Declared episode number.
+
+    Returns:
+        ``(episode_row, real_season, real_episode)`` on a hit, else None.
+    """
+    remapped = resolve_declared_season(episode_group_map, season, episode)
+    if remapped is None:
+        return None
+    real_season, real_episode = remapped
+    remapped_ep = await resolve_episode(session, show_id, real_season, real_episode)
+    if remapped_ep is None:
+        return None
+    return remapped_ep, real_season, real_episode
+
+
 async def match_entry_to_episode(
     session: AsyncSession,
     llm: LLMService | None,
@@ -75,22 +144,26 @@ async def match_entry_to_episode(
 
     if episode is None:
         llm_season, llm_episode = await llm_parse_episode(llm, filename, season, on_event=on_event)
+        # The directory/regex season wins; the LLM's only fills a gap. Resolved
+        # before the fallback so a title match that proposes no season still
+        # reports the best season known so far.
+        if season is None:
+            season = llm_season
         if llm_episode is None:
             # No number anywhere in the filename, and the LLM couldn't parse
             # one either — last resort: match by title against the show's
             # full episode list before giving up entirely.
-            fallback_season = season if season is not None else llm_season
-            llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
-                session, llm, show_id, show_title, filename, on_event=on_event
-            )
-            return (
-                llm_ep,
-                llm_match_season if llm_match_season is not None else fallback_season,
-                llm_match_episode_num,
+            return await _llm_list_fallback(
+                session,
+                llm,
+                show_id,
+                show_title,
+                filename,
+                default_season=season,
+                default_episode=None,
+                on_event=on_event,
             )
         episode = llm_episode
-        if season is None:
-            season = llm_season
 
     absolute_guess = entry.absolute_candidate if entry.absolute_candidate is not None else episode
 
@@ -99,41 +172,30 @@ async def match_entry_to_episode(
         if ep is not None:
             return ep, season, episode
         if season > 1:
-            remapped = resolve_declared_season(episode_group_map, season, episode)
-            if remapped is not None:
-                real_season, real_episode = remapped
-                remapped_ep = await resolve_episode(session, show_id, real_season, real_episode)
-                if remapped_ep is not None:
-                    return remapped_ep, real_season, real_episode
-            # Before giving up to the LLM, try the absolute-number column —
-            # the show's real data may use absolute numbering (or this
-            # season/episode pair may itself be an ambiguous compact-code
-            # guess whose raw number is the correct absolute episode).
-            abs_ep = await resolve_episode(session, show_id, None, absolute_guess)
-            if abs_ep is not None:
-                return abs_ep, season, episode
-            llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
-                session, llm, show_id, show_title, filename, on_event=on_event
+            remapped_hit = await _resolve_via_group_remap(
+                session, show_id, episode_group_map, season, episode
             )
-            return (
-                llm_ep,
-                llm_match_season if llm_match_season is not None else season,
-                llm_match_episode_num if llm_match_episode_num is not None else episode,
-            )
-        # Season 1 directory: the episode number may still be a continuous
-        # absolute count (e.g. a show with all 148 episodes in Season 01).
-        # Fall through to the absolute-number lookup before the LLM.
+            if remapped_hit is not None:
+                return remapped_hit
+        # Season 1 directory (or a season>1 miss the remap could not rescue): the
+        # episode number may still be a continuous absolute count (e.g. a show
+        # with all 148 episodes in Season 01), or the season/episode pair may
+        # itself be an ambiguous compact-code guess whose raw number is the
+        # correct absolute episode. Fall through to the absolute-number lookup
+        # before the LLM.
 
     # No season info — this is an absolute episode number.
     abs_ep = await resolve_episode(session, show_id, None, absolute_guess)
     if abs_ep is not None:
         return abs_ep, season, episode
 
-    llm_ep, llm_match_season, llm_match_episode_num = await llm_match_episode(
-        session, llm, show_id, show_title, filename, on_event=on_event
-    )
-    return (
-        llm_ep,
-        llm_match_season if llm_match_season is not None else season,
-        llm_match_episode_num if llm_match_episode_num is not None else episode,
+    return await _llm_list_fallback(
+        session,
+        llm,
+        show_id,
+        show_title,
+        filename,
+        default_season=season,
+        default_episode=episode,
+        on_event=on_event,
     )

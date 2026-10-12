@@ -552,3 +552,40 @@ async def test_match_entry_no_episode_uses_llm_season_when_list_match_has_none()
         )
 
     assert result == (None, 3, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("llm_result", "defaults", "expected"),
+    [
+        ((None, None, None), (4, 9), (None, 4, 9)),
+        ((None, 2, None), (4, 9), (None, 2, 9)),
+        ((None, None, 5), (4, 9), (None, 4, 5)),
+        ((None, 2, 5), (None, None), (None, 2, 5)),
+        ((None, None, None), (None, None), (None, None, None)),
+    ],
+)
+async def test_llm_list_fallback_fills_only_missing_halves_with_defaults(
+    llm_result: tuple[None, int | None, int | None],
+    defaults: tuple[int | None, int | None],
+    expected: tuple[None, int | None, int | None],
+) -> None:
+    """Whichever half the LLM leaves empty falls back to the caller's default."""
+    from jidou.services.episode_file_matching import _llm_list_fallback
+
+    with patch(
+        "jidou.services.episode_file_matching.llm_match_episode",
+        AsyncMock(return_value=llm_result),
+    ):
+        result = await _llm_list_fallback(
+            AsyncMock(),
+            MagicMock(),
+            1,
+            "Show",
+            "f.mkv",
+            default_season=defaults[0],
+            default_episode=defaults[1],
+            on_event=None,
+        )
+
+    assert result == expected
