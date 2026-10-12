@@ -20,6 +20,10 @@ from jidou.services.progress import create_task_record, update_task_status
 
 logger = logging.getLogger(__name__)
 
+# The single 503 ``detail`` every route returns when a broker dispatch fails, so
+# clients can match one string regardless of which route triggered the task.
+BROKER_UNAVAILABLE_DETAIL: Final = "Task broker unavailable"
+
 
 class TaskDispatchError(Exception):
     """Raised when enqueue_task's dispatch() callable fails to reach the broker.

@@ -21,7 +21,12 @@ from jidou.services.rss_config import (
     diff_rss_config,
     parse_rss_config,
 )
-from jidou.services.task_dispatch import CeleryTaskRef, TaskDispatchError, enqueue_celery_task
+from jidou.services.task_dispatch import (
+    BROKER_UNAVAILABLE_DETAIL,
+    CeleryTaskRef,
+    TaskDispatchError,
+    enqueue_celery_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +251,7 @@ async def trigger_rss_import(
             dry_run=dry_run,
         )
     except TaskDispatchError as exc:
-        raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
+        raise HTTPException(status_code=503, detail=BROKER_UNAVAILABLE_DETAIL) from exc
 
 
 @router.post("/publish", response_model=TaskRead, status_code=202)
@@ -286,4 +291,4 @@ async def trigger_rss_publish(
             dry_run=dry_run,
         )
     except TaskDispatchError as exc:
-        raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
+        raise HTTPException(status_code=503, detail=BROKER_UNAVAILABLE_DETAIL) from exc

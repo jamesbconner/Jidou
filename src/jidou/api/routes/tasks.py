@@ -8,6 +8,7 @@ from jidou.database import get_session
 from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask, TaskStatus
 from jidou.schemas.task_schema import TaskList, TaskRead, TaskTrigger
 from jidou.services.task_dispatch import (
+    BROKER_UNAVAILABLE_DETAIL,
     TaskDispatchError,
     UnknownTaskTypeError,
     dispatch_registered_task,
@@ -145,4 +146,4 @@ async def trigger_task(
     except UnknownTaskTypeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TaskDispatchError as exc:
-        raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
+        raise HTTPException(status_code=503, detail=BROKER_UNAVAILABLE_DETAIL) from exc
