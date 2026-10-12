@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-10-12
+
+Wave 2 of the simplification roadmap splits each layer's largest functions and components into smaller, tested pieces. Every item first added characterization tests that passed on the unchanged code. The orchestrator and worker items were also compared old-vs-new against a real PostgreSQL 16 database. The few behaviour changes are listed below; everything else is unchanged.
+
+### Changed (behaviour)
+- **Episode lookup indexes** (#684, approved B3). Two non-unique indexes on `episodes`, `(show_id, season_number, episode_number)` and `(show_id, absolute_episode_number)`, built concurrently. The downgrade drops them.
+- **Task dispatch reports a broken worker module** (#680). If a worker module fails to import when `POST /api/tasks/trigger`, `import_text` or `import_database` dispatches it, a task row is recorded as `failed` and the route answers 503, instead of a 500 with no row.
+- **ShowDetail opens one modal at a time** (#683, owner-approved). If a background request (creating an RSS stub, or starting a rematch) finishes while another modal is open, the open modal stays and keeps any typed input; the late one is dropped.
+- **Settings PATCH flushes once** (#691). A PATCH that changes several settings now writes them in one flush instead of one per field. Values, order and responses are unchanged.
+- **Unknown task statuses are rejected** (#693). `TaskList` no longer coerces an unrecognised `status` to `pending`; it raises a validation error. `BackgroundTask.status` has been enum-typed since #666, so stored rows can't hit this.
+- **OpenAPI component names** (#697, contract change only). The two `ShowBrief` components are now `FileShowBrief` and `WatchlistShowBrief`. JSON values are unchanged; `frontend/src/types/api-generated.ts` was regenerated in the same PR.
+- **TMDB episode sync batches its lookups** (#695). Episodes are looked up once per season or episode-group batch, not once per episode. TMDB calls, progress ticks and results are unchanged. If a write fails, the database error text now describes the batch's multi-row INSERT.
+
+### Changed (refactors, no behaviour change)
+- **Models** (#676, #681). `content_type`, `tracked_source` and `snapshot_type` are typed enums; the column DDL is unchanged. Each `Show` column records where its value comes from (`key`, `tmdb`, `user`, `derived`), and the metadata backfill and database import read from that.
+- **API** (#680, #685, #686, #691, #694). Task dispatch lives in `services/task_dispatch.py`; file relinking in `services/file_relink.py`; the Discover feed in `services/discover_feed.py`; and the admin and `/health` checks share `services/health_probes.py`. The settings PATCH is table-driven. Status codes and `detail` strings are unchanged.
+- **Services** (#675, #679, #688). `path_parser` uses an ordered rule table and one media-file walker. SFTP listings share a single entry classifier. Redis connections go through `services/redis_conn.py`, and the pub/sub subscriber no longer imports the API layer: its broadcast function is passed in.
+- **Workers** (#687, #692). Workers share one SFTP factory (`create_sftp_service`) and one `summarize` helper for task summaries. Database import is table-driven; an export and re-import round trip is byte-identical.
+- **Orchestrators** (#677, #682, #689, #696). Scan and seed share a remote-inventory module. Route and parse handle one file per command, with typed outcomes. `DownloadOrchestrator.run` and the RSS import/publish flows are split into small steps; event order, SFTP calls, counts and commits are unchanged.
+- **Schemas** (#693). An `ORMModel` base owns `from_attributes`, and the settings bounds come from `settings_service`. A test checks that `TaskType` lists exactly the worker task types.
+- **Frontend** (#678, #683, #690, #698). Settings and Shows are split into per-tab components; the parent page still owns state and queries, so request timing and retained filters are unchanged. ShowDetail's twelve modal flags are now one typed union. ResolveFileModal is split into `useResolveCandidates`, `CandidateList` and `ResolveConfirm`. The temporary Settings `no-restricted-imports` override is removed.
+- Complexity ratchets lowered: API 15 → 10, services 16 → 10, orchestrators 26 → 21, workers 16 → 9, ESLint 92 → 51.
+
 ## [0.4.4] — 2026-10-12
 
 Wave 1 of the simplification roadmap builds the shared foundations each layer's later refactors depend on. Apart from the two fixes below, behaviour is unchanged; each PR was checked against `main` for identical requests, responses, error messages and timeout handling.

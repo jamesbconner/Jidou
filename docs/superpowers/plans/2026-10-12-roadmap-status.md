@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (Wave 1 released as 0.4.4).
+Last updated: 2026-10-12 (Wave 2 released as 0.4.5).
 
 ---
 
@@ -24,16 +24,13 @@ Last updated: 2026-10-12 (Wave 1 released as 0.4.4).
   items merged; see §3.
 - **Wave 1 is released** (0.4.4, `chore/release-wave-1`). All nine items
   merged; see §3 and §3B.
-- **Next step:** Wave 2. Lanes per roadmap §4A: API-4 → XL-1 → API-5 →
-  API-6 → API-7 · SVC-4 → SVC-5 → SVC-6 (SVC-6 never alongside XL-1) ·
-  MDL-3 → MDL-4 → MDL-5 · WRK-3 → WRK-4 (after MDL-4) · ORC-4 → ORC-5 →
-  ORC-6 → ORC-9 → ORC-10 · SCH-2 → SCH-3 · FE-3 → FE-4 → FE-5 → FE-6.
-  At most 4 sub-agents at once.
-- **Carry into Wave 2:** FE-3 (Settings split) must remove the temporary
-  `src/pages/Settings.tsx` `no-restricted-imports` override in
-  `frontend/eslint.config.js`. See §3B.
-- **Current ratchets:** API 15, services 16, orchestrators 26, workers 16,
-  ESLint 92.
+- **Wave 2 is released** (0.4.5, `chore/release-wave-2`). All 24 items
+  merged; see §3 and §3C.
+- **Next step:** Wave 3 (API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7,
+  ORC-8, XL-2, ORC-11, WRK-5, SCH-4), lanes per roadmap §4A. At most 4
+  sub-agents at once. Starts after the owner's go-ahead.
+- **Current ratchets:** API 10, services 10, orchestrators 21, workers 9,
+  ESLint 51.
 - **Execution method (decided):** parallel sub-agents.
   - The main session acts as **coordinator**. It dispatches one
     sub-agent per item, each in its own git worktree, using
@@ -81,7 +78,7 @@ item is its open or merged PR on GitHub.
 |---|---|---|
 | 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | released (0.4.3) |
 | 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | released (0.4.4) |
-| 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | todo |
+| 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | released (0.4.5) |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | todo |
 | 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | todo |
 | 5 | DF-1 … DF-20, then XL-3 | todo |
@@ -106,6 +103,30 @@ Per-item rows (item → PR) are added by the release PR of each wave.
 | WRK-2 | jamesbconner/Jidou#671 | released | per-function engine create/dispose parity with `main` |
 | FE-2 | jamesbconner/Jidou#672 | released | B2; flaky `AddShowFromFeedPane` test hardened; lint catches relative `api/client` imports |
 | SVC-3 | jamesbconner/Jidou#673 | released | B1; prompts byte-identical (8,301-case differential check) |
+| SVC-4 | jamesbconner/Jidou#675 | released | ratchet 16 → 12; `path_parser` golden table unchanged |
+| MDL-3 | jamesbconner/Jidou#676 | released | DDL identical; an out-of-vocabulary LLM `content_type` keeps the match and skips the backfill (warning) |
+| ORC-4 | jamesbconner/Jidou#677 | released | ratchet 26 → 25 |
+| FE-3 | jamesbconner/Jidou#678 | released | ratchet 92 → 77; stateful hooks stay in `Settings` (no timing change); Settings import override removed |
+| SVC-5 | jamesbconner/Jidou#679 | released | classifier check order pinned by tests; mtime read lazily as before |
+| API-4 | jamesbconner/Jidou#680 | released | broken worker module → FAILED row + 503 (approved; covers `trigger_task` and both import routes) |
+| MDL-4 | jamesbconner/Jidou#681 | released | |
+| ORC-5 | jamesbconner/Jidou#682 | released | count parity kept on mid-file DB errors, including the old double-count (§3C follow-up) |
+| FE-4 | jamesbconner/Jidou#683 | released | ratchet 77 → 76; owner-approved "don't interrupt" modal behaviour |
+| MDL-5 | jamesbconner/Jidou#684 | released | B3; migration `d4e5f6a7b8c9`; EXPLAIN on PG 16 in the PR |
+| XL-1 | jamesbconner/Jidou#685 | released | |
+| API-5 | jamesbconner/Jidou#686 | released | ratchet 15 → 14 |
+| WRK-3 | jamesbconner/Jidou#687 | released | |
+| SVC-6 | jamesbconner/Jidou#688 | released | ratchet 12 → 10; services no longer import the API layer for pub/sub |
+| ORC-6 | jamesbconner/Jidou#689 | released | ratchet 25 → 24; `run` 25 → 7 |
+| FE-5 | jamesbconner/Jidou#690 | released | search modal keeps its DOM position (`searchModal` prop) |
+| API-6 | jamesbconner/Jidou#691 | released | ratchet 14 → 10; settings PATCH flushes once (N → 1) |
+| WRK-4 | jamesbconner/Jidou#692 | released | ratchet 16 → 9; export/import round trip byte-identical on PG 16 |
+| SCH-2 | jamesbconner/Jidou#693 | released | `TaskList` status coercion removed (unknown status → validation error) |
+| API-7 | jamesbconner/Jidou#694 | released | 736 old/new health scenarios identical |
+| ORC-9 | jamesbconner/Jidou#695 | released | per-batch flush keeps the failure-path TMDB order; multi-row INSERT error text |
+| ORC-10 | jamesbconner/Jidou#696 | released | ratchet 24 → 21; 35 old/new PG 16 scenarios identical |
+| SCH-3 | jamesbconner/Jidou#697 | released | component renames; `api-generated.ts` also picked up two stale doc-only hunks |
+| FE-6 | jamesbconner/Jidou#698 | released | ratchet 76 → 51 |
 
 ### 3A. Decisions and deferred findings from Wave 0
 
@@ -151,6 +172,62 @@ Per-item rows (item → PR) are added by the release PR of each wave.
   `llm_service.py:198`; an extra DEBUG log on the RSS regex truncation
   path; MDL-2's `len == 4` non-vacuous test is trivial; the
   `useTaskUntilDone` default-interval test is weak.
+
+### 3C. Decisions and deferred findings from Wave 2
+
+- **Approved behaviour changes** (also in `CHANGELOG.md` 0.4.5):
+  - **FE-4, owner decision "Don't interrupt".** ShowDetail shows one
+    modal at a time. When a background request (RSS stub, begin-rematch)
+    finishes while another modal is open, the open modal stays and the
+    late one is dropped. Pinned by three tests.
+  - **MDL-5 (B3):** two concurrent non-unique `episodes` indexes.
+  - **API-4:** a broken worker module gives a FAILED row and 503 instead
+    of a 500 with no row. This covers `trigger_task` and, via the lazy
+    import, `import_text` and `import_database`.
+  - **API-6:** the settings PATCH flushes once instead of once per field.
+  - **SCH-2:** `TaskList` no longer coerces an unknown `status` to
+    `pending`; it raises a validation error.
+  - **SCH-3:** OpenAPI component renames (`FileShowBrief`,
+    `WatchlistShowBrief`). The regenerated `api-generated.ts` also
+    carries two doc-only hunks for stale JSDoc already on `main`.
+  - **ORC-9:** episode lookups are batched per season or group, with an
+    explicit flush per batch so a failing write still raises before the
+    next TMDB fetch. The `IntegrityError` text describes a multi-row
+    INSERT, and appears verbatim in path import's
+    "Episode sync failed for ..." event.
+- **Rulings that apply to later waves:**
+  - Complexity "Expected" figures in the briefs are estimates. Ratchets
+    go to the **measured** maximum and never rise.
+  - Frontend refactors must not change request timing, retained state
+    or DOM (including element order). Stateful hooks stay with the
+    component that owned them.
+  - Orchestrator refactors keep count parity on mid-item DB failures,
+    and keep the order of external calls and events on failure paths.
+    Check old-vs-new against a real Postgres where possible.
+  - Local PostgreSQL 16 is at `/usr/lib/postgresql/16/bin`. Run it as
+    the `postgres` user with its data directory under `/var/tmp` (root
+    can't run it).
+  - Build expected paths in tests with `pathlib.Path`: CI also runs on
+    Windows (ORC-6 hit this).
+- **Follow-ups (separate PRs, not yet filed):**
+  - **Route/parse double-count bug.** On a mid-file DB error, the
+    route and parse orchestrators count the file both under its outcome
+    (routed/matched/unmatched) and as failed. ORC-5 kept this for parity.
+  - **`MissingGreenlet` in `path_import_orchestrator._sync_episodes_if_needed`.**
+    After `session.rollback()` it reads the expired `show.title` and
+    `show.id`. On a real async session this raises instead of emitting
+    the error event, which aborts the import. This was there before
+    ORC-9.
+  - **Global episode lookup by `tmdb_id`** in TMDB sync. It is not
+    scoped to the show, and stale group rows keep colliding numbering.
+    This was there before ORC-9 and is unchanged.
+  - **Deferred frontend extractions.** The brief targets were estimates:
+    `SettingToggle`/`CacheCard` from FE-3 (FeaturesTab 37, ServiceRow
+    28); ShowDetail 51 (FE-4/FE-6); Shows 41 (FE-5); ResolveFileModal 37
+    (FE-6).
+  - **Minor test gaps** listed in each item's review: for example, the
+    ORC-10 snapshot-flush-before-upload ordering, and a route-level test
+    for the API-4 503 path.
 
 ## 4. Process conventions (beyond roadmap §1)
 
