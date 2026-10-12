@@ -331,7 +331,15 @@ class SFTPService:
         except (TypeError, ValueError, OSError):
             return None
 
-    def _classify_entry(self, entry: Any, parent: str, pattern: str | None) -> _EntryVerdict:
+    def _classify_entry(
+        self,
+        entry: Any,
+        parent: str,
+        pattern: str | None,
+        *,
+        eager_mtime: bool = False,
+        files_only: bool = False,
+    ) -> _EntryVerdict:
         """Decide what a listing should do with one directory entry.
 
         This is the single home of the filtering rules shared by
@@ -347,6 +355,11 @@ class SFTPService:
             entry: asyncssh ``SFTPName`` instance.
             parent: Remote directory the entry was read from.
             pattern: Glob applied to file names, or ``None`` for no glob.
+            eager_mtime: Read the entry's mtime before any name check
+                (``list_remote_children`` behaviour) instead of only once an
+                entry survives them.
+            files_only: Skip every directory immediately, without validating
+                it or reading its mtime (``list_remote_files`` behaviour).
 
         Returns:
             The verdict, including the entry's full path and, for kept
@@ -357,13 +370,23 @@ class SFTPService:
         if name in (".", ".."):
             return _EntryVerdict(_EntryKind.SKIP, entry_path)
 
-        mtime = self._parse_mtime(entry)
-        recent = mtime is not None and is_recently_modified(mtime)
+        # mtime is read at exactly the points the pre-classifier listings read
+        # it: lazily after the cheap name checks, except for the children
+        # listing, which always read it up front. An out-of-range mtime makes
+        # _parse_mtime raise OverflowError, so moving a read changes which
+        # entries blow up.
+        early_mtime = self._parse_mtime(entry) if eager_mtime else None
 
         if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
+            if files_only:
+                # The flat listing never validated, logged or read the mtime
+                # of directories; bail out before any of that happens.
+                return _EntryVerdict(_EntryKind.SKIP, entry_path)
             if not is_valid_directory(name):
                 logger.debug("Skipping excluded directory: %s", name)
                 return _EntryVerdict(_EntryKind.SKIP, entry_path)
+            mtime = early_mtime if eager_mtime else self._parse_mtime(entry)
+            recent = mtime is not None and is_recently_modified(mtime)
             # A directory's own mtime bumps whenever a child is added or
             # removed directly inside it. A fresh mtime here means it may
             # still be receiving files that a readdir() now would never
@@ -380,7 +403,8 @@ class SFTPService:
         if not is_valid_media_file(name):
             logger.debug("Filtered out %s (extension/keyword rule)", name)
             return _EntryVerdict(_EntryKind.SKIP, entry_path)
-        if recent:
+        mtime = early_mtime if eager_mtime else self._parse_mtime(entry)
+        if mtime is not None and is_recently_modified(mtime):
             logger.debug("Skipping recently modified file: %s", entry_path)
             return _EntryVerdict(_EntryKind.RECENT_FILE, entry_path)
         size: int = getattr(entry.attrs, "size", 0) or 0
@@ -418,7 +442,7 @@ class SFTPService:
             async with self._connection() as sftp:
                 entries = await sftp.readdir(remote_path)
                 for entry in entries:
-                    verdict = self._classify_entry(entry, remote_path, pattern)
+                    verdict = self._classify_entry(entry, remote_path, pattern, files_only=True)
                     # Directories are never part of this flat listing, whether
                     # or not they would be walked elsewhere.
                     if verdict.kind is _EntryKind.FILE and verdict.remote_file is not None:
@@ -607,7 +631,7 @@ class SFTPService:
             async with self._connection() as sftp:
                 entries = await sftp.readdir(remote_path)
                 for entry in entries:
-                    verdict = self._classify_entry(entry, remote_path, None)
+                    verdict = self._classify_entry(entry, remote_path, None, eager_mtime=True)
                     # Deferred directories and recent files are left out this
                     # round; they surface once they settle.
                     if (

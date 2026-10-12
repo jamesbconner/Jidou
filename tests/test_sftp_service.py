@@ -1529,6 +1529,11 @@ def _mixed_listing() -> list[MagicMock]:
         _make_entry("b.mp4", 200, mtime=old),
         _make_entry("notes.txt", 5, mtime=old),
         _make_entry("fresh.mkv", 300, mtime=fresh),
+        # Fresh entries that an earlier rule must reject before recency is
+        # considered: they must not bump either counter.
+        _make_entry("Sample Fresh", 0, is_dir=True, mtime=fresh),
+        _make_entry("fresh.txt", 5, mtime=fresh),
+        _make_entry("fresh.mp4", 200, mtime=fresh),
     ]
 
 
@@ -1553,6 +1558,10 @@ _CLASSIFY_CASES = [
     pytest.param("notes.txt", False, "old", None, _EntryKind.SKIP, id="non-media"),
     pytest.param("a.mkv", False, "fresh", None, _EntryKind.RECENT_FILE, id="fresh-file"),
     pytest.param("a.mkv", False, None, None, _EntryKind.FILE, id="unknown-mtime-file"),
+    # Order pins: a fresh mtime must never win over an earlier rejection.
+    pytest.param("sample", True, "fresh", None, _EntryKind.SKIP, id="fresh-excluded-directory"),
+    pytest.param("a.mp4", False, "fresh", "*.mkv", _EntryKind.SKIP, id="fresh-pattern-mismatch"),
+    pytest.param("notes.txt", False, "fresh", None, _EntryKind.SKIP, id="fresh-non-media"),
 ]
 
 
@@ -1591,6 +1600,67 @@ def test_classify_entry_cases_cover_every_kind() -> None:
     """Guard against the parametrization silently dropping an outcome."""
     covered = {case.values[4] for case in _CLASSIFY_CASES}
     assert covered == set(_EntryKind)
+
+
+_OUT_OF_RANGE_MTIME = 10**20  # beyond year 9999: datetime.fromtimestamp raises OverflowError
+
+
+def _unreadable_mtime_listing() -> list[MagicMock]:
+    """Entries every listing rejects on name/pattern before it ever reads their mtime."""
+    return [
+        _make_entry("sample", 0, is_dir=True, mtime=_OUT_OF_RANGE_MTIME),
+        _make_entry("notes.txt", 5, mtime=_OUT_OF_RANGE_MTIME),
+        _make_entry("a.mp4", 9, mtime=_OUT_OF_RANGE_MTIME),
+        _make_entry("a.mkv", 100, mtime=_old_mtime()),
+    ]
+
+
+class TestMtimeReadOrder:
+    """mtime is only read where the pre-classifier code read it (no new OverflowError)."""
+
+    @pytest.mark.asyncio
+    async def test_flat_listing_skips_unreadable_mtime_before_reading_it(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Directories and pattern/media rejects never have their mtime parsed."""
+        entries = [*_unreadable_mtime_listing(), _make_entry("Dir", 0, is_dir=True, mtime=10**20)]
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(return_value=entries)
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            files = await sftp_service.list_remote_files("/r", pattern="*.mkv")
+
+        assert [f.name for f in files] == ["a.mkv"]
+
+    @pytest.mark.asyncio
+    async def test_recursive_walk_skips_unreadable_mtime_before_reading_it(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """Excluded directories and pattern/media rejects never have their mtime parsed."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(return_value=_unreadable_mtime_listing())
+
+        with patch("asyncssh.connect", return_value=_make_conn(mock_sftp)):
+            result = await sftp_service.list_remote_files_recursive("/r", pattern="*.mkv")
+
+        assert [f.name for f in result.files] == ["a.mkv"]
+        assert result.io_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_children_listing_still_reads_mtime_up_front(
+        self, sftp_service: SFTPService
+    ) -> None:
+        """list_remote_children always parsed mtime first, so it still raises here."""
+        mock_sftp = AsyncMock()
+        mock_sftp.readdir = AsyncMock(
+            return_value=[_make_entry("notes.txt", 5, mtime=_OUT_OF_RANGE_MTIME)]
+        )
+
+        with (
+            patch("asyncssh.connect", return_value=_make_conn(mock_sftp)),
+            pytest.raises(OverflowError),
+        ):
+            await sftp_service.list_remote_children("/r")
 
 
 class TestEntryClassificationAcrossListings:
