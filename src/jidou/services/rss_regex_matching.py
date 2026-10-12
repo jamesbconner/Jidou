@@ -33,6 +33,51 @@ from dataclasses import dataclass
 MAX_TITLE_LENGTH = 300
 
 
+def compile_pattern(pattern: str | None, ignorecase: bool) -> re.Pattern[str] | None:
+    """Compile one YaRSS2 include/exclude pattern.
+
+    Args:
+        pattern: Regex source. None or empty means "no pattern".
+        ignorecase: Whether matching ignores case.
+
+    Returns:
+        The compiled pattern, or None when *pattern* is None or empty.
+
+    Raises:
+        re.error: If *pattern* is not a valid regular expression.
+    """
+    if not pattern:
+        return None
+    return re.compile(pattern, re.IGNORECASE if ignorecase else 0)
+
+
+@dataclass(frozen=True)
+class CompiledFilter:
+    """A compiled include/exclude pair with YaRSS2 selection semantics.
+
+    Attributes:
+        include: Include pattern, or None. None selects nothing.
+        exclude: Exclude pattern, or None for no exclusion.
+    """
+
+    include: re.Pattern[str] | None
+    exclude: re.Pattern[str] | None
+
+    def accepts(self, title: str) -> bool:
+        """Return whether the filter selects *title*.
+
+        Args:
+            title: Release title, already truncated by the caller if needed.
+
+        Returns:
+            True when the include pattern matches and the exclude pattern, if
+            any, does not. Without an include pattern nothing is selected.
+        """
+        if self.include is None or self.include.search(title) is None:
+            return False
+        return self.exclude is None or self.exclude.search(title) is None
+
+
 @dataclass(frozen=True)
 class RegexMatchReport:
     """Which titles a filter selects.
@@ -74,19 +119,14 @@ def evaluate_regex(
     Raises:
         re.error: If either pattern does not compile.
     """
-    include_re = (
-        re.compile(include, re.IGNORECASE if include_ignorecase else 0) if include else None
-    )
-    exclude_re = (
-        re.compile(exclude, re.IGNORECASE if exclude_ignorecase else 0) if exclude else None
+    # Include compiles first so its error wins when both patterns are invalid.
+    rule = CompiledFilter(
+        include=compile_pattern(include, include_ignorecase),
+        exclude=compile_pattern(exclude, exclude_ignorecase),
     )
 
     matched: list[str] = []
     unmatched: list[str] = []
     for title in titles:
-        probe = title[:MAX_TITLE_LENGTH]
-        selected = include_re is not None and include_re.search(probe) is not None
-        if selected and exclude_re is not None and exclude_re.search(probe) is not None:
-            selected = False
-        (matched if selected else unmatched).append(title)
+        (matched if rule.accepts(title[:MAX_TITLE_LENGTH]) else unmatched).append(title)
     return RegexMatchReport(matched=matched, unmatched=unmatched)

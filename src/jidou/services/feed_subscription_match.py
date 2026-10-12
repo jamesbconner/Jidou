@@ -9,6 +9,8 @@ import logging
 import re
 from dataclasses import dataclass
 
+from jidou.services.rss_regex_matching import CompiledFilter, compile_pattern
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,20 +39,12 @@ class SubscriptionRule:
 class _CompiledRule:
     subscription_id: int
     show_id: int | None
-    include: re.Pattern[str] | None
-    exclude: re.Pattern[str] | None
-
-    def accepts(self, title: str) -> bool:
-        if self.include is None or self.include.search(title) is None:
-            return False
-        return self.exclude is None or self.exclude.search(title) is None
+    filter: CompiledFilter
 
 
 def _compile(pattern: str | None, ignorecase: bool, subscription_id: int) -> re.Pattern[str] | None:
-    if not pattern:
-        return None
     try:
-        return re.compile(pattern, re.IGNORECASE if ignorecase else 0)
+        return compile_pattern(pattern, ignorecase)
     except re.error as exc:
         logger.warning("Skipping invalid regex for subscription id=%d: %s", subscription_id, exc)
         return None
@@ -72,10 +66,12 @@ class SubscriptionMatcher:
             _CompiledRule(
                 subscription_id=r.subscription_id,
                 show_id=r.show_id,
-                include=_compile(r.regex_include, r.include_ignorecase, r.subscription_id),
-                # An invalid exclude must not silently turn into "no exclusion";
-                # the include pattern is still what decides the match.
-                exclude=_compile(r.regex_exclude, r.exclude_ignorecase, r.subscription_id),
+                filter=CompiledFilter(
+                    include=_compile(r.regex_include, r.include_ignorecase, r.subscription_id),
+                    # An invalid exclude must not silently turn into "no exclusion";
+                    # the include pattern is still what decides the match.
+                    exclude=_compile(r.regex_exclude, r.exclude_ignorecase, r.subscription_id),
+                ),
             )
             for r in ordered
         ]
@@ -94,7 +90,7 @@ class SubscriptionMatcher:
             Subscription id, or None when the group is not subscribed.
         """
         for rule in self._compiled:
-            if any(rule.accepts(t) for t in titles):
+            if any(rule.filter.accepts(t) for t in titles):
                 return rule.subscription_id
         if show_id is not None:
             for rule in self._compiled:
