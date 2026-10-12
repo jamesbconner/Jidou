@@ -262,7 +262,9 @@ async def test_event_write_failure_does_not_disturb_work_session() -> None:
     completed = MagicMock(status=TaskStatus.COMPLETED.value)
     seen: dict[str, object] = {}
 
-    async def work(work_session: object, on_progress: object, on_event: object) -> WorkflowResult:
+    async def work(
+        work_session: object, on_progress: object, on_event: object, set_total: object
+    ) -> WorkflowResult:
         sink = EventSink(on_event, swallow_errors=True)  # type: ignore[arg-type]
         await sink("info", "event write will fail", None)
         seen["session"] = work_session
