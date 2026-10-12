@@ -16,7 +16,7 @@ from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
-from jidou.services.episode_tracking import dismiss_orphans_for_file
+from jidou.services.episode_tracking import dismiss_orphans_for_file, link_file_to_episode
 from jidou.services.filename_parser import FilenameParseResult, heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_resolution import resolve_show_local_path
@@ -282,13 +282,13 @@ class ParseOrchestrator:
         ep, season, episode = await self._resolve_matched_episode(
             file, show, season, episode, llm_active=llm_active, sink=sink
         )
-        file.episode_id = ep.id if ep is not None else None
-        if ep is not None:
-            # When the LLM returned season=None (anime absolute numbering),
-            # backfill parsed_season from the resolved episode so RouteOrchestrator
-            # can place the file in the correct Season NN directory.
-            if season is None and ep.season_number is not None:
-                file.parsed_season = ep.season_number
+        if ep is None:
+            file.episode_id = None
+        else:
+            # When the LLM returned season=None (anime absolute numbering), the
+            # helper backfills parsed_season from the resolved episode so
+            # RouteOrchestrator can place the file in the correct Season NN directory.
+            link_file_to_episode(file, ep)
             await dismiss_orphans_for_file(self.session, file.id)
         file.matched_by = MatchedBy.LLM if llm_active else MatchedBy.HEURISTIC
         file.status = FileStatus.MATCHED

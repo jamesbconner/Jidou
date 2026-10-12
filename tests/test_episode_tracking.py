@@ -9,6 +9,7 @@ from jidou.services.episode_tracking import (
     clear_episode_tracking,
     clear_if_unreferenced,
     dismiss_orphans_for_file,
+    link_file_to_episode,
     mark_episode_tracked,
 )
 
@@ -183,3 +184,29 @@ class TestDismissOrphansForFile:
         sql = str(compiled)
         assert "orphaned_tracking_records" in sql
         assert "7" in sql
+
+
+class TestLinkFileToEpisode:
+    @pytest.mark.parametrize(
+        ("file_season", "ep_season", "expected_season"),
+        [
+            (None, 3, 3),  # missing season is backfilled from the episode
+            (1, 3, 1),  # an existing season is never overwritten
+            (None, None, None),  # nothing to backfill with
+            (0, 3, 0),  # season 0 (specials) is a real value, not "missing"
+        ],
+    )
+    def test_link_file_to_episode_backfills_missing_season_only(
+        self, file_season: int | None, ep_season: int | None, expected_season: int | None
+    ) -> None:
+        file = MagicMock()
+        file.parsed_season = file_season
+        file.episode_id = None
+        ep = MagicMock()
+        ep.id = 42
+        ep.season_number = ep_season
+
+        link_file_to_episode(file, ep)
+
+        assert file.episode_id == 42
+        assert file.parsed_season == expected_season
