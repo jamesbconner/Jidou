@@ -71,6 +71,13 @@ export default [
               message: 'Pages and components must go through a hook in src/hooks/ instead of calling the API client.',
             },
           ],
+          // Also catch relative spellings such as '../api/client'.
+          patterns: [
+            {
+              group: ['**/api/client'],
+              message: 'Pages and components must go through a hook in src/hooks/ instead of calling the API client.',
+            },
+          ],
         },
       ],
       'no-restricted-syntax': [

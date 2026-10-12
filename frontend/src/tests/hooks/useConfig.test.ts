@@ -26,6 +26,20 @@ afterEach(() => {
 })
 
 describe('useConfig', () => {
+  test('a remount within staleTime reuses the cache (no second request)', async () => {
+    vi.mocked(fetch).mockResolvedValue(mockResponse({ media_paths: {} }))
+    const wrapper = makeWrapper() // one QueryClient shared by both mounts
+    const first = renderHook(() => useConfig(), { wrapper })
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true))
+    first.unmount()
+
+    const second = renderHook(() => useConfig(), { wrapper })
+    await waitFor(() => expect(second.result.current.isSuccess).toBe(true))
+
+    expect(second.result.current.isStale).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   test('keeps the historical ["config"] cache key', () => {
     expect(configKeys.all).toEqual(['config'])
   })

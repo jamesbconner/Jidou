@@ -60,6 +60,25 @@ describe('useTaskUntilDone', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  test('stops polling on a cancelled status too', async () => {
+    vi.mocked(fetch).mockResolvedValue(mockResponse({ id: 9, status: 'cancelled' }))
+    const { result } = renderHook(() => useTaskUntilDone(9, { intervalMs: 20 }), {
+      wrapper: makeWrapper(),
+    })
+    await waitFor(() => expect(result.current.data?.status).toBe('cancelled'))
+    await new Promise((r) => setTimeout(r, 100))
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  test('defaults to a 3 s poll interval for a non-terminal task', async () => {
+    vi.mocked(fetch).mockResolvedValue(mockResponse({ id: 10, status: 'running' }))
+    const { result } = renderHook(() => useTaskUntilDone(10), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.data?.status).toBe('running'))
+    // Well under 3 s: no second request yet.
+    await new Promise((r) => setTimeout(r, 300))
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   test.each([null, 0])('makes no request when id is %s', async (id) => {
     const { result } = renderHook(() => useTaskUntilDone(id, { intervalMs: 20 }), {
       wrapper: makeWrapper(),
