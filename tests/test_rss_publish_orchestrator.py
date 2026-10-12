@@ -1786,11 +1786,14 @@ async def test_publish_restarts_deluge_when_compose_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_event_failure_during_stop_still_restarts() -> None:
-    """on_event errors propagate from inside the paused region; restart still runs."""
+async def test_publish_event_failure_during_stop_is_swallowed() -> None:
+    """A failing on_event inside the paused region is swallowed; stop and restart both run."""
     from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 
     session = _make_session()
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
     sftp = MagicMock()
     sftp.upload_bytes = AsyncMock()
     sftp.run_command = AsyncMock()
@@ -1814,11 +1817,10 @@ async def test_publish_event_failure_during_stop_still_restarts() -> None:
         mock_orc = MagicMock()
         mock_orc.run = AsyncMock(return_value=_import_result_ok())
         cls.return_value = mock_orc
-        with pytest.raises(RuntimeError, match="sink down"):
-            await orc.run()
+        await orc.run()
 
-    sftp.run_command.assert_awaited_once_with(_START)  # stop never ran, restart did
-    sftp.upload_bytes.assert_not_called()
+    assert [c.args[0] for c in sftp.run_command.await_args_list] == [_STOP, _START]
+    assert sftp.upload_bytes.await_count >= 1  # the publish itself still ran
 
 
 @pytest.mark.asyncio

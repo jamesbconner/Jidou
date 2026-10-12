@@ -710,36 +710,38 @@ async def test_characterize_tmdb_failure_rolls_back_then_continues_in_order():
     assert "db.commit" not in calls
 
 
-async def test_characterize_raising_on_event_propagates_from_tmdb_summary():
-    """A raising on_event is NOT swallowed by sync: it aborts before the scan starts."""
+async def test_raising_on_event_is_swallowed_in_tmdb_summary():
+    """A raising on_event is swallowed by sync: the scan and later phases still run."""
     calls: list[str] = []
-    session = _scripted_session(calls, [])
+    session = _scripted_session(calls, [_scalars_all([])])  # gap query only
 
     async def boom(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
         calls.append("event")
         raise RuntimeError("sink down")
 
     stack, _ = _patched_pipeline(calls)
-    with stack, pytest.raises(RuntimeError, match="sink down"):
+    with stack:
         await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_event=boom)
 
-    assert calls == ["tmdb.sync_all_shows", "event"]
+    assert calls[:3] == ["tmdb.sync_all_shows", "event", "scan.run"]
+    assert "route.run" in calls
 
 
-async def test_characterize_raising_on_event_propagates_from_parse_summary():
-    """An on_event failure after Parse skips gap fill and Route."""
+async def test_raising_on_event_is_swallowed_in_parse_summary():
+    """An on_event failure after Parse is swallowed: gap fill and Route still run."""
     calls: list[str] = []
-    session = _scripted_session(calls, [])
+    session = _scripted_session(calls, [_scalars_all([])])  # gap query only
 
     async def boom_on_parse(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
         if message.startswith("Parse:"):
             raise RuntimeError("sink down")
 
     stack, _ = _patched_pipeline(calls)
-    with stack, pytest.raises(RuntimeError, match="sink down"):
+    with stack:
         await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_event=boom_on_parse)
 
-    assert calls == ["tmdb.sync_all_shows", "scan.run", "download.run", "parse.run"]
+    assert calls[:4] == ["tmdb.sync_all_shows", "scan.run", "download.run", "parse.run"]
+    assert "route.run" in calls
 
 
 async def test_characterize_cancellation_at_phase_5_after_gap_fill():

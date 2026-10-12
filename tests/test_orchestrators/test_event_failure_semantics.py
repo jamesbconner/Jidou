@@ -1,11 +1,8 @@
 """Characterization pins for how each orchestrator treats an ``on_event`` failure.
 
-These tests freeze the *current* behavior, which is deliberately inconsistent:
-download, parse, route and scan swallow an event-logging failure and finish the
-work; sync, path import, RSS import and RSS publish let it propagate and abort
-the run. A later approved
-roadmap item (DF-7) changes these semantics on purpose, so each test is named
-per orchestrator and is expected to be edited, not deleted, when that happens.
+These tests pin one rule (roadmap decision D13): an event-logging failure never
+aborts the work. Every orchestrator swallows (and logs) an ``on_event`` failure and
+finishes with the same result it would have produced with a healthy callback.
 
 Setups are borrowed from the existing per-orchestrator test modules so the
 failing ``on_event`` is the only variable.
@@ -104,8 +101,8 @@ async def test_scan_event_failure_is_swallowed(monkeypatch: pytest.MonkeyPatch) 
     assert result is not None
 
 
-async def test_sync_event_failure_propagates() -> None:
-    """SyncOrchestrator aborts with the on_event error instead of swallowing it."""
+async def test_sync_event_failure_is_swallowed() -> None:
+    """SyncOrchestrator finishes all phases when on_event raises."""
     session = sync_tests._make_session()
     sftp = MagicMock()
     sftp.max_workers = 4
@@ -126,39 +123,47 @@ async def test_sync_event_failure_propagates() -> None:
         mock_parse_cls.return_value.run = AsyncMock(return_value=sync_tests._make_parse_result())
         mock_route_cls.return_value.run = AsyncMock(return_value=sync_tests._make_route_result())
 
+        on_event = _failing_on_event()
         orch = SyncOrchestrator(session, sftp, tmdb)
-        with pytest.raises(RuntimeError, match="log down"):
-            await orch.run(on_event=_failing_on_event())
+        result = await orch.run(on_event=on_event)
+
+    assert on_event.await_count >= 1  # the failing callback really was hit
+    assert result is not None
+    # The last phase ran, so no failing summary event cut the run short.
+    mock_route_cls.return_value.run.assert_awaited_once()
 
 
-async def test_path_import_event_failure_propagates() -> None:
-    """PathImportOrchestrator aborts with the on_event error instead of swallowing it."""
+async def test_path_import_event_failure_is_swallowed() -> None:
+    """PathImportOrchestrator finishes when on_event raises."""
     # An empty run still emits the "LLM not configured" notice first, which is
     # enough to hit the callback without any TMDB/DB wiring.
-    orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), on_event=_failing_on_event())
+    on_event = _failing_on_event()
+    orch = PathImportOrchestrator(AsyncMock(), AsyncMock(), on_event=on_event)
 
-    with pytest.raises(RuntimeError, match="log down"):
-        await orch.run([])
+    await orch.run([])
+
+    assert on_event.await_count >= 1
 
 
-async def test_rss_import_event_failure_propagates() -> None:
-    """RssImportOrchestrator aborts with the on_event error instead of swallowing it."""
+async def test_rss_import_event_failure_is_swallowed() -> None:
+    """RssImportOrchestrator still downloads and imports when on_event raises."""
     sftp = MagicMock()
     sftp.download_bytes = AsyncMock(return_value=b"{}")
+    on_event = _failing_on_event()
     orch = RssImportOrchestrator(
-        MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=_failing_on_event()
+        MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=on_event
     )
 
-    with pytest.raises(RuntimeError, match="log down"):
-        await orch.run()
+    await orch.run()
 
-    # The very first event precedes the download, so a propagating failure
-    # means the remote config was never fetched.
-    sftp.download_bytes.assert_not_awaited()
+    # The very first event precedes the download, so a swallowed failure
+    # means the remote config was still fetched.
+    sftp.download_bytes.assert_awaited_once()
+    assert on_event.await_count >= 1
 
 
-async def test_rss_import_parse_error_event_failure_propagates() -> None:
-    """A failing on_event also aborts RssImportOrchestrator on its error-reporting path."""
+async def test_rss_import_parse_error_event_failure_is_swallowed() -> None:
+    """A failing on_event on the error-reporting path still records the parse error."""
     sftp = MagicMock()
     sftp.download_bytes = AsyncMock(return_value=b"not a yarss2 config")
     on_event = AsyncMock(side_effect=[None, RuntimeError("log down")])
@@ -166,26 +171,63 @@ async def test_rss_import_parse_error_event_failure_propagates() -> None:
         MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=on_event
     )
 
-    with pytest.raises(RuntimeError, match="log down"):
-        await orch.run()
+    result = await orch.run()
 
     assert on_event.await_count == 2
+    assert len(result.errors) == 1
+    assert "Failed to parse RSS config" in result.errors[0]
 
 
-async def test_rss_publish_event_failure_propagates() -> None:
-    """RssPublishOrchestrator aborts with the on_event error instead of swallowing it."""
+async def test_rss_publish_event_failure_is_swallowed() -> None:
+    """RssPublishOrchestrator runs reconciliation and finishes when on_event raises."""
     session = rss_publish_tests._make_session()
+    feed = rss_publish_tests._make_feed()
+    sub = rss_publish_tests._make_sub(feed=feed)
+    session.execute = AsyncMock(
+        side_effect=rss_publish_tests._std_execute_sides([feed], ["0"], [sub])
+    )
     sftp = MagicMock()
     sftp.upload_bytes = AsyncMock()
+    on_event = _failing_on_event()
 
     with patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as import_cls:
         import_cls.return_value.run = AsyncMock(return_value=rss_publish_tests._import_result_ok())
         orch = RssPublishOrchestrator(
+            session, sftp, "/remote/yarss2.conf", dry_run=True, on_event=on_event
+        )
+        result = await orch.run()
+
+    assert on_event.await_count >= 1
+    import_cls.return_value.run.assert_awaited_once()
+    assert not result.errors
+
+
+async def test_rss_publish_swallow_does_not_hide_work_errors() -> None:
+    """Swallowing covers only the event write: an error raised by the work still propagates."""
+    session = rss_publish_tests._make_session()
+    sftp = MagicMock()
+
+    with patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as import_cls:
+        import_cls.return_value.run = AsyncMock(side_effect=ValueError("sftp exploded"))
+        orch = RssPublishOrchestrator(
             session, sftp, "/remote/yarss2.conf", dry_run=True, on_event=_failing_on_event()
         )
-        with pytest.raises(RuntimeError, match="log down"):
+        with pytest.raises(ValueError, match="sftp exploded"):
             await orch.run()
 
-    # The failing first event precedes the pre-publish import and any upload.
-    import_cls.return_value.run.assert_not_awaited()
-    sftp.upload_bytes.assert_not_awaited()
+
+async def test_rss_import_swallowed_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """A swallowed event failure leaves a warning with the exception, not silence."""
+    sftp = MagicMock()
+    sftp.download_bytes = AsyncMock(return_value=b"{}")
+    orch = RssImportOrchestrator(
+        MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=_failing_on_event()
+    )
+
+    with caplog.at_level("WARNING"):
+        await orch.run()
+
+    records = [r for r in caplog.records if r.getMessage() == "Event logging failed; continuing"]
+    assert records
+    assert records[0].exc_info is not None
+    assert "log down" in str(records[0].exc_info[1])

@@ -273,8 +273,8 @@ class PathImportOrchestrator:
         self.dry_run = dry_run
         self.llm = llm
         self.on_event = on_event
-        # Propagating sink: path import has always aborted when the event callback fails.
-        self._emit = EventSink(on_event, swallow_errors=False)
+        # Event logging is best-effort: a broken sink is logged, never aborts the import.
+        self._emit = EventSink(on_event, swallow_errors=True)
         self.mode = mode
         self.local_tv_path = local_tv_path
         self.local_anime_path = local_anime_path
@@ -1086,7 +1086,7 @@ class PathImportOrchestrator:
         """Sync a just-created show's episodes from TMDB; failures are reported, not raised.
 
         The show row is already committed, so a failure here (including one in
-        the follow-up episode count or its event) only rolls back this step's
+        the follow-up episode count) only rolls back this step's
         own partial work and import proceeds with whatever was synced.
 
         Args:
@@ -1102,12 +1102,14 @@ class PathImportOrchestrator:
         if error is None:
             try:
                 ep_count = await count_show_episodes(self.session, show.id)
-                await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
             except Exception as exc:
-                # The count and the success event were part of the step, so
-                # a failure in either gets the same rollback and reporting.
+                # The count is part of the step, so a failure gets the same
+                # rollback and reporting. The success event is best-effort and
+                # outside the try: a failing sink must not roll back synced work.
                 await self.session.rollback()
                 error = exc
+            else:
+                await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
         if error is not None:
             await self._emit("error", f"Episode sync failed for '{title}': {error}")
             logger.error("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id, exc_info=error)
@@ -1135,13 +1137,10 @@ class PathImportOrchestrator:
             rollback_on_failure=True,
         )
         if error is None:
-            try:
-                await self._emit("info", f"Generated aliases for '{title}'")
-            except Exception as exc:
-                # The success event was part of the step; mirror a failed step.
-                await self.session.rollback()
-                error = exc
-        if error is not None:
+            # Best-effort event: a failing sink is swallowed by the emitter and must not
+            # undo the aliases that were just generated.
+            await self._emit("info", f"Generated aliases for '{title}'")
+        else:
             logger.warning(
                 "Alias generation failed for %r (tmdb_id=%d); "
                 "aliases can be regenerated via the Manage Aliases modal",
