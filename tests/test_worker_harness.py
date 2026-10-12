@@ -441,3 +441,30 @@ async def test_mark_task_timed_out_calls_update_and_emit() -> None:
     emitted = mock_emit.call_args.args[0]
     assert emitted["type"] == "error"
     assert emitted["celery_task_id"] == "task-123"
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_propagates_engine_creation_failure() -> None:
+    """Engine lifecycle errors are not swallowed; only the DB-write work is guarded."""
+    with (
+        patch("jidou.database.create_async_engine", side_effect=OSError("no engine")),
+        pytest.raises(OSError, match="no engine"),
+    ):
+        await mark_task_timed_out("task-eng")
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_message_and_ws_error_text() -> None:
+    """The persisted progress_message and the WS error text are part of the contract."""
+    mock_engine, _session, mock_factory = _worker_session_mocks()
+
+    with (
+        patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+    ):
+        await mark_task_timed_out("task-msg")
+
+    assert mock_update.call_args.kwargs["progress_message"] == "Task exceeded soft time limit"
+    assert mock_emit.call_args.args[0]["data"] == {"error": "Soft time limit exceeded"}

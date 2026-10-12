@@ -219,23 +219,26 @@ async def mark_task_timed_out(celery_task_id: str) -> None:
     Args:
         celery_task_id: The Celery task identifier.
     """
-    try:
-        async with task_sessionmaker() as session_factory, session_factory() as session:
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.FAILED,
-                progress_message="Task exceeded soft time limit",
-            )
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "error",
-                    "data": {"error": "Soft time limit exceeded"},
-                }
-            )
-    except Exception:
-        logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
+    # Engine create/dispose sit outside the try so their failures propagate, as
+    # they did when this function managed the engine itself.
+    async with task_sessionmaker() as session_factory:
+        try:
+            async with session_factory() as session:
+                await update_task_status(
+                    session,
+                    celery_task_id,
+                    TaskStatus.FAILED,
+                    progress_message="Task exceeded soft time limit",
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "error",
+                        "data": {"error": "Soft time limit exceeded"},
+                    }
+                )
+        except Exception:
+            logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
 
 
 def run_harnessed[T](celery_task_id: str, coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:

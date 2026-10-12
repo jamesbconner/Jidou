@@ -125,17 +125,19 @@ async def _delete_task_record(celery_task_id: str) -> None:
     """
     from sqlalchemy import delete
 
-    try:
-        async with task_sessionmaker() as session_factory, session_factory() as session:
-            await session.execute(
-                delete(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+    # Engine create/dispose stay outside the try: only the best-effort delete is swallowed.
+    async with task_sessionmaker() as session_factory:
+        try:
+            async with session_factory() as session:
+                await session.execute(
+                    delete(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+                )
+                await session.commit()
+        except Exception:
+            logger.exception(
+                "Failed to remove orphaned pending row task_id=%s; manual cleanup may be required",
+                celery_task_id,
             )
-            await session.commit()
-    except Exception:
-        logger.exception(
-            "Failed to remove orphaned pending row task_id=%s; manual cleanup may be required",
-            celery_task_id,
-        )
 
 
 async def _scheduled_sync() -> str:
