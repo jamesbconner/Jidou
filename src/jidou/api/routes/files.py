@@ -45,6 +45,7 @@ async def list_files(
     show_id: int | None = None,
     search: str | None = None,
     show_ignored: bool = False,
+    duplicates_only: bool = False,
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -58,6 +59,8 @@ async def list_files(
         show_ignored: When *status* is unset, include ``ignored`` files in the
             unfiltered result. Has no effect when *status* is explicitly
             provided — an explicit filter always wins.
+        duplicates_only: Only return files flagged as duplicates of an
+            earlier file for the same episode (``duplicate_of_file_id`` set).
         limit: Maximum results to return (1-1000, default 50).
         offset: Number of results to skip for pagination.
         response: FastAPI response object used to set ``X-Total-Count`` header.
@@ -89,6 +92,9 @@ async def list_files(
 
     if search is not None:
         filters.append(DownloadedFile.original_filename.ilike(f"%{search}%"))
+
+    if duplicates_only:
+        filters.append(DownloadedFile.duplicate_of_file_id.is_not(None))
 
     total = await db_session.scalar(
         select(func.count()).select_from(DownloadedFile).where(*filters)

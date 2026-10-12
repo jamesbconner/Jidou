@@ -1472,6 +1472,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "duplicate_of_file_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Of File Id"
+          },
           "episode": {
             "anyOf": [
               {
@@ -6772,7 +6783,7 @@
     },
     "/api/files": {
       "get": {
-        "description": "List tracked downloaded files with optional filters.\n\nArgs:\n    status: Filter by file status (``discovered``, ``downloaded``, etc.).\n    show_id: Filter by matched show ID.\n    search: Case-insensitive substring match on ``original_filename``.\n    show_ignored: When *status* is unset, include ``ignored`` files in the\n        unfiltered result. Has no effect when *status* is explicitly\n        provided \u2014 an explicit filter always wins.\n    limit: Maximum results to return (1-1000, default 50).\n    offset: Number of results to skip for pagination.\n    response: FastAPI response object used to set ``X-Total-Count`` header.\n    db_session: DB session (injected).\n\nReturns:\n    List of files ordered by creation time descending.\n\nRaises:\n    HTTPException: 400 if *status* is not a valid :class:`FileStatus`.",
+        "description": "List tracked downloaded files with optional filters.\n\nArgs:\n    status: Filter by file status (``discovered``, ``downloaded``, etc.).\n    show_id: Filter by matched show ID.\n    search: Case-insensitive substring match on ``original_filename``.\n    show_ignored: When *status* is unset, include ``ignored`` files in the\n        unfiltered result. Has no effect when *status* is explicitly\n        provided \u2014 an explicit filter always wins.\n    duplicates_only: Only return files flagged as duplicates of an\n        earlier file for the same episode (``duplicate_of_file_id`` set).\n    limit: Maximum results to return (1-1000, default 50).\n    offset: Number of results to skip for pagination.\n    response: FastAPI response object used to set ``X-Total-Count`` header.\n    db_session: DB session (injected).\n\nReturns:\n    List of files ordered by creation time descending.\n\nRaises:\n    HTTPException: 400 if *status* is not a valid :class:`FileStatus`.",
         "operationId": "list_files_api_files_get",
         "parameters": [
           {
@@ -6789,6 +6800,16 @@
                 }
               ],
               "title": "X-Api-Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "duplicates_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Duplicates Only",
+              "type": "boolean"
             }
           },
           {
