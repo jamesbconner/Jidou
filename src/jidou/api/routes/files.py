@@ -15,7 +15,6 @@ from jidou.api.dependencies import get_llm_service
 from jidou.api.lookups import get_or_404, one_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
-from jidou.models.episode import Episode
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
 from jidou.schemas.file_schema import (
     FileMatchRequest,
@@ -24,10 +23,11 @@ from jidou.schemas.file_schema import (
     VerifyPathsRequest,
     VerifyPathsResponse,
 )
-from jidou.services.episode_tracking import (
-    clear_if_unreferenced,
-    dismiss_orphans_for_file,
-    mark_episode_tracked,
+from jidou.services.file_relink import (
+    EpisodeAlreadyTrackedError,
+    EpisodeShowMismatchError,
+    reassign_show,
+    relink_episode,
 )
 from jidou.services.llm_service import LLMService
 from jidou.services.path_transport import decode_path_bytes
@@ -249,6 +249,34 @@ async def tmdb_suggestions(
     return {"query": query, "results": results}
 
 
+_PG_UNIQUE_VIOLATION = "23505"
+_PG_FOREIGN_KEY_VIOLATION = "23503"
+
+
+async def _flush_patch(db_session: AsyncSession) -> None:
+    """Flush a file PATCH, mapping constraint violations to client errors.
+
+    Raises:
+        HTTPException: 409 on a duplicate ``remote_path``; 422 on a dangling
+            ``show_id``/``episode_id`` foreign key.
+        IntegrityError: Any other integrity failure, re-raised after rollback.
+    """
+    try:
+        await db_session.flush()
+    except IntegrityError as exc:
+        await db_session.rollback()
+        pgcode = getattr(getattr(exc, "orig", None), "pgcode", None)
+        if pgcode == _PG_UNIQUE_VIOLATION:
+            raise HTTPException(
+                status_code=409, detail="A file with that remote_path already exists"
+            ) from None
+        if pgcode == _PG_FOREIGN_KEY_VIOLATION:
+            raise HTTPException(
+                status_code=422, detail="Referenced show_id or episode_id does not exist"
+            ) from None
+        raise
+
+
 @router.patch("/{file_id}", response_model=FileRead)
 async def patch_file(
     file_id: int,
@@ -276,70 +304,27 @@ async def patch_file(
         db_session, DownloadedFile, DownloadedFile.id == file_id, detail="File not found"
     )
 
-    if "show_id" in payload.model_fields_set:
-        show_changed = file.show_id != payload.show_id
-        file.show_id = payload.show_id
-        if show_changed:
-            if "episode_id" not in payload.model_fields_set:
-                file.episode_id = None
-            file.matched_by = None
-            if "error_message" not in payload.model_fields_set:
-                file.error_message = None
-            # Purge any orphan rows tied to this file — they reference the old
-            # show and resolving them after reassignment would corrupt show_id.
-            await dismiss_orphans_for_file(db_session, file.id)
-    if "episode_id" in payload.model_fields_set:
-        old_episode_id = file.episode_id
-        file.episode_id = payload.episode_id
-        if payload.episode_id is not None:
-            # Auto-dismiss any orphan record that was waiting for this file to be re-linked.
-            await dismiss_orphans_for_file(db_session, file.id)
-            # Mark the target episode as tracked so the UI and stats reflect the link.
-            ep = (
-                await db_session.execute(select(Episode).where(Episode.id == payload.episode_id))
-            ).scalar_one_or_none()
-            if ep is not None:
-                if file.show_id is not None and ep.show_id != file.show_id:
-                    raise HTTPException(
-                        status_code=422,
-                        detail="Episode does not belong to the file's show",
-                    )
-                if ep.file_tracked and old_episode_id != payload.episode_id:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Episode is already tracked by another file",
-                    )
-                mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
-                file.parsed_season = ep.season_number
-                file.parsed_episode = ep.episode_number
-        else:
-            file.parsed_season = None
-            file.parsed_episode = None
-        # Clear stale tracking on the previous episode only when no other file
-        # still points to it — mirrors the guard in manual_match_file.
-        await clear_if_unreferenced(db_session, old_episode_id, payload.episode_id)
-    if "status" in payload.model_fields_set and payload.status is not None:
-        file.status = FileStatus(payload.status)
-    if "error_message" in payload.model_fields_set:
-        file.error_message = payload.error_message
-
+    fields = payload.model_fields_set
     try:
-        await db_session.flush()
-    except IntegrityError as exc:
-        await db_session.rollback()
-        orig = getattr(exc, "orig", None)
-        pgcode = getattr(orig, "pgcode", None)
-        if pgcode == "23505":
-            raise HTTPException(
-                status_code=409,
-                detail="A file with that remote_path already exists",
-            ) from None
-        if pgcode == "23503":
-            raise HTTPException(
-                status_code=422,
-                detail="Referenced show_id or episode_id does not exist",
-            ) from None
-        raise
+        if "show_id" in fields:
+            await reassign_show(
+                db_session,
+                file,
+                payload.show_id,
+                keep_episode="episode_id" in fields,
+                keep_error="error_message" in fields,
+            )
+        if "episode_id" in fields:
+            await relink_episode(db_session, file, payload.episode_id)
+    except EpisodeShowMismatchError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except EpisodeAlreadyTrackedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if "status" in fields and payload.status is not None:
+        file.status = FileStatus(payload.status)
+    if "error_message" in fields:
+        file.error_message = payload.error_message
+    await _flush_patch(db_session)
     refreshed = (
         await db_session.execute(
             select(DownloadedFile)

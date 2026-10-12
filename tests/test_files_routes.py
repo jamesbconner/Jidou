@@ -1080,3 +1080,85 @@ def test_verify_paths_rejects_too_many_paths() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_patch_file_unknown_episode_skips_validation_and_still_links() -> None:
+    """PATCH episode_id for a row the lookup cannot find links without tracking checks."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=5)
+    f.episode_id = None
+
+    async def _missing_episode_session() -> AsyncMock:
+        session = AsyncMock()
+        file_result = MagicMock()
+        file_result.scalar_one_or_none.return_value = f
+        delete_result = MagicMock()
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = None
+        refreshed_result = MagicMock()
+        refreshed_result.scalar_one.return_value = f
+        session.execute = AsyncMock(
+            side_effect=[file_result, delete_result, ep_result, refreshed_result]
+        )
+        session.flush = AsyncMock()
+        yield session
+
+    app.dependency_overrides[get_session] = _missing_episode_session
+    try:
+        response = TestClient(app).patch("/api/files/1", json={"episode_id": 777})
+        assert response.status_code == 200
+        assert f.episode_id == 777
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_status_and_error_message_applied_together() -> None:
+    """PATCH applies status and an explicit error_message in the same request."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.ERROR)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).patch(
+            "/api/files/1", json={"status": "downloaded", "error_message": "fixed by hand"}
+        )
+        assert response.status_code == 200
+        assert f.status == FileStatus.DOWNLOADED
+        assert f.error_message == "fixed by hand"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_patch_file_unrecognised_integrity_error_is_reraised_after_rollback() -> None:
+    """An IntegrityError with an unmapped pgcode is rolled back and propagates (500)."""
+    from sqlalchemy.exc import IntegrityError
+
+    from jidou.database import get_session
+
+    f = _make_file(id=1, show_id=None)
+    orig = Exception("check constraint violated")
+    orig.pgcode = "23514"  # type: ignore[attr-defined]
+    rollback = AsyncMock()
+
+    async def _other_integrity_session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = f
+        # Without this, a missing re-raise would still 500 via the refresh
+        # query's unset mock, so the test would not pin the re-raise.
+        result.scalar_one.return_value = f
+        session.execute = AsyncMock(return_value=result)
+        session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
+        session.rollback = rollback
+        yield session
+
+    app.dependency_overrides[get_session] = _other_integrity_session
+    try:
+        response = TestClient(app, raise_server_exceptions=False).patch(
+            "/api/files/1", json={"show_id": 42}
+        )
+        assert response.status_code == 500
+        rollback.assert_awaited_once()
+    finally:
+        app.dependency_overrides.clear()
