@@ -40,9 +40,12 @@ class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        # Provenance tag read by models.show.show_columns(); metadata only, no DDL.
+        info={"source": "key"},
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
+        info={"source": "key"},
     )

@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from jidou.models.show import show_columns
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 # ---------------------------------------------------------------------------
@@ -269,3 +270,30 @@ def test_build_show_fields_excludes_caller_specific_fields() -> None:
     fields = build_show_fields({"name": "Show"}, 1, "tv")
     for key in ("content_type", "local_path", "aliases", "aliases_sources", "cached"):
         assert key not in fields
+
+
+def test_build_show_fields_writes_exactly_tmdb_columns() -> None:
+    """build_show_fields returns the tmdb-tagged columns plus tmdb_id and sys_name."""
+    data = {
+        "name": "Show",
+        "overview": "o",
+        "poster_path": "/p.jpg",
+        "backdrop_path": "/b.jpg",
+        "vote_average": 8.0,
+        "vote_count": 10,
+        "first_air_date": "2020-01-01",
+        "original_language": "ja",
+        "genres": [{"id": 16, "name": "Animation"}],
+        "origin_country": ["JP"],
+        "external_ids": {"imdb_id": "tt1"},
+        "episode_groups": [],
+        "status": "Ended",
+        "episode_run_time": [24],
+        "adult": False,
+        "type": "Scripted",
+    }
+
+    fields = build_show_fields(data, 42, "tv")
+
+    assert len(fields) > 20
+    assert set(fields) == show_columns("tmdb") | {"tmdb_id", "sys_name"}

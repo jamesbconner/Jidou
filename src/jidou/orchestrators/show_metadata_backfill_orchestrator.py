@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jidou.models.show import Show
+from jidou.models.show import Show, show_columns
 from jidou.services.callbacks import OnProgress
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # the show already exists and files may already be organized under its
 # current sys_name, unlike a rematch (a deliberate identity change) which
 # does intend to update it.
-_SKIP_FIELDS = frozenset({"sys_name"})
+_SKIP_FIELDS = show_columns("derived") & frozenset(build_show_fields({}, 0, "tv"))
 
 
 @dataclass
