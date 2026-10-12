@@ -7,12 +7,8 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import jidou.models  # noqa: F401 - registers every mapper on Base.metadata
 from jidou.config import settings
-from jidou.models.downloaded_file import DownloadedFile  # noqa: F401
-from jidou.models.episode import Episode  # noqa: F401
-from jidou.models.show import Show  # noqa: F401
-from jidou.models.task import BackgroundTask  # noqa: F401
-from jidou.models.watchlist import WatchlistEntry  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
