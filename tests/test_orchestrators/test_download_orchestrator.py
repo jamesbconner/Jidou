@@ -871,7 +871,7 @@ async def test_characterize_normal_batch_mixed_outcomes_trace():
     assert err.error_message == "boom"
     assert can.error_message == "Download interrupted"
     assert bad.local_path is None
-    assert ok.local_path == f"{_STAGING}/remote/ok.mkv"
+    assert ok.local_path == str(Path(_STAGING) / "remote" / "ok.mkv")
     assert (ok.file_size, ign.file_size) == (10, 30)
     assert ok.error_message is None
     assert ok.hash_sha256 == "f" * 64
