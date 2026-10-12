@@ -43,11 +43,10 @@ from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
-from jidou.services.path_resolution import resolve_show_local_path
+from jidou.services.path_resolution import auto_local_path_for
 from jidou.services.path_transport import basename_any
 from jidou.services.show_lookup import find_show_by_name, find_show_by_tmdb_id
 from jidou.services.synthetic_file import create_synthetic_import_file
-from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
@@ -646,15 +645,21 @@ class PathImportOrchestrator:
             # — that root reflects the raw (host-side) path typed into the import
             # file, not the container-side path every downstream filesystem
             # consumer (scan_show_directory, RouteOrchestrator) actually expects.
-            dir_name = show.sys_name or sanitize_sys_name(show.title)
-            show.local_path = resolve_show_local_path(
-                content_type=show.content_type,
-                media_type=show.media_type,
-                sys_name=dir_name,
-                local_tv_path=self.local_tv_path,
-                local_anime_path=self.local_anime_path,
-                local_movie_path=self.local_movie_path,
+            auto_path = auto_local_path_for(
+                show,
+                tv=self.local_tv_path,
+                anime=self.local_anime_path,
+                movie=self.local_movie_path,
             )
+            if auto_path is None:
+                # Only an existing show with no content_type lands here: every
+                # show this import creates gets one.
+                logger.warning(
+                    "Cannot auto-set local_path for show id=%d: content_type unknown",
+                    show.id,
+                )
+                return
+            show.local_path = auto_path
             logger.debug("Set local_path=%r for show id=%d", show.local_path, show.id)
         elif not set_local_path:
             await self._emit(

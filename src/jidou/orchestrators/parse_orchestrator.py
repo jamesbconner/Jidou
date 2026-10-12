@@ -19,9 +19,8 @@ from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file, link_file_to_episode
 from jidou.services.filename_parser import FilenameParseResult, heuristic_se, parse_filename
 from jidou.services.llm_service import LLMService
-from jidou.services.path_resolution import resolve_show_local_path
+from jidou.services.path_resolution import auto_local_path_for
 from jidou.services.show_lookup import find_show_by_name
-from jidou.services.sys_name import sanitize_sys_name
 
 logger = logging.getLogger(__name__)
 
@@ -96,28 +95,25 @@ class ParseOrchestrator:
         self.local_anime_path = local_anime_path
         self.local_movie_path = local_movie_path
 
-    def _resolve_local_path(self, show: Show) -> str:
-        """Compute ``show.local_path`` from the show's sys_name and content type.
+    def _resolve_local_path(self, show: Show) -> str | None:
+        """Compute ``show.local_path`` from this run's library roots.
 
         Call this *after* backfilling ``show.content_type`` so the show's own
-        classification is always authoritative.  Priority: ``show.content_type``
-        → ``show.media_type`` → default TV.
+        classification is always authoritative. See
+        :func:`~jidou.services.path_resolution.auto_local_path_for` for the rule.
 
         Args:
             show: The matched show record (content_type should already be set).
 
         Returns:
-            Absolute path string for the show's root directory.
+            Absolute path string for the show's root directory, or None when
+            the show's library is ambiguous (no content_type, not a movie).
         """
-        # sys_name is pre-sanitized; fall back to title with invalid chars stripped.
-        dir_name = show.sys_name or sanitize_sys_name(show.title)
-        return resolve_show_local_path(
-            content_type=show.content_type,
-            media_type=show.media_type,
-            sys_name=dir_name,
-            local_tv_path=self.local_tv_path,
-            local_anime_path=self.local_anime_path,
-            local_movie_path=self.local_movie_path,
+        return auto_local_path_for(
+            show,
+            tv=self.local_tv_path,
+            anime=self.local_anime_path,
+            movie=self.local_movie_path,
         )
 
     async def _find_show(self, parsed_name: str) -> Show | None:
@@ -146,15 +142,17 @@ class ParseOrchestrator:
         Args:
             show: The matched show (``content_type`` already backfilled).
         """
-        can_auto_path = bool(show.content_type) or show.media_type == "movie"
-        if show.local_path is None and can_auto_path:
-            show.local_path = self._resolve_local_path(show)
+        if show.local_path is not None:
+            return
+        auto_path = self._resolve_local_path(show)
+        if auto_path is not None:
+            show.local_path = auto_path
             logger.debug(
                 "Auto-set local_path=%r for show id=%d",
                 show.local_path,
                 show.id,
             )
-        elif show.local_path is None:
+        else:
             logger.warning(
                 "Cannot auto-set local_path for show id=%d: "
                 "content_type unknown — set it manually via PATCH /shows/%d",

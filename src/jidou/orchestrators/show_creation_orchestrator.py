@@ -12,6 +12,7 @@ from typing import Any, Self
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.config import settings
 from jidou.models.show import ContentType, Show
 from jidou.orchestrators._show_provisioning import (
     generate_aliases_best_effort,
@@ -22,7 +23,8 @@ from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas._base import MediaType
 from jidou.schemas.show_schema import ShowCreate
 from jidou.services.llm_service import LLMService
-from jidou.services.show_creation import auto_local_path, infer_content_type
+from jidou.services.path_resolution import auto_local_path_for
+from jidou.services.show_creation import infer_content_type
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
@@ -195,6 +197,23 @@ async def _generate_aliases_best_effort(
         )
 
 
+def _auto_local_path(show: Show) -> str | None:
+    """Apply the shared ``local_path`` rule with the configured library roots.
+
+    Args:
+        show: The show being created (``content_type`` and ``sys_name`` set).
+
+    Returns:
+        The default container-side path, or None if the rule declines.
+    """
+    return auto_local_path_for(
+        show,
+        tv=settings.local_tv_path,
+        anime=settings.local_anime_path,
+        movie=settings.local_movie_path,
+    )
+
+
 async def get_or_create_show_from_tmdb(
     session: AsyncSession,
     tmdb: TMDBService,
@@ -238,7 +257,6 @@ async def get_or_create_show_from_tmdb(
 
     sys_name = payload.sys_name or sanitize_sys_name(payload.title)
     content_type = payload.content_type or infer_content_type(payload)
-    local_path = payload.local_path or auto_local_path(content_type, sys_name)
 
     try:
         tmdb_data = await fetch_show_metadata(tmdb, payload.tmdb_id, payload.media_type)
@@ -261,11 +279,13 @@ async def get_or_create_show_from_tmdb(
     show = Show(
         **fields,
         content_type=content_type,
-        local_path=local_path,
         sys_name=sys_name,
         cached=False,
         track_missing_episodes=True,
     )
+    # content_type is always set here (given or inferred), so the shared rule
+    # always yields a path; an explicit payload path still wins.
+    show.local_path = payload.local_path or _auto_local_path(show)
 
     async def refind() -> Show:
         winner = await _existing_show(session, tmdb, payload.tmdb_id)
