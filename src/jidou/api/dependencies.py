@@ -5,6 +5,7 @@ from fastapi import Header, HTTPException, Request, status
 from jidou.config import settings
 from jidou.services.feed_fetch import FeedFetchService
 from jidou.services.llm_service import LLMService, create_llm_service
+from jidou.services.tmdb import TMDBService
 
 
 def get_llm_service(request: Request) -> LLMService:
@@ -38,6 +39,21 @@ def get_feed_fetch_service() -> FeedFetchService:
         The shared service (it holds no per-request state).
     """
     return _feed_fetch_service
+
+
+_tmdb = TMDBService()
+
+
+async def get_tmdb() -> TMDBService:
+    """Return the process-wide :class:`TMDBService`.
+
+    One instance is shared so its response cache and rate limiter apply
+    across every request and every router that needs TMDB.
+
+    Returns:
+        The shared TMDB service.
+    """
+    return _tmdb
 
 
 async def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:

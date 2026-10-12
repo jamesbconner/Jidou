@@ -11,7 +11,6 @@ Run sequence:
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from rapidfuzz import fuzz, process
@@ -20,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
+from jidou.orchestrators._events import log_only_event
+from jidou.services.callbacks import OnEvent
 from jidou.services.rss_config import compute_subscription_deltas, parse_rss_config
 from jidou.services.sftp_service import SFTPService
 
@@ -69,8 +70,6 @@ def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None
     return show_by_lower_title[matched_lower_title]
 
 
-_OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
-
 # Fields carried from the parsed remote dict directly into a new DB row.
 # Remote-owned fields (last_match, active) are included so the initial row
 # reflects what the remote says at import time.
@@ -116,11 +115,6 @@ class RssImportResult:
     errors: list[str] = field(default_factory=list)
 
 
-async def _default_on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
-    """No-op event callback used when caller does not provide one."""
-    logger.log(logging.INFO if level == "info" else logging.WARNING, "%s", msg)
-
-
 class RssImportOrchestrator:
     """Imports a remote YaRSS2 config into the Jidou database.
 
@@ -139,14 +133,14 @@ class RssImportOrchestrator:
         sftp: SFTPService,
         remote_path: str,
         dry_run: bool = False,
-        on_event: _OnEvent | None = None,
+        on_event: OnEvent | None = None,
         snapshot_type: str = "import",
     ) -> None:
         self._session = session
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
-        self._on_event = on_event or _default_on_event
+        self._on_event = on_event or log_only_event
         self._snapshot_type = snapshot_type
 
     async def run(self) -> RssImportResult:

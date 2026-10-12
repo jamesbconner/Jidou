@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from jidou.api.dependencies import get_llm_service
-from jidou.api.routes.shows import get_tmdb
+from jidou.api.dependencies import get_llm_service, get_tmdb
 from jidou.database import get_session
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription

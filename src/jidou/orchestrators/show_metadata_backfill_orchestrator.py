@@ -1,13 +1,13 @@
 """Orchestrator for backfilling incomplete TMDB metadata on existing shows."""
 
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
+from jidou.services.callbacks import OnProgress
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
@@ -56,7 +56,7 @@ class ShowMetadataBackfillOrchestrator:
         self,
         *,
         dry_run: bool = False,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
     ) -> MetadataBackfillResult:
         """Backfill TMDB metadata for every show with no genre data.
 
