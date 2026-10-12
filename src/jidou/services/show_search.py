@@ -50,7 +50,7 @@ class ShowSearchHit:
     matched_on: MatchedOn
 
 
-def _escape_like(value: str) -> str:
+def escape_like(value: str) -> str:
     """Escape ``%``, ``_`` and the escape character itself for a LIKE pattern."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -134,7 +134,7 @@ async def search_local_shows(
     if len(needle) < MIN_QUERY_LENGTH:
         return []
 
-    pattern = f"%{_escape_like(needle)}%"
+    pattern = f"%{escape_like(needle)}%"
     basename = func.regexp_replace(func.rtrim(Show.local_path, "/"), "^.*/", "")
     # `aliases` can hold a JSON null (distinct from SQL NULL) or another
     # non-array value; jsonb_array_elements_text raises on those, which would

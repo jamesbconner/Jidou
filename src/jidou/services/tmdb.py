@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from typing import Any
+from typing import Any, Final
 
 import httpx2 as httpx
 
@@ -36,6 +36,29 @@ _TTL_OVERRIDES: tuple[tuple[str, int], ...] = (
 # the episodes after TMDB fills them in.
 _EMPTY_SEASON_TTL = 3_600  # 1 hour
 _SEASON_ENDPOINT = re.compile(r"^/tv/\d+/season/\d+$")
+
+
+# Media types accepted by TMDB endpoints that also serve "multi" (trending, search)
+# versus those that exist only per title (details, images, ...).
+_ANY_MEDIA: Final = frozenset({"movie", "tv", "multi"})
+_TITLE_MEDIA: Final = frozenset({"movie", "tv"})
+
+
+def _require_media_type(media_type: str, allowed: frozenset[str]) -> None:
+    """Validate *media_type* before any cache lookup or network call is made.
+
+    Args:
+        media_type: Value supplied by the caller.
+        allowed: Either :data:`_ANY_MEDIA` or :data:`_TITLE_MEDIA`.
+
+    Raises:
+        ValueError: If *media_type* is not in *allowed*.
+    """
+    if media_type not in allowed:
+        # Two fixed messages (one per allowed set) keep the text identical to
+        # what callers and tests have always seen.
+        expected = "'movie', 'tv', or 'multi'" if "multi" in allowed else "'movie' or 'tv'"
+        raise ValueError(f"Invalid media_type: {media_type!r}. Must be {expected}.")
 
 
 def _ttl_for_endpoint(endpoint: str) -> int | None:
@@ -296,10 +319,7 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* or *time_window* are invalid.
         """
-        if media_type not in {"movie", "tv", "multi"}:
-            raise ValueError(
-                f"Invalid media_type: {media_type!r}. Must be 'movie', 'tv', or 'multi'."
-            )
+        _require_media_type(media_type, _ANY_MEDIA)
         if time_window not in {"day", "week"}:
             raise ValueError(f"Invalid time_window: {time_window!r}. Must be 'day' or 'week'.")
         return await self._request(f"/trending/{media_type}/{time_window}")
@@ -317,13 +337,12 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv", "multi"}:
-            raise ValueError(
-                f"Invalid media_type: {media_type!r}. Must be 'movie', 'tv', or 'multi'."
-            )
+        _require_media_type(media_type, _ANY_MEDIA)
         return await self._request(f"/search/{media_type}", params={"query": query})
 
-    async def get_details(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
+    async def get_details(
+        self, tmdb_id: int, media_type: str = "tv", bypass_cache: bool = False
+    ) -> dict[str, Any]:
         """Get detailed information for a specific show or movie.
 
         Args:
@@ -336,9 +355,8 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
-        return await self._request(f"/{media_type}/{tmdb_id}")
+        _require_media_type(media_type, _TITLE_MEDIA)
+        return await self._request(f"/{media_type}/{tmdb_id}", bypass_cache=bypass_cache)
 
     async def get_recommendations(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
         """Get recommendations for a show or movie.
@@ -353,8 +371,7 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/recommendations")
 
     async def get_similar(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
@@ -375,8 +392,7 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/similar")
 
     # ------------------------------------------------------------------
@@ -396,7 +412,7 @@ class TMDBService:
         Returns:
             Dictionary containing show details including ``seasons`` list.
         """
-        return await self._request(f"/tv/{tmdb_id}", bypass_cache=bypass_cache)
+        return await self.get_details(tmdb_id, "tv", bypass_cache=bypass_cache)
 
     async def get_season_details(
         self, tmdb_id: int, season_number: int, bypass_cache: bool = False
@@ -420,28 +436,6 @@ class TMDBService:
             f"/tv/{tmdb_id}/season/{season_number}", bypass_cache=bypass_cache
         )
 
-    async def get_episode_details(
-        self, tmdb_id: int, season_number: int, episode_number: int
-    ) -> dict[str, Any]:
-        """Get details for a specific episode.
-
-        Args:
-            tmdb_id: TMDB identifier of the TV show.
-            season_number: Season number (1-based).
-            episode_number: Episode number within the season (1-based).
-
-        Returns:
-            Dictionary containing episode metadata.
-
-        Raises:
-            ValueError: If *season_number* or *episode_number* are not positive.
-        """
-        if season_number < 1:
-            raise ValueError(f"season_number must be >= 1, got {season_number}")
-        if episode_number < 1:
-            raise ValueError(f"episode_number must be >= 1, got {episode_number}")
-        return await self._request(f"/tv/{tmdb_id}/season/{season_number}/episode/{episode_number}")
-
     # ------------------------------------------------------------------
     # Images
     # ------------------------------------------------------------------
@@ -462,8 +456,7 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/alternative_titles")
 
     async def get_external_ids(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
@@ -479,8 +472,7 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/external_ids")
 
     async def get_episode_groups(self, tmdb_id: int) -> dict[str, Any]:
@@ -528,6 +520,5 @@ class TMDBService:
         Raises:
             ValueError: If *media_type* is invalid.
         """
-        if media_type not in {"movie", "tv"}:
-            raise ValueError(f"Invalid media_type: {media_type!r}. Must be 'movie' or 'tv'.")
+        _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/images")
