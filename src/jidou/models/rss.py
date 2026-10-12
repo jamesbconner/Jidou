@@ -151,6 +151,6 @@ class RssConfigSnapshot(TimestampMixin, Base):
     def __repr__(self) -> str:
         """Return a concise representation of the RssConfigSnapshot."""
         return (
-            f"<RssConfigSnapshot(id={self.id}, type={self.snapshot_type.value!r}, "
+            f"<RssConfigSnapshot(id={self.id}, type={str(self.snapshot_type)!r}, "
             f"len={len(self.raw_content)})>"
         )
