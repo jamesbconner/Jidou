@@ -2,7 +2,6 @@
 
 import logging
 import re
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -49,7 +48,7 @@ from jidou.services.feed_entry_grouping import FeedEntryGroup, group_entries
 from jidou.services.feed_fetch import FeedFetchError, FeedFetchService
 from jidou.services.feed_subscription_match import SubscriptionMatcher, SubscriptionRule
 from jidou.services.llm_service import LLMService
-from jidou.services.progress import TaskDispatchError, enqueue_task
+from jidou.services.progress import TaskDispatchError
 from jidou.services.rss_config import (
     diff_rss_config,
     fill_missing_yarss2_defaults,
@@ -62,6 +61,7 @@ from jidou.services.rss_regex_suggestor import (
     RssRegexSuggestor,
 )
 from jidou.services.show_lookup import find_show_by_name
+from jidou.services.task_dispatch import CeleryTaskRef, enqueue_celery_task
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
@@ -1070,23 +1070,16 @@ async def trigger_rss_import(
             detail="RSS_CONFIG_REMOTE_PATH is not configured.",
         )
 
-    task_id = str(uuid.uuid4())
-
-    def _dispatch() -> None:
-        # Delayed import avoids circular references with the Celery app, and
-        # keeps a failure here (e.g. a broken worker module) inside
-        # enqueue_task's failure handling rather than surfacing unhandled.
-        from jidou.workers.rss_tasks import rss_import_task
-
-        rss_import_task.apply_async(args=[dry_run], task_id=task_id)
-
     try:
-        new_task = await enqueue_task(db_session, task_id, "rss_import", _dispatch, dry_run=dry_run)
+        return await enqueue_celery_task(
+            db_session,
+            "rss_import",
+            CeleryTaskRef("jidou.workers.rss_tasks", "rss_import_task"),
+            args=[dry_run],
+            dry_run=dry_run,
+        )
     except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
-
-    logger.info("Enqueued RSS import task %s (dry_run=%s)", task_id, dry_run)
-    return new_task
 
 
 @router.post("/publish", response_model=TaskRead, status_code=202)
@@ -1117,22 +1110,13 @@ async def trigger_rss_publish(
             detail="RSS_CONFIG_REMOTE_PATH is not configured.",
         )
 
-    task_id = str(uuid.uuid4())
-
-    def _dispatch() -> None:
-        # Delayed import avoids circular references with the Celery app, and
-        # keeps a failure here (e.g. a broken worker module) inside
-        # enqueue_task's failure handling rather than surfacing unhandled.
-        from jidou.workers.rss_tasks import rss_publish_task
-
-        rss_publish_task.apply_async(args=[dry_run], task_id=task_id)
-
     try:
-        new_task = await enqueue_task(
-            db_session, task_id, "rss_publish", _dispatch, dry_run=dry_run
+        return await enqueue_celery_task(
+            db_session,
+            "rss_publish",
+            CeleryTaskRef("jidou.workers.rss_tasks", "rss_publish_task"),
+            args=[dry_run],
+            dry_run=dry_run,
         )
     except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Task broker unavailable") from exc
-
-    logger.info("Enqueued RSS publish task %s (dry_run=%s)", task_id, dry_run)
-    return new_task

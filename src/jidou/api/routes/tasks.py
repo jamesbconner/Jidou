@@ -1,7 +1,5 @@
 """API routes for background task management."""
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask, TaskStatus
 from jidou.schemas.task_schema import TaskList, TaskRead, TaskTrigger
+from jidou.services.progress import TaskDispatchError
+from jidou.services.task_dispatch import UnknownTaskTypeError, dispatch_registered_task
 from jidou.workers.celery_app import celery_app
 
 router = APIRouter(tags=["tasks"])
@@ -135,72 +135,11 @@ async def trigger_task(
     Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,
     ``seed``, ``backfill_show_metadata``.
     """
-    if payload.task_type not in {
-        "download",
-        "scan",
-        "match",
-        "route",
-        "sync",
-        "seed",
-        "backfill_show_metadata",
-    }:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown task type: {payload.task_type}",
-        )
-
-    # Delayed import to avoid circular reference with Celery
-    from jidou.services.progress import TaskDispatchError, enqueue_task, get_active_task
-    from jidou.workers.backfill_tasks import backfill_show_metadata_task
-    from jidou.workers.download_tasks import download_files_task
-    from jidou.workers.match_tasks import match_files_task
-    from jidou.workers.route_tasks import route_files_task
-    from jidou.workers.scan_tasks import scan_remote_task
-    from jidou.workers.seed_tasks import seed_remote_task
-    from jidou.workers.sync_tasks import sync_all_task
-
-    # RouteOrchestrator selects all MATCHED/ROUTING files upfront and commits
-    # each file's status transition individually inside the loop, rather than
-    # claiming rows atomically -- two overlapping route dispatches can each
-    # see the same still-MATCHED file in their own initial SELECT and both
-    # route it, producing duplicate copies at the destination. RematchModal
-    # triggers a route dispatch after every single fix, so fixing several
-    # files in quick succession reliably overlaps. Reuse the existing active
-    # task instead of starting a second one -- it already covers whatever
-    # this call would have routed, since the query is a global "everything
-    # currently MATCHED" scan, not scoped to one file.
-    if payload.task_type == "route":
-        active = await get_active_task(db_session, "route")
-        if active is not None:
-            return active
-
-    # Pre-generate task ID so the DB row exists before the worker can start.
-    # Workers call create_task_record too (idempotent upsert), so they will
-    # find the row already present and skip the INSERT.
-    task_id = str(uuid.uuid4())
-
-    def _dispatch() -> None:
-        if payload.task_type == "download":
-            download_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "scan":
-            scan_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "match":
-            match_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "route":
-            route_files_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "sync":
-            sync_all_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "seed":
-            seed_remote_task.apply_async(args=[payload.dry_run], task_id=task_id)
-        elif payload.task_type == "backfill_show_metadata":
-            backfill_show_metadata_task.apply_async(args=[payload.dry_run], task_id=task_id)
-
-    # Dispatch with the pre-generated ID — eliminates the race condition.
-    # If the broker is unreachable, enqueue_task marks the row FAILED so it
-    # does not stay PENDING with no Celery job to ever advance it.
     try:
-        return await enqueue_task(
-            db_session, task_id, payload.task_type, _dispatch, dry_run=payload.dry_run
+        return await dispatch_registered_task(
+            db_session, payload.task_type, dry_run=payload.dry_run
         )
+    except UnknownTaskTypeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except TaskDispatchError as exc:
         raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
