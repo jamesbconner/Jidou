@@ -28,6 +28,7 @@ from jidou.schemas.show_schema import (
     RematchRequest,
     ShowAliasesUpdate,
     ShowCreate,
+    ShowIndexEntry,
     ShowList,
     ShowPatch,
     ShowPaths,
@@ -107,6 +108,47 @@ async def search_shows(
     """
     hits = await search_local_shows(db_session, query, limit=limit)
     return [ShowSearchResult.model_validate(hit) for hit in hits]
+
+
+# Columns of the library index, in ShowIndexEntry field order. Selecting bare
+# columns (not the Show entity) keeps the query to one round trip with no ORM
+# identity-map work and no relationship loading, however large the library is.
+_INDEX_COLUMNS = (
+    Show.id,
+    Show.tmdb_id,
+    Show.title,
+    Show.sys_name,
+    Show.aliases,
+    Show.media_type,
+    Show.content_type,
+    Show.local_path,
+)
+
+
+@router.get("/index", response_model=list[ShowIndexEntry])
+async def list_show_index(
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[ShowIndexEntry]:
+    """Return the lightweight index of every show in the library.
+
+    Meant for pickers and ``tmdb_id:media_type`` lookups that need the whole
+    library but none of the per-show counts ``GET /shows`` computes. It is a
+    single column-only query with no pagination, sized for libraries of
+    several thousand shows. Registered before ``/{show_id}`` so the literal
+    path is not captured by the integer route.
+
+    Ordering is deterministic: ``title`` ascending (database collation), then
+    ``id`` ascending as the tie-breaker for shows sharing a title.
+
+    Args:
+        db_session: DB session (injected).
+
+    Returns:
+        One entry per show, ordered by title then id.
+    """
+    stmt = select(*_INDEX_COLUMNS).order_by(Show.title.asc(), Show.id.asc())
+    rows = (await db_session.execute(stmt)).mappings().all()
+    return [ShowIndexEntry.model_validate(dict(row)) for row in rows]
 
 
 @router.get("", response_model=list[ShowList])
