@@ -198,7 +198,7 @@ decision in §7).
 | 46 | ORC-8 | Domain errors with one HTTP handler; TMDB injected into manual match | ORC-3, API-8 | refactor (status codes and bodies unchanged) |
 | 47 | XL-2 | `RegexSuggestionError` moved onto the domain errors (R5) | ORC-8, SVC-8 | refactor |
 | 48 | ORC-11 | Path import decomposition | ORC-3, SVC-8 | refactor |
-| 49 | WRK-5 | Scheduled-task table; harness `_finish`; **trending task deleted** | WRK-2, MDL-2 | behavior (B4, D3) |
+| 49 | WRK-5 | Scheduled-task table; harness `_finish`; unused loggers and default arguments removed (the trending task is **kept**, see jamesbconner/Jidou#655) | WRK-2, MDL-2 | refactor |
 | 50 | SCH-4 | Response vocabularies typed as enums; types regenerated | SCH-1, MDL-3 | contract |
 
 ### Wave 4 — Closeout
@@ -267,7 +267,6 @@ JSON values.
 | B1 | SVC-3 | `llm_match_episode` returns the lowest-id row on duplicate episodes instead of raising `MultipleResultsFound` | It is a bug fix and matches the rest of `resolve_episode` (issue #313) |
 | B2 | FE-2 | The Settings page caches `/config` for 60 s like the other 6 callers, and redundant refetches of the same query key are dropped | No visible effect; fewer requests |
 | B3 | MDL-5 | Two new non-unique indexes on `episodes`, built concurrently | Performance only; downgrade drops them |
-| B4 | WRK-5 | `fetch_trending_shows_task` is deleted | It is unreachable from the beat schedule, the API and the frontend, and it would write non-library rows into `shows`. Gated on **D3**. |
 | — | SCH-3, SCH-4, ORC-8 | OpenAPI component names and enum `$ref`s change; HTTP errors come from one handler | JSON values, status codes and `detail` strings are unchanged; frontend types are regenerated in the same PR |
 
 ## 7. Decision register
@@ -282,7 +281,7 @@ each becomes a small PR scheduled after the item named in "When".
 |---|---|---|---|---|
 | D1 | **Version bumps.** Each layer plan says every PR ends with a version bump, which would mean 57 bumps. | **Bump once per wave** (5 bumps), each with a CHANGELOG entry listing that wave's PRs. Refactor PRs should not each claim a release. | Before Wave 0 | All plans, Global Constraints |
 | D2 | **Serial vs parallel.** The API plan says "work serially". | **Two lanes.** The backend items run serially in §4 order, and FE-1…FE-7 run serially in a parallel frontend lane, because they touch disjoint files. Only FE-8 waits for SCH-3/SCH-4. This roughly halves the calendar time with no added merge risk. | Before Wave 0 | API plan Global Constraints |
-| D3 | **Gate WRK-5.** Delete `fetch_trending_shows_task`? | **Delete**, unless you trigger it by hand with `celery call`. It is unreachable, and it writes trending titles into the library table. | Before item 49 | Workers spec §5 D1 |
+| D3 | Delete `fetch_trending_shows_task`? | **Decided: keep.** The program does not touch it, beyond WRK-2's `task_sessionmaker`. Putting it to use, and moving its writes out of the library `shows` table, is tracked in jamesbconner/Jidou#655. | Decided | Workers spec §5 D1 |
 
 ### API contract and validation
 
@@ -364,6 +363,6 @@ Each item is a candidate for a later program, with a suggested priority.
 - **Dependencies:** every hard prerequisite from the layer plans'
   "Must run after" columns is met by the order in §4. R1 deliberately
   reverses one of them (MDL-2 now runs before SVC-9 and WRK-5).
-- **Behavior:** the only behavior changes are B1–B4 and the
+- **Behavior:** the only behavior changes are B1–B3 and the
   contract-only changes in §6. Every other change in behavior waits on
   a decision in §7.

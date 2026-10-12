@@ -33,7 +33,8 @@ There are three real hotspots: `_db_import` (16), its inner `_work` (15),
 and `run_task_workflow` (9). There is one unreachable task,
 `fetch_trending_shows_task`. It is registered with Celery but nothing
 schedules or dispatches it, and if it ran it would upsert TMDB trending
-titles into the user's library `shows` table.
+titles into the user's library `shows` table. **Decision: keep it**
+(roadmap D3); putting it to use is tracked in jamesbconner/Jidou#655.
 
 ## 2. Structural map of current dependencies
 
@@ -97,7 +98,7 @@ Final ratchet target for `src/jidou/workers`: **8**.
 
 | ID | Item | Evidence | Action |
 |---|---|---|---|
-| D1 | `tasks.py` `fetch_trending_shows_task` / `_fetch_trending` | No reference in `src/` or `frontend/src` outside its own module. It is not in the beat schedule, not in the API's task dispatch, and not in import or RSS routes. Only `tests/test_workers.py` calls it. | Delete the module, its `include` entry and its tests. **If it is triggered by hand with `celery call`, keep it instead and say so in the PR.** |
+| D1 | `tasks.py` `fetch_trending_shows_task` / `_fetch_trending` | No reference in `src/` or `frontend/src` outside its own module. It is not in the beat schedule, not in the API's task dispatch, and not in import or RSS routes. Only `tests/test_workers.py` calls it. | **Keep** (roadmap decision D3). Using it, and fixing where it writes, is tracked in jamesbconner/Jidou#655. |
 | D2 | `logger = logging.getLogger(__name__)` that is never used | backfill, download, match, route, rss, scan, seed, sync task modules (8) | Remove |
 | D3 | `progress_total=0` passed explicitly | 10 calls to `run_task_workflow` (the default is 0) | Remove the argument (sync keeps `5`) |
 | D4 | `known_hosts=None` passed explicitly | 5 SFTP constructions | Gone with W2 |
@@ -131,7 +132,8 @@ Final ratchet target for `src/jidou/workers`: **8**.
 - **High:** W1 entrypoint, W4 task-scoped engine, W2/W3 factories and
   summaries, W5/W6 `db_import` decomposition.
 - **Medium:** W7/W8 scheduled-task table using the shared status
-  helpers, the harness hotspot, D1–D5.
+  helpers, the harness hotspot, D2–D5 (D1, the trending task, is kept; see
+  jamesbconner/Jidou#655).
 - **Low:** W9 Redis lock helper, W10 library-root helper, W11 shared
   long-task limits plus the visibility-timeout invariant test.
 
@@ -146,9 +148,9 @@ Final ratchet target for `src/jidou/workers`: **8**.
   workers plan moves `mark_task_timed_out`, whose only callers are
   workers, from `services/progress.py` into `workers/_harness.py`. The
   merged plan should do both moves together.
-- **API plan Task 8** builds `TASK_REGISTRY` from the task names. D1
-  removes a task that is not in that registry, so the two do not
-  overlap.
+- **API plan Task 8** builds `TASK_REGISTRY` from the task names. The
+  trending task is not in that registry today. If jamesbconner/Jidou#655 makes it
+  dispatchable, it gets added there.
 - **Orchestrators plan Task 2** introduces `OnEvent` / `OnProgress` in
   `services/callbacks.py`. The harness's own `ProgressFn` / `EventFn`
   become aliases of those (plan Task 2).

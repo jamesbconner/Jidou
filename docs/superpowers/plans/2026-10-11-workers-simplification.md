@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove the wrapper boilerplate and the two complexity hotspots
-in `src/jidou/workers/`, and delete one unreachable task, without
+in `src/jidou/workers/` without
 changing externally observable behavior. These must stay the same:
 Celery task names and signatures, `BackgroundTask` state transitions,
 `progress_message` / `result_summary` contents, WebSocket messages, and
@@ -35,8 +35,8 @@ Read it first. Finding IDs (W*, D*) and section numbers (§) refer to it.
 
 ## Global Constraints
 
-- **No behavior change**, except D1, which deletes an unreachable task.
-  Every Celery task name, every positional/keyword parameter, every
+- **No behavior change.** The trending task (spec D1) is kept; see
+  jamesbconner/Jidou#655. Every Celery task name, every positional/keyword parameter, every
   `time_limit` / `soft_time_limit`, every `result_summary` key and value,
   every `progress_message` and every emitted WebSocket payload stays the
   same. Task 1's golden-summary tests enforce the summaries.
@@ -44,8 +44,7 @@ Read it first. Finding IDs (W*, D*) and section numbers (§) refer to it.
   importer and every `patch("…")` target in `tests/`. Do not re-export it
   from the old location. Each task lists the patch targets it moves.
 - **Do not edit existing test assertions** to make a refactor pass. Only
-  import paths, patch targets and fixture wiring may change. Task 7 is
-  the one exception: it deletes the tests of the deleted task.
+  import paths, patch targets and fixture wiring may change.
 - **Commands:** use `uv` only. Never use `pip` or `python -m venv`.
 - **Style:** ruff target `py313`, `line-length = 100`; mypy
   `strict = true`; Google-style docstrings on every public function and
@@ -100,7 +99,7 @@ Read it first. Finding IDs (W*, D*) and section numbers (§) refer to it.
 | `src/jidou/services/sftp_service.py` | Modify | Gains `create_sftp_service(settings)` |
 | `src/jidou/services/progress.py` | Modify | Loses `mark_task_timed_out` |
 | `src/jidou/workers/*_tasks.py` | Modify | As described per task |
-| `src/jidou/workers/tasks.py` | Delete (Task 7) | Unreachable trending task (D1) |
+| `src/jidou/workers/tasks.py` | Modify (Task 3 only) | Trending task, **kept** (see jamesbconner/Jidou#655); switches to `task_sessionmaker` |
 | `src/jidou/workers/celery_app.py` | Modify | `LONG_TASK_LIMITS`; drop `jidou.workers.tasks` from `include` |
 
 ## PR grouping
@@ -224,7 +223,7 @@ uv run ruff check src/jidou/workers --select C901 \
 ### Task 3: Task-scoped engine (W4)
 
 **Files:**
-- Modify: `src/jidou/database.py`, `src/jidou/workers/_harness.py`, `scheduled_tasks.py`, `tasks.py` (until Task 7 deletes it), and the tests that patch the moved names
+- Modify: `src/jidou/database.py`, `src/jidou/workers/_harness.py`, `scheduled_tasks.py`, `tasks.py`, and the tests that patch the moved names
 - Test: `tests/test_database.py` (append)
 
 **Interfaces:**
@@ -248,7 +247,7 @@ uv run ruff check src/jidou/workers --select C901 \
   `jidou.workers._harness.create_async_engine` (14),
   `jidou.workers._harness.async_sessionmaker` (14),
   `jidou.workers.scheduled_tasks.create_async_engine` (2), and the
-  `jidou.workers.tasks.*` pair (2 each, until Task 7).
+  `jidou.workers.tasks.*` pair (2 each).
 
 - [ ] **Step 1: Write the tests.**
   - `test_task_sessionmaker_disposes_engine_on_exit`: patch
@@ -427,29 +426,20 @@ uv run ruff check src/jidou/workers --select C901 \
   Expected: all pass. `run_task_workflow` must be ≤ 7.
 - [ ] **Step 5: Commit.** `refactor(workers): table-driven scheduled dispatch; shared task-status helpers`
 
-### Task 7: Dead and redundant code (D1, D2, D3)
+### Task 7: Redundant code (D2, D3)
+
+`tasks.py` / `fetch_trending_shows_task` (spec D1) is **kept** (roadmap
+decision D3). Putting it to use is tracked in jamesbconner/Jidou#655, so this task does
+not touch it.
 
 **Files:**
-- Delete: `src/jidou/workers/tasks.py`
-- Modify: `celery_app.py` (`include`), the 8 task modules with an unused `logger`, the 10 `run_task_workflow(…, progress_total=0, …)` calls, `tests/test_workers.py` (delete the trending tests)
+- Modify: the 8 task modules with an unused `logger`, and the 10 `run_task_workflow(…, progress_total=0, …)` calls
 
-- [ ] **Step 1: Confirm D1 is still unreachable.**
-  `grep -rn "fetch_trending_shows_task\|_fetch_trending" src frontend/src`
-  must show only `src/jidou/workers/tasks.py`. If anything else appears,
-  stop and keep the task.
-- [ ] **Step 2: Delete it.** Remove the module,
-  `"jidou.workers.tasks"` from `include`, and every test in
-  `tests/test_workers.py` that imports `jidou.workers.tasks` (the
-  `fetch_trending_shows_task` / `_fetch_trending` tests, plus their
-  `create_async_engine` / `insert` patches).
-- [ ] **Step 3: Remove the unused `logger` definitions and the explicit
+- [ ] **Step 1: Remove the unused `logger` definitions and the explicit
   `progress_total=0` arguments.** Sync keeps `progress_total=5`.
-- [ ] **Step 4: Verify.** `uv run pytest tests/test_workers.py tests/test_workers_architecture.py -q`.
-  Expected: all pass. The include-list guard from Task 1 now proves the
-  module and its `include` entry left together.
-- [ ] **Step 5: Commit.** `chore(workers): remove unreachable trending task and redundant boilerplate`.
-  The PR body must say that `fetch_trending_shows_task` is gone, so
-  anyone who runs it by hand with `celery call` knows.
+- [ ] **Step 2: Verify.** `uv run pytest tests/test_workers.py tests/test_workers_architecture.py -q`.
+  Expected: all pass.
+- [ ] **Step 3: Commit.** `chore(workers): drop unused loggers and default progress_total arguments`
 
 ---
 
@@ -499,7 +489,7 @@ uv run ruff check src/jidou/workers --select C901 \
 
 - [ ] **Step 1: Set `_WORKERS_MAX_COMPLEXITY = 8`.**
 - [ ] **Step 2: Check the docs.**
-  `grep -rn "fetch_trending\|mark_task_timed_out\|_build_sftp" docs/*.md`
+  `grep -rn "mark_task_timed_out\|_build_sftp" docs/*.md`
   and fix any stale references.
 - [ ] **Step 3: Run the full pre-push sequence** from Global Constraints.
   Expected: everything clean.
