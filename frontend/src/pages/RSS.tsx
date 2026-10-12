@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
 import {
   useRssFeeds,
   useRssSubscriptions,
@@ -10,61 +9,33 @@ import {
   useRssImportTask,
   useRssPublishTask,
 } from '@/hooks/useRss'
-import type { TaskRead } from '@/types/api'
 import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
 import { RecommendationsTab } from '@/components/RecommendationsTab'
 import { RssDiffModal } from '@/components/RssDiffModal'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
+import { RssHeader } from '@/pages/rss/RssHeader'
+import { SubscriptionFilters } from '@/pages/rss/SubscriptionFilters'
+import {
+  DEFAULT_RSS_FILTERS,
+  filterSubscriptions,
+  type RssFilterState,
+} from '@/pages/rss/rssFilters'
 
-interface RssFilterState {
-  nameSearch: string
-  enabledFilter: 'all' | 'enabled' | 'disabled'
-  activeFilter: 'all' | 'active' | 'inactive'
-  // 'stub' = no remote key yet (the "stub" badge); 'keyed' = has a key.
-  keyFilter: 'all' | 'stub' | 'keyed'
-  feedFilter: number | 'unlinked' | 'all'
-}
+type RssTab = 'subscriptions' | 'feeds' | 'recommendations'
 
-const DEFAULT_RSS_FILTERS: RssFilterState = {
-  nameSearch: '',
-  enabledFilter: 'all',
-  activeFilter: 'all',
-  keyFilter: 'all',
-  feedFilter: 'all',
-}
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-
-
-function TaskStatusBadge({ task }: { task: TaskRead | undefined }) {
-  if (!task) return null
-  const colors: Record<string, string> = {
-    completed: 'text-green-600',
-    failed: 'text-red-500',
-    running: 'text-blue-500',
-    pending: 'text-yellow-600',
-  }
-  return (
-    <span className={`text-xs font-medium ${colors[task.status] ?? 'text-gray-500'}`}>
-      {task.status}{task.progress_message ? ` — ${task.progress_message}` : ''}
-    </span>
-  )
+function tabLabel(tab: RssTab, subCount: number, feedCount: number): string {
+  if (tab === 'subscriptions') return `Subscriptions (${subCount})`
+  if (tab === 'feeds') return `Feeds (${feedCount})`
+  return 'Recommendations'
 }
 
 export default function RSS() {
-  const [tab, setTab] = useState<'subscriptions' | 'feeds' | 'recommendations'>('subscriptions')
+  const [tab, setTab] = useState<RssTab>('subscriptions')
 
   // Persisted so filter choices survive navigating away and back, not just page reloads.
   const [filters, setFilters] = useLocalStorageState<RssFilterState>('jidou:rss-filters', DEFAULT_RSS_FILTERS)
-  const { nameSearch, enabledFilter, activeFilter, keyFilter, feedFilter } = filters
-  const setNameSearch = (v: string) => setFilters({ ...filters, nameSearch: v })
-  const setEnabledFilter = (v: RssFilterState['enabledFilter']) => setFilters({ ...filters, enabledFilter: v })
-  const setActiveFilter = (v: RssFilterState['activeFilter']) => setFilters({ ...filters, activeFilter: v })
-  const setKeyFilter = (v: RssFilterState['keyFilter']) => setFilters({ ...filters, keyFilter: v })
-  const setFeedFilter = (v: RssFilterState['feedFilter']) => setFilters({ ...filters, feedFilter: v })
+  const patchFilters = (patch: Partial<RssFilterState>) => setFilters({ ...filters, ...patch })
 
   const [importTaskId, setImportTaskId] = useState<number | null>(null)
   const [publishTaskId, setPublishTaskId] = useState<number | null>(null)
@@ -79,88 +50,22 @@ export default function RSS() {
   const { data: importTask } = useRssImportTask(importTaskId)
   const { data: publishTask } = useRssPublishTask(publishTaskId)
 
-  const filteredSubs = (subs ?? []).filter((s) => {
-    if (nameSearch && !s.name.toLowerCase().includes(nameSearch.toLowerCase())) return false
-    if (enabledFilter === 'enabled' && !s.enabled_in_config) return false
-    if (enabledFilter === 'disabled' && s.enabled_in_config) return false
-    if (activeFilter === 'active' && !s.active) return false
-    if (activeFilter === 'inactive' && s.active) return false
-    if (keyFilter === 'stub' && s.remote_key !== null) return false
-    if (keyFilter === 'keyed' && s.remote_key === null) return false
-    if (feedFilter === 'unlinked' && s.feed_id !== null) return false
-    if (typeof feedFilter === 'number' && s.feed_id !== feedFilter) return false
-    return true
-  })
+  const filteredSubs = filterSubscriptions(subs ?? [], filters)
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RSS</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage YaRSS2 feeds and subscriptions. Import from or publish to the remote config file.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 items-end">
-          <div className="flex gap-2 items-center">
-            <button
-              onClick={() => triggerImport.mutate(undefined, { onSuccess: (t) => setImportTaskId(t.id) })}
-              disabled={triggerImport.isPending}
-              className="px-4 py-2 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
-            >
-              {triggerImport.isPending ? 'Dispatching…' : 'Import from server'}
-            </button>
-            <button
-              onClick={() => triggerPublish.mutate(undefined, { onSuccess: (t) => setPublishTaskId(t.id) })}
-              disabled={triggerPublish.isPending}
-              className="px-4 py-2 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] disabled:opacity-50"
-            >
-              {triggerPublish.isPending ? 'Dispatching…' : 'Publish to server'}
-            </button>
-            <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1" />
-            <button
-              onClick={() => download.mutate()}
-              disabled={download.isPending}
-              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              {download.isPending ? 'Downloading…' : 'Download'}
-            </button>
-            <button
-              onClick={() => diff.mutate()}
-              disabled={diff.isPending}
-              className="px-4 py-2 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              {diff.isPending ? 'Comparing…' : 'Diff'}
-            </button>
-          </div>
-          {importTask && <div className="text-right text-xs dark:text-gray-300">Import: <TaskStatusBadge task={importTask} /></div>}
-          {publishTask && <div className="text-right text-xs dark:text-gray-300">Publish: <TaskStatusBadge task={publishTask} /></div>}
-          {triggerImport.isError && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              Import failed to start: {(triggerImport.error as Error)?.message ?? 'Unknown error'}
-            </p>
-          )}
-          {triggerPublish.isError && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              Publish failed to start: {(triggerPublish.error as Error)?.message ?? 'Unknown error'}
-            </p>
-          )}
-          {download.isError && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              Download failed: {(download.error as Error)?.message ?? 'Unknown error'}
-            </p>
-          )}
-          {diff.isError && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              Diff failed: {(diff.error as Error)?.message ?? 'Unknown error'}
-            </p>
-          )}
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Check the <Link to="/tasks" className="text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">Tasks page</Link> for details.
-          </p>
-        </div>
-      </div>
+      <RssHeader
+        triggerImport={triggerImport}
+        triggerPublish={triggerPublish}
+        download={download}
+        diff={diff}
+        importTask={importTask}
+        publishTask={publishTask}
+        onImport={() => triggerImport.mutate(undefined, { onSuccess: (t) => setImportTaskId(t.id) })}
+        onPublish={() => triggerPublish.mutate(undefined, { onSuccess: (t) => setPublishTaskId(t.id) })}
+        onDownload={() => download.mutate()}
+        onDiff={() => diff.mutate()}
+      />
 
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-800">
@@ -175,11 +80,7 @@ export default function RSS() {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:border-gray-700'
               }`}
             >
-              {t === 'subscriptions'
-                ? `Subscriptions (${subs?.length ?? 0})`
-                : t === 'feeds'
-                ? `Feeds (${feeds.length})`
-                : 'Recommendations'}
+              {tabLabel(t, subs?.length ?? 0, feeds.length)}
             </button>
           ))}
         </nav>
@@ -188,56 +89,13 @@ export default function RSS() {
       {/* Tab content */}
       {tab === 'subscriptions' && (
         <section>
-          <div className="flex flex-wrap gap-2 items-center mb-3">
-            <input
-              type="search"
-              value={nameSearch}
-              onChange={(e) => setNameSearch(e.target.value)}
-              placeholder="Search name…"
-              className="border rounded px-2 py-1 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
-            />
-            <select
-              value={enabledFilter}
-              onChange={(e) => setEnabledFilter(e.target.value as typeof enabledFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="all">Any enabled</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </select>
-            <select
-              value={activeFilter}
-              onChange={(e) => setActiveFilter(e.target.value as typeof activeFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="all">Any active</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <select
-              aria-label="Key filter"
-              value={keyFilter}
-              onChange={(e) => setKeyFilter(e.target.value as typeof keyFilter)}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="all">Any key</option>
-              <option value="stub">Stub (no key)</option>
-              <option value="keyed">Has key</option>
-            </select>
-            <select
-              value={feedFilter === 'all' ? 'all' : feedFilter === 'unlinked' ? 'unlinked' : String(feedFilter)}
-              onChange={(e) => {
-                const v = e.target.value
-                setFeedFilter(v === 'all' ? 'all' : v === 'unlinked' ? 'unlinked' : Number(v))
-              }}
-              className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] dark:bg-gray-800 dark:text-gray-100"
-            >
-              <option value="all">All feeds</option>
-              <option value="unlinked">Unlinked</option>
-              {feeds.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">{filteredSubs.length} / {subs?.length ?? 0}</span>
-          </div>
+          <SubscriptionFilters
+            filters={filters}
+            onChange={patchFilters}
+            feeds={feeds}
+            shown={filteredSubs.length}
+            total={subs?.length ?? 0}
+          />
 
           {isLoading ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">Loading subscriptions…</p>
