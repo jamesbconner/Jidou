@@ -75,6 +75,7 @@ function mockApi(opts: Opts = {}): string[] {
     if (url.startsWith('/api/shows/tmdb/search?'))
       return mockResponse({ results: opts.tmdb ?? [], total_results: 0, total_pages: 1, page: 1 })
     if (url.startsWith('/api/shows/search?')) return mockResponse(opts.local ?? [])
+    if (url.startsWith('/api/shows/index')) return mockResponse(shows)
     if (url.startsWith('/api/shows?')) return mockResponse(shows)
     if (url.startsWith('/api/watchlist?')) return mockResponse([{ id: 5, show_id: 2, position: 1 }])
     return mockResponse([])

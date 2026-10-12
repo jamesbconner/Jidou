@@ -196,3 +196,14 @@ def test_episode_lookup_indexes_are_declared(name: str, columns: list[str]) -> N
     index = _index_by_name(Episode.__table__, name)  # type: ignore[arg-type]
     assert index.unique is False
     assert [c.name for c in index.columns] == columns
+
+
+def test_duplicate_of_file_id_is_self_fk_set_null_and_indexed() -> None:
+    """DownloadedFile.duplicate_of_file_id points at another file, SET NULL, indexed (D33)."""
+    column = DownloadedFile.__table__.c.duplicate_of_file_id  # type: ignore[attr-defined]
+    assert column.nullable is True
+    assert column.index is True
+    fks = list(column.foreign_keys)
+    assert len(fks) == 1
+    assert fks[0].target_fullname == "downloaded_files.id"
+    assert fks[0].ondelete == "SET NULL"

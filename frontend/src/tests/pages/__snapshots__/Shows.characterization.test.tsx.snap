@@ -1550,6 +1550,7 @@ exports[`Shows characterization: tabs and filters > active filters show Clear fi
   "GET /api/shows?sort=title_asc&limit=10000",
   "GET /api/orphans",
   "GET /api/watchlist?limit=10000",
+  "GET /api/shows/index",
 ]
 `;
 
@@ -1848,5 +1849,6 @@ exports[`Shows characterization: tabs and filters > library tab DOM and mount re
   "GET /api/shows?sort=title_asc&limit=10000",
   "GET /api/orphans",
   "GET /api/watchlist?limit=10000",
+  "GET /api/shows/index",
 ]
 `;

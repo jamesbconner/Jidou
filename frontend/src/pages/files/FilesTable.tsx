@@ -18,6 +18,22 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
+/**
+ * Marks a file flagged by parse as a second copy of an episode another file
+ * already covers (decision D33). Both files are kept; the title names the
+ * original so the user can choose which copy to keep.
+ */
+function DuplicateBadge({ originalId }: { originalId: number }) {
+  return (
+    <span
+      title={`Duplicate of file #${originalId}`}
+      className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+    >
+      Duplicate
+    </span>
+  )
+}
+
 function FilenameCell({ file: f }: { file: FileRead }) {
   return (
     <td className="px-4 py-2 font-mono text-xs max-w-xs">
@@ -143,6 +159,7 @@ export function FilesTable({
               <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatBytes(f.file_size)}</td>
               <td className="px-4 py-2">
                 <FileStatusBadge status={f.status} />
+                {f.duplicate_of_file_id != null && <DuplicateBadge originalId={f.duplicate_of_file_id} />}
               </td>
               <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
                 {new Date(f.created_at).toLocaleString()}

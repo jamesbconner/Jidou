@@ -303,6 +303,25 @@ class ShowSearchResult(ORMModel):
     )
 
 
+class ShowIndexEntry(ORMModel):
+    """One row of ``GET /shows/index``: the lightweight library index.
+
+    Carries only what pickers and ``tmdb_id:media_type`` library lookups need,
+    so the whole library can be fetched in one cheap column-only query.
+    ``local_path`` is included because the file-resolution and rematch modals
+    decide whether an already-tracked show can be reused from it.
+    """
+
+    id: int
+    tmdb_id: int
+    title: str
+    sys_name: str | None = None
+    aliases: list[str] | None = None
+    media_type: str
+    content_type: ContentType | None = None
+    local_path: str | None = None
+
+
 class ShowList(ORMModel):
     """Slim show record returned by ``GET /shows``."""
 

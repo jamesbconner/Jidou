@@ -163,6 +163,14 @@ class DownloadedFile(TimestampMixin, Base):
     parsed_episode: Mapped[int | None] = mapped_column(Integer)
     parsed_confidence: Mapped[float | None] = mapped_column(Float)
     parsed_content_type: Mapped[str | None] = mapped_column(String(20))
+    # Set by the parse orchestrator when this file is linked to an episode
+    # that another (non-synthetic, MATCHED/ROUTING/ROUTED) file already
+    # covers: points at that earlier file. Both files are kept; choosing a
+    # copy is a manual decision (decision D33). SET NULL so deleting the
+    # original clears the flag instead of blocking the delete.
+    duplicate_of_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("downloaded_files.id", ondelete="SET NULL"), index=True
+    )
 
     # Relationships — never loaded implicitly: load them with selectinload() in
     # async queries (see api/file_read_query.py for FileRead responses).

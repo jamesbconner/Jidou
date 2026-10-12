@@ -45,6 +45,9 @@ class FileRead(ORMModel):
     parsed_episode: int | None = None
     parsed_confidence: float | None = None
     parsed_content_type: str | None = None
+    # Earlier file already covering the same episode (decision D33); None
+    # when this file is not a flagged duplicate.
+    duplicate_of_file_id: int | None = None
     created_at: datetime
     updated_at: datetime
     show: FileShowBrief | None = None

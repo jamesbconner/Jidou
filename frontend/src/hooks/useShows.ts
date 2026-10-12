@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { dashboardKeys } from '@/hooks/useDashboard'
 import type {
   ShowList,
+  ShowIndexEntry,
   ShowSearchResult,
   ShowRead,
   ShowCreate,
@@ -48,6 +49,9 @@ export const showKeys = {
   all: ['shows'] as const,
   list: (sort?: ShowSortOrder, limit?: number) =>
     [...showKeys.all, 'list', sort ?? 'title_asc', limit ?? 500] as const,
+  // Under showKeys.all, so every show mutation that invalidates the list
+  // also refreshes the index.
+  index: () => [...showKeys.all, 'index'] as const,
   detail: (id: number) => [...showKeys.all, 'detail', id] as const,
   similar: (id: number, count?: number | null, includeExternal?: boolean | null) =>
     [...showKeys.all, 'detail', id, 'similar', count ?? null, includeExternal ?? null] as const,
@@ -67,6 +71,19 @@ export function useShows(sort: ShowSortOrder = 'title_asc', limit = 500) {
   return useQuery({
     queryKey: showKeys.list(sort, limit),
     queryFn: () => api.get<ShowList[]>(`/shows?sort=${sort}&limit=${limit}`),
+  })
+}
+
+/**
+ * The lightweight library index (`GET /shows/index`): one entry per show with
+ * just the fields pickers and library lookups need, ordered by title then id.
+ * Use this instead of `useShows(..., 10000)` whenever the per-show counts and
+ * TMDB metadata of the full list are not rendered.
+ */
+export function useShowIndex() {
+  return useQuery({
+    queryKey: showKeys.index(),
+    queryFn: () => api.get<ShowIndexEntry[]>('/shows/index'),
   })
 }
 
@@ -205,8 +222,8 @@ export function useSimilarShows(
 }
 
 /**
- * Map of `${tmdb_id}:${media_type}` -> Show for every show already in the
- * library.
+ * Map of `${tmdb_id}:${media_type}` -> index entry for every show already in
+ * the library, built from the lightweight `GET /shows/index`.
  *
  * The DB enforces uniqueness on tmdb_id alone (no media_type column in the
  * constraint), so Jidou's own show list can never contain two rows sharing a
@@ -219,7 +236,7 @@ export function useSimilarShows(
  * when cross-referencing search results against the library.
  */
 export function useLibraryIndex() {
-  const { data: allShows = [] } = useShows('title_asc', 10000)
+  const { data: allShows = [] } = useShowIndex()
   return useMemo(
     () => new Map(allShows.map((s) => [`${s.tmdb_id}:${s.media_type}`, s])),
     [allShows],

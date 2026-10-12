@@ -22,7 +22,7 @@ let calls: { url: string; init?: RequestInit }[] = []
 function respond(url: string, init?: RequestInit): Response {
   calls.push({ url, init })
   // Most specific paths first: '/shows/tmdb/search' and '/shows/search' both
-  // contain '/shows', and the library index list is '/shows?...'.
+  // contain '/shows', and the library index is '/shows/index'.
   const keys = Object.keys(handlers).sort((a, b) => b.length - a.length)
   const key = keys.find((k) => url.includes(k))
   const h = key ? handlers[key] : { body: [] }
@@ -38,7 +38,7 @@ function respond(url: string, init?: RequestInit): Response {
 beforeEach(() => {
   calls = []
   handlers = {
-    '/shows?': { body: [] },
+    '/shows/index': { body: [] },
     '/shows/search': { body: [] },
     '/shows/tmdb/search': { body: { results: [], total_results: 0, total_pages: 1, page: 1 } },
   }
@@ -220,7 +220,7 @@ describe('AddShowFromFeedPane', () => {
   })
 
   test('a TMDB result already in the library is offered as the library show', async () => {
-    handlers['/shows?'] = {
+    handlers['/shows/index'] = {
       body: [{ id: 9, tmdb_id: 555, media_type: 'tv', title: 'Brand New Show (Library)' }],
     }
     handlers['/shows/tmdb/search'] = {

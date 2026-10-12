@@ -215,6 +215,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Show Index
+         * @description Return the lightweight index of every show in the library.
+         *
+         *     Meant for pickers and ``tmdb_id:media_type`` lookups that need the whole
+         *     library but none of the per-show counts ``GET /shows`` computes. It is a
+         *     single column-only query with no pagination, sized for libraries of
+         *     several thousand shows. Registered before ``/{show_id}`` so the literal
+         *     path is not captured by the integer route.
+         *
+         *     Ordering is deterministic: ``title`` ascending (database collation), then
+         *     ``id`` ascending as the tie-breaker for shows sharing a title.
+         *
+         *     Args:
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         One entry per show, ordered by title then id.
+         */
+        get: operations["list_show_index_api_shows_index_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows": {
         parameters: {
             query?: never;
@@ -1331,6 +1366,8 @@ export interface paths {
          *         show_ignored: When *status* is unset, include ``ignored`` files in the
          *             unfiltered result. Has no effect when *status* is explicitly
          *             provided — an explicit filter always wins.
+         *         duplicates_only: Only return files flagged as duplicates of an
+         *             earlier file for the same episode (``duplicate_of_file_id`` set).
          *         limit: Maximum results to return (1-1000, default 50).
          *         offset: Number of results to skip for pagination.
          *         response: FastAPI response object used to set ``X-Total-Count`` header.
@@ -2291,6 +2328,9 @@ export interface paths {
          *
          *     Args:
          *         status: Optional filter by watchlist status.
+         *         show_id: Optional filter to one show's entry (at most one row, since a
+         *             show is on the watchlist at most once). Lets a page check one
+         *             show's membership without fetching the whole watchlist.
          *         limit: Maximum results to return (default 50).
          *         offset: Number of results to skip for pagination.
          *         db_session: DB session (injected).
@@ -3921,6 +3961,8 @@ export interface components {
             parsed_confidence?: number | null;
             /** Parsed Content Type */
             parsed_content_type?: string | null;
+            /** Duplicate Of File Id */
+            duplicate_of_file_id?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -4781,6 +4823,32 @@ export interface components {
              * @description TMDB adult-content flag; None means unknown
              */
             adult?: boolean | null;
+        };
+        /**
+         * ShowIndexEntry
+         * @description One row of ``GET /shows/index``: the lightweight library index.
+         *
+         *     Carries only what pickers and ``tmdb_id:media_type`` library lookups need,
+         *     so the whole library can be fetched in one cheap column-only query.
+         *     ``local_path`` is included because the file-resolution and rematch modals
+         *     decide whether an already-tracked show can be reused from it.
+         */
+        ShowIndexEntry: {
+            /** Id */
+            id: number;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Title */
+            title: string;
+            /** Sys Name */
+            sys_name?: string | null;
+            /** Aliases */
+            aliases?: string[] | null;
+            /** Media Type */
+            media_type: string;
+            content_type?: components["schemas"]["ContentType"] | null;
+            /** Local Path */
+            local_path?: string | null;
         };
         /**
          * ShowList
@@ -5719,6 +5787,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShowSearchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_show_index_api_shows_index_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowIndexEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -6788,6 +6887,7 @@ export interface operations {
                 show_id?: number | null;
                 search?: string | null;
                 show_ignored?: boolean;
+                duplicates_only?: boolean;
                 limit?: number;
                 offset?: number;
             };
@@ -7966,6 +8066,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string | null;
+                show_id?: number | null;
                 limit?: number;
                 offset?: number;
             };

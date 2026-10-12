@@ -323,6 +323,7 @@ def test_file_and_watchlist_responses_serialize_with_unchanged_json() -> None:
         "parsed_episode": None,
         "parsed_confidence": None,
         "parsed_content_type": None,
+        "duplicate_of_file_id": None,
         "created_at": "2026-01-02T03:04:05Z",
         "updated_at": "2026-01-02T03:04:05Z",
         "show": {"id": 2, "title": "Show"},

@@ -14,6 +14,7 @@ from jidou.models.show import ContentType, Show
 from jidou.orchestrators._events import EventSink
 from jidou.services.alias_handling import add_alias, names_agree
 from jidou.services.callbacks import OnEvent, OnProgress
+from jidou.services.duplicate_files import find_duplicate_original
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file, link_file_to_episode
@@ -230,6 +231,39 @@ class ParseOrchestrator:
                 show.id,
             )
 
+    async def _flag_duplicate(
+        self, file: DownloadedFile, show: Show, ep: Episode, sink: EventSink
+    ) -> None:
+        """Flag *file* when another file already covers *ep* (decision D33).
+
+        Both files are kept and routing is unchanged; picking a copy stays a
+        manual decision. The flag is recomputed on every link, so a re-parse
+        clears a stale one.
+
+        Args:
+            file: The file just linked to *ep*.
+            show: The matched show (for the warning text).
+            ep: The episode the file was linked to.
+            sink: Event sink.
+        """
+        original = await find_duplicate_original(self.session, episode_id=ep.id, file_id=file.id)
+        file.duplicate_of_file_id = original.id if original is not None else None
+        if original is None:
+            return
+        logger.warning(
+            "Duplicate file id=%s for episode id=%d (original file id=%d)",
+            file.id,
+            ep.id,
+            original.id,
+        )
+        await sink(
+            "warn",
+            f"Episode S{ep.season_number:02d}E{ep.episode_number:02d} of '{show.title}' "
+            f"already has '{original.original_filename}'; "
+            f"'{file.original_filename}' flagged as a duplicate (both kept)",
+            {"file_id": file.id, "duplicate_of_file_id": original.id, "episode_id": ep.id},
+        )
+
     async def _apply_match(
         self,
         file: DownloadedFile,
@@ -260,6 +294,7 @@ class ParseOrchestrator:
         )
         if ep is None:
             file.episode_id = None
+            file.duplicate_of_file_id = None
         else:
             # When the LLM returned season=None (anime absolute numbering), the
             # helper backfills parsed_season from the resolved episode so
@@ -289,6 +324,8 @@ class ParseOrchestrator:
             f"Matched {file.original_filename!r} → {show.title!r}",
             {"file_id": file.id, "show_id": show.id},
         )
+        if ep is not None:
+            await self._flag_duplicate(file, show, ep, sink)
 
     async def _preview_one(
         self,

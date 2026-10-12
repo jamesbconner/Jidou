@@ -48,7 +48,7 @@ beforeEach(() => {
     if (url.startsWith('/api/shows/search?')) return mockResponse(routes.local ?? [])
     if (url.startsWith('/api/shows/tmdb/search?'))
       return mockResponse({ results: routes.tmdb ?? [], total_results: 0, total_pages: 1, page: 1 })
-    if (url.startsWith('/api/shows?')) return mockResponse(routes.index ?? [])
+    if (url.startsWith('/api/shows/index')) return mockResponse(routes.index ?? [])
     return mockResponse([])
   }) as typeof fetch
 })
