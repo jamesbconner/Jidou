@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
   useShow,
@@ -47,13 +46,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useBannerStyle } from '@/hooks/useBannerStyle'
-import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { toHostPath } from '@/utils/paths'
 import { computeMissingEpisodes } from '@/utils/missingEpisodes'
 import type {
   EpisodeList,
   FileRead,
-  AppConfig,
   RssSubscriptionRead,
   WatchlistRead,
 } from '@/types/api'
@@ -163,11 +161,7 @@ export default function ShowDetail() {
   const navigate = useNavigate()
 
   const { data: show, isLoading } = useShow(showId)
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
   const { data: episodes = [] } = useShowEpisodes(showId)
   const isMovie = (show?.content_type ?? show?.media_type) === 'movie'
   const { data: movieFiles = [] } = useFilesByShow(showId, isMovie)

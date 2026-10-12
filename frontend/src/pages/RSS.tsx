@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/api/client'
-import type { TaskRead } from '@/types/api'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useRssFeeds,
   useRssSubscriptions,
@@ -10,7 +8,10 @@ import {
   useTriggerRssPublish,
   useRssDownload,
   useRssDiff,
+  rssKeys,
 } from '@/hooks/useRss'
+import { useTaskUntilDone } from '@/hooks/useTasks'
+import type { TaskRead } from '@/types/api'
 import { SubscriptionsTable } from '@/components/SubscriptionsTable'
 import { FeedsTable } from '@/components/FeedsTable'
 import { RecommendationsTab } from '@/components/RecommendationsTab'
@@ -38,7 +39,6 @@ const DEFAULT_RSS_FILTERS: RssFilterState = {
 // Main page
 // ---------------------------------------------------------------------------
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
 function TaskStatusBadge({ task }: { task: TaskRead | undefined }) {
   if (!task) return null
@@ -78,35 +78,19 @@ export default function RSS() {
   const download = useRssDownload()
   const diff = useRssDiff()
 
-  const { data: importTask } = useQuery({
-    queryKey: ['tasks', importTaskId],
-    queryFn: () => api.get<TaskRead>(`/tasks/${importTaskId}`),
-    enabled: !!importTaskId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TERMINAL.has(status) ? false : 3000
-    },
-  })
-  const { data: publishTask } = useQuery({
-    queryKey: ['tasks', publishTaskId],
-    queryFn: () => api.get<TaskRead>(`/tasks/${publishTaskId}`),
-    enabled: !!publishTaskId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TERMINAL.has(status) ? false : 3000
-    },
-  })
+  const { data: importTask } = useTaskUntilDone(importTaskId)
+  const { data: publishTask } = useTaskUntilDone(publishTaskId)
 
   useEffect(() => {
     if (importTask?.status === 'completed') {
-      qc.invalidateQueries({ queryKey: ['rss', 'feeds'] })
-      qc.invalidateQueries({ queryKey: ['rss', 'subscriptions'] })
+      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
     }
   }, [importTask?.status, qc])
 
   useEffect(() => {
     if (publishTask?.status === 'completed') {
-      qc.invalidateQueries({ queryKey: ['rss', 'subscriptions'] })
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
     }
   }, [publishTask?.status, qc])
 

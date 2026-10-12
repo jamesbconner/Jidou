@@ -1,11 +1,9 @@
 import { NavLink } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { ConnectionBadge } from './ConnectionBadge'
 import { ThemeToggle } from './ui/ThemeToggle'
 import { useAppSettings } from '@/hooks/useSettings'
 import clsx from 'clsx'
-import type { AppConfig } from '@/types/api'
 
 type NavItem = { to: string; label: string; end?: boolean }
 
@@ -18,11 +16,7 @@ const BASE_LINKS: NavItem[] = [
 ]
 
 export function NavBar() {
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
   const { data: appSettings } = useAppSettings()
 
   let links: NavItem[] = []

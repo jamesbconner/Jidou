@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useFilesByShow, useLinkEpisodeFile, useVerifyPaths, fileKeys } from '@/hooks/useFiles'
 import { showKeys, useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { parseContainerPath } from '@/utils/paths'
-import type { AppConfig, ContentType, EpisodeList, FileRead, FileStatus } from '@/types/api'
+import type { ContentType, EpisodeList, FileRead, FileStatus } from '@/types/api'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -108,11 +109,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
     [candidateFiles, existingPaths],
   )
 
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
   const mediaPaths = config?.media_paths
 
   // Seed content type + a starting folder name from the show's existing local

@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
 import { useTmdbSearch, useTmdbDetails, useLocalShowSearch, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
-import type { FileRead, TmdbSuggestion, ContentType, AppConfig, ShowSearchResult } from '@/types/api'
+import type { FileRead, TmdbSuggestion, ContentType, ShowSearchResult } from '@/types/api'
 
 type SearchMode = 'suggestions' | 'title' | 'tmdb_id'
 
@@ -36,11 +35,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [tmdbIdQuery, setTmdbIdQuery] = useState('')
   const [tmdbIdMediaType, setTmdbIdMediaType] = useState<'tv' | 'movie'>('tv')
 
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
 
   const {
     data: suggestions,
