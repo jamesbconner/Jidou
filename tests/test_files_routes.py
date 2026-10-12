@@ -337,7 +337,11 @@ def test_match_file_happy_path_calls_through_to_orchestrator() -> None:
         show_result.scalar_one_or_none.return_value = show
         ep_result = MagicMock()
         ep_result.scalar_one_or_none.return_value = None  # no episode in DB → orphan not deleted
-        session.execute = AsyncMock(side_effect=[file_result, show_result, ep_result])
+        reload_result = MagicMock()  # route re-selects the file with show/episode loaded
+        reload_result.scalar_one.return_value = f
+        session.execute = AsyncMock(
+            side_effect=[file_result, show_result, ep_result, reload_result]
+        )
         session.flush = AsyncMock()
         session.commit = AsyncMock()
         yield session

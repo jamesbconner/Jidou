@@ -8,9 +8,9 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service
+from jidou.api.file_read_query import reload_file_read
 from jidou.api.lookups import get_show_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
@@ -375,12 +375,6 @@ async def link_movie_file(
         await create_synthetic_import_file(db_session, show_id, None, payload.path)
     await db_session.commit()
 
-    refreshed = (
-        await db_session.execute(
-            select(DownloadedFile)
-            .where(DownloadedFile.remote_path == remote_path)
-            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
-        )
-    ).scalar_one()
+    refreshed = await reload_file_read(db_session, DownloadedFile.remote_path == remote_path)
     logger.info("Linked file path=%r to movie show id=%d", payload.path, show_id)
     return refreshed
