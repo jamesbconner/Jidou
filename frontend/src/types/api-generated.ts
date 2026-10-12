@@ -265,7 +265,8 @@ export interface paths {
          *
          *     If the show already exists it is returned unchanged. Otherwise the show is
          *     created with full TMDB metadata, its episodes are synced and aliases are
-         *     generated; see :func:`jidou.services.show_creation.get_or_create_show_from_tmdb`
+         *     generated; see
+         *     :func:`jidou.orchestrators.show_creation_orchestrator.get_or_create_show_from_tmdb`
          *     for the best-effort semantics of those steps.
          *
          *     Args:
@@ -2864,6 +2865,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rss/subscriptions/{sub_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Subscription
+         * @description Preview the YaRSS2 subscription dict Jidou would publish for one subscription.
+         *
+         *     Uses the same :meth:`RssPublishOrchestrator.build_sub_dict` publish
+         *     itself calls, so the preview always reflects real publish output —
+         *     including YaRSS2 torrent-option defaults for a subscription that has
+         *     never round-tripped through a real config.
+         *
+         *     Args:
+         *         sub_id: Database primary key of the subscription to preview.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The composed YaRSS2 subscription dict.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the subscription is not found.
+         */
+        get: operations["preview_subscription_api_rss_subscriptions__sub_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rss/download": {
         parameters: {
             query?: never;
@@ -2934,41 +2970,6 @@ export interface paths {
          *         HTTPException: 500 if the latest snapshot cannot be parsed.
          */
         get: operations["diff_config_api_rss_diff_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/rss/subscriptions/{sub_id}/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Preview Subscription
-         * @description Preview the YaRSS2 subscription dict Jidou would publish for one subscription.
-         *
-         *     Uses the same :meth:`RssPublishOrchestrator.build_sub_dict` publish
-         *     itself calls, so the preview always reflects real publish output —
-         *     including YaRSS2 torrent-option defaults for a subscription that has
-         *     never round-tripped through a real config.
-         *
-         *     Args:
-         *         sub_id: Database primary key of the subscription to preview.
-         *         db_session: DB session (injected).
-         *
-         *     Returns:
-         *         The composed YaRSS2 subscription dict.
-         *
-         *     Raises:
-         *         HTTPException: 404 if the subscription is not found.
-         */
-        get: operations["preview_subscription_api_rss_subscriptions__sub_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3865,17 +3866,14 @@ export interface components {
              * Tmdb Media Type
              * @description TMDB media type ('tv' or 'movie') for the correct details endpoint
              */
-            tmdb_media_type?: string | null;
+            tmdb_media_type?: ("tv" | "movie") | null;
             /**
              * Local Path
              * @description Local filesystem root for this show (required when creating via tmdb_id)
              */
             local_path?: string | null;
-            /**
-             * Content Type
-             * @description Content type for routing (tv/anime/movie)
-             */
-            content_type?: string | null;
+            /** @description Content type for routing (tv/anime/movie) */
+            content_type?: components["schemas"]["ContentType"] | null;
         };
         /**
          * FilePatch
@@ -4232,8 +4230,9 @@ export interface components {
             /**
              * Media Type
              * @default tv
+             * @enum {string}
              */
-            media_type: string;
+            media_type: "tv" | "movie";
             /**
              * Preserve Tracking
              * @description When True (default), tracked episode data is migrated to the new TMDB entry by matching on (season_number, episode_number). Set to False for a clean-slate rematch that discards all existing tracking state.
@@ -4666,8 +4665,9 @@ export interface components {
             /**
              * Media Type
              * @default tv
+             * @enum {string}
              */
-            media_type: string;
+            media_type: "tv" | "movie";
             /** Overview */
             overview?: string | null;
             /** Poster Path */
@@ -8666,6 +8666,41 @@ export interface operations {
             };
         };
     };
+    preview_subscription_api_rss_subscriptions__sub_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                sub_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_config_api_rss_download_get: {
         parameters: {
             query?: never;
@@ -8715,41 +8750,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RssConfigDiff"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_subscription_api_rss_subscriptions__sub_id__preview_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path: {
-                sub_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */

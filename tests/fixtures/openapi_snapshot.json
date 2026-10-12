@@ -1352,15 +1352,13 @@
           "content_type": {
             "anyOf": [
               {
-                "pattern": "^(tv|anime|movie)$",
-                "type": "string"
+                "$ref": "#/components/schemas/ContentType"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Content type for routing (tv/anime/movie)",
-            "title": "Content Type"
+            "description": "Content type for routing (tv/anime/movie)"
           },
           "local_path": {
             "anyOf": [
@@ -1401,7 +1399,10 @@
           "tmdb_media_type": {
             "anyOf": [
               {
-                "pattern": "^(tv|movie)$",
+                "enum": [
+                  "tv",
+                  "movie"
+                ],
                 "type": "string"
               },
               {
@@ -2236,6 +2237,10 @@
         "properties": {
           "media_type": {
             "default": "tv",
+            "enum": [
+              "tv",
+              "movie"
+            ],
             "title": "Media Type",
             "type": "string"
           },
@@ -3635,7 +3640,10 @@
           },
           "media_type": {
             "default": "tv",
-            "pattern": "^(tv|movie)$",
+            "enum": [
+              "tv",
+              "movie"
+            ],
             "title": "Media Type",
             "type": "string"
           },

@@ -5,7 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from jidou.models.downloaded_file import FileStatus, IgnoredReason, MatchedBy
-from jidou.schemas._base import ORMModel
+from jidou.models.show import ContentType
+from jidou.schemas._base import MediaType, ORMModel
 
 
 class FileShowBrief(ORMModel):
@@ -68,18 +69,16 @@ class FileMatchRequest(BaseModel):
         default=None,
         description="TMDB ID to look up or create a show on demand",
     )
-    tmdb_media_type: str | None = Field(
+    tmdb_media_type: MediaType | None = Field(
         default=None,
-        pattern="^(tv|movie)$",
         description="TMDB media type ('tv' or 'movie') for the correct details endpoint",
     )
     local_path: str | None = Field(
         default=None,
         description="Local filesystem root for this show (required when creating via tmdb_id)",
     )
-    content_type: str | None = Field(
+    content_type: ContentType | None = Field(
         default=None,
-        pattern="^(tv|anime|movie)$",
         description="Content type for routing (tv/anime/movie)",
     )
 

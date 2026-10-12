@@ -1648,6 +1648,27 @@ def test_rematch_show_returns_200_on_success() -> None:
         app.dependency_overrides.clear()
 
 
+def test_rematch_invalid_media_type_is_422() -> None:
+    """POST /{id}/rematch rejects an unknown media_type at validation (was a 502)."""
+    from jidou.api.dependencies import get_tmdb
+    from jidou.database import get_session
+
+    show = _make_show(id=1, tmdb_id=100)
+    tmdb_mock = _make_tmdb_mock()
+
+    app.dependency_overrides[get_session] = _rematch_session(show)
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "person"}
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"][-1] == "media_type"
+        tmdb_mock.get_details.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_rematch_show_uses_payload_media_type() -> None:
     """POST /{id}/rematch passes media_type from the payload to get_details."""
     from jidou.api.dependencies import get_tmdb

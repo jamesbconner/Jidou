@@ -1,9 +1,12 @@
 """Shared base class and annotated types for Pydantic schemas."""
 
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+# TMDB media types the API accepts on request bodies; anything else is a 422.
+MediaType = Literal["tv", "movie"]
 
 
 class ORMModel(BaseModel):

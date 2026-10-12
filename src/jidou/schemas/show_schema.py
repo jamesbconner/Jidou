@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from jidou.models.show import ContentType
-from jidou.schemas._base import ORMModel
+from jidou.schemas._base import MediaType, ORMModel
 from jidou.schemas.episode_schema import EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief
 
@@ -21,7 +21,7 @@ class ShowCreate(BaseModel):
 
     tmdb_id: int
     title: str
-    media_type: str = Field(default="tv", pattern="^(tv|movie)$")
+    media_type: MediaType = "tv"
     overview: str | None = None
     poster_path: str | None = None
     backdrop_path: str | None = None
@@ -268,7 +268,7 @@ class RematchRequest(BaseModel):
     """Payload for re-matching a show to a different TMDB entry."""
 
     tmdb_id: int
-    media_type: str = "tv"
+    media_type: MediaType = "tv"
     preserve_tracking: bool = Field(
         default=True,
         description=(
