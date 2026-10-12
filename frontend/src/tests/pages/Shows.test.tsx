@@ -387,3 +387,99 @@ describe('Shows page — Search Shows modal', () => {
     expect(screen.getByText('★ 7.8')).toBeInTheDocument()
   })
 })
+
+// Characterisation tests added with the per-tab split: shared queries and
+// filter/sort/search state must be owned by the page, not by a tab.
+describe('Shows page — shared queries and retained tab state', () => {
+  function fetchedUrls(): string[] {
+    return vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
+  }
+
+  test('fires the shows, watchlist and orphans queries on initial render', async () => {
+    mockShowsPage([makeShow()])
+    render(<Shows />, { wrapper: makeWrapper() })
+    await screen.findByRole('button', { name: /Missing Episodes/ })
+    await waitFor(() => {
+      const urls = fetchedUrls()
+      expect(urls.some((u) => u.startsWith('/api/shows?'))).toBe(true)
+      expect(urls.some((u) => u.startsWith('/api/watchlist?'))).toBe(true)
+      expect(urls.some((u) => u.startsWith('/api/orphans'))).toBe(true)
+    })
+  })
+
+  test('switching tabs issues no additional requests', async () => {
+    mockShowsPage([makeShow({ missing_episode_count: 2 })])
+    render(<Shows />, { wrapper: makeWrapper() })
+    await screen.findByText('Show Alpha')
+    await waitFor(() => expect(fetchedUrls().some((u) => u.startsWith('/api/orphans'))).toBe(true))
+    const before = fetchedUrls().length
+
+    fireEvent.click(screen.getByRole('button', { name: /Data Quality/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Missing Episodes/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Shows in Library/ }))
+    await screen.findByText('Show Alpha')
+    expect(fetchedUrls().length).toBe(before)
+  })
+
+  test('library sort and filter survive switching away and back', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Anime One', content_type: 'anime' }),
+      makeShow({ id: 2, title: 'Plain TV', content_type: 'tv' }),
+    ])
+    render(<Shows />, { wrapper: makeWrapper() })
+    await screen.findByText('Anime One')
+
+    fireEvent.change(screen.getByDisplayValue('All types'), { target: { value: 'anime' } })
+    const sortSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement
+    fireEvent.change(sortSelect, { target: { value: 'title_desc' } })
+    expect(screen.queryByText('Plain TV')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Data Quality/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Shows in Library/ }))
+
+    expect((screen.getAllByRole('combobox')[0] as HTMLSelectElement).value).toBe('title_desc')
+    expect(screen.getByDisplayValue('Anime')).toBeInTheDocument()
+    expect(screen.getByText('Anime One')).toBeInTheDocument()
+    expect(screen.queryByText('Plain TV')).not.toBeInTheDocument()
+  })
+
+  test('missing-tab filter and title search survive switching away and back', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'Breaking Bad', content_type: 'tv', missing_episode_count: 3 }),
+      makeShow({ id: 2, title: 'Better Call Saul', content_type: 'tv', missing_episode_count: 5 }),
+      makeShow({ id: 3, title: 'Anime Gap', content_type: 'anime', missing_episode_count: 1 }),
+    ])
+    await openMissingEpisodesTab()
+    await waitFor(() => expect(screen.getByText('Breaking Bad')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByDisplayValue('All types'), { target: { value: 'tv' } })
+    fireEvent.change(screen.getByPlaceholderText('Filter by title…'), { target: { value: 'saul' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Shows in Library/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Missing Episodes/ }))
+
+    expect(screen.getByDisplayValue('TV')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter by title…')).toHaveValue('saul')
+    expect(screen.getByText('Better Call Saul')).toBeInTheDocument()
+    expect(screen.queryByText('Breaking Bad')).not.toBeInTheDocument()
+    expect(screen.queryByText('Anime Gap')).not.toBeInTheDocument()
+  })
+
+  test('data-quality issue filter survives switching away and back', async () => {
+    mockShowsPage([
+      makeShow({ id: 1, title: 'No Path Show', local_path: null }),
+      makeShow({ id: 2, title: 'No Type Show', content_type: null }),
+    ])
+    render(<Shows />, { wrapper: makeWrapper() })
+    await screen.findByText('No Path Show')
+    fireEvent.click(screen.getByRole('button', { name: /Data Quality/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^1\s*No local path$/ }))
+    expect(screen.queryByText('No Type Show')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Shows in Library/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Data Quality/ }))
+
+    expect(screen.getByRole('link', { name: 'No Path Show' })).toBeInTheDocument()
+    expect(screen.queryByText('No Type Show')).not.toBeInTheDocument()
+  })
+})
