@@ -22,6 +22,8 @@ Run sequence:
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -134,8 +136,7 @@ class RssPublishOrchestrator:
                 the download-preview route), but run() needs real SFTP
                 access for import reconciliation, backup, and upload.
         """
-        if self._sftp is None:
-            raise ValueError("run() requires an sftp service; this instance was built without one")
+        sftp = self._require_sftp()
         result = RssPublishResult(dry_run=self._dry_run)
 
         # 1. Reconcile out-of-band changes and store a pre_publish snapshot.
@@ -144,7 +145,7 @@ class RssPublishOrchestrator:
         await self._on_event("info", "Running pre-publish import reconciliation", None)
         import_orc = RssImportOrchestrator(
             session=self._session,
-            sftp=self._sftp,
+            sftp=sftp,
             remote_path=self._remote_path,
             dry_run=False,
             on_event=self._on_event,
@@ -166,128 +167,194 @@ class RssPublishOrchestrator:
             result.errors.append(msg)
             return result
 
-        try:
-            # 3. Stop the remote Deluge service so it cannot clobber this write with
-            # its own autosave, and so it re-reads the config fresh once restarted.
-            # This lives inside the try (rather than before it) specifically so that
-            # a cancellation during the stop command itself, or during the post-stop
-            # delay, still reaches the `finally` below and restarts Deluge — leaving
-            # the stop command outside this block let a cancellation in that window
-            # leave Deluge stopped forever, with the `finally` never reached at all.
-            if self._deluge_stop_command:
-                if not self._dry_run:
-                    await self._on_event("info", "Stopping remote Deluge service", None)
-                    try:
-                        await self._sftp.run_command(self._deluge_stop_command)
-                    except Exception as exc:
-                        # Abort before touching any remote files — Deluge's exact
-                        # state is unknown, so backup/compose/upload don't run. The
-                        # `finally` below still fires on this return and attempts a
-                        # restart regardless, since the stop command may have landed
-                        # before failing (e.g. a dropped connection after the signal
-                        # was already sent).
-                        msg = f"Failed to stop remote Deluge service; aborting publish: {exc}"
-                        logger.error(msg)
-                        result.errors.append(msg)
-                        await self._on_event("error", msg, None)
-                        return result
-                    if self._deluge_stop_delay_seconds > 0:
-                        await self._on_event(
-                            "info",
-                            (
-                                f"Waiting {self._deluge_stop_delay_seconds:g}s "
-                                "for Deluge to fully stop"
-                            ),
-                            None,
-                        )
-                        await asyncio.sleep(self._deluge_stop_delay_seconds)
-                else:
-                    await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
-
-            # 4. Back up the current remote file
-            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-            remote = PurePosixPath(self._remote_path)
-            backup_path = str(remote.with_name(f"{remote.stem}_backup_{ts}{remote.suffix}"))
-            result.backup_path = backup_path
-            if not self._dry_run:
-                await self._sftp.upload_bytes(raw_str.encode("utf-8"), backup_path)
-                await self._on_event("info", f"Backed up current config to {backup_path}", None)
-            else:
-                await self._on_event(
-                    "info", f"[DRY RUN] Would back up current config to {backup_path}", None
-                )
-
-            # 5-7. Build feeds + subscriptions dicts from DB and assemble the new body.
-            composed, compose_result = await self.compose_config(
-                header, old_body, upload=not self._dry_run
-            )
-            result.feeds_published = compose_result.feeds_published
-            result.subscriptions_published = compose_result.subscriptions_published
-            result.new_keys_assigned = compose_result.new_keys_assigned
-
-            # 8. Upload, then snapshot exactly what was uploaded. Without this,
-            # the latest RssConfigSnapshot row would remain the pre_publish one
-            # from step 1 — the remote state from *before* this publish — so
-            # GET /rss/diff and /rss/download's "latest snapshot" lookup would
-            # keep comparing against stale state and re-surface this publish's
-            # changes as still pending.
-            if not self._dry_run:
-                await self._sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
-                snapshot = RssConfigSnapshot(snapshot_type="post_publish", raw_content=composed)
-                self._session.add(snapshot)
-                await self._session.flush()
-                result.snapshot_id = snapshot.id
-                await self._on_event(
-                    "info",
-                    (
-                        f"Published config to {self._remote_path} — "
-                        f"{result.feeds_published} feeds, "
-                        f"{result.subscriptions_published} subscriptions "
-                        f"({result.new_keys_assigned} new keys assigned); "
-                        f"stored post-publish snapshot id={snapshot.id}"
-                    ),
-                    None,
-                )
-            else:
-                await self._on_event(
-                    "info",
-                    (
-                        f"[DRY RUN] Would publish config to {self._remote_path} — "
-                        f"{result.feeds_published} feeds, "
-                        f"{result.subscriptions_published} subscriptions "
-                        f"({result.new_keys_assigned} new keys assigned)"
-                    ),
-                    None,
-                )
-        finally:
-            # 9. Always try to bring Deluge back up if we stopped it — even if the
-            # backup/compose/upload above raised.
-            if self._deluge_restart_command:
-                if not self._dry_run:
-                    if self._deluge_restart_delay_seconds > 0:
-                        await self._on_event(
-                            "info",
-                            (
-                                f"Waiting {self._deluge_restart_delay_seconds:g}s before "
-                                "restarting Deluge"
-                            ),
-                            None,
-                        )
-                        await asyncio.sleep(self._deluge_restart_delay_seconds)
-                    await self._on_event("info", "Restarting remote Deluge service", None)
-                    try:
-                        await self._sftp.run_command(self._deluge_restart_command)
-                    except Exception as exc:
-                        msg = f"Failed to restart remote Deluge service: {exc}"
-                        logger.error(msg)
-                        result.errors.append(msg)
-                        await self._on_event("error", msg, None)
-                else:
-                    await self._on_event(
-                        "info", "[DRY RUN] Would restart remote Deluge service", None
-                    )
+        # 3 & 9. Deluge is stopped for the duration of the block and always restarted
+        # on the way out (see _deluge_paused). `ok` is False when the stop failed.
+        async with self._deluge_paused(result) as ok:
+            if ok:
+                await self._backup(raw_str, result)
+                await self._publish(header, old_body, result)
 
         return result
+
+    def _require_sftp(self) -> SFTPService:
+        """Return the sftp service, rejecting an instance built without one.
+
+        Returns:
+            The configured SFTP service.
+
+        Raises:
+            ValueError: If this instance was constructed without an sftp service.
+        """
+        if self._sftp is None:
+            raise ValueError("run() requires an sftp service; this instance was built without one")
+        return self._sftp
+
+    @asynccontextmanager
+    async def _deluge_paused(self, result: RssPublishResult) -> AsyncIterator[bool]:
+        """Stop the remote Deluge service for the body, restarting it on every exit path.
+
+        The stop lives inside the ``try`` (rather than before it) specifically so
+        that a cancellation during the stop command itself, or during the
+        post-stop delay, still reaches the ``finally`` and restarts Deluge --
+        leaving the stop outside this block let a cancellation in that window
+        leave Deluge stopped forever, with the restart never reached at all.
+
+        Args:
+            result: Receives stop/restart failure messages in ``errors``.
+
+        Yields:
+            ``True`` if the body should proceed (no stop requested, dry run, or
+            stop succeeded); ``False`` if stopping failed and the caller must
+            abort before touching any remote files.
+        """
+        try:
+            yield await self._stop_deluge(result)
+        finally:
+            # Always try to bring Deluge back up if we stopped it -- even if the
+            # backup/compose/upload in the body raised.
+            await self._restart_deluge(result)
+
+    async def _stop_deluge(self, result: RssPublishResult) -> bool:
+        """Run the stop command (or log it in dry run) and wait for Deluge to exit.
+
+        Args:
+            result: Receives the failure message in ``errors`` if the stop fails.
+
+        Returns:
+            ``False`` if the stop command failed, else ``True``.
+        """
+        sftp = self._require_sftp()
+        if not self._deluge_stop_command:
+            return True
+        if self._dry_run:
+            await self._on_event("info", "[DRY RUN] Would stop remote Deluge service", None)
+            return True
+        await self._on_event("info", "Stopping remote Deluge service", None)
+        try:
+            await sftp.run_command(self._deluge_stop_command)
+        except Exception as exc:
+            # Abort before touching any remote files -- Deluge's exact state is
+            # unknown, so backup/compose/upload don't run. The restart still
+            # fires regardless, since the stop command may have landed before
+            # failing (e.g. a dropped connection after the signal was sent).
+            msg = f"Failed to stop remote Deluge service; aborting publish: {exc}"
+            logger.error(msg)
+            result.errors.append(msg)
+            await self._on_event("error", msg, None)
+            return False
+        if self._deluge_stop_delay_seconds > 0:
+            await self._on_event(
+                "info",
+                f"Waiting {self._deluge_stop_delay_seconds:g}s for Deluge to fully stop",
+                None,
+            )
+            await asyncio.sleep(self._deluge_stop_delay_seconds)
+        return True
+
+    async def _restart_deluge(self, result: RssPublishResult) -> None:
+        """Run the restart command (or log it in dry run), recording a failure as an error.
+
+        Args:
+            result: Receives the failure message in ``errors`` if the restart fails.
+        """
+        sftp = self._require_sftp()
+        if not self._deluge_restart_command:
+            return
+        if self._dry_run:
+            await self._on_event("info", "[DRY RUN] Would restart remote Deluge service", None)
+            return
+        if self._deluge_restart_delay_seconds > 0:
+            await self._on_event(
+                "info",
+                f"Waiting {self._deluge_restart_delay_seconds:g}s before restarting Deluge",
+                None,
+            )
+            await asyncio.sleep(self._deluge_restart_delay_seconds)
+        await self._on_event("info", "Restarting remote Deluge service", None)
+        try:
+            await sftp.run_command(self._deluge_restart_command)
+        except Exception as exc:
+            msg = f"Failed to restart remote Deluge service: {exc}"
+            logger.error(msg)
+            result.errors.append(msg)
+            await self._on_event("error", msg, None)
+
+    async def _backup(self, raw_str: str, result: RssPublishResult) -> None:
+        """Back up the current remote file to a timestamped path (logged only in dry run).
+
+        Args:
+            raw_str: The current remote config text, as downloaded by the import.
+            result: Receives ``backup_path``.
+        """
+        sftp = self._require_sftp()
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        remote = PurePosixPath(self._remote_path)
+        backup_path = str(remote.with_name(f"{remote.stem}_backup_{ts}{remote.suffix}"))
+        result.backup_path = backup_path
+        if not self._dry_run:
+            await sftp.upload_bytes(raw_str.encode("utf-8"), backup_path)
+            await self._on_event("info", f"Backed up current config to {backup_path}", None)
+        else:
+            await self._on_event(
+                "info", f"[DRY RUN] Would back up current config to {backup_path}", None
+            )
+
+    async def _publish(
+        self,
+        header: dict[str, object],
+        old_body: dict[str, object],
+        result: RssPublishResult,
+    ) -> None:
+        """Compose the new config from the DB, upload it and snapshot what was uploaded.
+
+        Args:
+            header: Config header block, preserved verbatim.
+            old_body: Previously-parsed body, seeding keys and non-managed sections.
+            result: Receives the published counts and the post-publish ``snapshot_id``.
+        """
+        sftp = self._require_sftp()
+        # 5-7. Build feeds + subscriptions dicts from DB and assemble the new body.
+        composed, compose_result = await self.compose_config(
+            header, old_body, upload=not self._dry_run
+        )
+        result.feeds_published = compose_result.feeds_published
+        result.subscriptions_published = compose_result.subscriptions_published
+        result.new_keys_assigned = compose_result.new_keys_assigned
+
+        # 8. Upload, then snapshot exactly what was uploaded. Without this,
+        # the latest RssConfigSnapshot row would remain the pre_publish one
+        # from step 1 — the remote state from *before* this publish — so
+        # GET /rss/diff and /rss/download's "latest snapshot" lookup would
+        # keep comparing against stale state and re-surface this publish's
+        # changes as still pending.
+        if not self._dry_run:
+            await sftp.upload_bytes(composed.encode("utf-8"), self._remote_path)
+            snapshot = RssConfigSnapshot(snapshot_type="post_publish", raw_content=composed)
+            self._session.add(snapshot)
+            await self._session.flush()
+            result.snapshot_id = snapshot.id
+            await self._on_event(
+                "info",
+                (
+                    f"Published config to {self._remote_path} — "
+                    f"{result.feeds_published} feeds, "
+                    f"{result.subscriptions_published} subscriptions "
+                    f"({result.new_keys_assigned} new keys assigned); "
+                    f"stored post-publish snapshot id={snapshot.id}"
+                ),
+                None,
+            )
+        else:
+            await self._on_event(
+                "info",
+                (
+                    f"[DRY RUN] Would publish config to {self._remote_path} — "
+                    f"{result.feeds_published} feeds, "
+                    f"{result.subscriptions_published} subscriptions "
+                    f"({result.new_keys_assigned} new keys assigned)"
+                ),
+                None,
+            )
 
     async def compose_config(
         self,

@@ -12,9 +12,9 @@ from pathlib import Path
 
 _ORCH_DIR = Path(__file__).resolve().parents[2] / "src" / "jidou" / "orchestrators"
 
-# Measured: the worst offender is rss_import_orchestrator.py _upsert_subscriptions (24). Lower this
+# Measured: the worst offender is path_import_orchestrator.py _process_show_entries (21). Lower this
 # as orchestrators are simplified; never raise it.
-_ORCH_MAX_COMPLEXITY = 24
+_ORCH_MAX_COMPLEXITY = 21
 
 # Task 9 empties this.
 _KNOWN_FASTAPI_IMPORTERS: frozenset[str] = frozenset(
