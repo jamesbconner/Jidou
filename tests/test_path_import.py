@@ -3014,7 +3014,7 @@ async def test_tmdb_create_show_stores_adult_flag() -> None:
 
 @pytest.mark.asyncio
 async def test_tmdb_create_show_integrity_error_finds_existing_show() -> None:
-    """A race-condition IntegrityError on insert falls back to a DB lookup by title."""
+    """A race-condition IntegrityError on insert falls back to a DB lookup by tmdb_id."""
     from sqlalchemy.exc import IntegrityError
 
     from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
@@ -3035,12 +3035,14 @@ async def test_tmdb_create_show_integrity_error_finds_existing_show() -> None:
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)):
+    refind = AsyncMock(return_value=existing_show)
+    with patch("jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id", refind):
         show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "found"
     assert show is existing_show
     session.rollback.assert_called_once()
+    refind.assert_awaited_once_with(session, 42)
 
 
 @pytest.mark.asyncio
@@ -3065,7 +3067,10 @@ async def test_tmdb_create_show_integrity_error_no_fallback_returns_not_found() 
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch.object(orch, "_db_find_show", AsyncMock(return_value=None)):
+    with patch(
+        "jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id",
+        AsyncMock(return_value=None),
+    ):
         show, action = await orch._tmdb_create_show("SomeShow")
 
     assert show is None
@@ -3297,7 +3302,10 @@ async def test_tmdb_create_show_integrity_error_fallback_syncs_missing_episodes(
     orch = PathImportOrchestrator(session, tmdb)
 
     with (
-        patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id",
+            AsyncMock(return_value=existing_show),
+        ),
         patch(
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
@@ -3335,7 +3343,10 @@ async def test_tmdb_create_show_integrity_error_fallback_skips_sync_when_episode
     orch = PathImportOrchestrator(session, tmdb)
 
     with (
-        patch.object(orch, "_db_find_show", AsyncMock(return_value=existing_show)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id",
+            AsyncMock(return_value=existing_show),
+        ),
         patch(
             "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
         ) as mock_tmdb_orch_cls,
@@ -4509,9 +4520,15 @@ async def _orc11_create_insert_race_loses() -> Any:
     h.match_plan = {"a.mkv": (None, 1, 1)}
     orch = h.orchestrator()
     outcome: Any
-    # First lookup (directory name) misses; the post-rollback refind finds the winner.
-    finder = AsyncMock(side_effect=[None, winner])
-    with h.patches(), patch.object(orch, "_db_find_show", finder):
+    # The directory-name lookup misses; the post-rollback tmdb_id refind finds the winner.
+    with (
+        h.patches(),
+        patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
+        patch(
+            "jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id",
+            AsyncMock(return_value=winner),
+        ),
+    ):
         try:
             outcome = _orc11_summary(await orch.run([_orc11_entry("a.mkv")]))
         except Exception as exc:

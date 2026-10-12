@@ -124,3 +124,19 @@ async def test_fuzzy_and_exact_are_mutually_exclusive_not_stacked() -> None:
     await find_show_by_name(session, "Show", fuzzy=True)
 
     assert session.execute.await_count == 2
+
+
+async def test_find_show_by_tmdb_id_filters_on_tmdb_id() -> None:
+    """The lookup filters on ``shows.tmdb_id`` and returns the single match (or None)."""
+    from jidou.services.show_lookup import find_show_by_tmdb_id
+
+    show = MagicMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = show
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=result)
+
+    assert await find_show_by_tmdb_id(session, 42) is show
+    stmt = session.execute.await_args.args[0]
+    assert "shows.tmdb_id" in str(stmt.whereclause)
+    assert stmt.whereclause.right.value == 42
