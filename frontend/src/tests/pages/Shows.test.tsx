@@ -483,3 +483,27 @@ describe('Shows page — shared queries and retained tab state', () => {
     expect(screen.queryByText('No Type Show')).not.toBeInTheDocument()
   })
 })
+
+describe('Shows page — search modal DOM position', () => {
+  test('library tab renders the modal between the filter bar and the grid, never as last child', async () => {
+    mockShowsPage([makeShow({ id: 1, title: 'Anime One' })])
+    render(<Shows />, { wrapper: makeWrapper() })
+    await screen.findByText('Anime One')
+    fireEvent.click(screen.getByRole('button', { name: 'Search shows…' }))
+
+    const filterBar = screen.getByText('Filter').parentElement as HTMLElement
+    const container = filterBar.parentElement as HTMLElement
+    const grid = container.querySelector('section') as HTMLElement
+    const modalRoot = Array.from(container.children).find((c) =>
+      c.textContent?.includes('Search Shows'),
+    ) as HTMLElement
+    expect(modalRoot).toBeDefined()
+
+    const before = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(before(filterBar, modalRoot)).toBe(true)
+    expect(before(modalRoot, grid)).toBe(true)
+    // space-y-* adds no margin to the last child, so the modal must not be it.
+    expect(container.lastElementChild).not.toBe(modalRoot)
+  })
+})

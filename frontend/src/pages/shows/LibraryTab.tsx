@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { ShowCard } from '@/components/ShowCard'
 import { applyFilters, deriveFilterOptions, sortShows } from '@/utils/showFilters'
 import type { ShowsFilterState } from '@/utils/showFilters'
@@ -15,6 +16,8 @@ interface LibraryTabProps {
   watchlistByShowId: Map<number, number>
   pendingWatchlistShowIds: Set<number>
   onWatchlistToggle: (showId: number, watchlistEntryId: number | null) => void
+  /** Search modal element; rendered between the filter bar and the grid to keep the original DOM order and `space-y` geometry. State stays in the page. */
+  searchModal: ReactNode
 }
 
 /**
@@ -31,6 +34,7 @@ export function LibraryTab({
   watchlistByShowId,
   pendingWatchlistShowIds,
   onWatchlistToggle,
+  searchModal,
 }: LibraryTabProps) {
   const {
     sort, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating,
@@ -105,6 +109,8 @@ export function LibraryTab({
           <span className="text-gray-700 dark:text-gray-300">Upcoming episode</span>
         </label>
       </div>
+
+      {searchModal}
 
       <section>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
