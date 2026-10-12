@@ -1239,3 +1239,52 @@ async def test_record_transfer_is_shared_by_normal_and_cancel_paths(cancel):
     assert calls == ["a.mkv", "b.mkv"]
     assert f1.status == f2.status == FileStatus.DOWNLOADED
     assert f3.status == FileStatus.ERROR
+
+
+async def test_characterize_progress_across_two_batches_and_failure_log(caplog):
+    """Two batches (max_workers=2): progress counter continues; failed transfer is logged."""
+    files = [_make_file(i, f"{n}.mkv", f"/remote/{n}.mkv") for i, n in enumerate("abcd", 1)]
+    trace: _Trace = []
+    session = _traced_session(files, trace)
+
+    def _rows(rows):
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = rows
+        return result
+
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 4
+    session.execute = AsyncMock(
+        side_effect=[count_result, _rows(files[:2]), _rows(files[2:]), _rows([])]
+    )
+    sftp = _sftp_with_outcomes(
+        {
+            "/remote/a.mkv": 1,
+            "/remote/b.mkv": RuntimeError("boom"),
+            "/remote/c.mkv": 3,
+            "/remote/d.mkv": 4,
+        }
+    )
+    on_event, on_progress = _trace_callbacks(trace)
+
+    with (
+        caplog.at_level("ERROR", logger="jidou.orchestrators.download_orchestrator"),
+        patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file),
+    ):
+        result = await DownloadOrchestrator(session, sftp, _STAGING).run(
+            max_workers=2, on_event=on_event, on_progress=on_progress
+        )
+
+    assert (result.files_downloaded, result.bytes_downloaded, result.files_failed) == (3, 8, 1)
+    assert [t for t in trace if t[0] == "progress"] == [
+        ("progress", 0, 4, "Downloading 2 files"),
+        ("progress", 1, 4, "Downloaded a.mkv"),
+        ("progress", 2, 4, "Failed b.mkv"),
+        ("progress", 2, 4, "Downloading 2 files"),
+        ("progress", 3, 4, "Downloaded c.mkv"),
+        ("progress", 4, 4, "Downloaded d.mkv"),
+    ]
+    # Each batch: claim (flush, commit), then results (flush, commit).
+    assert [t for t in trace if t[0] in ("flush", "commit")] == [("flush",), ("commit",)] * 4
+    assert "Failed to download /remote/b.mkv: boom" in caplog.text
+    assert [r.levelname for r in caplog.records] == ["ERROR"]
