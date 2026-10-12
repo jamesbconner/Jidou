@@ -68,7 +68,7 @@ beforeEach(() => {
     if (url.includes('/shows/tmdb/search'))
       return mockResponse({ results: routes.tmdb ?? [], total_results: 0, total_pages: 1, page: 1 })
     if (url.includes('/shows/search')) return mockResponse(routes.library ?? [])
-    if (url.includes('/shows?')) return mockResponse(routes.libraryIndex ?? [])
+    if (url.includes('/shows/index')) return mockResponse(routes.libraryIndex ?? [])
     return mockResponse([])
   }) as typeof fetch
 })

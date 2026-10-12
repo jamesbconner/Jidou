@@ -409,7 +409,7 @@ exports[`RematchModal characterization: tmdb mode > initial DOM, loading, result
 [
   "GET /api/config",
   "GET /api/shows/tmdb/search?query=Example%20Show&media_type=multi",
-  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/shows/index",
 ]
 `;
 

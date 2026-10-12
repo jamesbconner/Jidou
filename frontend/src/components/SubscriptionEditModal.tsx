@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router'
 import type { RssFeedRead, RssSubscriptionRead, RssSubscriptionUpdate } from '@/types/api'
 import { usePatchRssSubscription, useSuggestRegex } from '@/hooks/useRss'
-import { useShows } from '@/hooks/useShows'
+import { useShowIndex } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
@@ -138,10 +138,9 @@ export function SubscriptionEditModal({
   const [showPickerOpen, setShowPickerOpen] = useState(false)
   const showPickerRef = useRef<HTMLDivElement>(null)
   const patch = usePatchRssSubscription()
-  // Matches Shows.tsx/Watchlist.tsx's limit override — the default (500) can
-  // silently exclude titles sorting past it once the library grows past that
-  // size, making this search miss shows that do exist.
-  const { data: allShows = [] } = useShows('title_asc', 10000)
+  // The lightweight index covers the whole library (no limit), so the search
+  // never misses shows, without fetching every show's full list record.
+  const { data: allShows = [] } = useShowIndex()
   // Follows the draft so ticking "Enabled in config" unlocks Active without a save/reopen.
   const isStub = sub.remote_key === null && !draft.enabled_in_config
 

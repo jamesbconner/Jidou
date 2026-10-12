@@ -77,7 +77,7 @@ function mockApi({ local = [], library = [], suggestions = [] }: Routes) {
     if (init?.method === 'POST' && url === '/api/files/100/match') return mockResponse({ id: 100 })
     if (url === '/api/config') return mockResponse(config)
     if (url.startsWith('/api/shows/search?')) return mockResponse(local)
-    if (url.startsWith('/api/shows?')) return mockResponse(library)
+    if (url.startsWith('/api/shows/index')) return mockResponse(library)
     if (url === '/api/files/100/tmdb-suggestions') {
       return mockResponse({ query: 'Example Show', results: suggestions })
     }
