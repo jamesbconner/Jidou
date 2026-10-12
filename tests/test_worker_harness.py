@@ -249,6 +249,50 @@ async def test_on_event_uses_a_separate_session_per_call() -> None:
 
 
 @pytest.mark.asyncio
+async def test_event_write_failure_does_not_disturb_work_session() -> None:
+    """A failed event write (own session) is swallowed; the work session is untouched."""
+    from jidou.orchestrators._events import EventSink
+
+    mock_engine, session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    seen: dict[str, object] = {}
+
+    async def work(work_session: object, on_progress: object, on_event: object) -> WorkflowResult:
+        sink = EventSink(on_event, swallow_errors=True)  # type: ignore[arg-type]
+        await sink("info", "event write will fail", None)
+        seen["session"] = work_session
+        return _success_result()
+
+    with (
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers._harness.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
+        patch(
+            "jidou.workers._harness.append_task_event",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("flush failed"),
+        ) as mock_append,
+    ):
+        await run_task_workflow("tid-evt", "route", work)
+
+    mock_append.assert_awaited_once()
+    assert seen["session"] is session
+    # The failing write ran in its own session, so the work session was never rolled back.
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_error_marks_cancelled_and_emits_and_disposes() -> None:
     """TaskCancelledError from work() marks CANCELLED, emits, and still disposes the engine."""
     from jidou.services.progress import TaskCancelledError

@@ -500,17 +500,11 @@ async def test_path_import_race_uses_title_lookup_and_does_not_commit(pi_patches
     assert ("info", "Show 'SomeShow' already existed (concurrent create)") in events
 
 
-@pytest.mark.parametrize(
-    ("failing_prefix", "expected_error_prefix"),
-    [
-        ("Synced", "Episode sync failed for 'SomeShow': "),
-        ("Generated aliases", None),
-    ],
-)
-async def test_path_import_raising_success_event_is_swallowed_with_rollback(
-    pi_patches, failing_prefix: str, expected_error_prefix: str | None
+@pytest.mark.parametrize("failing_prefix", ["Synced", "Generated aliases"])
+async def test_path_import_raising_success_event_is_swallowed_without_rollback(
+    pi_patches, failing_prefix: str
 ) -> None:
-    """A raising ``on_event`` for a step's success message counts as that step failing."""
+    """A raising ``on_event`` for a step's success message is swallowed, not a step failure."""
     events: list[tuple[str, str]] = []
 
     async def flaky(level: str, msg: str, ctx: object = None) -> None:
@@ -524,11 +518,7 @@ async def test_path_import_raising_success_event_is_swallowed_with_rollback(
     show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created" and show is not None
-    session.rollback.assert_awaited_once()
+    session.rollback.assert_not_awaited()
     errors = [m for lvl, m in events if lvl == "error"]
-    if expected_error_prefix is None:
-        assert errors == []
-        pi_patches["aliases"].assert_awaited_once()
-    else:
-        assert len(errors) == 1 and errors[0].startswith(expected_error_prefix)
-        assert "sink broke" in errors[0]
+    assert errors == []
+    pi_patches["aliases"].assert_awaited_once()
