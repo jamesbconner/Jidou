@@ -35,6 +35,15 @@ class TMDBSyncResult:
     episodes_upserted: int
     episodes_skipped: int
 
+    @classmethod
+    def empty(cls) -> "TMDBSyncResult":
+        """Return a result recording that nothing was synced.
+
+        Returns:
+            A new ``TMDBSyncResult`` with every count at zero.
+        """
+        return cls(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
+
 
 @dataclass
 class EpisodeGroupApplyResult:

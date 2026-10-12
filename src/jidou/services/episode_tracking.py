@@ -49,6 +49,24 @@ def mark_episode_tracked(
     ep.tracked_source = TrackedSource(source) if source is not None else None
 
 
+def link_file_to_episode(file: DownloadedFile, ep: Episode) -> None:
+    """Link *file* to the resolved episode *ep*, backfilling a missing season.
+
+    Anime and absolute-numbered files are parsed without a season. Copying the
+    season from the resolved episode lets ``RouteOrchestrator`` place the file
+    in ``Season NN`` instead of the show root. An existing season is never
+    overwritten. Callers keep their own extra steps (orphan dismissal, marking
+    the episode tracked).
+
+    Args:
+        file: ``DownloadedFile`` ORM object to mutate in place.
+        ep: The episode the file resolved to.
+    """
+    file.episode_id = ep.id
+    if file.parsed_season is None and ep.season_number is not None:
+        file.parsed_season = ep.season_number
+
+
 def clear_episode_tracking(ep: Episode) -> None:
     """Clear all tracking state from *ep*.
 

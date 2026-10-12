@@ -17,6 +17,7 @@ from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import (
     clear_if_unreferenced,
     dismiss_orphans_for_file,
+    link_file_to_episode,
     mark_episode_tracked,
 )
 from jidou.services.filename_parser import heuristic_se
@@ -319,15 +320,12 @@ class ManualMatchOrchestrator:
         #   3. No episode info at all: skip; route task will resolve later.
         ep: Episode | None = None
         if file.parsed_episode is not None:
-            had_no_season = file.parsed_season is None
             ep = await resolve_episode(
                 self.session, show.id, file.parsed_season, file.parsed_episode
             )
-            if had_no_season and ep is not None and ep.season_number is not None:
-                file.parsed_season = ep.season_number  # enables Season NN routing
-
             if ep is not None:
-                file.episode_id = ep.id
+                # Also backfills a missing season, which enables Season NN routing.
+                link_file_to_episode(file, ep)
                 # Only dismiss the orphan once an episode is confirmed; keeping it
                 # when episode_id stays None preserves DQ visibility until the
                 # route task resolves the link.

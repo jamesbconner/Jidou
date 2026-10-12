@@ -16,6 +16,7 @@ from jidou.orchestrators.scan_orchestrator import ScanOrchestrator, ScanResult
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator, TMDBSyncResult
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_lookup import resolve_episode
+from jidou.services.episode_tracking import link_file_to_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.sftp_service import SFTPService
 from jidou.services.tmdb import TMDBService
@@ -23,6 +24,46 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 _TOTAL_PHASES = 5
+
+
+def _dry_run_suffix(dry_run: bool, *, tmdb: bool = False) -> str:
+    """Return the dry-run marker appended to a phase summary message.
+
+    Args:
+        dry_run: Whether this run is a dry run.
+        tmdb: ``True`` for the TMDB phase, which is skipped outright in a dry run
+            rather than merely simulated.
+
+    Returns:
+        The marker text, or ``""`` when this is not a dry run.
+    """
+    if not dry_run:
+        return ""
+    return " (skipped — dry run)" if tmdb else " (dry run)"
+
+
+async def _tick(on_phase: OnProgress | None, current: int, message: str) -> None:
+    """Report phase progress; a ``TaskCancelledError`` from the callback propagates.
+
+    Args:
+        on_phase: Optional progress callback.
+        current: 1-based phase number.
+        message: Human-readable phase description.
+    """
+    if on_phase:
+        await on_phase(current, _TOTAL_PHASES, message)
+
+
+async def _summary(on_event: OnEvent | None, message: str, ctx: dict[str, int]) -> None:
+    """Emit one phase-summary info event; errors from the callback propagate.
+
+    Args:
+        on_event: Optional event callback.
+        message: Summary line.
+        ctx: Structured counts for the event.
+    """
+    if on_event:
+        await on_event("info", message, ctx)
 
 
 @dataclass
@@ -141,10 +182,8 @@ class SyncOrchestrator:
                 )
 
                 if ep is not None:
-                    file.episode_id = ep.id
-                    if file.parsed_season is None and ep.season_number is not None:
-                        # Backfill so RouteOrchestrator lands in Season NN, not show root.
-                        file.parsed_season = ep.season_number
+                    # Also backfills the season so RouteOrchestrator lands in Season NN.
+                    link_file_to_episode(file, ep)
                     logger.debug(
                         "Phase 4.5: resolved episode_id=%d for file id=%d (%r)",
                         ep.id,
@@ -155,6 +194,49 @@ class SyncOrchestrator:
             # Commit per show so a rollback on a later show doesn't clobber
             # episode_id writes that already succeeded for earlier shows.
             await self.session.commit()
+
+    async def _sync_tmdb_phase(
+        self, show_id: int | None, dry_run: bool
+    ) -> tuple[TMDBSyncResult, TMDBOrchestrator | None]:
+        """Phase 1: refresh the TMDB episode cache.
+
+        Args:
+            show_id: When given, sync only this show; otherwise sync every show.
+            dry_run: When ``True`` nothing is built or fetched.
+
+        Returns:
+            ``(result, tmdb_orchestrator)``.  The orchestrator is ``None`` only
+            in a dry run.  It is also returned when *show_id* names a missing or
+            already-cached show (with an empty result), because the later
+            episode gap-fill phase reuses it.
+        """
+        if dry_run:
+            return TMDBSyncResult.empty(), None
+
+        tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
+        if show_id is None:
+            return await tmdb_orch.sync_all_shows(), tmdb_orch
+
+        show_stmt = select(Show).where(Show.id == show_id)
+        show = (await self.session.execute(show_stmt)).scalar_one_or_none()
+        if show is None:
+            return TMDBSyncResult.empty(), tmdb_orch
+
+        ep_exists = exists(select(Episode).where(Episode.show_id == show.id))
+        has_episodes = (await self.session.execute(select(ep_exists))).scalar()
+        if show.cached and has_episodes:
+            return TMDBSyncResult.empty(), tmdb_orch
+
+        try:
+            result = await tmdb_orch.sync_show_episodes(show)
+            # sync_show_episodes only flushes; commit here so this phase's data
+            # is durable regardless of what happens in the phases that follow.
+            await self.session.commit()
+        except Exception:
+            logger.exception("Failed to sync TMDB for show id=%d", show.id)
+            await self.session.rollback()
+            result = TMDBSyncResult.empty()
+        return result, tmdb_orch
 
     async def run(
         self,
@@ -175,94 +257,53 @@ class SyncOrchestrator:
                 event log entries — wired to append_task_event in the task layer.
                 Forwarded to Scan/Download/Parse/Route so each stage's
                 per-item detail (not just this method's one-line phase
-                summary) reaches the task log.
+                summary) reaches the task log.  Errors it raises propagate.
 
         Returns:
             SyncResult with results from each phase.
         """
         # Phase 1: TMDB episode cache — skipped entirely in dry_run.
-        if on_phase:
-            await on_phase(1, _TOTAL_PHASES, "Syncing TMDB episode data")
-        _tmdb_orch: TMDBOrchestrator | None = None
-        if dry_run:
-            tmdb_result = TMDBSyncResult(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
-        else:
-            _tmdb_orch = TMDBOrchestrator(self.session, self.tmdb)
-            if show_id is not None:
-                show_stmt = select(Show).where(Show.id == show_id)
-                show = (await self.session.execute(show_stmt)).scalar_one_or_none()
-                if show is not None:
-                    ep_exists = exists(select(Episode).where(Episode.show_id == show.id))
-                    has_episodes = (await self.session.execute(select(ep_exists))).scalar()
-                    if not show.cached or not has_episodes:
-                        try:
-                            tmdb_result = await _tmdb_orch.sync_show_episodes(show)
-                            # sync_show_episodes only flushes; commit here so
-                            # this phase's data is durable regardless of what
-                            # happens in the phases that follow.
-                            await self.session.commit()
-                        except Exception:
-                            logger.exception("Failed to sync TMDB for show id=%d", show.id)
-                            await self.session.rollback()
-                            tmdb_result = TMDBSyncResult(
-                                shows_synced=0, episodes_upserted=0, episodes_skipped=0
-                            )
-                    else:
-                        tmdb_result = TMDBSyncResult(
-                            shows_synced=0, episodes_upserted=0, episodes_skipped=0
-                        )
-                else:
-                    tmdb_result = TMDBSyncResult(
-                        shows_synced=0, episodes_upserted=0, episodes_skipped=0
-                    )
-            else:
-                tmdb_result = await _tmdb_orch.sync_all_shows()
-        if on_event:
-            await on_event(
-                "info",
-                f"TMDB sync: {tmdb_result.shows_synced} shows refreshed, "
-                f"{tmdb_result.episodes_upserted} episodes upserted"
-                + (" (skipped — dry run)" if dry_run else ""),
-                {
-                    "shows_synced": tmdb_result.shows_synced,
-                    "episodes_upserted": tmdb_result.episodes_upserted,
-                },
-            )
+        await _tick(on_phase, 1, "Syncing TMDB episode data")
+        tmdb_result, tmdb_orch = await self._sync_tmdb_phase(show_id, dry_run)
+        await _summary(
+            on_event,
+            f"TMDB sync: {tmdb_result.shows_synced} shows refreshed, "
+            f"{tmdb_result.episodes_upserted} episodes upserted"
+            + _dry_run_suffix(dry_run, tmdb=True),
+            {
+                "shows_synced": tmdb_result.shows_synced,
+                "episodes_upserted": tmdb_result.episodes_upserted,
+            },
+        )
 
         # Phase 2: Scan all remote paths
-        if on_phase:
-            await on_phase(2, _TOTAL_PHASES, "Scanning remote files")
+        await _tick(on_phase, 2, "Scanning remote files")
         scan_result = await ScanOrchestrator(
             self.session, self.sftp, self.remote_paths, self.noscan_paths
         ).run(dry_run=dry_run, on_event=on_event)
-        if on_event:
-            await on_event(
-                "info",
-                f"Scan: {scan_result.files_created} new file(s) discovered, "
-                f"{scan_result.files_skipped} already known" + (" (dry run)" if dry_run else ""),
-                {
-                    "files_created": scan_result.files_created,
-                    "files_skipped": scan_result.files_skipped,
-                },
-            )
+        await _summary(
+            on_event,
+            f"Scan: {scan_result.files_created} new file(s) discovered, "
+            f"{scan_result.files_skipped} already known" + _dry_run_suffix(dry_run),
+            {
+                "files_created": scan_result.files_created,
+                "files_skipped": scan_result.files_skipped,
+            },
+        )
 
         # Phase 3: Download DISCOVERED files to staging
-        if on_phase:
-            await on_phase(3, _TOTAL_PHASES, "Downloading new files")
+        await _tick(on_phase, 3, "Downloading new files")
         dl_result = await DownloadOrchestrator(
             self.session, self.sftp, self.local_staging_path, self.remote_paths
         ).run(dry_run=dry_run, max_workers=self.sftp.max_workers, on_event=on_event)
-        if on_event:
-            await on_event(
-                "info",
-                f"Download: {dl_result.files_downloaded} file(s) downloaded"
-                + (" (dry run)" if dry_run else ""),
-                {"files_downloaded": dl_result.files_downloaded},
-            )
+        await _summary(
+            on_event,
+            f"Download: {dl_result.files_downloaded} file(s) downloaded" + _dry_run_suffix(dry_run),
+            {"files_downloaded": dl_result.files_downloaded},
+        )
 
         # Phase 4: Parse filenames and match to shows
-        if on_phase:
-            await on_phase(4, _TOTAL_PHASES, "Parsing and matching files to shows")
+        await _tick(on_phase, 4, "Parsing and matching files to shows")
         parse_result = await ParseOrchestrator(
             self.session,
             self.llm,
@@ -270,33 +311,30 @@ class SyncOrchestrator:
             local_anime_path=self.local_anime_path,
             local_movie_path=self.local_movie_path,
         ).run(dry_run=dry_run, on_event=on_event)
-        if on_event:
-            await on_event(
-                "info",
-                f"Parse: {parse_result.files_matched} file(s) matched to shows"
-                + (" (dry run)" if dry_run else ""),
-                {"files_matched": parse_result.files_matched},
-            )
+        await _summary(
+            on_event,
+            f"Parse: {parse_result.files_matched} file(s) matched to shows"
+            + _dry_run_suffix(dry_run),
+            {"files_matched": parse_result.files_matched},
+        )
 
         # Phase 4.5: Episode gap fill — re-sync TMDB for shows where the parser
         # matched a show but couldn't resolve an episode row.  This handles
         # already-cached shows whose DB episode list is stale (new seasons/
         # episodes released since the last sync).  Only triggered when there are
         # MATCHED files with a known (season, episode) but no episode_id.
-        if not dry_run and _tmdb_orch is not None:
-            await self._fill_missing_episodes(_tmdb_orch)
+        if not dry_run and tmdb_orch is not None:
+            await self._fill_missing_episodes(tmdb_orch)
 
         # Phase 5: Route MATCHED files to final local paths
-        if on_phase:
-            await on_phase(5, _TOTAL_PHASES, "Routing matched files")
+        await _tick(on_phase, 5, "Routing matched files")
         route_result = await RouteOrchestrator(self.session).run(dry_run=dry_run, on_event=on_event)
-        if on_event:
-            await on_event(
-                "info",
-                f"Route: {route_result.files_routed} file(s) routed to final paths"
-                + (" (dry run)" if dry_run else ""),
-                {"files_routed": route_result.files_routed},
-            )
+        await _summary(
+            on_event,
+            f"Route: {route_result.files_routed} file(s) routed to final paths"
+            + _dry_run_suffix(dry_run),
+            {"files_routed": route_result.files_routed},
+        )
 
         return SyncResult(
             tmdb=tmdb_result,

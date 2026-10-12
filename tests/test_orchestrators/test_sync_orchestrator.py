@@ -915,3 +915,48 @@ async def test_characterize_gap_fill_db_error_in_retry_query_propagates_without_
         await SyncOrchestrator(session, _sftp(), MagicMock())._fill_missing_episodes(tmdb_orch)
 
     assert "db.commit" not in calls and "db.rollback" not in calls
+
+
+def test_tmdb_sync_result_empty():
+    """TMDBSyncResult.empty() is the all-zero result, and each call returns a fresh object."""
+    first = TMDBSyncResult.empty()
+    assert first == TMDBSyncResult(shows_synced=0, episodes_upserted=0, episodes_skipped=0)
+    assert TMDBSyncResult.empty() is not first
+
+
+async def test_sync_tmdb_phase_missing_show_returns_empty_and_orchestrator():
+    """Spec section 6 item 5: a missing show gives an empty result AND a built orchestrator."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalar_one_or_none(None)])
+    with patch(f"{_PATCH_BASE}.TMDBOrchestrator") as tmdb_cls:
+        orch = SyncOrchestrator(session, _sftp(), MagicMock())
+        result, tmdb_orch = await orch._sync_tmdb_phase(99, False)
+
+    assert result == TMDBSyncResult(0, 0, 0)
+    assert tmdb_orch is tmdb_cls.return_value
+    tmdb_cls.return_value.sync_show_episodes.assert_not_called()
+    assert calls == ["db.execute"]
+
+
+async def test_sync_tmdb_phase_dry_run_returns_empty_and_no_orchestrator():
+    """Dry run never builds the TMDB orchestrator and never touches the DB."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [])
+    with patch(f"{_PATCH_BASE}.TMDBOrchestrator") as tmdb_cls:
+        orch = SyncOrchestrator(session, _sftp(), MagicMock())
+        result, tmdb_orch = await orch._sync_tmdb_phase(None, True)
+
+    assert result == TMDBSyncResult(0, 0, 0)
+    assert tmdb_orch is None
+    tmdb_cls.assert_not_called()
+    assert calls == []
+
+
+def test_dry_run_suffix():
+    """The suffix helper keeps the exact wording used by the phase summaries."""
+    from jidou.orchestrators.sync_orchestrator import _dry_run_suffix
+
+    assert _dry_run_suffix(False) == ""
+    assert _dry_run_suffix(False, tmdb=True) == ""
+    assert _dry_run_suffix(True) == " (dry run)"
+    assert _dry_run_suffix(True, tmdb=True) == " (skipped — dry run)"
