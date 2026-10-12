@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-10-12
+
+Wave 1 of the simplification roadmap builds the shared foundations each layer's later refactors depend on. Apart from the two fixes below, behaviour is unchanged; each PR was checked against `main` for identical requests, responses, error messages and timeout handling.
+
+### Fixed
+- **Duplicate episode rows no longer break LLM episode matching** (#673). When the database holds two rows for the same episode, `llm_match_episode` now picks the lowest-id row (as the rest of `resolve_episode` already did) instead of raising `MultipleResultsFound` (issue #313).
+- **Settings no longer refetches `/config` on every visit** (#672). It shares the 60-second cache the other six screens already used, and duplicate refetches of the same query are dropped.
+
+### Changed
+- **One home for task statuses** (#666). `ACTIVE_TASK_STATUSES` / `TERMINAL_TASK_STATUSES` live in `models/task.py`; `BackgroundTask.status` is typed. A `str_enum` helper declares the string enums (column DDL unchanged).
+- **Orchestrators share one event sink** (#667). `orchestrators/_events.py` (`EventSink`) and `services/callbacks.py` (`OnEvent`, `OnProgress`) replace per-orchestrator event closures; each orchestrator keeps its existing "propagate or swallow" behaviour, now pinned by tests for every orchestrator including RSS import and publish.
+- **Single-flight external calls** (#668). `services/single_flight.py` (`ElectedSingleFlight`) now dedupes concurrent identical TMDB requests and LLM completions in one tested place. LLM provider dispatch is one branch; an unknown provider still returns no result without making a network call.
+- **Structured LLM calls** (#673). `services/llm_structured.py` gives the four LLM call sites (episode matching, filename parsing, regex suggestion, the connection ping) one prompt → JSON → validate path; the prompts sent are byte-identical. Episode lookup logic is consolidated.
+- **API dependencies and lookups** (#665, #669). `get_tmdb` lives in `api/dependencies.py`; `api/lookups.py` replaces the hand-written get-or-404 blocks in five route modules with identical 404 messages.
+- **Schemas** (#670). Dead schemas (`import_schema`, `EpisodeRead`, `FileList`, `TaskProgress`, `WatchlistList`) are gone; the eleven regex request fields share `RegexPattern` (with bounded variants so length errors read exactly as before).
+- **Worker harness** (#671). One `run_harnessed` entrypoint replaces the per-task timeout handling; `mark_task_timed_out` moves into `workers/_harness.py`; tasks use a task-scoped engine (`task_sessionmaker`) that is always disposed.
+- **Frontend hooks boundary** (#672). `useConfig`, `useTaskUntilDone` and shared invalidation helpers replace inline queries; pages and components can no longer import the API client directly (lint-enforced, including relative imports).
+- Complexity ratchets lowered: API 16 → 15, services 17 → 16, orchestrators 28 → 26.
+- A timing-dependent frontend test (`AddShowFromFeedPane`) now waits for the edited request deterministically.
+
 ## [0.4.3] — 2026-10-12
 
 Wave 0 of the simplification roadmap (`docs/superpowers/plans/2026-10-12-simplification-roadmap.md`) adds guards only: tests and CI gates that pin current behaviour before any layer is refactored. No user-visible behaviour changes.

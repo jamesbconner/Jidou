@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (Wave 0 released as 0.4.3).
+Last updated: 2026-10-12 (Wave 1 released as 0.4.4).
 
 ---
 
@@ -22,12 +22,18 @@ Last updated: 2026-10-12 (Wave 0 released as 0.4.3).
   outcome; none are open.
 - **Wave 0 is released** (0.4.3, `chore/release-wave-0`). All six guard
   items merged; see §3.
-- **Next step:** Wave 1. Lanes per roadmap §4A: MDL-2 → WRK-2 (WRK-2
-  also needs ORC-2) · ORC-2 · SVC-2 → SVC-3 · API-2 → API-3 · SCH-1 ·
-  FE-2. At most 4 sub-agents at once.
-- **Carry into Wave 1:** ORC-2 must first add event-failure pins for the
-  RSS import and RSS publish orchestrators (ORC-1 left them unpinned),
-  then refactor onto `EventSink`. See §3A.
+- **Wave 1 is released** (0.4.4, `chore/release-wave-1`). All nine items
+  merged; see §3 and §3B.
+- **Next step:** Wave 2. Lanes per roadmap §4A: API-4 → XL-1 → API-5 →
+  API-6 → API-7 · SVC-4 → SVC-5 → SVC-6 (SVC-6 never alongside XL-1) ·
+  MDL-3 → MDL-4 → MDL-5 · WRK-3 → WRK-4 (after MDL-4) · ORC-4 → ORC-5 →
+  ORC-6 → ORC-9 → ORC-10 · SCH-2 → SCH-3 · FE-3 → FE-4 → FE-5 → FE-6.
+  At most 4 sub-agents at once.
+- **Carry into Wave 2:** FE-3 (Settings split) must remove the temporary
+  `src/pages/Settings.tsx` `no-restricted-imports` override in
+  `frontend/eslint.config.js`. See §3B.
+- **Current ratchets:** API 15, services 16, orchestrators 26, workers 16,
+  ESLint 92.
 - **Execution method (decided):** parallel sub-agents.
   - The main session acts as **coordinator**. It dispatches one
     sub-agent per item, each in its own git worktree, using
@@ -74,7 +80,7 @@ item is its open or merged PR on GitHub.
 | Wave | Items | Status |
 |---|---|---|
 | 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | released (0.4.3) |
-| 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | todo |
+| 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | released (0.4.4) |
 | 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | todo |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | todo |
 | 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | todo |
@@ -91,6 +97,15 @@ Per-item rows (item → PR) are added by the release PR of each wave.
 | MDL-1 | jamesbconner/Jidou#660 | released | `celery_task_id` declared as a unique constraint only (the DB has no plain index) |
 | WRK-1 | jamesbconner/Jidou#661 | released | includes an extra `shows_only` import golden |
 | FE-1 | jamesbconner/Jidou#663 | released | |
+| API-2 | jamesbconner/Jidou#665 | released | `TMDBService` stays one shared instance |
+| MDL-2 | jamesbconner/Jidou#666 | released | status sets identical to every copy replaced; DDL unchanged |
+| ORC-2 | jamesbconner/Jidou#667 | released | RSS import/publish pinned first (both propagate); ratchet 28 → 26 |
+| SVC-2 | jamesbconner/Jidou#668 | released | ratchet 17 → 16; unknown LLM provider → `ValueError` → `None`, no I/O |
+| API-3 | jamesbconner/Jidou#669 | released | ratchet 16 → 15; 404 `detail` strings byte-identical |
+| SCH-1 | jamesbconner/Jidou#670 | released | 11 regex fields (brief said 7); `BoundedRegexPattern` / `NonEmptyRegexPattern` keep length errors identical |
+| WRK-2 | jamesbconner/Jidou#671 | released | per-function engine create/dispose parity with `main` |
+| FE-2 | jamesbconner/Jidou#672 | released | B2; flaky `AddShowFromFeedPane` test hardened; lint catches relative `api/client` imports |
+| SVC-3 | jamesbconner/Jidou#673 | released | B1; prompts byte-identical (8,301-case differential check) |
 
 ### 3A. Decisions and deferred findings from Wave 0
 
@@ -111,7 +126,31 @@ Per-item rows (item → PR) are added by the release PR of each wave.
   covers a non-string `detail` in `ensureOk`.
 - **Flaky frontend test:** `src/tests/components/AddShowFromFeedPane.test.tsx:257`
   failed once in CI (`regex_include` read as `null`) and passed on the
-  re-run. Harden it in FE-2 or a standalone fix.
+  re-run. Hardened in FE-2 (jamesbconner/Jidou#672).
+
+### 3B. Decisions and deferred findings from Wave 1
+
+- **Merge shortcut.** When a branch is CI-green and merging current
+  `main` into it is conflict-free with disjoint files, the coordinator
+  runs the full local checks (ruff, format, mypy, full pytest; frontend
+  lint/tsc/vitest/build when relevant) on the merged tree and merges the
+  PR without another CI cycle. The merged `main` tree was checked to be
+  byte-identical to the tested tree every time. Overlapping files still
+  get a pushed merge and a CI run first.
+- **SVC-2 kept** the unreachable `else: raise RuntimeError` in
+  `LLMService.test_connection` and its existing test (roadmap §1 forbids
+  editing existing assertions). SVC-9's cleanup removes both.
+- **Report files:** isolated worktree agents cannot write to the shared
+  `.superpowers/` path. They write inside their worktree; the
+  coordinator copies the report.
+- **FE-3 must remove** the temporary Settings `no-restricted-imports`
+  override.
+- **Minor, deferred:** the `rss.py` "Snapshot not found" lookup and three
+  "Episode not found" sites in `shows.py` are not yet on `get_or_404`
+  (follow-up candidates for API-5/API-8); a stale comment near
+  `llm_service.py:198`; an extra DEBUG log on the RSS regex truncation
+  path; MDL-2's `len == 4` non-vacuous test is trivial; the
+  `useTaskUntilDone` default-interval test is weak.
 
 ## 4. Process conventions (beyond roadmap §1)
 
