@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from jidou.models.show import ContentType
+from jidou.schemas._base import ORMModel
 from jidou.schemas.episode_schema import EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief
 
@@ -104,8 +105,6 @@ class ShowPatch(BaseModel):
         description="When False, this show is excluded from missing-episode counts/lists",
     )
 
-    model_config = ConfigDict(populate_by_name=True)
-
 
 class PosterOption(BaseModel):
     """One candidate poster from TMDB's ``/images`` endpoint."""
@@ -166,10 +165,8 @@ class ShowAliasesUpdate(BaseModel):
     aliases: list[str] = Field(default_factory=list)
 
 
-class ShowRead(BaseModel):
+class ShowRead(ORMModel):
     """Full show record returned by ``GET /shows/{id}``."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     tmdb_id: int
@@ -282,10 +279,8 @@ class RematchRequest(BaseModel):
     )
 
 
-class ShowSearchResult(BaseModel):
+class ShowSearchResult(ORMModel):
     """One local show matched by ``GET /shows/search``."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     tmdb_id: int
@@ -301,10 +296,8 @@ class ShowSearchResult(BaseModel):
     )
 
 
-class ShowList(BaseModel):
+class ShowList(ORMModel):
     """Slim show record returned by ``GET /shows``."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     tmdb_id: int

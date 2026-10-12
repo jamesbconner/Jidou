@@ -1,13 +1,19 @@
 """Guards for shared schema building blocks (``jidou.schemas._base``)."""
 
+import ast
 import inspect
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, get_args
 
 import pytest
 from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
 
-from jidou.schemas import rss_schema
+from jidou import workers as workers_pkg
+from jidou.models.task import TaskStatus
+from jidou.schemas import episode_schema, rss_schema, show_schema, task_schema
+from jidou.schemas._base import ORMModel
 from jidou.schemas.rss_schema import (
     FeedAddShowRequest,
     FeedRegexTestRequest,
@@ -17,6 +23,9 @@ from jidou.schemas.rss_schema import (
     RssSubscriptionCreate,
     RssSubscriptionUpdate,
 )
+from jidou.schemas.settings_schema import AppSettingsPatch, AppSettingsRead
+from jidou.schemas.show_schema import ShowPatch
+from jidou.schemas.task_schema import TaskList, TaskTrigger, TaskType
 
 # (model, field, other required fields) for every regex-validated input field.
 _REGEX_FIELDS: list[tuple[type[BaseModel], str, dict[str, Any]]] = [
@@ -132,3 +141,116 @@ def test_empty_hint_fails_on_length_not_item_count() -> None:
     first = exc_info.value.errors()[0]
     assert first["type"] == "string_too_short"
     assert first["loc"] == ("hint",)
+
+
+# --- Characterization: behaviour that the ORMModel/constants refactor must not change ---
+
+
+def test_task_trigger_validation_is_stable() -> None:
+    """TaskTrigger coerces dry_run, ignores extras, and requires task_type."""
+    trigger = TaskTrigger.model_validate({"task_type": "scan", "dry_run": "true", "extra": 1})
+    assert trigger.task_type == "scan"
+    assert trigger.dry_run is True
+    assert TaskTrigger(task_type="scan").dry_run is False
+    assert not hasattr(trigger, "extra")
+    with pytest.raises(ValidationError):
+        TaskTrigger.model_validate({})
+    with pytest.raises(ValidationError):
+        TaskTrigger.model_validate({"task_type": "scan", "dry_run": "maybe"})
+
+
+def test_show_patch_validation_is_stable() -> None:
+    """ShowPatch accepts fields by name, tracks which were set, and ignores extras."""
+    patch = ShowPatch.model_validate(
+        {"banner_path": None, "track_missing_episodes": False, "bogus": 1}
+    )
+    assert patch.model_fields_set == {"banner_path", "track_missing_episodes"}
+    assert patch.model_dump(exclude_unset=True) == {
+        "banner_path": None,
+        "track_missing_episodes": False,
+    }
+    assert not hasattr(patch, "bogus")
+    with pytest.raises(ValidationError):
+        ShowPatch.model_validate({"content_type": "not-a-content-type"})
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"), [(0, False), (1, True), (12, True), (40, True), (41, False), ("7", True)]
+)
+def test_similar_titles_count_bounds_are_stable(value: object, ok: bool) -> None:
+    """Both settings schemas accept 1..40 inclusive (and coerce numeric strings)."""
+    read_kwargs: dict[str, Any] = {
+        name: True for name in AppSettingsRead.model_fields if name != "similar_titles_count"
+    }
+    for build in (
+        lambda: AppSettingsPatch.model_validate({"similar_titles_count": value}),
+        lambda: AppSettingsRead.model_validate({**read_kwargs, "similar_titles_count": value}),
+    ):
+        if ok:
+            assert build().similar_titles_count == int(str(value))
+        else:
+            with pytest.raises(ValidationError):
+                build()
+
+
+def test_app_settings_patch_only_set_fields_are_reported() -> None:
+    """AppSettingsPatch leaves unsent fields unset so the route can skip them."""
+    patch = AppSettingsPatch.model_validate({"discover_enabled": False})
+    assert patch.model_dump(exclude_unset=True) == {"discover_enabled": False}
+
+
+class _OrmRow:
+    """Attribute-only stand-in for a SQLAlchemy BackgroundTask row."""
+
+    id = 1
+    task_type = "scan"
+    status = "running"
+    progress_current = 2
+    progress_total = 5
+    progress_message = None
+    result_summary = None
+    dry_run = False
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    completed_at = None
+
+
+def test_orm_models_validate_from_attributes() -> None:
+    """Response schemas load from plain attribute objects (from_attributes=True)."""
+    task = TaskList.model_validate(_OrmRow())
+    assert task.status is TaskStatus.RUNNING
+    assert task.task_type == "scan"
+    assert task.progress_current == 2
+
+
+def test_no_schema_redeclares_from_attributes() -> None:
+    """from_attributes lives only on ORMModel; schemas inherit it instead of repeating it."""
+    models = [
+        cls
+        for module in (rss_schema, episode_schema, show_schema, task_schema)
+        for _, cls in inspect.getmembers(module, inspect.isclass)
+        if issubclass(cls, BaseModel) and cls.__module__ == module.__name__
+    ]
+    assert len(models) >= 15
+    assert ORMModel.model_config.get("from_attributes") is True
+    for cls in models:
+        if issubclass(cls, ORMModel):
+            assert cls.model_config == ORMModel.model_config, cls.__name__
+
+
+def test_task_type_literal_matches_worker_types() -> None:
+    """TaskType lists exactly the task_type strings the workers create rows under."""
+    workers_dir = Path(workers_pkg.__file__).parent
+    found: set[str] = set()
+    for path in sorted(workers_dir.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "run_task_workflow"
+            ):
+                arg = node.args[1]
+                assert isinstance(arg, ast.Constant), f"{path.name}: task_type is not a literal"
+                found.add(str(arg.value))
+    # Eleven worker entry points exist today; a scan that finds far fewer is vacuous.
+    assert len(found) >= 10
+    assert found == set(get_args(TaskType))

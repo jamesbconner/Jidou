@@ -1,9 +1,20 @@
-"""Shared annotated types for Pydantic schemas."""
+"""Shared base class and annotated types for Pydantic schemas."""
 
 import re
 from typing import Annotated
 
-from pydantic import AfterValidator, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+
+class ORMModel(BaseModel):
+    """Base for schemas that may be built from SQLAlchemy rows or other attribute objects.
+
+    ``from_attributes=True`` lets ``model_validate(row)`` read attributes instead of
+    requiring a ``dict``. It is a validation-time setting only, so it never appears in
+    the generated JSON schema.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 def _validate_regex(value: str) -> str:

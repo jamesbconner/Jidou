@@ -2,8 +2,9 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, computed_field
 
+from jidou.schemas._base import ORMModel
 from jidou.services.path_transport import decode_path_bytes_for_display
 
 
@@ -14,10 +15,8 @@ class BackingFile(BaseModel):
     filename: str
 
 
-class EpisodeList(BaseModel):
+class EpisodeList(ORMModel):
     """Slim episode record returned by list endpoints."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     show_id: int
@@ -33,7 +32,9 @@ class EpisodeList(BaseModel):
     tracked_source: str | None = None
     watched: bool
     watched_at: datetime | None = None
-    backing_files: list[BackingFile] = []
+    # Pydantic copies mutable defaults per instance; RUF012 only knows that for direct
+    # BaseModel subclasses, not via ORMModel.
+    backing_files: list[BackingFile] = []  # noqa: RUF012
 
     @computed_field  # type: ignore[prop-decorator]
     @property
