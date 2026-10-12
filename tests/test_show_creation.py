@@ -35,6 +35,8 @@ def externals():
     """Patch the TMDB/alias collaborators at their source modules."""
     with (
         patch("jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator") as orch_cls,
+        # The episode sync runs in the shared primitive module; point it at the same mock.
+        patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator", orch_cls),
         patch(
             "jidou.orchestrators.show_creation_orchestrator.fetch_show_metadata",
             new=AsyncMock(return_value={}),
@@ -44,7 +46,7 @@ def externals():
             return_value=dict(TMDB_FIELDS),
         ),
         patch(
-            "jidou.orchestrators.show_creation_orchestrator.generate_aliases", new=AsyncMock()
+            "jidou.orchestrators._show_provisioning.generate_aliases", new=AsyncMock()
         ) as aliases,
     ):
         orch = orch_cls.return_value

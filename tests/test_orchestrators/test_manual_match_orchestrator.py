@@ -460,7 +460,7 @@ async def test_match_tmdb_id_commits_after_sync_before_alias_generation() -> Non
             "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
         ) as mock_tmdb,
         patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            "jidou.orchestrators._show_provisioning.generate_aliases",
             new_callable=AsyncMock,
             side_effect=_generate_aliases,
         ),
@@ -504,7 +504,7 @@ async def test_match_tmdb_id_episode_sync_sqlalchemy_error_propagates() -> None:
         patch(
             "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
         ) as mock_tmdb,
-        patch("jidou.orchestrators.manual_match_orchestrator.TMDBOrchestrator") as mock_orch_cls,
+        patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls,
     ):
         mock_tmdb.return_value.get_details.return_value = _tmdb_data(id=1399, name="DB Fail Show")
         mock_tmdb.return_value.get_external_ids.return_value = {}
@@ -540,9 +540,9 @@ async def test_match_tmdb_id_episode_sync_generic_exception_is_best_effort() -> 
         patch(
             "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
         ) as mock_tmdb,
-        patch("jidou.orchestrators.manual_match_orchestrator.TMDBOrchestrator") as mock_orch_cls,
+        patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls,
         patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            "jidou.orchestrators._show_provisioning.generate_aliases",
             new_callable=AsyncMock,
         ),
     ):

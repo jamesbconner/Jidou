@@ -2667,9 +2667,7 @@ def test_create_show_syncs_episodes_for_new_show() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch(
-            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
-        ) as mock_orch_cls:
+        with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock()
             mock_orch_cls.return_value = mock_orch
@@ -2781,11 +2779,9 @@ def test_create_show_commits_after_sync_before_alias_generation() -> None:
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
         with (
+            patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls,
             patch(
-                "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
-            ) as mock_orch_cls,
-            patch(
-                "jidou.orchestrators.show_creation_orchestrator.generate_aliases",
+                "jidou.orchestrators._show_provisioning.generate_aliases",
                 new_callable=AsyncMock,
                 side_effect=_generate_aliases,
             ),
@@ -2883,9 +2879,7 @@ def test_create_show_db_error_during_sync_propagates() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch(
-            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
-        ) as mock_orch_cls:
+        with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock(
                 side_effect=OperationalError("conn lost", None, None)

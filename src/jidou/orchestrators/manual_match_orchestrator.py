@@ -4,12 +4,16 @@ import logging
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import ContentType, Show
+from jidou.orchestrators._show_provisioning import (
+    generate_aliases_best_effort,
+    insert_show_or_existing,
+    sync_episodes_best_effort,
+)
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
@@ -26,6 +30,22 @@ from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
+
+
+def _fill_missing_show_fields(show: Show, payload: FileMatchRequest) -> None:
+    """Set ``local_path`` / ``content_type`` from the payload where the show has none.
+
+    Never overwrites a configured value; the user changes those explicitly from
+    the show detail page.
+
+    Args:
+        show: The existing show (mutated in place).
+        payload: Match request carrying the optional values.
+    """
+    if payload.local_path and not show.local_path:
+        show.local_path = payload.local_path
+    if payload.content_type and not show.content_type:
+        show.content_type = ContentType(payload.content_type)
 
 
 class ManualMatchOrchestrator:
@@ -140,17 +160,14 @@ class ManualMatchOrchestrator:
             raise ValueError("_resolve_show_by_tmdb_id requires payload.tmdb_id to be set")
 
         # Check DB first (idempotent)
-        show_stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
-        show = (await self.session.execute(show_stmt)).scalar_one_or_none()
+        tmdb_id = payload.tmdb_id
+        show = await self._find_show_by_tmdb_id(tmdb_id)
 
         if show is not None:
             # Show exists — only fill in local_path / content_type if not already set.
             # Never silently overwrite a configured path; the user should explicitly
             # update it via the show detail page if they want to change it.
-            if payload.local_path and not show.local_path:
-                show.local_path = payload.local_path
-            if payload.content_type and not show.content_type:
-                show.content_type = ContentType(payload.content_type)
+            _fill_missing_show_fields(show, payload)
             await self.session.flush()
             await TMDBOrchestrator(self.session, TMDBService()).ensure_episode_group_map(show)
             return show
@@ -168,65 +185,87 @@ class ManualMatchOrchestrator:
             "movie" if payload.content_type == "movie" else "tv"
         )
         try:
-            data = await fetch_show_metadata(tmdb, payload.tmdb_id, media_type)
+            data = await fetch_show_metadata(tmdb, tmdb_id, media_type)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
 
-        fields = build_show_fields(data, payload.tmdb_id, media_type)
-        show = Show(
+        fields = build_show_fields(data, tmdb_id, media_type)
+        new_show = Show(
             **fields,
             content_type=payload.content_type,
             local_path=payload.local_path,
             cached=False,
             track_missing_episodes=True,
         )
-        self.session.add(show)
-        try:
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
-            show_stmt = select(Show).where(Show.tmdb_id == payload.tmdb_id)
-            show = (await self.session.execute(show_stmt)).scalar_one_or_none()
-            if show is None:
+
+        async def refind() -> Show:
+            winner = await self._find_show_by_tmdb_id(tmdb_id)
+            if winner is None:
+                # No winner to return: surface the original IntegrityError.
                 raise
             # Apply caller's path/type only if the concurrently-created row
             # doesn't already have values — never overwrite existing config.
-            if payload.local_path and not show.local_path:
-                show.local_path = payload.local_path
-            if payload.content_type and not show.content_type:
-                show.content_type = ContentType(payload.content_type)
+            _fill_missing_show_fields(winner, payload)
             await self.session.flush()
-        else:
+            return winner
+
+        resolved, created = await insert_show_or_existing(self.session, new_show, refind=refind)
+        if created:
             logger.info(
                 "Created show tmdb_id=%d title=%r (id=%d) via on-demand match",
-                show.tmdb_id,
-                show.title,
-                show.id,
+                resolved.tmdb_id,
+                resolved.title,
+                resolved.id,
             )
 
+        await self._sync_and_alias_new_show(resolved, tmdb)
+
+        return resolved
+
+    async def _find_show_by_tmdb_id(self, tmdb_id: int) -> Show | None:
+        """Look up a show by its TMDB ID.
+
+        Args:
+            tmdb_id: TMDB ID to look up.
+
+        Returns:
+            The matching Show, or ``None``.
+        """
+        show_stmt = select(Show).where(Show.tmdb_id == tmdb_id)
+        return (await self.session.execute(show_stmt)).scalar_one_or_none()
+
+    async def _sync_and_alias_new_show(self, show: Show, tmdb: TMDBService) -> None:
+        """Sync a new show's episodes, commit, then generate its aliases.
+
+        Both TMDB steps are best-effort; a database error in either propagates
+        because the session's transaction is broken after one.
+
+        Args:
+            show: The created (or concurrently created) show.
+            tmdb: TMDB service.
+
+        Raises:
+            SQLAlchemyError: If the episode sync or alias generation hits a
+                database error.
+        """
         # Sync episodes immediately so the episode lookup below has data to
         # work with.  Mirrors the inline sync in POST /shows.  Failures are
         # non-fatal — episodes will arrive on the next pipeline run.
         if show.media_type != "movie":
-            try:
-                await TMDBOrchestrator(self.session, tmdb).sync_show_episodes(show)
+            sync_error = await sync_episodes_best_effort(
+                self.session, tmdb, show, reraise_db_errors=True, rollback_on_failure=False
+            )
+            if sync_error is None:
                 logger.info(
                     "Synced episodes for show id=%d tmdb_id=%d via manual match",
                     show.id,
                     show.tmdb_id,
                 )
-            except SQLAlchemyError:
-                # DB failure during sync's internal flush leaves the
-                # session's transaction in a broken state; propagate so
-                # the caller gets a 500 rather than silently issuing more
-                # queries against a dead transaction (mirrors the same
-                # guard in POST /shows).
-                raise
-            except Exception:
+            else:
                 logger.warning(
                     "Episode sync failed for show id=%d; episodes will sync on next pipeline run",
                     show.id,
-                    exc_info=True,
+                    exc_info=sync_error,
                 )
 
         # Commit the show (and any synced episodes) now, independent of
@@ -239,27 +278,22 @@ class ManualMatchOrchestrator:
         # Generate TMDB alternative-title aliases and LLM aliases so the
         # show is immediately searchable under all its known names.
         # Mirrors the inline alias generation in POST /shows.
-        try:
-            from jidou.orchestrators.alias_orchestrator import generate_aliases
-
-            await generate_aliases(show, tmdb, llm=self.llm)
-            await self.session.flush()
+        alias_error = await generate_aliases_best_effort(
+            self.session, tmdb, self.llm, show, reraise_db_errors=True, rollback_on_failure=False
+        )
+        if alias_error is None:
             logger.info(
                 "Generated aliases for show id=%d tmdb_id=%d via manual match",
                 show.id,
                 show.tmdb_id,
             )
-        except SQLAlchemyError:
-            raise
-        except Exception:
+        else:
             logger.warning(
                 "Alias generation failed for show id=%d; "
                 "aliases can be regenerated via the Manage Aliases modal",
                 show.id,
-                exc_info=True,
+                exc_info=alias_error,
             )
-
-        return show
 
     @staticmethod
     def _add_parsed_name_alias(file: DownloadedFile, show: Show) -> None:

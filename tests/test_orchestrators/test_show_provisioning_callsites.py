@@ -22,8 +22,8 @@ from jidou.schemas.file_schema import FileMatchRequest
 from jidou.schemas.show_schema import ShowCreate
 
 # Where each call site resolves ``generate_aliases`` from.
-_SHOW_CREATION_ALIASES = "jidou.orchestrators.show_creation_orchestrator.generate_aliases"
-_LAZY_ALIASES = "jidou.orchestrators.alias_orchestrator.generate_aliases"
+_SHOW_CREATION_ALIASES = "jidou.orchestrators._show_provisioning.generate_aliases"
+_LAZY_ALIASES = "jidou.orchestrators._show_provisioning.generate_aliases"
 
 
 def _db_error() -> OperationalError:
@@ -436,7 +436,7 @@ async def test_path_import_episode_count_failure_after_sync_is_treated_as_sync_f
     assert action == "created" and show is not None
     pi_patches["sync"].assert_awaited_once()
     session.rollback.assert_awaited_once()
-    assert [m for lvl, m in events if lvl == "error"][0].startswith(
+    assert next(m for lvl, m in events if lvl == "error").startswith(
         "Episode sync failed for 'SomeShow': "
     )
 

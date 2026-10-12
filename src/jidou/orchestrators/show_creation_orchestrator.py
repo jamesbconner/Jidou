@@ -9,11 +9,14 @@ import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
-from jidou.orchestrators.alias_orchestrator import generate_aliases
+from jidou.orchestrators._show_provisioning import (
+    generate_aliases_best_effort,
+    insert_show_or_existing,
+    sync_episodes_best_effort,
+)
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.show_schema import ShowCreate
 from jidou.services.llm_service import LLMService
@@ -71,24 +74,22 @@ async def _sync_episodes_best_effort(session: AsyncSession, tmdb: TMDBService, s
 
     Raises:
         SQLAlchemyError: If the sync's internal flush fails; the session's
-            transaction is broken at that point, so it must propagate.
+            transaction is broken at that point, so it must propagate so the
+            caller gets a 500 rather than silently issuing more queries
+            against a dead transaction.
     """
-    try:
-        await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+    error = await sync_episodes_best_effort(
+        session, tmdb, show, reraise_db_errors=True, rollback_on_failure=False
+    )
+    if error is None:
         logger.info("Auto-synced episodes for show id=%d tmdb_id=%d", show.id, show.tmdb_id)
-    except SQLAlchemyError:
-        # DB failure during sync's internal flush leaves the session's
-        # transaction in a broken state; propagate so the caller gets a
-        # 500 rather than silently issuing more queries against a dead
-        # transaction.
-        raise
-    except Exception:
-        logger.warning(
-            "Episode sync failed for new show id=%d tmdb_id=%d — user can retry via Sync Episodes",
-            show.id,
-            show.tmdb_id,
-            exc_info=True,
-        )
+        return
+    logger.warning(
+        "Episode sync failed for new show id=%d tmdb_id=%d — user can retry via Sync Episodes",
+        show.id,
+        show.tmdb_id,
+        exc_info=error,
+    )
 
 
 async def _generate_aliases_best_effort(
@@ -102,16 +103,16 @@ async def _generate_aliases_best_effort(
         llm: LLM service used for alias generation.
         show: The newly created and committed show.
     """
-    try:
-        await generate_aliases(show, tmdb, llm=llm)
-        await session.flush()
-    except Exception:
+    error = await generate_aliases_best_effort(
+        session, tmdb, llm, show, reraise_db_errors=False, rollback_on_failure=False
+    )
+    if error is not None:
         logger.warning(
             "Alias generation failed for new show id=%d tmdb_id=%d"
             " — aliases can be regenerated via POST /shows/{id}/aliases/regenerate",
             show.id,
             show.tmdb_id,
-            exc_info=True,
+            exc_info=error,
         )
 
 
@@ -192,15 +193,17 @@ async def get_or_create_show_from_tmdb(
         cached=False,
         track_missing_episodes=True,
     )
-    session.add(show)
-    try:
-        await session.flush()
-    except IntegrityError:
-        await session.rollback()
-        existing = await _existing_show(session, tmdb, payload.tmdb_id)
-        if existing is not None:
-            return ShowCreationResult(show=existing, created=False)
-        raise
+
+    async def refind() -> Show:
+        winner = await _existing_show(session, tmdb, payload.tmdb_id)
+        if winner is None:
+            # No winner to return: surface the original IntegrityError.
+            raise
+        return winner
+
+    show, inserted = await insert_show_or_existing(session, show, refind=refind)
+    if not inserted:
+        return ShowCreationResult(show=show, created=False)
 
     logger.info("Added show tmdb_id=%d title=%r (id=%d)", show.tmdb_id, show.title, show.id)
 
