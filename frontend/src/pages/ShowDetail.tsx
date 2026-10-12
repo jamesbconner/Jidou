@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { arrayMove } from '@dnd-kit/sortable'
 import {
-  useShow,
-  useShowEpisodes,
   useUpdateShowPaths,
   useSyncEpisodes,
   useDeleteShow,
@@ -13,29 +11,14 @@ import {
   useBulkSetEpisodesWatched,
   useBulkClearEpisodesWatched,
 } from '@/hooks/useShows'
-import { useBeginEpisodeRematch, useFilesByShow } from '@/hooks/useFiles'
-import { useRssSubscriptions, useRssFeeds, useEnsureRssStub } from '@/hooks/useRss'
+import { useBeginEpisodeRematch } from '@/hooks/useFiles'
+import { useEnsureRssStub } from '@/hooks/useRss'
 import {
-  useWatchlist,
   useCreateWatchlistEntry,
   useDeleteWatchlistEntry,
   useReorderWatchlist,
 } from '@/hooks/useWatchlist'
 import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
-import { RematchModal } from '@/components/RematchModal'
-import { FixEpisodeModal } from '@/components/FixEpisodeModal'
-import { AssignImportModal } from '@/components/AssignImportModal'
-import { LinkFileModal } from '@/components/LinkFileModal'
-import { ScanLocalFilesModal } from '@/components/ScanLocalFilesModal'
-import { ScanLocalMovieFileModal } from '@/components/ScanLocalMovieFileModal'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { AliasModal } from '@/components/AliasModal'
-import { ImagePickerModal } from '@/components/ImagePickerModal'
-import { SubscriptionEditModal } from '@/components/SubscriptionEditModal'
-import { ShowRematchModal } from '@/components/ShowRematchModal'
-import { EpisodeGroupPickerModal } from '@/components/EpisodeGroupPickerModal'
-import { ContentTypeModal } from '@/components/ContentTypeModal'
-import { EditPathModal } from '@/components/EditPathModal'
 import { TrackedBadges } from '@/components/TrackedBadges'
 import { WatchedToggle } from '@/components/WatchedToggle'
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
@@ -46,15 +29,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useBannerStyle } from '@/hooks/useBannerStyle'
-import { useConfig } from '@/hooks/useConfig'
+import { ShowDetailModals } from '@/pages/showDetail/ShowDetailModals'
+import type { ShowDetailModal } from '@/pages/showDetail/modalState'
+import { useShowDetailData } from '@/pages/showDetail/useShowDetailData'
 import { toHostPath } from '@/utils/paths'
 import { computeMissingEpisodes } from '@/utils/missingEpisodes'
-import type {
-  EpisodeList,
-  FileRead,
-  RssSubscriptionRead,
-  WatchlistRead,
-} from '@/types/api'
+import type { ContentType, EpisodeList, WatchlistRead } from '@/types/api'
 
 const TMDB_POSTER = '/api/images/w500'
 
@@ -160,11 +140,17 @@ export default function ShowDetail() {
   const showId = Number(id)
   const navigate = useNavigate()
 
-  const { data: show, isLoading } = useShow(showId)
-  const { data: config } = useConfig()
-  const { data: episodes = [] } = useShowEpisodes(showId)
-  const isMovie = (show?.content_type ?? show?.media_type) === 'movie'
-  const { data: movieFiles = [] } = useFilesByShow(showId, isMovie)
+  const {
+    show,
+    episodes,
+    movieFiles,
+    config,
+    rssSubs,
+    rssFeeds,
+    watchlistEntries,
+    isMovie,
+    isLoading,
+  } = useShowDetailData(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
   const deleteShow = useDeleteShow()
@@ -174,35 +160,14 @@ export default function ShowDetail() {
   const clearEpisodeWatched = useClearEpisodeWatched()
   const bulkSetWatched = useBulkSetEpisodesWatched()
   const bulkClearWatched = useBulkClearEpisodesWatched()
-  const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
-  const { data: rssFeeds = [] } = useRssFeeds()
   const ensureRssStub = useEnsureRssStub()
-  // TODO: fetches the entire watchlist just to look up this one show (no by-show
-  // API filter exists yet). Add a `show_id` filter to GET /watchlist and use it
-  // here; keep a lazy full-list fetch (enabled only once this show is confirmed
-  // on the watchlist) for the Queue #N position/reorder dropdown.
-  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
 
-  const [rematchOpen, setRematchOpen] = useState(false)
-  const [pathModalOpen, setPathModalOpen] = useState(false)
-  const [contentTypeOpen, setContentTypeOpen] = useState(false)
-  const [aliasModalOpen, setAliasModalOpen] = useState(false)
-  const [imageModalOpen, setImageModalOpen] = useState(false)
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [modal, setModal] = useState<ShowDetailModal | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [fileForRematch, setFileForRematch] = useState<FileRead | null>(null)
-  const [fileForFixEps, setFileForFixEps] = useState<FileRead | null>(null)
-  const [assignImportEp, setAssignImportEp] = useState<EpisodeList | null>(null)
-  const [linkFileEp, setLinkFileEp] = useState<EpisodeList | null>(null)
-  const [scanLocalFilesOpen, setScanLocalFilesOpen] = useState(false)
-  const [episodeGroupModalOpen, setEpisodeGroupModalOpen] = useState(false)
-  const [scanLocalMovieFileOpen, setScanLocalMovieFileOpen] = useState(false)
-  const [fixMovieFileOpen, setFixMovieFileOpen] = useState(false)
-  const [rssModalSub, setRssModalSub] = useState<RssSubscriptionRead | null>(null)
   const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
   const [bannerStyle] = useBannerStyle()
 
-  // Resets ~13 independent pieces of local UI state plus 4 react-query
+  // Resets the modal selection, the tab and other local UI state plus 4 react-query
   // mutation .reset() calls when navigating to a different show — React
   // Router doesn't remount this component on a :id-only route change, so
   // there's no single call site to fold this into. The documented
@@ -212,21 +177,7 @@ export default function ShowDetail() {
   // than the one this rule flags.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRematchOpen(false)
-    setPathModalOpen(false)
-    setContentTypeOpen(false)
-    setAliasModalOpen(false)
-    setImageModalOpen(false)
-    setDeleteConfirmOpen(false)
-    setFileForRematch(null)
-    setFileForFixEps(null)
-    setAssignImportEp(null)
-    setLinkFileEp(null)
-    setScanLocalFilesOpen(false)
-    setEpisodeGroupModalOpen(false)
-    setScanLocalMovieFileOpen(false)
-    setFixMovieFileOpen(false)
-    setRssModalSub(null)
+    setModal(null)
     setEpisodesTab('episodes')
     syncEpisodes.reset()
     updatePaths.reset()
@@ -239,11 +190,18 @@ export default function ShowDetail() {
       ? [...rssSubs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
       : null
 
+  // Async completions (a request the user started earlier) must not replace a
+  // modal the user has since opened: keep the open one untouched and drop the
+  // late one; the user can click again. User-click paths use plain setModal.
+  function openModalIfIdle(next: ShowDetailModal) {
+    setModal((current) => (current === null ? next : current))
+  }
+
   function handleRssButtonClick() {
     if (existingRssSub) {
-      setRssModalSub(existingRssSub)
+      setModal({ kind: 'rssSubscription', subscription: existingRssSub })
     } else {
-      ensureRssStub.mutate(showId, { onSuccess: (sub) => setRssModalSub(sub) })
+      ensureRssStub.mutate(showId, { onSuccess: (sub) => openModalIfIdle({ kind: 'rssSubscription', subscription: sub }) })
     }
   }
 
@@ -270,6 +228,21 @@ export default function ShowDetail() {
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
   const watchlistEntry = watchlistEntries.find((e) => e.show_id === showId) ?? null
 
+  // Async completions close their own modal only; if the user has since moved
+  // to a different modal, that one must stay open (as with the old per-modal flags).
+  function closeModalIfKind(kind: ShowDetailModal['kind']) {
+    setModal((current) => (current?.kind === kind ? null : current))
+  }
+
+  async function handleSaveContentType(value: ContentType | null) {
+    try {
+      await patchShow.mutateAsync({ id: showId, patch: { content_type: value } })
+      closeModalIfKind('contentType')
+    } catch {
+      // error is surfaced via patchShow.error passed to the modal
+    }
+  }
+
   function handleDelete() {
     setIsDeleting(true)
     deleteShow.mutate(showId, {
@@ -279,15 +252,13 @@ export default function ShowDetail() {
   }
 
   function handleSavePath(path: string | null) {
-    updatePaths.mutate({ local_path: path }, { onSuccess: () => setPathModalOpen(false) })
+    updatePaths.mutate({ local_path: path }, { onSuccess: () => closeModalIfKind('path') })
   }
 
   async function handleEpisodeFix(ep: EpisodeList, fileId?: number) {
     try {
       const file = await beginRematch.mutateAsync({ showId, episodeId: ep.id, fileId })
-      setFileForFixEps(null)
-      setAssignImportEp(null)
-      setFileForRematch(file)
+      openModalIfIdle({ kind: 'fileRematch', file })
     } catch {
       // error surfaced via beginRematch.error — no additional handling needed
     }
@@ -304,18 +275,14 @@ export default function ShowDetail() {
   function handleEpisodeFixEps(ep: EpisodeList, fileId?: number) {
     if (ep.backing_files.length === 0 && (ep.tracked_source === 'import' || !ep.file_tracked)) {
       // Imported or untracked: pure metadata swap via assign-import endpoint.
-      setFileForRematch(null)
-      setFileForFixEps(null)
-      setAssignImportEp(ep)
+      setModal({ kind: 'assignImport', episode: ep })
     } else {
       // Downloaded/backed: begin-rematch → FixEpisodeModal; pass fileId so
       // multi-backed episodes target the chip the user clicked.
       beginRematch
         .mutateAsync({ showId, episodeId: ep.id, fileId })
         .then((file) => {
-          setFileForRematch(null)
-          setAssignImportEp(null)
-          setFileForFixEps(file)
+          openModalIfIdle({ kind: 'fileFixEps', file })
         })
         .catch(() => {})
     }
@@ -400,7 +367,7 @@ export default function ShowDetail() {
 
   const maintenanceActions = (
     <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-      <Button onClick={() => setDeleteConfirmOpen(true)} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
+      <Button onClick={() => setModal({ kind: 'deleteConfirm' })} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
         {isDeleting ? 'Removing…' : 'Remove Show'}
       </Button>
       <button
@@ -414,16 +381,16 @@ export default function ShowDetail() {
       >
         {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
       </button>
-      <Button onClick={() => setRematchOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+      <Button onClick={() => setModal({ kind: 'rematch' })} variant="secondary" tone="light" size="sm" className="w-28">
         Fix Match
       </Button>
-      <Button onClick={() => setContentTypeOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+      <Button onClick={() => setModal({ kind: 'contentType' })} variant="secondary" tone="light" size="sm" className="w-28">
         {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
       </Button>
-      <Button onClick={() => setAliasModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+      <Button onClick={() => setModal({ kind: 'aliases' })} variant="secondary" tone="light" size="sm" className="w-28">
         Manage Aliases
       </Button>
-      <Button onClick={() => setImageModalOpen(true)} variant="secondary" tone="light" size="sm" className="w-28">
+      <Button onClick={() => setModal({ kind: 'image' })} variant="secondary" tone="light" size="sm" className="w-28">
         Change Images
       </Button>
       {ensureRssStub.isError && (
@@ -457,7 +424,7 @@ export default function ShowDetail() {
               {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
             </p>
             <button
-              onClick={() => setPathModalOpen(true)}
+              onClick={() => setModal({ kind: 'path' })}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
             >
               Edit Path
@@ -475,7 +442,7 @@ export default function ShowDetail() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold dark:text-gray-100">Movie file</h2>
             <button
-              onClick={() => setScanLocalMovieFileOpen(true)}
+              onClick={() => setModal({ kind: 'scanLocalMovieFile' })}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Scan Local Files
@@ -494,7 +461,7 @@ export default function ShowDetail() {
                   <div className="flex items-center gap-3 shrink-0">
                     {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
                       <button
-                        onClick={() => setFixMovieFileOpen(true)}
+                        onClick={() => setModal({ kind: 'fixMovieFile' })}
                         className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
                       >
                         Fix Match
@@ -559,13 +526,13 @@ export default function ShowDetail() {
                   {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
                 </button>
                 <button
-                  onClick={() => setScanLocalFilesOpen(true)}
+                  onClick={() => setModal({ kind: 'scanLocalFiles' })}
                   className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   Scan Local Files
                 </button>
                 <button
-                  onClick={() => setEpisodeGroupModalOpen(true)}
+                  onClick={() => setModal({ kind: 'episodeGroups' })}
                   className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
                 >
                   {show.active_episode_group_id ? 'Change Episode Grouping' : 'Use Alternate Grouping'}
@@ -680,7 +647,7 @@ export default function ShowDetail() {
                           ) : (
                             <div className="shrink-0 flex items-center gap-2">
                               <button
-                                onClick={() => setLinkFileEp(ep)}
+                                onClick={() => setModal({ kind: 'linkFile', episode: ep })}
                                 className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
                               >
                                 Match File
@@ -701,118 +668,22 @@ export default function ShowDetail() {
 
       <SimilarTitlesSection showId={showId} />
 
-      {/* Modals */}
-      {deleteConfirmOpen && (
-        <ConfirmDialog
-          title="Remove show?"
-          description={`Remove "${show.title}" and all its episode data? This cannot be undone.`}
-          confirmLabel="Remove"
-          danger
-          onConfirm={() => { setDeleteConfirmOpen(false); handleDelete() }}
-          onCancel={() => setDeleteConfirmOpen(false)}
-        />
-      )}
-      {pathModalOpen && (
-        <EditPathModal
-          current={show.local_path ?? null}
-          onSave={handleSavePath}
-          onClose={() => setPathModalOpen(false)}
-          isPending={updatePaths.isPending}
-        />
-      )}
-      {rematchOpen && (
-        <ShowRematchModal
-          key={showId}
-          showId={showId}
-          currentTmdbId={show.tmdb_id}
-          onClose={() => setRematchOpen(false)}
-        />
-      )}
-      {rssModalSub && (
-        <SubscriptionEditModal
-          sub={rssModalSub}
-          feeds={rssFeeds}
-          onClose={() => setRssModalSub(null)}
-        />
-      )}
-      {contentTypeOpen && (
-        <ContentTypeModal
-          key={showId}
-          current={show.content_type ?? null}
-          onSave={async (value) => {
-            try {
-              await patchShow.mutateAsync({ id: showId, patch: { content_type: value } })
-              setContentTypeOpen(false)
-            } catch {
-              // error is surfaced via patchShow.error passed to the modal
-            }
-          }}
-          onClose={() => {
-            setContentTypeOpen(false)
-            patchShow.reset()
-          }}
-          isPending={patchShow.isPending}
-          error={patchShow.error as Error | null}
-        />
-      )}
-      {aliasModalOpen && (
-        <AliasModal
-          show={show}
-          onClose={() => setAliasModalOpen(false)}
-        />
-      )}
-      {imageModalOpen && (
-        <ImagePickerModal
-          show={show}
-          onClose={() => setImageModalOpen(false)}
-        />
-      )}
-      {fileForRematch && (
-        <RematchModal
-          file={fileForRematch}
-          onClose={() => setFileForRematch(null)}
-        />
-      )}
-      {fileForFixEps && (
-        <FixEpisodeModal
-          file={fileForFixEps}
-          onClose={() => setFileForFixEps(null)}
-        />
-      )}
-      {assignImportEp && (
-        <AssignImportModal
-          showId={showId}
-          episode={assignImportEp}
-          onClose={() => setAssignImportEp(null)}
-        />
-      )}
-      {linkFileEp && (
-        <LinkFileModal
-          showId={showId}
-          showLocalPath={show.local_path ?? null}
-          episode={linkFileEp}
-          onClose={() => setLinkFileEp(null)}
-        />
-      )}
-      {scanLocalFilesOpen && (
-        <ScanLocalFilesModal showId={showId} onClose={() => setScanLocalFilesOpen(false)} />
-      )}
-      {episodeGroupModalOpen && (
-        <EpisodeGroupPickerModal show={show} onClose={() => setEpisodeGroupModalOpen(false)} />
-      )}
-      {scanLocalMovieFileOpen && (
-        <ScanLocalMovieFileModal
-          showId={showId}
-          onClose={() => setScanLocalMovieFileOpen(false)}
-        />
-      )}
-      {fixMovieFileOpen && (
-        <ScanLocalMovieFileModal
-          showId={showId}
-          replace
-          onClose={() => setFixMovieFileOpen(false)}
-        />
-      )}
+      <ShowDetailModals
+        show={show}
+        modal={modal}
+        onClose={() => setModal(null)}
+        rssFeeds={rssFeeds}
+        onConfirmDelete={() => {
+          setModal(null)
+          handleDelete()
+        }}
+        onSavePath={handleSavePath}
+        isSavingPath={updatePaths.isPending}
+        onSaveContentType={handleSaveContentType}
+        onResetContentType={patchShow.reset}
+        isSavingContentType={patchShow.isPending}
+        contentTypeError={patchShow.error as Error | null}
+      />
     </div>
   )
 }
