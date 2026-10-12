@@ -17,13 +17,16 @@ Commands:
     seed        Populate DB with sample data
     health      Run health checks
     generate-types Generate TypeScript types from OpenAPI spec
+    export-openapi Write the OpenAPI spec to a file (no server needed)
     build-frontend Build React SPA for production
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+from pathlib import Path
 
 import click
 
@@ -237,6 +240,21 @@ def generate_types() -> None:
     )
     click.echo("Types written to frontend/src/types/api-generated.ts")
     click.echo("frontend/src/types/api.ts is hand-maintained -- diff and update it by hand.")
+
+
+@cli.command()
+@click.argument("output", type=click.Path(dir_okay=False, writable=True, path_type=Path))
+def export_openapi(output: Path) -> None:
+    """Write the app's OpenAPI spec to OUTPUT without starting a server.
+
+    CI feeds the result to openapi-typescript and diffs it against the committed
+    frontend/src/types/api-generated.ts to catch frontend type drift.
+    """
+    from jidou.main import app
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(app.openapi(), indent=2) + "\n", encoding="utf-8")
+    click.echo(f"OpenAPI spec written to {output}")
 
 
 @cli.command()

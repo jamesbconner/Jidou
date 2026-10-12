@@ -117,6 +117,33 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Type-drift check (D8): regenerate frontend/src/types/api-generated.ts
+      # from the backend's OpenAPI spec and fail if it differs from the
+      # committed file. Runs from the repo root (the job default is frontend/).
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: "0.12.1"
+
+      - name: Set up Python
+        working-directory: .
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        working-directory: .
+        run: uv sync --extra dev
+
+      - name: Check generated API types are up to date
+        working-directory: .
+        run: |
+          uv run python make.py export-openapi "$RUNNER_TEMP/openapi.json"
+          npx --yes openapi-typescript@7.13.0 "$RUNNER_TEMP/openapi.json" -o "$RUNNER_TEMP/api-generated.ts"
+          if ! diff -u frontend/src/types/api-generated.ts "$RUNNER_TEMP/api-generated.ts"; then
+            echo "::error file=frontend/src/types/api-generated.ts::Generated API types are stale. Regenerate with: uv run python make.py export-openapi /tmp/openapi.json && cd frontend && npx openapi-typescript@7.13.0 /tmp/openapi.json -o src/types/api-generated.ts"
+            exit 1
+          fi
+
   # ---------- Integration smoke test ----------
   integration:
     runs-on: ubuntu-latest
