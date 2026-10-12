@@ -6,7 +6,11 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from jidou.models.downloaded_file import DownloadedFile
-from jidou.orchestrators._bulk_existence import chunked_existing_paths, insert_or_skip_duplicate
+from jidou.orchestrators._bulk_existence import (
+    chunked_existing_paths,
+    chunked_existing_statuses,
+    insert_or_skip_duplicate,
+)
 
 
 def _make_session(existing_by_chunk: list[list[str]]) -> AsyncMock:
@@ -167,3 +171,37 @@ async def test_insert_or_skip_duplicate_reraises_when_pgcode_missing() -> None:
 
     with pytest.raises(IntegrityError):
         await insert_or_skip_duplicate(session, object())
+
+
+def _make_status_session(rows_by_chunk: list[list[tuple[str, str]]]) -> AsyncMock:
+    """Return a mock session whose execute().all() yields one chunk's (path, status) rows."""
+    session = AsyncMock()
+    results = []
+    for chunk in rows_by_chunk:
+        result = MagicMock()
+        result.all.return_value = [MagicMock(remote_path=p, status=s) for p, s in chunk]
+        results.append(result)
+    session.execute = AsyncMock(side_effect=results)
+    return session
+
+
+@pytest.mark.asyncio
+async def test_chunked_existing_statuses_chunks() -> None:
+    """5 paths at chunk_size=2 take 3 queries; statuses are merged and stringified."""
+    session = _make_status_session([[("/1", "seeded")], [], [("/5", "downloaded")]])
+    paths = [f"/{n}" for n in range(1, 6)]
+
+    result = await chunked_existing_statuses(session, paths, chunk_size=2)
+
+    assert session.execute.await_count == 3
+    assert result == {"/1": "seeded", "/5": "downloaded"}
+
+
+@pytest.mark.asyncio
+async def test_chunked_existing_statuses_empty_input_does_not_query() -> None:
+    """No paths means no query at all."""
+    session = AsyncMock()
+    session.execute = AsyncMock()
+
+    assert await chunked_existing_statuses(session, []) == {}
+    session.execute.assert_not_called()

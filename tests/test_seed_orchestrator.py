@@ -560,3 +560,125 @@ class TestSeedRemoteTask:
 
         registered = celery_app.tasks
         assert any("seed_remote_task" in name for name in registered)
+
+
+# ---------------------------------------------------------------------------
+# Characterization: full mixed run (pins progress, logs, SFTP calls, commit order)
+# ---------------------------------------------------------------------------
+
+
+class TestSeedMixedRunCharacterization:
+    """One run through every seed phase, pinning what a restructure must preserve."""
+
+    def _setup(self) -> tuple[MagicMock, FakeOrchestratorDB, FakeOrchestratorSession]:
+        top_new = _make_file("f1.mkv", "/a/f1.mkv")
+        top_old = _make_file("f2.mkv", "/a/f2.mkv")
+        d_ok, d_part, d_bad, d_empty = (
+            _make_dir("D1", "/a/D1"),
+            _make_dir("D2", "/a/D2"),
+            _make_dir("D3", "/a/D3"),
+            _make_dir("D0", "/a/D0"),
+        )
+        walks: dict[str, RecursiveListResult | BaseException] = {
+            "/a/D1": RecursiveListResult(
+                files=[
+                    _make_file("x1.mkv", "/a/D1/x1.mkv"),
+                    _make_file("x2.mkv", "/a/D1/x2.mkv"),
+                    _make_file("x3.mkv", "/a/D1/x3.mkv"),
+                ]
+            ),
+            "/a/D2": RecursiveListResult(
+                files=[_make_file("y1.mkv", "/a/D2/y1.mkv")], io_failures=1
+            ),
+            "/a/D3": RuntimeError("boom"),
+            "/a/D0": RecursiveListResult(files=[]),
+        }
+        sftp = _make_sftp({"/a": [top_new, top_old, d_ok, d_part, d_bad, d_empty]}, walks)
+        real_children = sftp.list_remote_children.side_effect
+
+        async def children(path: str | None = None) -> list[RemoteFile]:
+            if path == "/b":
+                raise OSError("down")
+            return await real_children(path)
+
+        sftp.list_remote_children = AsyncMock(side_effect=children)
+        db = FakeOrchestratorDB(
+            existing_files={"/a/f2.mkv": "downloaded", "/a/D1/x2.mkv": "seeded"},
+            existing_dirs={"/a/D0"},
+        )
+        return sftp, db, FakeOrchestratorSession(db)
+
+    @pytest.mark.asyncio
+    async def test_mixed_run(self, caplog: pytest.LogCaptureFixture) -> None:
+        sftp, db, session = self._setup()
+        progress: list[tuple[int, int, str]] = []
+
+        async def on_progress(cur: int, total: int, msg: str) -> None:
+            progress.append((cur, total, msg))
+
+        commit_snapshots: list[list[object]] = []
+        real_commit = session.commit
+
+        async def tracking_commit() -> None:
+            await real_commit()
+            commit_snapshots.append(list(session.added))
+
+        session.commit = tracking_commit  # type: ignore[method-assign]
+
+        with caplog.at_level("DEBUG"), _patch_chunked_existing(db):
+            result = await SeedOrchestrator(session, sftp, ["/a", "/b"], batch_size=2).run(
+                on_progress=on_progress
+            )
+
+        assert [c.args[0] for c in sftp.list_remote_children.await_args_list] == ["/a", "/b"]
+        sftp.list_remote_files_recursive_batch.assert_awaited_once_with(
+            ["/a/D1", "/a/D2", "/a/D3", "/a/D0"]
+        )
+        assert (result.paths_scanned, result.paths_failed) == (2, 1)
+        assert (result.files_found, result.files_seeded, result.files_skipped) == (6, 4, 2)
+        assert result.skipped_by_status == {"downloaded": 1, "seeded": 1}
+        assert progress == [(2, 4, "Seeded 2/4 files"), (4, 4, "Seeded 4/4 files")]
+        # Two file batches, then one directory commit holding only the walked, new D1.
+        assert len(commit_snapshots) == 3
+        assert [type(o).__name__ for o in commit_snapshots[0]] == ["DownloadedFile"] * 2
+        assert [type(o).__name__ for o in commit_snapshots[1]] == ["DownloadedFile"] * 4
+        assert [o.remote_path for o in commit_snapshots[2][4:]] == ["/a/D1"]
+        assert [o.remote_path for o in commit_snapshots[1]] == [
+            "/a/f1.mkv",
+            "/a/D1/x1.mkv",
+            "/a/D1/x3.mkv",
+            "/a/D2/y1.mkv",
+        ]
+        messages = [r.getMessage() for r in caplog.records]
+        for expected in (
+            "Listing remote path 1/2: /a",
+            "Listing remote path 2/2: /b",
+            "Failed to list remote path /b; skipping",
+            "Failed to deep-walk directory /a/D3: boom",
+            "Skipping already-tracked file (status=downloaded): /a/f2.mkv",
+        ):
+            assert expected in messages
+        assert any(
+            m.startswith("Directory /a/D2 not fully walked (io_failures=1,")
+            and m.endswith("will retry on next seed run")
+            for m in messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_mixed_run_dry_run_logs_plan_and_writes_nothing(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        sftp, db, session = self._setup()
+
+        with caplog.at_level("INFO"), _patch_chunked_existing(db):
+            result = await SeedOrchestrator(session, sftp, ["/a", "/b"], batch_size=2).run(
+                dry_run=True
+            )
+
+        assert (result.files_seeded, result.files_skipped, result.dry_run) == (4, 2, True)
+        assert session.added == []
+        assert session.commits == 0
+        messages = [r.getMessage() for r in caplog.records]
+        assert "[DRY RUN] Would seed /a/f1.mkv (1000000 bytes)" in messages
+        assert "[DRY RUN] Would mark directory as known: /a/D1" in messages
+        assert not any("Would mark directory as known: /a/D0" in m for m in messages)
