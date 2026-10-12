@@ -363,57 +363,58 @@ def test_trigger_task_dispatches_the_matching_worker(task_type: str, target: str
 Append inside `class TestUpdateSettings` in `tests/test_settings_routes.py`:
 
 ```python
-    def test_patch_all_fields_upserts_each_once(self) -> None:
-        """A PATCH carrying every field issues one upsert per field, then one re-fetch."""
-        payload = {
-            "show_adult_content": True,
-            "calendar_enabled": False,
-            "discover_enabled": False,
-            "dashboard_page_enabled": False,
-            "recent_episodes_enabled": False,
-            "recent_movies_enabled": False,
-            "recent_episodes_prefer_posters": True,
-            "similar_titles_enabled": False,
-            "similar_titles_count": 5,
-            "similar_titles_include_external": False,
-        }
-        result_after = MagicMock()
-        result_after.scalars.return_value.all.return_value = []
-        session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[None] * len(payload) + [result_after])
-        session.flush = AsyncMock()
+def test_patch_all_fields_upserts_each_once(self) -> None:
+    """A PATCH carrying every field issues one upsert per field, then one re-fetch."""
+    payload = {
+        "show_adult_content": True,
+        "calendar_enabled": False,
+        "discover_enabled": False,
+        "dashboard_page_enabled": False,
+        "recent_episodes_enabled": False,
+        "recent_movies_enabled": False,
+        "recent_episodes_prefer_posters": True,
+        "similar_titles_enabled": False,
+        "similar_titles_count": 5,
+        "similar_titles_include_external": False,
+    }
+    result_after = MagicMock()
+    result_after.scalars.return_value.all.return_value = []
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[None] * len(payload) + [result_after])
+    session.flush = AsyncMock()
 
-        async def _mock_session() -> AsyncMock:
-            yield session
+    async def _mock_session() -> AsyncMock:
+        yield session
 
-        app.dependency_overrides[get_session] = _mock_session
-        try:
-            resp = TestClient(app).patch("/api/settings", json=payload)
-            assert resp.status_code == 200
-            assert session.execute.await_count == len(payload) + 1
-            session.flush.assert_awaited()
-        finally:
-            app.dependency_overrides.clear()
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        resp = TestClient(app).patch("/api/settings", json=payload)
+        assert resp.status_code == 200
+        assert session.execute.await_count == len(payload) + 1
+        session.flush.assert_awaited()
+    finally:
+        app.dependency_overrides.clear()
 
-    def test_patch_empty_body_writes_nothing(self) -> None:
-        """An empty PATCH performs no upsert and no flush; it only re-reads state."""
-        result_after = MagicMock()
-        result_after.scalars.return_value.all.return_value = []
-        session = AsyncMock()
-        session.execute = AsyncMock(side_effect=[result_after])
-        session.flush = AsyncMock()
 
-        async def _mock_session() -> AsyncMock:
-            yield session
+def test_patch_empty_body_writes_nothing(self) -> None:
+    """An empty PATCH performs no upsert and no flush; it only re-reads state."""
+    result_after = MagicMock()
+    result_after.scalars.return_value.all.return_value = []
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[result_after])
+    session.flush = AsyncMock()
 
-        app.dependency_overrides[get_session] = _mock_session
-        try:
-            resp = TestClient(app).patch("/api/settings", json={})
-            assert resp.status_code == 200
-            assert session.execute.await_count == 1
-            session.flush.assert_not_awaited()
-        finally:
-            app.dependency_overrides.clear()
+    async def _mock_session() -> AsyncMock:
+        yield session
+
+    app.dependency_overrides[get_session] = _mock_session
+    try:
+        resp = TestClient(app).patch("/api/settings", json={})
+        assert resp.status_code == 200
+        assert session.execute.await_count == 1
+        session.flush.assert_not_awaited()
+    finally:
+        app.dependency_overrides.clear()
 ```
 
 - [ ] **Step 3: Run the new tests against the unchanged code**
@@ -717,9 +718,7 @@ async def get_or_404[ModelT: Base](
     return await one_or_404(session, stmt, detail=detail)
 
 
-async def get_show_or_404(
-    session: AsyncSession, show_id: int, *, for_update: bool = False
-) -> Show:
+async def get_show_or_404(session: AsyncSession, show_id: int, *, for_update: bool = False) -> Show:
     """Fetch a :class:`Show` by primary key, or raise HTTP 404 ``"Show not found"``.
 
     Args:
@@ -1115,7 +1114,9 @@ class RegisteredTask:
 
 
 TASK_REGISTRY: Final[dict[str, RegisteredTask]] = {
-    "download": RegisteredTask(CeleryTaskRef("jidou.workers.download_tasks", "download_files_task")),
+    "download": RegisteredTask(
+        CeleryTaskRef("jidou.workers.download_tasks", "download_files_task")
+    ),
     "scan": RegisteredTask(CeleryTaskRef("jidou.workers.scan_tasks", "scan_remote_task")),
     "match": RegisteredTask(CeleryTaskRef("jidou.workers.match_tasks", "match_files_task")),
     # RouteOrchestrator selects all MATCHED/ROUTING files upfront and commits each
@@ -1214,14 +1215,12 @@ Keep the decorator and docstring. Replace the body from
 `if payload.task_type not in {` through the end of the function with:
 
 ```python
-    try:
-        return await dispatch_registered_task(
-            db_session, payload.task_type, dry_run=payload.dry_run
-        )
-    except UnknownTaskTypeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except TaskDispatchError as exc:
-        raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
+try:
+    return await dispatch_registered_task(db_session, payload.task_type, dry_run=payload.dry_run)
+except UnknownTaskTypeError as exc:
+    raise HTTPException(status_code=400, detail=str(exc)) from exc
+except TaskDispatchError as exc:
+    raise HTTPException(status_code=503, detail="Failed to dispatch task to broker") from exc
 ```
 
 Add top-level imports:
@@ -2271,33 +2270,35 @@ def _config_checks() -> dict[str, dict[str, Any]]:
 Replace `system_health`'s body, after the docstring, with:
 
 ```python
-    async def check_database() -> dict[str, Any]:
-        await db_session.execute(text("SELECT 1"))
-        # Surface the applied migration revision so a stale schema after a deploy
-        # is visible here instead of only showing up as a downstream 500.
-        return {"alembic_version": await _read_alembic_version(db_session)}
+async def check_database() -> dict[str, Any]:
+    await db_session.execute(text("SELECT 1"))
+    # Surface the applied migration revision so a stale schema after a deploy
+    # is visible here instead of only showing up as a downstream 500.
+    return {"alembic_version": await _read_alembic_version(db_session)}
 
-    async def check_celery() -> dict[str, Any]:
-        # A reachable broker doesn't prove a worker is consuming; ping workers directly.
-        pong = await asyncio.to_thread(celery_app.control.inspect(timeout=2.0).ping)
-        if not pong:
-            raise ProbeFailedError("No Celery workers responded to ping")
-        return {"workers": list(pong.keys())}
 
-    redis_url = settings.redis_url
-    results: dict[str, Any] = {
-        "database": (await run_probe(check_database)).as_dict(),
-        # Redis is optional here: unconfigured must not drag overall health to false.
-        "redis": (
-            (await run_probe(lambda: ping_redis(redis_url))).as_dict()
-            if redis_url
-            else {"ok": True, "configured": False}
-        ),
-        "celery": (await run_probe(check_celery)).as_dict(),
-        **_config_checks(),
-    }
-    overall = all(v.get("ok") for v in results.values())
-    return {"healthy": overall, "version": __version__, "services": results}
+async def check_celery() -> dict[str, Any]:
+    # A reachable broker doesn't prove a worker is consuming; ping workers directly.
+    pong = await asyncio.to_thread(celery_app.control.inspect(timeout=2.0).ping)
+    if not pong:
+        raise ProbeFailedError("No Celery workers responded to ping")
+    return {"workers": list(pong.keys())}
+
+
+redis_url = settings.redis_url
+results: dict[str, Any] = {
+    "database": (await run_probe(check_database)).as_dict(),
+    # Redis is optional here: unconfigured must not drag overall health to false.
+    "redis": (
+        (await run_probe(lambda: ping_redis(redis_url))).as_dict()
+        if redis_url
+        else {"ok": True, "configured": False}
+    ),
+    "celery": (await run_probe(check_celery)).as_dict(),
+    **_config_checks(),
+}
+overall = all(v.get("ok") for v in results.values())
+return {"healthy": overall, "version": __version__, "services": results}
 ```
 
 Import `ProbeFailedError`, `ping_redis` and `run_probe` from
@@ -2310,24 +2311,26 @@ Redis `except` block, with the following. Keep the TMDB, SFTP, `body` and
 `JSONResponse` parts unchanged.
 
 ```python
-    services: dict[str, dict[str, Any]] = {}
+services: dict[str, dict[str, Any]] = {}
 
-    async def check_postgres() -> None:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
 
-    probes = {
-        "postgres": await run_probe(check_postgres),
-        # Redis is required for this probe (Docker HEALTHCHECK): failure → 503.
-        "redis": await run_probe(lambda: ping_redis(settings.redis_url)),
-    }
-    for name, result in probes.items():
-        if result.ok:
-            services[name] = {"status": "healthy"}
-        else:
-            logger.error("%s health check failed: %s", name, result.error)
-            services[name] = {"status": "unhealthy", "error": result.error or ""}
-    overall_healthy = all(r.ok for r in probes.values())
+async def check_postgres() -> None:
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+
+
+probes = {
+    "postgres": await run_probe(check_postgres),
+    # Redis is required for this probe (Docker HEALTHCHECK): failure → 503.
+    "redis": await run_probe(lambda: ping_redis(settings.redis_url)),
+}
+for name, result in probes.items():
+    if result.ok:
+        services[name] = {"status": "healthy"}
+    else:
+        logger.error("%s health check failed: %s", name, result.error)
+        services[name] = {"status": "unhealthy", "error": result.error or ""}
+overall_healthy = all(r.ok for r in probes.values())
 ```
 
 Remove the now-unused `import redis.asyncio as aioredis`. The separate

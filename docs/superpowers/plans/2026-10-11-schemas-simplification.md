@@ -146,7 +146,9 @@ Read it first. Finding IDs (SC*) and section numbers (§) refer to it.
 **Interfaces:**
 - Produces, in `_base.py`:
   ```python
-  def _validate_regex(value: str) -> str: ...   # moved from rss_schema; same ValueError text
+  def _validate_regex(value: str) -> str: ...  # moved from rss_schema; same ValueError text
+
+
   RegexPattern = Annotated[str, AfterValidator(_validate_regex)]
   ```
   The seven fields become:
