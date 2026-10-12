@@ -388,8 +388,11 @@ class LLMService:
             return await self._call_anthropic(
                 system=system, prompt=prompt, model=model, max_tokens=max_tokens
             )
-        # complete() only runs when is_available() is true, which already excludes NONE,
-        # so every remaining provider speaks the OpenAI chat-completions format.
+        # complete() only runs when is_available() is true, which already excludes NONE.
+        if self._provider not in _OPENAI_COMPATIBLE:
+            # Unrecognised provider: raise (caught by the caller, which returns None) so
+            # no network call is ever made with a provider we don't understand.
+            raise ValueError(f"Unsupported LLM provider: {self._provider!r}")
         return await self._call_openai_compatible(
             system=system,
             prompt=prompt,

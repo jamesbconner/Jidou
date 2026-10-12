@@ -696,3 +696,21 @@ async def test_call_provider_covers_every_configured_provider(provider: LLMProvi
 
 def test_strip_thinking_removes_think_and_thinking_blocks() -> None:
     assert _strip_thinking("<think>a</think> ok <thinking>b\nc</thinking>") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_makes_no_http_call_and_returns_none() -> None:
+    """An unrecognised provider is rejected before any wire-format call or network I/O."""
+    svc = LLMService(provider="lmstudio", api_key="", base_url="http://localhost", model="m")
+    svc._provider = "unsupported_fake_provider"  # type: ignore[assignment]
+    with (
+        patch.object(svc, "_call_openai_compatible", AsyncMock()) as oai,
+        patch.object(svc, "_call_anthropic", AsyncMock()) as anth,
+        patch("httpx2.AsyncClient") as client_cls,
+    ):
+        result = await svc.complete("test prompt")
+
+    assert result is None
+    oai.assert_not_awaited()
+    anth.assert_not_awaited()
+    client_cls.assert_not_called()

@@ -41,6 +41,9 @@ class _Harness:
         return outcome
 
     async def cleanup(self, exc: BaseException) -> None:
+        # Yield first so a waiter woken too early (event set before this hook finishes)
+        # would get to run its lookup and be recorded ahead of "cleanup".
+        await asyncio.sleep(0)
         self.log.append("cleanup")
 
     def spawn(self, flight: ElectedSingleFlight[str], n: int, **kw: Any) -> list[asyncio.Task[str]]:
@@ -120,8 +123,8 @@ async def test_on_owner_failure_runs_before_waiters_wake() -> None:
     await _settle()
     h.gate.set()
     await asyncio.gather(*tasks, return_exceptions=True)
-    assert h.log[0] == "cleanup"
     assert "lookup" in h.log
+    assert h.log.index("cleanup") < h.log.index("lookup")
 
 
 async def test_new_batch_after_fail_fast_gets_fresh_owner() -> None:
