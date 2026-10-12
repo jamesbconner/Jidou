@@ -508,3 +508,43 @@ def test_task_progress_schema_defaults_unknown_status_to_pending() -> None:
         progress_message=None,
     )
     assert tp.status == TaskStatus.PENDING
+
+
+@pytest.mark.parametrize(
+    ("task_type", "target"),
+    [
+        ("download", "jidou.workers.download_tasks.download_files_task"),
+        ("scan", "jidou.workers.scan_tasks.scan_remote_task"),
+        ("match", "jidou.workers.match_tasks.match_files_task"),
+        ("route", "jidou.workers.route_tasks.route_files_task"),
+        ("sync", "jidou.workers.sync_tasks.sync_all_task"),
+        ("seed", "jidou.workers.seed_tasks.seed_remote_task"),
+        ("backfill_show_metadata", "jidou.workers.backfill_tasks.backfill_show_metadata_task"),
+    ],
+)
+def test_trigger_task_dispatches_the_matching_worker(task_type: str, target: str) -> None:
+    """Each supported task_type dispatches exactly its own Celery task with [dry_run]."""
+    mock_task = _make_task(celery_task_id=f"{task_type}-id", task_type=task_type)
+
+    async def fake_create(session, task_id, task_type_, **kwargs):  # type: ignore[no-untyped-def]
+        return mock_task
+
+    mock_celery = MagicMock()
+    with (
+        patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+        patch(
+            "jidou.services.progress.get_active_task",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(target, mock_celery),
+    ):
+        resp = TestClient(app).post(
+            "/api/tasks/trigger", json={"task_type": task_type, "dry_run": True}
+        )
+
+    assert resp.is_success, resp.text
+    mock_celery.apply_async.assert_called_once()
+    call = mock_celery.apply_async.call_args
+    assert call.kwargs["args"] == [True]
+    assert isinstance(call.kwargs["task_id"], str)

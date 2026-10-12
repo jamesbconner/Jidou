@@ -586,3 +586,55 @@ class TestUpdateSettings:
             assert resp.status_code == 422
         finally:
             app.dependency_overrides.clear()
+
+    def test_patch_all_fields_upserts_each_once(self) -> None:
+        """A PATCH carrying every field issues one upsert per field, then one re-fetch."""
+        payload = {
+            "show_adult_content": True,
+            "calendar_enabled": False,
+            "discover_enabled": False,
+            "dashboard_page_enabled": False,
+            "recent_episodes_enabled": False,
+            "recent_movies_enabled": False,
+            "recent_episodes_prefer_posters": True,
+            "similar_titles_enabled": False,
+            "similar_titles_count": 5,
+            "similar_titles_include_external": False,
+        }
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[None] * len(payload) + [result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch("/api/settings", json=payload)
+            assert resp.status_code == 200
+            assert session.execute.await_count == len(payload) + 1
+            session.flush.assert_awaited()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_patch_empty_body_writes_nothing(self) -> None:
+        """An empty PATCH performs no upsert and no flush; it only re-reads state."""
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[result_after])
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            resp = TestClient(app).patch("/api/settings", json={})
+            assert resp.status_code == 200
+            assert session.execute.await_count == 1
+            session.flush.assert_not_awaited()
+        finally:
+            app.dependency_overrides.clear()
