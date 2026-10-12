@@ -491,3 +491,37 @@ async def test_path_import_race_uses_title_lookup_and_does_not_commit(pi_patches
     session.commit.assert_not_awaited()
     pi_patches["aliases"].assert_not_awaited()
     assert ("info", "Show 'SomeShow' already existed (concurrent create)") in events
+
+
+@pytest.mark.parametrize(
+    ("failing_prefix", "expected_error_prefix"),
+    [
+        ("Synced", "Episode sync failed for 'SomeShow': "),
+        ("Generated aliases", None),
+    ],
+)
+async def test_path_import_raising_success_event_is_swallowed_with_rollback(
+    pi_patches, failing_prefix: str, expected_error_prefix: str | None
+) -> None:
+    """A raising ``on_event`` for a step's success message counts as that step failing."""
+    events: list[tuple[str, str]] = []
+
+    async def flaky(level: str, msg: str, ctx: object = None) -> None:
+        if msg.startswith(failing_prefix):
+            raise RuntimeError("sink broke")
+        events.append((level, msg))
+
+    base, session = _pi_orch()
+    orch = PathImportOrchestrator(session, base.tmdb, on_event=flaky)
+
+    show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "created" and show is not None
+    session.rollback.assert_awaited_once()
+    errors = [m for lvl, m in events if lvl == "error"]
+    if expected_error_prefix is None:
+        assert errors == []
+        pi_patches["aliases"].assert_awaited_once()
+    else:
+        assert len(errors) == 1 and errors[0].startswith(expected_error_prefix)
+        assert "sink broke" in errors[0]
