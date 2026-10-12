@@ -1145,6 +1145,9 @@ def test_patch_file_unrecognised_integrity_error_is_reraised_after_rollback() ->
         session = AsyncMock()
         result = MagicMock()
         result.scalar_one_or_none.return_value = f
+        # Without this, a missing re-raise would still 500 via the refresh
+        # query's unset mock, so the test would not pin the re-raise.
+        result.scalar_one.return_value = f
         session.execute = AsyncMock(return_value=result)
         session.flush = AsyncMock(side_effect=IntegrityError("stmt", {}, orig))
         session.rollback = rollback
