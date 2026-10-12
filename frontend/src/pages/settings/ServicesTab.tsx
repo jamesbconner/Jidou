@@ -172,6 +172,58 @@ interface TestMutation {
   data?: ConnectionTestResult
 }
 
+/** Detail text for a service: latency/revision, model, error or "not configured". */
+function baseDetail(svc: ServiceHealth): string {
+  if (svc.ok && svc.latency_ms != null) {
+    return `${svc.latency_ms} ms${svc.alembic_version ? ` · rev ${svc.alembic_version}` : ''}`
+  }
+  if (svc.model) return `${svc.provider} / ${svc.model}`
+  return svc.error ?? (svc.configured === false ? 'not configured' : '')
+}
+
+/**
+ * Detail column text. The health check returns no latency_ms for LLM (config-only
+ * probe), so the timing from the most recent Test result is surfaced to keep the
+ * detail column consistent.
+ */
+function serviceDetail(svc: ServiceHealth | null | undefined, test: TestMutation | null): string {
+  if (!svc) return ''
+  const detail = baseDetail(svc)
+  if (svc.latency_ms == null && test?.data?.ok && test.data.message) {
+    const ms = test.data.message.match(/^(\d+\.?\d*ms)/)?.[1]
+    if (ms) return `${ms} · ${detail}`
+  }
+  return detail
+}
+
+/** Check mark, cross or dash for a service's last known state. */
+function indicatorFor(ok: boolean | undefined): { color: string; char: string } {
+  if (ok === true) return { color: 'text-green-600 dark:text-green-400', char: '✓' }
+  if (ok === false) return { color: 'text-red-600 dark:text-red-400', char: '✗' }
+  return { color: 'text-gray-300 dark:text-gray-700', char: '–' }
+}
+
+/** Result text and Test button for services that support an on-demand check. */
+function TestControls({ test }: { test: TestMutation }) {
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {/* Result left of button so the button stays anchored to the right */}
+      {test.data && (
+        <span className={clsx('text-xs', test.data.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+          {test.data.ok ? 'OK' : test.data.error}
+        </span>
+      )}
+      <button
+        onClick={() => test.mutate()}
+        disabled={test.isPending}
+        className="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+      >
+        {test.isPending ? 'Testing…' : 'Test'}
+      </button>
+    </div>
+  )
+}
+
 function ServiceRow({
   label,
   svc,
@@ -181,52 +233,18 @@ function ServiceRow({
   svc: ServiceHealth | null | undefined
   test: TestMutation | null
 }) {
-  let detail = svc
-    ? svc.ok && svc.latency_ms != null
-      ? `${svc.latency_ms} ms${svc.alembic_version ? ` · rev ${svc.alembic_version}` : ''}`
-      : svc.model
-        ? `${svc.provider} / ${svc.model}`
-        : svc.error ?? (svc.configured === false ? 'not configured' : '')
-    : ''
-
-  // Health check returns no latency_ms for LLM (config-only probe). Surface the
-  // timing from the most recent Test result so the detail column stays consistent.
-  if (svc && svc.latency_ms == null && test?.data?.ok && test.data.message) {
-    const ms = test.data.message.match(/^(\d+\.?\d*ms)/)?.[1]
-    if (ms) detail = `${ms} · ${detail}`
-  }
-
   // Indicator: prefer health-endpoint data; fall back to most recent test result
   // so services without a health key (e.g. SFTP) still show ✓/✗ after a test.
-  const ok = svc != null ? svc.ok : test?.data?.ok
-  const indicatorColor =
-    ok === true ? 'text-green-600 dark:text-green-400' : ok === false ? 'text-red-600 dark:text-red-400' : 'text-gray-300 dark:text-gray-700'
-  const indicatorChar = ok === true ? '✓' : ok === false ? '✗' : '–'
+  const { color, char } = indicatorFor(svc != null ? svc.ok : test?.data?.ok)
 
   return (
     <div className="flex items-center gap-3 text-sm min-h-[1.75rem]">
-      <span className={clsx('w-4 text-center shrink-0 font-medium', indicatorColor)}>
-        {indicatorChar}
+      <span className={clsx('w-4 text-center shrink-0 font-medium', color)}>
+        {char}
       </span>
       <span className="w-20 text-gray-700 dark:text-gray-300 shrink-0">{label}</span>
-      <span className="text-xs text-gray-500 dark:text-gray-400 flex-1">{detail}</span>
-      {test && (
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Result left of button so the button stays anchored to the right */}
-          {test.data && (
-            <span className={clsx('text-xs', test.data.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
-              {test.data.ok ? 'OK' : test.data.error}
-            </span>
-          )}
-          <button
-            onClick={() => test.mutate()}
-            disabled={test.isPending}
-            className="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          >
-            {test.isPending ? 'Testing…' : 'Test'}
-          </button>
-        </div>
-      )}
+      <span className="text-xs text-gray-500 dark:text-gray-400 flex-1">{serviceDetail(svc, test)}</span>
+      {test && <TestControls test={test} />}
     </div>
   )
 }

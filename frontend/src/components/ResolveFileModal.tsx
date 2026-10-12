@@ -3,7 +3,6 @@ import { useConfig } from '@/hooks/useConfig'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useLibraryIndex } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
 import { CandidateList } from '@/components/resolveFile/CandidateList'
 import { ResolveConfirm } from '@/components/resolveFile/ResolveConfirm'
 import {
@@ -15,7 +14,10 @@ import {
   ExistingShowPanel,
   FileInfo,
   LocalMatches,
+  MatchError,
+  ResolveFooter,
   SearchControls,
+  parseTmdbId,
   type ExistingShow,
 } from '@/components/resolveFile/ResolveSections'
 import { toContainerPath, sanitizeFolderName } from '@/utils/paths'
@@ -41,8 +43,7 @@ export function ResolveFileModal({ file, onClose }: Props) {
   // Title search returns many unrelated results for common-word titles (e.g.
   // "Green Green" surfaces "Green Acres", "Green Lantern", …), so a direct
   // TMDB-ID lookup is offered as a precise alternative.
-  const trimmedTmdbIdQuery = tmdbIdQuery.trim()
-  const parsedTmdbId = /^\d+$/.test(trimmedTmdbIdQuery) ? parseInt(trimmedTmdbIdQuery, 10) : null
+  const parsedTmdbId = parseTmdbId(tmdbIdQuery)
 
   const {
     candidates,
@@ -198,37 +199,16 @@ export function ResolveFileModal({ file, onClose }: Props) {
           )}
 
           {/* Error */}
-          {rematch.isError && (
-            <div className="text-xs text-red-400 bg-red-950/30 rounded p-2">
-              {rematch.error instanceof Error ? rematch.error.message : 'Match failed'}
-            </div>
-          )}
+          {rematch.isError && <MatchError error={rematch.error} />}
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-700 flex items-center justify-between">
-          <button
-            onClick={handleReset}
-            disabled={rematch.isPending}
-            className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
-          >
-            Reset for auto re-match
-          </button>
-          <div className="flex gap-2">
-            <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={!canConfirm}
-              variant="primary"
-              tone="dark"
-              size="sm"
-            >
-              {rematch.isPending ? 'Matching…' : 'Confirm match'}
-            </Button>
-          </div>
-        </div>
+        <ResolveFooter
+          pending={rematch.isPending}
+          canConfirm={canConfirm}
+          onReset={handleReset}
+          onClose={onClose}
+          onConfirm={handleConfirm}
+        />
     </Modal>
   )
 }

@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/Button'
 import { year } from '@/components/resolveFile/year'
 import type { SearchMode } from '@/components/resolveFile/useResolveCandidates'
 import { toHostPath } from '@/utils/paths'
@@ -234,6 +235,60 @@ export function ExistingShowPanel({
           This show has no local path — set one on the show detail page first.
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Parses the TMDB-id box. Title search returns many unrelated results for
+ * common-word titles (e.g. "Green Green" surfaces "Green Acres"), so a direct
+ * id lookup is offered; only an all-digit string counts as an id.
+ */
+export function parseTmdbId(query: string): number | null {
+  const trimmed = query.trim()
+  return /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null
+}
+
+/** Inline error line for a failed rematch. */
+export function MatchError({ error }: { error: unknown }) {
+  return (
+    <div className="text-xs text-red-400 bg-red-950/30 rounded p-2">
+      {error instanceof Error ? error.message : 'Match failed'}
+    </div>
+  )
+}
+
+/** Reset / Cancel / Confirm footer. */
+export function ResolveFooter({
+  pending,
+  canConfirm,
+  onReset,
+  onClose,
+  onConfirm,
+}: {
+  pending: boolean
+  canConfirm: boolean
+  onReset: () => void
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="px-5 py-3 border-t border-zinc-700 flex items-center justify-between">
+      <button
+        onClick={onReset}
+        disabled={pending}
+        className="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+      >
+        Reset for auto re-match
+      </button>
+      <div className="flex gap-2">
+        <Button onClick={onClose} variant="secondary" tone="dark" size="sm">
+          Cancel
+        </Button>
+        <Button onClick={onConfirm} disabled={!canConfirm} variant="primary" tone="dark" size="sm">
+          {pending ? 'Matching…' : 'Confirm match'}
+        </Button>
+      </div>
     </div>
   )
 }
