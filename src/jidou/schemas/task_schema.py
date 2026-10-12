@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 from jidou.models.task import TaskStatus
 from jidou.schemas._base import ORMModel
@@ -28,14 +28,6 @@ TaskType = Literal[
 ]
 
 
-def _coerce_task_status(value: object) -> TaskStatus:
-    """Convert a raw DB string to TaskStatus, defaulting to PENDING on unknown values."""
-    try:
-        return TaskStatus(str(value))
-    except ValueError:
-        return TaskStatus.PENDING
-
-
 class TaskList(ORMModel):
     """List view with fields sufficient to render outcome details in the UI."""
 
@@ -49,12 +41,6 @@ class TaskList(ORMModel):
     dry_run: bool
     created_at: datetime
     completed_at: datetime | None
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _validate_status(cls, value: object) -> TaskStatus:
-        """Convert raw DB string to TaskStatus enum."""
-        return _coerce_task_status(value)
 
 
 class TaskRead(TaskList):

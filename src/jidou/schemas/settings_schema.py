@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from jidou.services.settings_service import SIMILAR_TITLES_COUNT_MAX, SIMILAR_TITLES_COUNT_MIN
+
 
 class AppSettingsRead(BaseModel):
     """Current value of every known application setting."""
@@ -34,8 +36,8 @@ class AppSettingsRead(BaseModel):
         description="Whether the show detail page shows a Similar Titles carousel",
     )
     similar_titles_count: int = Field(
-        ge=1,
-        le=40,
+        ge=SIMILAR_TITLES_COUNT_MIN,
+        le=SIMILAR_TITLES_COUNT_MAX,
         description="How many similar titles to fetch and display",
     )
     similar_titles_include_external: bool = Field(
@@ -57,5 +59,7 @@ class AppSettingsPatch(BaseModel):
     recent_movies_enabled: bool | None = None
     recent_episodes_prefer_posters: bool | None = None
     similar_titles_enabled: bool | None = None
-    similar_titles_count: int | None = Field(default=None, ge=1, le=40)
+    similar_titles_count: int | None = Field(
+        default=None, ge=SIMILAR_TITLES_COUNT_MIN, le=SIMILAR_TITLES_COUNT_MAX
+    )
     similar_titles_include_external: bool | None = None
