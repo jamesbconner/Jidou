@@ -8,7 +8,7 @@ from jidou.models.watchlist import WatchlistStatus
 from jidou.schemas._base import ORMModel
 
 
-class ShowBrief(ORMModel):
+class WatchlistShowBrief(ORMModel):
     """Minimal show info embedded in watchlist responses."""
 
     title: str
@@ -61,7 +61,7 @@ class WatchlistRead(ORMModel):
 
     id: int
     show_id: int
-    show: ShowBrief
+    show: WatchlistShowBrief
     status: WatchlistStatus
     notes: str | None = None
     position: int

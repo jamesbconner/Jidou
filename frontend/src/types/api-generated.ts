@@ -2511,8 +2511,9 @@ export interface paths {
          * @description Fetch a feed's current entries, grouped by parsed show name.
          *
          *     Read-only: nothing is persisted. Each group is annotated with the library
-         *     show whose alias/title exactly matches the parsed name, and with any
-         *     subscription on this feed already linked to that show.
+         *     show whose alias/title exactly matches the parsed name, and with any active
+         *     subscription on this feed that already covers it: one whose include/exclude
+         *     regexes match the group's titles, or failing that one linked to that show.
          *
          *     Args:
          *         feed_id: Database primary key of the feed.
@@ -3748,8 +3749,9 @@ export interface components {
          *         sample_titles: Up to three raw entry titles.
          *         library_show: Library show whose alias/title exactly matches the parsed
          *             name, if any.
-         *         existing_subscription_id: A subscription on this feed already linked to
-         *             ``library_show``, if any.
+         *         existing_subscription_id: An active subscription on this feed that
+         *             already covers the group (its regexes match the group's titles, or
+         *             it is linked to ``library_show``), if any.
          */
         FeedEntryGroupRead: {
             /** Parsed Name */
@@ -3937,8 +3939,18 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            show?: components["schemas"]["jidou__schemas__file_schema__ShowBrief"] | null;
+            show?: components["schemas"]["FileShowBrief"] | null;
             episode?: components["schemas"]["EpisodeBrief"] | null;
+        };
+        /**
+         * FileShowBrief
+         * @description Minimal show fields embedded in file responses.
+         */
+        FileShowBrief: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
         };
         /**
          * FileStatus
@@ -5358,7 +5370,7 @@ export interface components {
             id: number;
             /** Show Id */
             show_id: number;
-            show: components["schemas"]["jidou__schemas__watchlist_schema__ShowBrief"];
+            show: components["schemas"]["WatchlistShowBrief"];
             status: components["schemas"]["WatchlistStatus"];
             /** Notes */
             notes?: string | null;
@@ -5377,6 +5389,20 @@ export interface components {
             next_up?: components["schemas"]["WatchlistNextUpEpisode"] | null;
         };
         /**
+         * WatchlistShowBrief
+         * @description Minimal show info embedded in watchlist responses.
+         */
+        WatchlistShowBrief: {
+            /** Title */
+            title: string;
+            /** Tmdb Id */
+            tmdb_id: number;
+            /** Poster Path */
+            poster_path?: string | null;
+            /** Backdrop Path */
+            backdrop_path?: string | null;
+        };
+        /**
          * WatchlistStatus
          * @description Status of a watchlist entry.
          * @enum {string}
@@ -5392,30 +5418,6 @@ export interface components {
             notes?: string | null;
             /** Position */
             position?: number | null;
-        };
-        /**
-         * ShowBrief
-         * @description Minimal show fields embedded in file responses.
-         */
-        jidou__schemas__file_schema__ShowBrief: {
-            /** Id */
-            id: number;
-            /** Title */
-            title: string;
-        };
-        /**
-         * ShowBrief
-         * @description Minimal show info embedded in watchlist responses.
-         */
-        jidou__schemas__watchlist_schema__ShowBrief: {
-            /** Title */
-            title: string;
-            /** Tmdb Id */
-            tmdb_id: number;
-            /** Poster Path */
-            poster_path?: string | null;
-            /** Backdrop Path */
-            backdrop_path?: string | null;
         };
     };
     responses: never;

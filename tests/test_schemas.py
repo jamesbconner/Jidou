@@ -263,3 +263,84 @@ def test_task_type_literal_matches_worker_types() -> None:
     # Eleven worker entry points exist today; a scan that finds far fewer is vacuous.
     assert len(found) >= 10
     assert found == set(get_args(TaskType))
+
+
+def test_file_and_watchlist_responses_serialize_with_unchanged_json() -> None:
+    """Renaming the two ``ShowBrief`` classes must not change any response JSON."""
+    from types import SimpleNamespace
+
+    from jidou.models.downloaded_file import FileStatus
+    from jidou.models.watchlist import WatchlistStatus
+    from jidou.schemas.file_schema import FileRead
+    from jidou.schemas.watchlist_schema import WatchlistRead
+
+    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    file_row = SimpleNamespace(
+        id=1,
+        show_id=2,
+        episode_id=3,
+        original_filename="a.mkv",
+        remote_path="/r/a.mkv",
+        local_path=None,
+        file_size=10,
+        hash_sha256=None,
+        status=FileStatus.MATCHED,
+        matched_by=None,
+        ignored_reason=None,
+        error_message=None,
+        parsed_show_name=None,
+        parsed_season=None,
+        parsed_episode=None,
+        parsed_confidence=None,
+        parsed_content_type=None,
+        created_at=ts,
+        updated_at=ts,
+        show=SimpleNamespace(id=2, title="Show"),
+        episode=SimpleNamespace(id=3, season_number=1, episode_number=2, name="Ep"),
+    )
+    assert FileRead.model_validate(file_row).model_dump(mode="json") == {
+        "id": 1,
+        "show_id": 2,
+        "episode_id": 3,
+        "original_filename": "a.mkv",
+        "remote_path": "/r/a.mkv",
+        "local_path": None,
+        "file_size": 10,
+        "hash_sha256": None,
+        "status": "matched",
+        "matched_by": None,
+        "ignored_reason": None,
+        "error_message": None,
+        "parsed_show_name": None,
+        "parsed_season": None,
+        "parsed_episode": None,
+        "parsed_confidence": None,
+        "parsed_content_type": None,
+        "created_at": "2026-01-02T03:04:05Z",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "show": {"id": 2, "title": "Show"},
+        "episode": {"id": 3, "season_number": 1, "episode_number": 2, "name": "Ep"},
+    }
+
+    watch_row = SimpleNamespace(
+        id=5,
+        show_id=2,
+        show=SimpleNamespace(title="Show", tmdb_id=99, poster_path="/p.jpg", backdrop_path=None),
+        status=WatchlistStatus.WATCHING,
+        notes=None,
+        position=0,
+        created_at=ts,
+        updated_at=ts,
+        next_up=None,
+    )
+    assert WatchlistRead.model_validate(watch_row).model_dump(mode="json") == {
+        "id": 5,
+        "show_id": 2,
+        "show": {"title": "Show", "tmdb_id": 99, "poster_path": "/p.jpg", "backdrop_path": None},
+        "status": "watching",
+        "notes": None,
+        "position": 0,
+        "created_at": "2026-01-02T03:04:05Z",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "next_up": None,
+    }
