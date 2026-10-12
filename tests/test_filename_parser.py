@@ -119,13 +119,13 @@ def test_heuristic_parse_bare_episode_with_group_tag():
     assert r.crc32 == "ABCD1234"
 
 
-def test_heuristic_parse_1000_plus_episode_falls_back():
-    """Episode numbers > 999 are not matched — 4-digit numbers are more likely
-    years/resolutions and the false-positive cost outweighs the edge case."""
+def test_heuristic_parse_1000_plus_episode():
+    """4-digit episode numbers are matched (D20); years and resolutions stay excluded."""
     r = _heuristic_parse("[HorribleSubs] One Piece - 1001 [ABCD1234].mkv")
+    assert r.show_name == "One Piece"
     assert r.season is None
-    assert r.episode is None
-    assert r.confidence == 0.1
+    assert r.episode == 1001
+    assert r.confidence == 0.6
     assert r.crc32 == "ABCD1234"
 
 

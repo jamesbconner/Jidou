@@ -13,11 +13,13 @@ import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from jidou.services.file_filters import (
     MEDIA_EXTENSIONS,
+    QUALITY_TOKENS,
+    RESOLUTION_TOKENS,
+    is_release_year,
     is_valid_directory,
     is_valid_media_file,
 )
@@ -26,37 +28,51 @@ from jidou.services.path_transport import encode_path_bytes
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
 _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 
+# Every explicit-marker pattern below (SxxE, NxN, Episode, Ep, "- N", "N - Title")
+# takes 1-4 episode digits: long-running shows have passed episode 1,000 (D20).
+# The dash rules additionally skip release years and 4-digit resolution tokens (see
+# _EPISODE_RULES).
+
 # Standard SxxExx notation — always carries both season and episode.
-_SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})")
+_SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})")
+
+# x264/x265 codec tags, plus x266 (VVC), which is not in QUALITY_TOKENS. Glued to an audio
+# tag ("DD5.1x264") they would otherwise read as NxNNN once episodes take 3-4 digits.
+_X_CODEC_NUMBERS: tuple[str, ...] = (
+    *(token[1:] for token in QUALITY_TOKENS if re.fullmatch(r"x\d{3}", token)),
+    "266",
+)
 
 # NxNN / NNxNN — common release-group format (e.g. Criminal.Minds.01x01).
-_SxE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,2})(?!\d)")
+_SxE_PATTERN = re.compile(
+    r"(?<!\d)(\d{1,2})[xX](?!(?:" + "|".join(_X_CODEC_NUMBERS) + r")(?!\d))(\d{1,4})(?!\d)"
+)
 
 # "Season N Episode N" — long-form text label (e.g. "Breaking Bad Season 2 Episode 09").
 _SEASON_EPISODE_WORD = re.compile(
-    r"\bSeason\s+(\d{1,2})\b.*?\bEpisode\s+(\d{1,3})\b", re.IGNORECASE
+    r"\bSeason\s+(\d{1,2})\b.*?\bEpisode\s+(\d{1,4})\b", re.IGNORECASE
 )
 
 # "Episode N" — standalone episode label (e.g. "Episode 11 - 25 to Life").
-_EPISODE_WORD = re.compile(r"\bEpisode\s+(\d{1,3})\b", re.IGNORECASE)
+_EPISODE_WORD = re.compile(r"\bEpisode\s+(\d{1,4})\b", re.IGNORECASE)
 
 # "Ep N" or "Ep. N" (Yawara-style).
-_EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,3})\b", re.IGNORECASE)
+_EP_WORD = re.compile(r"\bEp\.?\s*(\d{1,4})\b", re.IGNORECASE)
 
 # "- N" followed by end-of-string or a quality/hash bracket.
 # Handles SubsPlease, HorribleSubs, and plain "Show - 06".
-_DASH_EP = re.compile(r"[-–]\s*(\d{1,3})\s*(?:$|[\(\[])")  # noqa: RUF001
+_DASH_EP = re.compile(r"[-–]\s*(\d{1,4})\s*(?:$|[\(\[])")  # noqa: RUF001
 
 # "N - Title" where N is the episode number *before* a title separator.
 # Handles encoders that use "Show 01 - Episode Title [hash]" naming.
 # Requires a letter immediately after the separator to avoid matching
 # resolution strings or hashes that contain "NN - NN".
-_PREDASH_EP = re.compile(r"(?<!\d)(\d{1,3})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
+_PREDASH_EP = re.compile(r"(?<!\d)(\d{1,4})\s+[-–]\s+[A-Za-z]")  # noqa: RUF001
 
 # "N - Title" at start of stem where the title begins with a digit or word
 # (e.g. "32 - 100th Dirty Job Special", "19 - 200 Jobs Look-Back").
 # More permissive than _PREDASH_EP; anchored to ^ to limit false positives.
-_LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
+_LEADING_EP = re.compile(r"^(\d{1,4})\s+[-–]\s+")  # noqa: RUF001
 
 # "Title NN" — a bare trailing 1-2 digit number with nothing but whitespace
 # separating it from the title (e.g. "Bamboo Blade 20", "Yawara 6"). No dash,
@@ -64,7 +80,8 @@ _LEADING_EP = re.compile(r"^(\d{1,3})\s+[-–]\s+")  # noqa: RUF001
 # non-word character (so "v2" or "S02" — glued directly to a letter — never
 # match), and the "season" lookbehind excludes a lone trailing season number
 # with no episode (e.g. "Show Season 2"). Limited to 1-2 digits so it can
-# never collide with the 3-4 digit compact SEEE/SSEEE heuristic below.
+# never collide with the 3-4 digit compact SEEE/SSEEE heuristic below, which is
+# where a bare 3-4 digit number goes (with years and resolution tokens excluded).
 _BARE_TRAILING_EP = re.compile(r"(?<!season\s)\b(\d{1,2})$", re.IGNORECASE)
 
 # Non-credit opening/ending and other bonus-content markers (e.g.
@@ -78,15 +95,11 @@ _NON_EPISODE_ASSET_WORD = re.compile(r"\b(NCED|NCOP|OP|ED|PV|CM|SP|OVA|OAD)\b", 
 # (e.g. criminal.minds.201 → S02E01, criminal.minds.1001 → S10E01).
 # Applied last because it is the most ambiguous pattern.
 _COMPACT_EP = re.compile(r"\b(\d{3,4})\b")
-_COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
-
-# A bare 3-4 digit token that looks like a scene-release year tag (e.g.
-# "Show.Name.2024.1080p.WEB-DL.mkv" — a near-universal release convention) is
-# excluded from the compact SxxExx guess below. The upper bound tracks the
-# current year (plus headroom for near-future release dates) instead of a
-# fixed cutoff, so it never silently goes stale.
-_YEAR_EXCLUSION_MIN = 1900
-_YEAR_EXCLUSION_HEADROOM_YEARS = 2
+# Resolution tokens are never a compact code; shared with filename_parser (D21).
+_COMPACT_QUALITY = frozenset(RESOLUTION_TOKENS)
+# Dash markers skip only the 4-digit resolutions (owner ruling): a 3-digit episode
+# such as "Show - 720" keeps parsing after a dash, as it always has.
+_DASH_EXCLUDED_RESOLUTIONS = frozenset(t for t in RESOLUTION_TOKENS if len(t) == 4)
 
 
 @dataclass(frozen=True)
@@ -98,11 +111,17 @@ class _EpisodeRule:
         has_season: True when group 1 is the season and group 2 the episode;
             False when group 1 is the episode alone.
         blocked_by: When set and it matches the stem, this rule is skipped.
+        skip_years_and_resolutions: When True, a match whose episode is a
+            release year or a 4-digit resolution token (1080, 2160, 4320) is
+            ignored and the search goes on to the next match. Set on the dash
+            rules, whose marker is too weak to outweigh a year or a 4-digit
+            resolution (owner rulings on D20).
     """
 
     pattern: re.Pattern[str]
     has_season: bool
     blocked_by: re.Pattern[str] | None = None
+    skip_years_and_resolutions: bool = False
 
     def match(self, stem: str) -> tuple[int | None, int, None] | None:
         """Apply this rule to *stem*.
@@ -118,12 +137,26 @@ class _EpisodeRule:
         # guess still get their chance, exactly as the old inline `if` did.
         if self.blocked_by is not None and self.blocked_by.search(stem):
             return None
-        m = self.pattern.search(stem)
-        if m is None:
-            return None
-        if self.has_season:
-            return int(m.group(1)), int(m.group(2)), None
-        return None, int(m.group(1)), None
+        for m in self.pattern.finditer(stem):
+            raw = m.group(2) if self.has_season else m.group(1)
+            if self.skip_years_and_resolutions and _is_year_or_resolution(raw):
+                continue
+            if self.has_season:
+                return int(m.group(1)), int(raw), None
+            return None, int(raw), None
+        return None
+
+
+def _is_year_or_resolution(raw: str) -> bool:
+    """Return True if *raw* is a release year or a 4-digit resolution token.
+
+    Args:
+        raw: The captured episode digits.
+
+    Returns:
+        True when the number should not be read as an episode.
+    """
+    return raw in _DASH_EXCLUDED_RESOLUTIONS or is_release_year(int(raw))
 
 
 # Ordered, first match wins; the compact SEEE guess runs after all of these.
@@ -133,9 +166,11 @@ _EPISODE_RULES: tuple[_EpisodeRule, ...] = (
     _EpisodeRule(_SEASON_EPISODE_WORD, has_season=True),
     _EpisodeRule(_EPISODE_WORD, has_season=False),
     _EpisodeRule(_EP_WORD, has_season=False),
-    _EpisodeRule(_DASH_EP, has_season=False),
-    _EpisodeRule(_PREDASH_EP, has_season=False),
-    _EpisodeRule(_LEADING_EP, has_season=False),
+    # Dash markers skip years and 4-digit resolutions ("Show - 2024", "Show - 1080 [x]");
+    # word and SxxE/NxN markers above do not.
+    _EpisodeRule(_DASH_EP, has_season=False, skip_years_and_resolutions=True),
+    _EpisodeRule(_PREDASH_EP, has_season=False, skip_years_and_resolutions=True),
+    _EpisodeRule(_LEADING_EP, has_season=False, skip_years_and_resolutions=True),
     # Bonus-content markers mean a trailing number is a clip index, not an episode.
     _EpisodeRule(_BARE_TRAILING_EP, has_season=False, blocked_by=_NON_EPISODE_ASSET_WORD),
 )
@@ -707,7 +742,8 @@ def _compact_guess(stem: str, dir_season: int | None) -> tuple[int, int, int] | 
         if raw in _COMPACT_QUALITY:
             continue
         n = int(raw)
-        if _YEAR_EXCLUSION_MIN <= n <= date.today().year + _YEAR_EXCLUSION_HEADROOM_YEARS:
+        # A scene-release year tag (e.g. "Show.Name.2024.1080p.WEB-DL.mkv") is not a code.
+        if is_release_year(n):
             continue
         s_num = int(raw[:-2])
         e_num = int(raw[-2:])
@@ -724,7 +760,8 @@ def _parse_episode(
     """Extract (season, episode) from a filename stem (no extension).
 
     Priority order (first match wins):
-    1. ``SxxExx`` / ``SxxEyyy`` standard notation.
+    1. ``SxxExx`` / ``SxxEyyyy`` standard notation (explicit markers take 1-4
+       episode digits).
     2. ``NNxNN`` release-group notation (e.g. ``01x01``).
     3. ``Season N … Episode N`` long-form text.
     4. ``Episode N`` standalone label.

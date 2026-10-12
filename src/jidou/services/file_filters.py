@@ -4,11 +4,15 @@ Centralises the rules for which remote files and directories should be
 included when scanning.  The same rules are applied during both listing
 (``SFTPService.list_remote_files_recursive``) and any future pre-download
 validation pass.
+
+It also holds the filename tokens shared by ``filename_parser`` and
+``path_parser`` (resolution and quality words, the release-year range), so the
+two parsers cannot drift apart on what counts as noise rather than an episode.
 """
 
 import os
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import PurePosixPath
 
 # Allowlist, not a denylist: an SFTP source is commonly mixed-use (archives,
@@ -44,6 +48,68 @@ EXCLUDED_KEYWORDS: frozenset[str] = frozenset(
 )
 
 _UPLOAD_GRACE_SECONDS: int = 60
+
+# Video heights that appear as bare numbers in release names ("1080p", "720").
+# Shared by both filename parsers: stripped as quality noise, and never read as
+# an episode number. Ordered because the parsers build regex alternations from it.
+RESOLUTION_TOKENS: tuple[str, ...] = ("480", "576", "720", "1080", "2160", "4320")
+
+# Source, codec and release-quality words stripped from a filename before the
+# episode patterns run. Matched case-insensitively as whole words.
+QUALITY_TOKENS: tuple[str, ...] = (
+    "4K",
+    "UHD",
+    "FHD",
+    "HD",
+    "SD",
+    "BluRay",
+    "BDRip",
+    "BRRip",
+    "DVDRip",
+    "WEBRip",
+    "WEB-DL",
+    "HDTV",
+    "x264",
+    "x265",
+    "HEVC",
+    "AVC",
+    "AAC",
+    "AC3",
+    "DTS",
+    "FLAC",
+    "MP3",
+    "Remux",
+    "Repack",
+    "PROPER",
+)
+
+# A bare 4-digit number in this range reads as a release-year tag (e.g.
+# "Show.Name.2024.1080p.WEB-DL"), not an episode. The upper bound tracks the
+# current year plus headroom for near-future release dates, so it never goes stale.
+RELEASE_YEAR_MIN: int = 1900
+RELEASE_YEAR_HEADROOM_YEARS: int = 2
+
+
+def release_year_max() -> int:
+    """Return the newest year treated as a release-year tag.
+
+    Returns:
+        The current year plus ``RELEASE_YEAR_HEADROOM_YEARS``, read from the
+        clock on every call.
+    """
+    return date.today().year + RELEASE_YEAR_HEADROOM_YEARS
+
+
+def is_release_year(n: int) -> bool:
+    """Return True if *n* falls in the release-year range (1900 to current year + 2).
+
+    Args:
+        n: A bare number taken from a filename.
+
+    Returns:
+        True when the number should be read as a year, not an episode.
+    """
+    return RELEASE_YEAR_MIN <= n <= release_year_max()
 
 
 def is_valid_media_file(name: str) -> bool:

@@ -17,11 +17,18 @@ one implementation instead of maintaining two copies of the same regex
 patterns and LLM prompt that would inevitably drift apart.
 """
 
+import functools
 import logging
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from jidou.services.file_filters import (
+    QUALITY_TOKENS,
+    RELEASE_YEAR_MIN,
+    RESOLUTION_TOKENS,
+    release_year_max,
+)
 from jidou.services.llm_json import (
     NULLABLE_INT,
     NULLABLE_STRING,
@@ -38,9 +45,10 @@ _PROMPT_FILE = Path(__file__).parent / "prompts" / "parse_filename.txt"
 _PARSE_SYSTEM: str = _PROMPT_FILE.read_text(encoding="utf-8")
 
 # Fast-path regex: extract S/E before trying the LLM, as a grounding hint.
+# Episodes take 1-4 digits: long-running shows have passed episode 1,000 (D20).
 _SE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})"),
-    re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,3})(?!\d)"),
+    re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})"),
+    re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,4})(?!\d)"),
 ]
 
 # Heuristic parser — applied when no LLM is available.
@@ -50,43 +58,67 @@ _BRACKETS_PAT = re.compile(r"[\[\(].*?[\]\)]")
 # Strip common video quality/source/codec tokens that appear without brackets.
 # These are frequently 3-digit numbers (480, 720) that would otherwise be
 # misidentified as episode numbers by the bare-episode fallback patterns.
+# Built from the token lists shared with path_parser (D21).
 _QUALITY_PAT = re.compile(
-    r"\b(?:480|576|720|1080|2160|4320)(?:p|i)?"
-    r"|\b(?:4K|UHD|FHD|HD|SD|BluRay|BDRip|BRRip|DVDRip|WEBRip|WEB-DL|HDTV"
-    r"|x264|x265|HEVC|AVC|AAC|AC3|DTS|FLAC|MP3|Remux|Repack|PROPER)\b",
+    r"\b(?:" + "|".join(RESOLUTION_TOKENS) + r")(?:p|i)?"
+    r"|\b(?:" + "|".join(re.escape(token) for token in QUALITY_TOKENS) + r")\b",
     re.IGNORECASE,
 )
 _DELIMITERS_PAT = re.compile(r"[_.]")
 _WHITESPACE_PAT = re.compile(r"\s+")
 
-# Ordered from most- to least-specific; first match wins.
-# Episode capture is capped at \d{1,3} (max 999) intentionally: 4-digit years
-# (1080, 2024, etc.) appear in filenames far more often than shows with 1000+
-# episodes, and false positives on years are worse than missing edge cases.
-# End-anchored bare-episode pattern runs BEFORE the mid-string one so that
-# the rightmost number is preferred over an earlier number in the show title
-# (e.g. "Show Part 2 - 05" → episode=5, not episode=2).
-_HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
-    # "2nd Season 04" / "1st Season 01"
-    re.compile(
-        r"(?P<name>.*?)[\s\-]+(?P<season>\d{1,2})(?:st|nd|rd|th)?[\s\-]+Season[\s\-]+(?P<episode>\d{1,3})",
-        re.IGNORECASE,
-    ),
-    # S01E02
-    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,3})"),
-    # S01 02
-    re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[\s\-]+(?P<episode>\d{1,3})"),
-    # E02 (season optional)
-    re.compile(
-        r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,3})"
-    ),
-    # bare episode at end of string (end-anchored — more specific than mid-string)
-    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})$"),
-    # bare episode number anywhere, optional v2 suffix
-    re.compile(r"(?P<name>.*?)[\s\-]+(?P<episode>\d{1,3})(?:v\d)?\b"),
-    # S01E02 with leading space only
-    re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,3})"),
-]
+
+@functools.cache
+def _heuristic_patterns(max_year: int) -> tuple[re.Pattern[str], ...]:
+    """Build the ordered heuristic patterns for a given release-year upper bound.
+
+    Ordered from most- to least-specific; first match wins. Every episode
+    capture takes 1-4 digits (D20). A number after an explicit marker
+    (``S01E``, ``E``, ``Season``) is always an episode. A bare number, with no
+    marker of its own, is skipped when it is a release year (1900 through
+    *max_year*) or a resolution token, because those appear in filenames far
+    more often than episode 1,000+. The end-anchored bare pattern runs BEFORE
+    the mid-string one so that the rightmost number is preferred over an
+    earlier number in the show title (e.g. "Show Part 2 - 05" → episode=5).
+
+    Cached per year so the patterns compile once, yet the year bound still
+    comes from the clock at call time.
+
+    Args:
+        max_year: Newest year treated as a release-year tag.
+
+    Returns:
+        The compiled patterns, in priority order.
+    """
+    excluded = [str(y) for y in range(RELEASE_YEAR_MIN, max_year + 1)] + list(RESOLUTION_TOKENS)
+    # Rejects a whole excluded token; a longer number that merely starts with one still matches.
+    guard = r"(?!(?:" + "|".join(excluded) + r")(?!\d))"
+    bare = guard + r"\d{1,4}"
+    # Mid-string only: a 4-digit number loses to any later bare number, so a number in the
+    # show title ("The 4400 - 05 - Title") never beats the real 1-3 digit episode after it.
+    bare_mid = guard + r"(?:\d{1,3}|\d{4}(?!.*[\s\-]\d))"
+    return (
+        # "2nd Season 04" / "1st Season 01"
+        re.compile(
+            r"(?P<name>.*?)[\s\-]+(?P<season>\d{1,2})(?:st|nd|rd|th)?[\s\-]+Season[\s\-]+(?P<episode>\d{1,4})",
+            re.IGNORECASE,
+        ),
+        # S01E02
+        re.compile(r"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+        # S01 02 — the episode digits carry no marker of their own, so they are bare.
+        re.compile(rf"(?P<name>.*?)[\s\-]+[Ss](?P<season>\d{{1,2}})[\s\-]+(?P<episode>{bare})"),
+        # E02 (season optional)
+        re.compile(
+            r"(?P<name>.*?)(?:[\s\-]+[Ss](?P<season>\d{1,2}).*)?[\s\-]+[Ee](?P<episode>\d{1,4})"
+        ),
+        # bare episode at end of string (end-anchored — more specific than mid-string)
+        re.compile(rf"(?P<name>.*?)[\s\-]+(?P<episode>{bare})$"),
+        # bare episode number anywhere, optional v2 suffix
+        re.compile(rf"(?P<name>.*?)[\s\-]+(?P<episode>{bare_mid})(?:v\d)?\b"),
+        # S01E02 with leading space only
+        re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
+    )
+
 
 # JSON schema for structured LLM output (OpenAI response_format shape).
 # Passed to OpenAI-compatible providers; Anthropic ignores it and relies on
@@ -186,7 +218,7 @@ def _heuristic_parse(filename: str) -> FilenameParseResult:
     """
     cleaned, crc32 = _clean_filename(filename)
 
-    for idx, pattern in enumerate(_HEURISTIC_PATTERNS):
+    for idx, pattern in enumerate(_heuristic_patterns(release_year_max())):
         m = pattern.search(cleaned)
         if m:
             groups = m.groupdict()
@@ -235,7 +267,7 @@ _BACKSLASH = "\ue001"
 _TRACKER_TITLE_PAT = re.compile(
     r"^(?P<name>.+?)\s+-\s+[A-Za-z][A-Za-z0-9 ]{0,30}?(?:\s*\[[^\]]*\])*\s*::\s*(?P<rest>.*)$"
 )
-_TRACKER_EPISODE_PAT = re.compile(r"\bEpisode\s+(\d{1,3})\b", re.IGNORECASE)
+_TRACKER_EPISODE_PAT = re.compile(r"\bEpisode\s+(\d{1,4})\b", re.IGNORECASE)
 
 
 def _parse_tracker_title(title: str) -> FilenameParseResult | None:
