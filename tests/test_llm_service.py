@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jidou.services.llm_service import LLMProvider, LLMService
+from jidou.services.llm_service import LLMProvider, LLMService, _strip_thinking
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -667,3 +667,32 @@ class TestInFlightDeduplication:
 
         assert http_calls == 2
         assert all(r is not None and r.content == "42" for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Provider dispatch and thinking-block stripping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [p for p in LLMProvider if p is not LLMProvider.NONE])
+async def test_call_provider_covers_every_configured_provider(provider: LLMProvider) -> None:
+    """Every real provider reaches exactly one wire-format call; only Anthropic uses its own."""
+    service = LLMService(provider=provider.value, api_key="k", model="m")
+    result = ("x", 1, 1, "stop")
+    with (
+        patch.object(service, "_call_openai_compatible", AsyncMock(return_value=result)) as oai,
+        patch.object(service, "_call_anthropic", AsyncMock(return_value=result)) as anth,
+    ):
+        out = await service._call_provider(
+            system=None, prompt="p", model="m", max_tokens=10, response_format=None
+        )
+
+    assert out == result
+    assert (anth.await_count, oai.await_count) == (
+        (1, 0) if provider is LLMProvider.ANTHROPIC else (0, 1)
+    )
+
+
+def test_strip_thinking_removes_think_and_thinking_blocks() -> None:
+    assert _strip_thinking("<think>a</think> ok <thinking>b\nc</thinking>") == "ok"
