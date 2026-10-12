@@ -1378,16 +1378,16 @@ async def test_llm_pick_candidate_returns_none_falls_back() -> None:
     assert fallback[0][0] == "warn"
 
 
-def test_normalize_title_strips_punctuation() -> None:
-    """_normalize_title makes 'Daredevil Born Again' match 'Daredevil: Born Again'."""
-    from jidou.orchestrators.path_import_orchestrator import _normalize_title
+def testnormalize_name_strips_punctuation() -> None:
+    """normalize_name makes 'Daredevil Born Again' match 'Daredevil: Born Again'."""
+    from jidou.services.alias_handling import normalize_name
 
-    assert _normalize_title("Daredevil: Born Again") == _normalize_title("Daredevil Born Again")
+    assert normalize_name("Daredevil: Born Again") == normalize_name("Daredevil Born Again")
     # But "Daredevil" must NOT match "Daredevil: Born Again".
-    assert _normalize_title("Daredevil") != _normalize_title("Daredevil: Born Again")
+    assert normalize_name("Daredevil") != normalize_name("Daredevil: Born Again")
     # Basic cases.
-    assert _normalize_title("Hunter x Hunter") == "hunter x hunter"
-    assert _normalize_title("Re:Zero") == _normalize_title("Re Zero")
+    assert normalize_name("Hunter x Hunter") == "hunter x hunter"
+    assert normalize_name("Re:Zero") == normalize_name("Re Zero")
 
 
 @pytest.mark.asyncio
@@ -2387,24 +2387,24 @@ async def test_import_show_emits_info_summary_when_all_tracked() -> None:
 
 class TestAgreesWithShow:
     def test_exact_normalized_title_match(self) -> None:
-        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+        from jidou.services.alias_handling import names_agree
 
         show = _make_show(title="Daredevil: Born Again")
-        assert _agrees_with_show("Daredevil Born Again", show) is True
+        assert names_agree("Daredevil Born Again", show) is True
 
     def test_alias_match(self) -> None:
-        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+        from jidou.services.alias_handling import names_agree
 
         show = _make_show(title="Attack on Titan")
         show.aliases = ["shingeki no kyojin"]
-        assert _agrees_with_show("Shingeki no Kyojin", show) is True
+        assert names_agree("Shingeki no Kyojin", show) is True
 
     def test_no_match(self) -> None:
-        from jidou.orchestrators.path_import_orchestrator import _agrees_with_show
+        from jidou.services.alias_handling import names_agree
 
         show = _make_show(title="One Piece")
         show.aliases = []
-        assert _agrees_with_show("Bleach", show) is False
+        assert names_agree("Bleach", show) is False
 
 
 @pytest.mark.asyncio
@@ -3851,7 +3851,7 @@ async def test_shows_only_directory_entry_skips_mismatch_check_entirely() -> Non
 async def test_shows_only_directory_entry_does_not_false_split_on_llm_renormalization() -> None:
     """Regression: a directory-only entry must not get split off because the
     per-file LLM's title-cleanup pass normalizes its own directory name
-    differently than _agrees_with_show's punctuation stripping does (e.g. a
+    differently than names_agree's punctuation stripping does (e.g. a
     hyphenated compound word getting merged into one word by the LLM but
     turned into two space-separated words by punctuation stripping).
 
@@ -3859,7 +3859,7 @@ async def test_shows_only_directory_entry_does_not_false_split_on_llm_renormaliz
     directory "Show Iron Blooded Orphans" resolves to a show titled
     "Show: Iron-Blooded Orphans", and the per-file LLM call on that directory
     name (treated as a "filename") returns "Show Ironblooded Orphans" —
-    which disagrees with _agrees_with_show's normalized "show iron blooded
+    which disagrees with names_agree's normalized "show iron blooded
     orphans" (hyphen -> space, not merged), triggering a bogus split even
     though it's the same show being compared against a mangled copy of itself.
     """
