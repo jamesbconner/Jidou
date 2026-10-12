@@ -6,6 +6,18 @@ from fastapi.testclient import TestClient
 
 from jidou.database import get_session
 from jidou.main import app
+from jidou.services.settings_service import (
+    CALENDAR_ENABLED,
+    DASHBOARD_PAGE_ENABLED,
+    DISCOVER_ENABLED,
+    RECENT_EPISODES_ENABLED,
+    RECENT_EPISODES_PREFER_POSTERS,
+    RECENT_MOVIES_ENABLED,
+    SHOW_ADULT_CONTENT,
+    SIMILAR_TITLES_COUNT,
+    SIMILAR_TITLES_ENABLED,
+    SIMILAR_TITLES_INCLUDE_EXTERNAL,
+)
 
 
 def _session_override(execute_return: object) -> "type[AsyncMock]":
@@ -638,3 +650,95 @@ class TestUpdateSettings:
             session.flush.assert_not_awaited()
         finally:
             app.dependency_overrides.clear()
+
+
+class TestPatchCharacterization:
+    """Pin the PATCH write plan (keys, values, order) independent of how it is implemented."""
+
+    @staticmethod
+    def _patch(json_body: dict[str, object]) -> tuple[int, list[tuple[str, object]], AsyncMock]:
+        from unittest.mock import patch
+
+        calls: list[tuple[str, object]] = []
+
+        async def _fake_set(_session: object, key: str, value: object) -> None:
+            calls.append((key, value))
+
+        result_after = MagicMock()
+        result_after.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result_after)
+        session.flush = AsyncMock()
+
+        async def _mock_session() -> AsyncMock:
+            yield session
+
+        app.dependency_overrides[get_session] = _mock_session
+        try:
+            with patch("jidou.api.routes.settings.set_setting", _fake_set):
+                resp = TestClient(app).patch("/api/settings", json=json_body)
+        finally:
+            app.dependency_overrides.clear()
+        return resp.status_code, calls, session
+
+    def test_all_fields_written_in_declared_order_with_expected_keys(self) -> None:
+        status, calls, _ = self._patch(
+            {
+                "similar_titles_include_external": False,
+                "similar_titles_count": 5,
+                "similar_titles_enabled": False,
+                "recent_episodes_prefer_posters": True,
+                "recent_movies_enabled": False,
+                "recent_episodes_enabled": False,
+                "dashboard_page_enabled": False,
+                "discover_enabled": False,
+                "calendar_enabled": False,
+                "show_adult_content": True,
+            }
+        )
+        assert status == 200
+        assert calls == [
+            (SHOW_ADULT_CONTENT, True),
+            (CALENDAR_ENABLED, False),
+            (DISCOVER_ENABLED, False),
+            (DASHBOARD_PAGE_ENABLED, False),
+            (RECENT_EPISODES_ENABLED, False),
+            (RECENT_MOVIES_ENABLED, False),
+            (RECENT_EPISODES_PREFER_POSTERS, True),
+            (SIMILAR_TITLES_ENABLED, False),
+            (SIMILAR_TITLES_COUNT, 5),
+            (SIMILAR_TITLES_INCLUDE_EXTERNAL, False),
+        ]
+
+    def test_partial_body_writes_only_present_fields(self) -> None:
+        status, calls, session = self._patch({"discover_enabled": False, "similar_titles_count": 3})
+        assert status == 200
+        assert calls == [(DISCOVER_ENABLED, False), (SIMILAR_TITLES_COUNT, 3)]
+        session.flush.assert_awaited()
+
+    def test_explicit_null_is_written_as_null(self) -> None:
+        status, calls, _ = self._patch({"calendar_enabled": None})
+        assert status == 200
+        assert calls == [(CALENDAR_ENABLED, None)]
+
+    def test_unknown_field_is_ignored(self) -> None:
+        status, calls, session = self._patch({"bogus": True})
+        assert status == 200
+        assert calls == []
+        session.flush.assert_not_awaited()
+
+    def test_out_of_range_count_is_rejected_without_writes(self) -> None:
+        status, calls, session = self._patch({"calendar_enabled": False, "similar_titles_count": 0})
+        assert status == 422
+        assert calls == []
+        session.flush.assert_not_awaited()
+
+
+def test_patch_field_map_covers_every_field() -> None:
+    """Every AppSettingsPatch field maps to a settings key (none can be silently dropped)."""
+    from jidou.api.routes.settings import _PATCH_FIELD_TO_KEY
+    from jidou.schemas.settings_schema import AppSettingsPatch
+
+    assert set(AppSettingsPatch.model_fields)
+    assert set(_PATCH_FIELD_TO_KEY) == set(AppSettingsPatch.model_fields)
+    assert len(set(_PATCH_FIELD_TO_KEY.values())) == len(_PATCH_FIELD_TO_KEY)
