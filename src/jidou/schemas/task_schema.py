@@ -35,24 +35,6 @@ def _coerce_task_status(value: object) -> TaskStatus:
         return TaskStatus.PENDING
 
 
-class TaskProgress(BaseModel):
-    """Slim progress snapshot for WebSocket messages."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    celery_task_id: str
-    status: TaskStatus
-    progress_current: int
-    progress_total: int
-    progress_message: str | None
-
-    @field_validator("status", mode="before")
-    @classmethod
-    def _validate_status(cls, value: object) -> TaskStatus:
-        """Convert raw DB string to TaskStatus enum."""
-        return _coerce_task_status(value)
-
-
 class TaskList(BaseModel):
     """List view with fields sufficient to render outcome details in the UI."""
 
