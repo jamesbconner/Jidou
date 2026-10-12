@@ -4,15 +4,19 @@ import { useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useConfig } from '@/hooks/useConfig'
+import {
+  ExistingFilePane,
+  EXISTING_PREFIX,
+  IMPORTED_PREFIX,
+  ModeSwitch,
+  PathPane,
+  type LinkMode,
+} from '@/components/linkFile/LinkFilePanes'
 import { parseContainerPath } from '@/utils/paths'
 import type { ContentType, EpisodeList, FileRead, FileStatus } from '@/types/api'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
-}
-
-function basename(path: string) {
-  return path.replace(/\\/g, '/').split('/').pop() ?? path
 }
 
 interface Props {
@@ -21,9 +25,6 @@ interface Props {
   episode: EpisodeList
   onClose: () => void
 }
-
-const EXISTING_PREFIX = 'e:'
-const IMPORTED_PREFIX = 'i:'
 
 // Files mid-transfer or otherwise not real, matchable content — excluded
 // from the reassignment pool regardless of which episode (if any) they
@@ -39,7 +40,7 @@ const UNAVAILABLE_STATUSES = new Set<FileStatus>([
 ])
 
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
-  const [mode, setMode] = useState<'existing' | 'path'>('existing')
+  const [mode, setMode] = useState<LinkMode>('existing')
   const [selected, setSelected] = useState('')
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [relativePath, setRelativePath] = useState('')
@@ -169,103 +170,26 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-          <div className="flex gap-1.5 text-xs">
-            <button
-              onClick={() => setMode('existing')}
-              className={`px-3 py-1.5 rounded border ${
-                mode === 'existing'
-                  ? 'bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white'
-                  : 'border-zinc-600 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              Pick existing file
-            </button>
-            <button
-              onClick={() => setMode('path')}
-              className={`px-3 py-1.5 rounded border ${
-                mode === 'path'
-                  ? 'bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white'
-                  : 'border-zinc-600 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              Enter file path
-            </button>
-          </div>
+          <ModeSwitch mode={mode} onChange={setMode} />
 
           {mode === 'existing' ? (
-            <div className="space-y-1.5">
-              <div className="text-xs text-zinc-400">
-                Select a file available for this show
-              </div>
-              <select
-                value={selected}
-                onChange={(e) => setSelected(e.target.value)}
-                disabled={pending || filesLoading || verifyLoading}
-                className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
-              >
-                <option value="">— pick a file —</option>
-                {availableFiles.length > 0 && (
-                  <optgroup label="Existing files">
-                    {availableFiles.map((f) => (
-                      <option key={f.id} value={`${EXISTING_PREFIX}${f.id}`}>
-                        {basename(f.original_filename)} ({f.status})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {importPool.length > 0 && (
-                  <optgroup label="Imported">
-                    {importPool.map((f) => (
-                      <option key={f.filename} value={`${IMPORTED_PREFIX}${f.filename}`}>
-                        {basename(f.displayName)} (currently: {f.label})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              {!filesLoading && !verifyLoading && availableFiles.length === 0 && importPool.length === 0 && (
-                <p className="text-xs text-zinc-500">No files available to link for this show.</p>
-              )}
-            </div>
+            <ExistingFilePane
+              selected={selected}
+              onSelect={setSelected}
+              disabled={pending || filesLoading || verifyLoading}
+              loading={filesLoading || verifyLoading}
+              availableFiles={availableFiles}
+              importPool={importPool}
+            />
           ) : (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <div className="text-xs text-zinc-400">Content type</div>
-                <div className="flex gap-4">
-                  {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
-                    <label key={t} className="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="link_file_content_type"
-                        value={t}
-                        checked={contentType === t}
-                        onChange={() => setContentType(t)}
-                        disabled={pending}
-                        className="accent-[var(--color-ocean-600)]"
-                      />
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-xs text-zinc-400">
-                  Path within the {contentType} folder (show / season / filename)
-                </div>
-                <input
-                  value={relativePath}
-                  onChange={(e) => setRelativePath(e.target.value)}
-                  disabled={pending}
-                  placeholder="Show Name/Season 01/show.s01e01.mkv"
-                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
-                  autoFocus
-                />
-                {fullPath && (
-                  <p className="text-xs text-zinc-500 font-mono truncate">{fullPath}</p>
-                )}
-              </div>
-            </div>
+            <PathPane
+              contentType={contentType}
+              onContentTypeChange={setContentType}
+              relativePath={relativePath}
+              onRelativePathChange={setRelativePath}
+              fullPath={fullPath}
+              disabled={pending}
+            />
           )}
 
           {error && (
