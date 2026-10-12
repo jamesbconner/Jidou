@@ -21,10 +21,8 @@ _KNOWN_FASTAPI_IMPORTERS: frozenset[str] = frozenset(
     {"manual_match_orchestrator", "show_rematch_orchestrator"}
 )
 
-# Task 2 empties this.
-_KNOWN_PRIVATE_IMPORTS: frozenset[tuple[str, str]] = frozenset(
-    {("rss_publish_orchestrator", "_default_on_event")}
-)
+# Empty: shared helpers live in private modules such as ``_events``, which may be imported freely.
+_KNOWN_PRIVATE_IMPORTS: frozenset[tuple[str, str]] = frozenset()
 
 
 def _orchestrator_files() -> list[Path]:

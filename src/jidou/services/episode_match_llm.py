@@ -15,19 +15,17 @@ details from pipeline sequencing.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
+from jidou.services.callbacks import OnEvent
 from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
 from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
-
-OnEvent = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
 
 _LLM_EPISODE_PARSE_SYSTEM = (
     "You are a TV episode filename parser. Extract only the season and "
@@ -130,7 +128,7 @@ _MAX_EPISODES_IN_PROMPT = 1500
 
 
 async def _emit(
-    on_event: OnEvent | None, level: str, msg: str, ctx: dict[str, object] | None = None
+    on_event: OnEvent | None, level: str, msg: str, ctx: dict[str, Any] | None = None
 ) -> None:
     if on_event:
         await on_event(level, msg, ctx)

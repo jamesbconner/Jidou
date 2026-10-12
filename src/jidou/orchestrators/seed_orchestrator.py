@@ -37,7 +37,6 @@ database regardless of its current status and never mutates existing rows.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -50,6 +49,7 @@ from jidou.orchestrators._bulk_existence import (
     chunked_existing_paths,
     insert_or_skip_duplicate,
 )
+from jidou.services.callbacks import OnProgress
 from jidou.services.sftp_service import RemoteFile, SFTPService
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ class SeedOrchestrator:
     async def run(
         self,
         dry_run: bool = False,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
     ) -> SeedResult:
         """Inventory all remote paths and create SEEDED records for untracked files.
 

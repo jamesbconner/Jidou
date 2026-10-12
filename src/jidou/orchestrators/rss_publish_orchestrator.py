@@ -22,7 +22,6 @@ Run sequence:
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -32,10 +31,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
-from jidou.orchestrators.rss_import_orchestrator import (
-    RssImportOrchestrator,
-    _default_on_event,
-)
+from jidou.orchestrators._events import log_only_event
+from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
+from jidou.services.callbacks import OnEvent
 from jidou.services.rss_config import (
     compose_rss_config,
     extract_max_subscription_key,
@@ -45,8 +43,6 @@ from jidou.services.rss_config import (
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
-
-_OnEvent = Callable[[str, str, "dict[str, object] | None"], Awaitable[None]]
 
 # Sections from old_body that Jidou does not manage; everything else is rebuilt from DB.
 _MANAGED_SECTIONS = frozenset({"rssfeeds", "subscriptions"})
@@ -103,7 +99,7 @@ class RssPublishOrchestrator:
         sftp: SFTPService | None,
         remote_path: str,
         dry_run: bool = False,
-        on_event: _OnEvent | None = None,
+        on_event: OnEvent | None = None,
         deluge_stop_command: str | None = None,
         deluge_restart_command: str | None = None,
         deluge_stop_delay_seconds: float = 10.0,
@@ -113,7 +109,7 @@ class RssPublishOrchestrator:
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
-        self._on_event = on_event or _default_on_event
+        self._on_event = on_event or log_only_event
         if bool(deluge_stop_command) != bool(deluge_restart_command):
             raise ValueError(
                 "deluge_stop_command and deluge_restart_command must be set together "
