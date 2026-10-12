@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Final
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
 
 
 class TaskStatus(StrEnum):
@@ -40,6 +41,17 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+# Single home for the status groupings (importers must not redefine them).
+# Both are StrEnum members, so they also compare equal to plain strings and
+# ``.in_(...)`` binds their values.
+ACTIVE_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.PENDING, TaskStatus.RUNNING}
+)
+TERMINAL_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+)
+
+
 class BackgroundTask(TimestampMixin, Base):
     """Tracks a long-running Celery task with progress updates."""
 
@@ -54,9 +66,11 @@ class BackgroundTask(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     celery_task_id: Mapped[str] = mapped_column(String(255))
     task_type: Mapped[str] = mapped_column(String(100))  # "download", "scan", "match", "sync"
-    status: Mapped[str] = mapped_column(
-        String(50),
-        default=TaskStatus.PENDING.value,
+    # native_enum=False keeps the column a plain VARCHAR(50) with no CHECK
+    # constraint, so the existing schema is unchanged.
+    status: Mapped[TaskStatus] = mapped_column(
+        str_enum(TaskStatus, native_enum=False, length=50),
+        default=TaskStatus.PENDING,
     )
     progress_current: Mapped[int] = mapped_column(Integer, default=0)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)

@@ -6,10 +6,9 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
 
 if TYPE_CHECKING:
     from jidou.models.episode import Episode
@@ -144,19 +143,19 @@ class DownloadedFile(TimestampMixin, Base):
     crc32_declared: Mapped[str | None] = mapped_column(String(8))
     crc32_computed: Mapped[str | None] = mapped_column(String(8))
     status: Mapped[FileStatus] = mapped_column(
-        SAEnum(FileStatus, values_callable=lambda e: [x.value for x in e]),
+        str_enum(FileStatus),
         default=FileStatus.DISCOVERED,
         index=True,
     )
     matched_by: Mapped[MatchedBy | None] = mapped_column(
-        SAEnum(MatchedBy, values_callable=lambda e: [x.value for x in e]),
+        str_enum(MatchedBy),
         nullable=True,
     )
     # Set at discovery time for noscan-path files (before status even reaches
     # DOWNLOADED) so DownloadOrchestrator knows to route to IGNORED instead;
     # set directly to MANUAL by the manual-ignore API action.
     ignored_reason: Mapped[IgnoredReason | None] = mapped_column(
-        SAEnum(IgnoredReason, values_callable=lambda e: [x.value for x in e]),
+        str_enum(IgnoredReason),
         nullable=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text)

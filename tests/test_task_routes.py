@@ -310,6 +310,23 @@ def test_list_tasks_returns_200() -> None:
         app.dependency_overrides.clear()
 
 
+def test_list_active_tasks_json_status_is_plain_string() -> None:
+    """GET /api/tasks serializes a typed status as its plain string value."""
+    from jidou.database import get_session
+
+    task = _make_task(status=TaskStatus.RUNNING)  # type: ignore[arg-type]
+    app.dependency_overrides[get_session] = _session_override([task])
+    try:
+        client = TestClient(app)
+        response = client.get("/api/tasks", params={"active_only": True})
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["status"] == "running"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_task_not_found_returns_404() -> None:
     """GET /api/tasks/{task_id} must return 404 for missing tasks."""
     from jidou.database import get_session
