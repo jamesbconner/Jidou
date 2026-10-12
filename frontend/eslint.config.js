@@ -42,8 +42,9 @@ export default [
       // false positives on TS-only constructs that tsc already catches.
       'no-undef': 'off',
       // Complexity ratchet (frontend simplification plan, Task 1): pinned at
-      // the measured maximum (Settings = 92). It may only ever be lowered.
-      complexity: ['error', 92],
+      // the measured maximum (ShowDetail = 77 after the FE-3 Settings split).
+      // It may only ever be lowered.
+      complexity: ['error', 77],
     },
   },
   {
@@ -88,13 +89,6 @@ export default [
         },
       ],
     },
-  },
-  {
-    // Temporary: Settings still calls the API client for its connection tests
-    // and seed/backfill triggers. FE-2 Task 5 moves those into hooks and
-    // removes this override.
-    files: ['src/pages/Settings.tsx'],
-    rules: { 'no-restricted-imports': 'off' },
   },
   {
     // Test bodies are long linear scripts; the ratchet targets production code.
