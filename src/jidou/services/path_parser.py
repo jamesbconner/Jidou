@@ -16,7 +16,11 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
-from jidou.services.file_filters import is_valid_directory, is_valid_media_file
+from jidou.services.file_filters import (
+    MEDIA_EXTENSIONS,
+    is_valid_directory,
+    is_valid_media_file,
+)
 from jidou.services.path_transport import encode_path_bytes
 
 # Matches directory names like "Season 1", "Season 01" (case-insensitive).
@@ -134,10 +138,6 @@ _EPISODE_RULES: tuple[_EpisodeRule, ...] = (
     _EpisodeRule(_LEADING_EP, has_season=False),
     # Bonus-content markers mean a trailing number is a clip index, not an episode.
     _EpisodeRule(_BARE_TRAILING_EP, has_season=False, blocked_by=_NON_EPISODE_ASSET_WORD),
-)
-
-_MEDIA_EXTENSIONS = frozenset(
-    {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
 )
 
 
@@ -360,7 +360,7 @@ def parse_line(
     except Exception:
         return None
 
-    is_media_file = path.suffix.lower() in _MEDIA_EXTENSIONS
+    is_media_file = path.suffix.lower() in MEDIA_EXTENSIONS
 
     if directories_only and not is_media_file:
         return _parse_directory_line(path, root)
