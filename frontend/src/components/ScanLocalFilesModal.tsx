@@ -5,7 +5,7 @@ import { useScanShowLocalFiles } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { buildSeasonMap } from '@/utils/episodeUtils'
-import type { ScannedFileMatch } from '@/types/api'
+import type { EpisodeList, ScannedFileMatch } from '@/types/api'
 
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -17,6 +17,108 @@ interface Props {
 }
 
 type RowOutcome = { kind: 'linked' } | { kind: 'failed'; message: string }
+
+/** Badge colour for a scan row, driven by its link outcome first, then scan status. */
+function badgeClass(outcome: RowOutcome | undefined, status: string): string {
+  if (outcome?.kind === 'linked') return 'bg-green-900/40 text-green-400'
+  if (status === 'matched') return 'bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]'
+  if (status === 'conflict') return 'bg-amber-900/40 text-amber-400'
+  return 'bg-zinc-700 text-zinc-400'
+}
+
+interface ScanRowProps {
+  row: ScannedFileMatch
+  outcome: RowOutcome | undefined
+  isPending: boolean
+  selected: string
+  selectedEp: EpisodeList | undefined
+  needsReplace: boolean
+  actionable: boolean
+  seasons: number[]
+  seasonMap: Map<number, EpisodeList[]>
+  onSelect: (path: string, value: string) => void
+  onLink: (row: ScannedFileMatch) => void
+}
+
+/** One scanned file: its status badge, episode picker, Link button and notes. */
+function ScanRow({
+  row,
+  outcome,
+  isPending,
+  selected,
+  selectedEp,
+  needsReplace,
+  actionable,
+  seasons,
+  seasonMap,
+  onSelect,
+  onLink,
+}: ScanRowProps) {
+  const label = outcome?.kind ?? row.status
+  return (
+    <div className="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-zinc-200 truncate">
+            {row.filename}
+          </p>
+          <p className="text-[11px] text-zinc-500">
+            {row.season != null ? `S${pad2(row.season)}` : 'S?'}
+            {row.episode_number != null ? `E${pad2(row.episode_number)}` : 'E?'}
+          </p>
+        </div>
+        <span className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium ${badgeClass(outcome, row.status)}`}>
+          {label}
+        </span>
+      </div>
+
+      {outcome?.kind !== 'linked' && (
+        <div className="flex items-center gap-2">
+          <select
+            value={selected}
+            onChange={(e) => onSelect(row.path, e.target.value)}
+            disabled={isPending}
+            className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
+          >
+            <option value="">— select episode —</option>
+            {seasons.map((sn) => (
+              <optgroup key={sn} label={`Season ${sn}`}>
+                {(seasonMap.get(sn) ?? [])
+                  .sort((a, b) => a.episode_number - b.episode_number)
+                  .map((ep) => (
+                    <option key={ep.id} value={ep.id}>
+                      {`S${pad2(ep.season_number)}E${pad2(ep.episode_number)} — ${ep.name}`}
+                      {ep.file_tracked ? ' (taken)' : ''}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+          <button
+            onClick={() => onLink(row)}
+            disabled={!actionable || isPending}
+            className={`shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              needsReplace
+                ? 'bg-amber-700 hover:bg-amber-600'
+                : 'bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]'
+            }`}
+          >
+            {isPending ? 'Linking…' : needsReplace ? 'Link (replace)' : 'Link'}
+          </button>
+        </div>
+      )}
+      {selectedEp && selectedEp.file_tracked && outcome?.kind !== 'linked' && (
+        <p className="text-[11px] text-amber-500">
+          This episode is already tracked — &quot;Link (replace)&quot; unlinks its
+          current file first, or pick a different episode instead.
+        </p>
+      )}
+      {outcome?.kind === 'failed' && (
+        <p className="text-[11px] text-red-400">{outcome.message}</p>
+      )}
+    </div>
+  )
+}
 
 export function ScanLocalFilesModal({ showId, onClose }: Props) {
   const scan = useScanShowLocalFiles()
@@ -176,91 +278,22 @@ export function ScanLocalFilesModal({ showId, onClose }: Props) {
 
           {rows.map((row) => {
             const outcome = outcomes[row.path]
-            const isPending = pendingPaths.has(row.path)
             const selected = selections[row.path] ?? ''
-            const selectedEp = selected ? episodeById.get(Number(selected)) : undefined
-            const needsReplace = rowNeedsReplace(row)
-            const actionable = rowIsActionable(row) && outcome?.kind !== 'linked'
-
             return (
-              <div
+              <ScanRow
                 key={row.path}
-                className="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-mono text-xs text-zinc-200 truncate">
-                      {row.filename}
-                    </p>
-                    <p className="text-[11px] text-zinc-500">
-                      {row.season != null ? `S${pad2(row.season)}` : 'S?'}
-                      {row.episode_number != null ? `E${pad2(row.episode_number)}` : 'E?'}
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium ${
-                      outcome?.kind === 'linked'
-                        ? 'bg-green-900/40 text-green-400'
-                        : row.status === 'matched'
-                          ? 'bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]'
-                          : row.status === 'conflict'
-                            ? 'bg-amber-900/40 text-amber-400'
-                            : 'bg-zinc-700 text-zinc-400'
-                    }`}
-                  >
-                    {outcome?.kind === 'linked'
-                      ? 'linked'
-                      : outcome?.kind === 'failed'
-                        ? 'failed'
-                        : row.status}
-                  </span>
-                </div>
-
-                {outcome?.kind !== 'linked' && (
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={selected}
-                      onChange={(e) => handleSelectChange(row.path, e.target.value)}
-                      disabled={isPending}
-                      className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50"
-                    >
-                      <option value="">— select episode —</option>
-                      {seasons.map((sn) => (
-                        <optgroup key={sn} label={`Season ${sn}`}>
-                          {(seasonMap.get(sn) ?? [])
-                            .sort((a, b) => a.episode_number - b.episode_number)
-                            .map((ep) => (
-                              <option key={ep.id} value={ep.id}>
-                                {`S${pad2(ep.season_number)}E${pad2(ep.episode_number)} — ${ep.name}`}
-                                {ep.file_tracked ? ' (taken)' : ''}
-                              </option>
-                            ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => linkRow(row)}
-                      disabled={!actionable || isPending}
-                      className={`shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-                        needsReplace
-                          ? 'bg-amber-700 hover:bg-amber-600'
-                          : 'bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]'
-                      }`}
-                    >
-                      {isPending ? 'Linking…' : needsReplace ? 'Link (replace)' : 'Link'}
-                    </button>
-                  </div>
-                )}
-                {selectedEp && selectedEp.file_tracked && outcome?.kind !== 'linked' && (
-                  <p className="text-[11px] text-amber-500">
-                    This episode is already tracked — &quot;Link (replace)&quot; unlinks its
-                    current file first, or pick a different episode instead.
-                  </p>
-                )}
-                {outcome?.kind === 'failed' && (
-                  <p className="text-[11px] text-red-400">{outcome.message}</p>
-                )}
-              </div>
+                row={row}
+                outcome={outcome}
+                isPending={pendingPaths.has(row.path)}
+                selected={selected}
+                selectedEp={selected ? episodeById.get(Number(selected)) : undefined}
+                needsReplace={rowNeedsReplace(row)}
+                actionable={rowIsActionable(row) && outcome?.kind !== 'linked'}
+                seasons={seasons}
+                seasonMap={seasonMap}
+                onSelect={handleSelectChange}
+                onLink={linkRow}
+              />
             )
           })}
         </div>

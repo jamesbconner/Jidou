@@ -165,3 +165,23 @@ export function deriveFilterOptions(shows: ShowList[]): ShowFilterOptions {
     statuses: Array.from(statuses).sort(),
   }
 }
+
+/** Number of library-tab filters currently set (drives "Clear filters (N)"). */
+export function countActiveShowsFilters(f: ShowsFilterState): number {
+  const set = [f.filterContentType, f.filterStatus, f.filterGenre, f.filterLanguage, f.filterMinRating]
+  return set.filter(Boolean).length + (f.filterUpcoming ? 1 : 0)
+}
+
+/** Number of Missing-tab filters currently set (drives "Clear filters (N)"). */
+export function countActiveMissingFilters(f: MissingFilterState): number {
+  const set = [
+    f.filterContentType,
+    f.filterStatus,
+    f.filterGenre,
+    f.filterLanguage,
+    f.filterMinMissing,
+    f.filterFullSeasonMissing,
+    f.filterMaxOwned,
+  ]
+  return set.filter(Boolean).length + (f.filterWatchlistOnly ? 1 : 0)
+}

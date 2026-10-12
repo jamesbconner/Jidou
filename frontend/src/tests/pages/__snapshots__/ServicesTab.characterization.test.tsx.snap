@@ -1,0 +1,1183 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ServicesTab characterization: cache and schedules > cache card with entries, flush result and fetching state > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button disabled="" class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Loading…</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+<p class="text-xs text-gray-500 dark:text-gray-400">2 / 100 entries · TTL 86400s</p>
+<details class="text-xs">
+<summary class="cursor-pointer text-gray-500 dark:text-gray-400 mb-1">2 active entries</summary>
+<ul class="mt-1 space-y-0.5 pl-3">
+<li class="font-mono text-gray-600 dark:text-gray-400 truncate" title="k1">One</li>
+<li class="font-mono text-gray-600 dark:text-gray-400 truncate" title="k2">Two</li>
+</ul>
+</details>
+<p class="text-xs text-gray-500 dark:text-gray-400">Cleared 7 entries</p>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: cache and schedules > cache with a single entry, an empty cache and a pending flush > single 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button disabled="" class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flushing…</button>
+</div>
+</div>
+<p class="text-xs text-gray-500 dark:text-gray-400">1 / 100 entries · TTL 5s</p>
+<details class="text-xs">
+<summary class="cursor-pointer text-gray-500 dark:text-gray-400 mb-1">1 active entry</summary>
+<ul class="mt-1 space-y-0.5 pl-3">
+<li class="font-mono text-gray-600 dark:text-gray-400 truncate" title="k1">One</li>
+</ul>
+</details>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: cache and schedules > empty cache > empty 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+<p class="text-xs text-gray-500 dark:text-gray-400">0 / 100 entries · TTL 5s</p>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Cache is empty</p>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: cache and schedules > no config at all > no config 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: cache and schedules > schedule row with no valid hours shows an em dash; no config hides schedules > no valid hours 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: —</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: cache and schedules > schedule rows: enabled with next run, disabled, and the wrap to tomorrow > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 01:00, 02:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-05T01:00:00.000Z)</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > LLM row hidden when provider is none or missing > provider none 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">● Healthy</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > degraded header and checking state > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">● Degraded</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button disabled="" class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Checking…</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-red-600 dark:text-red-400">✗</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">down</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > healthy with latency, revision, model, error and unconfigured details > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">● Healthy</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">4 ms · rev abc123</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">120 ms</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-red-600 dark:text-red-400">✗</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">connection refused</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-red-600 dark:text-red-400">✗</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">not configured</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-red-600 dark:text-red-400">✗</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">ollama / llama3</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > indicator falls back to the test result when health has no entry > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">● Healthy</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button disabled="" class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Testing…</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<span class="text-xs text-green-600 dark:text-green-400">OK</span>
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-red-600 dark:text-red-400">✗</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<span class="text-xs text-red-600 dark:text-red-400">nope</span>
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > latency from the last LLM test is prepended when health has none > with ms 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">● Healthy</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">42.5ms · ollama / llama3</span>
+<div class="flex items-center gap-2 shrink-0">
+<span class="text-xs text-green-600 dark:text-green-400">OK</span>
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > no health yet > dom 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 italic">Click Refresh to check service health</p>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ServicesTab characterization: service rows > test message without a leading timing is ignored > no ms 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<h2 class="font-semibold dark:text-gray-100">Services</h2>
+<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">● Healthy</span>
+<span class="text-xs text-gray-400 dark:text-gray-500" data-testid="app-version">v1.2.3</span>
+</div>
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+</div>
+<div class="space-y-1.5">
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Database</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">TMDB</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">SFTP</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Redis</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+<div class="flex items-center gap-2 shrink-0">
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-gray-300 dark:text-gray-700">–</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">Celery</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">
+</span>
+</div>
+<div class="flex items-center gap-3 text-sm min-h-[1.75rem]">
+<span class="w-4 text-center shrink-0 font-medium text-green-600 dark:text-green-400">✓</span>
+<span class="w-20 text-gray-700 dark:text-gray-300 shrink-0">LLM</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">ollama / llama3</span>
+<div class="flex items-center gap-2 shrink-0">
+<span class="text-xs text-green-600 dark:text-green-400">OK</span>
+<button class="px-2.5 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Test</button>
+</div>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="font-semibold dark:text-gray-100">TMDB Cache</h2>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-gray-100 text-sm rounded hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">Refresh</button>
+<button class="px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded hover:bg-orange-200 disabled:opacity-50 dark:bg-orange-900/40 dark:text-orange-300 dark:hover:bg-orange-900/70">Flush</button>
+</div>
+</div>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Schedules</h2>
+<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
+</div>
+<div class="flex items-center gap-3 text-sm">
+<span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
+<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;

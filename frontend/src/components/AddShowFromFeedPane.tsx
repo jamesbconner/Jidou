@@ -59,6 +59,268 @@ export function matchSummary(report: RegexMatchReportRead | null, includeEmpty: 
 }
 
 /**
+ * Success panel shown in place of the form once the add has gone through.
+ *
+ * Called as a plain function (not mounted as a component) so React keeps
+ * reconciling the pane's root <div> in place, exactly as before the extraction.
+ */
+function renderAddedSummary({
+  result,
+  parsedName,
+  pick,
+  enabled,
+  onDone,
+}: {
+  result: FeedAddShowResult
+  parsedName: string
+  pick: Pick | null
+  enabled: boolean
+  onDone?: () => void
+}) {
+  const title = result.show?.title ?? pickTitle(pick as Pick)
+  return (
+    <div role="status" className="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200">
+      <p className="font-medium">
+        {result.show_created ? `Added “${title}” to your library` : `Using “${title}” from your library`}
+        {result.subscription_created
+          ? ' and created its subscription.'
+          : result.adopted_stub
+            ? ' and linked its existing subscription to this feed.'
+            : ' — it was already subscribed to this feed.'}
+      </p>
+      <p className="mt-1 text-xs">
+        {result.subscription_created || result.adopted_stub
+          ? enabled
+            ? 'It will be included the next time you publish.'
+            : 'It is saved in Jidou only; enable it to include it in the next publish.'
+          : 'Nothing was changed.'}
+        {result.alias_added && ` “${parsedName}” was added as an alias.`}
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        {result.show && (
+          <Link
+            to={`/shows/${result.show.id}`}
+            className="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline"
+          >
+            Open show
+          </Link>
+        )}
+        {onDone && (
+          <button onClick={onDone} className="text-xs text-gray-600 dark:text-gray-300 hover:underline">
+            Close
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** "Show" section: search box, the current selection and the match list. */
+function ShowPicker({
+  query,
+  onQueryChange,
+  pick,
+  onPick,
+  searching,
+  options,
+}: {
+  query: string
+  onQueryChange: (value: string) => void
+  pick: Pick | null
+  onPick: (pick: Pick) => void
+  searching: boolean
+  options: Option[]
+}) {
+  return (
+    <section aria-label="Show" className="space-y-2">
+      <Field
+        label="Show"
+        note="Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias."
+      >
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Search your library and TMDB"
+          aria-label="Search for the show"
+          className={INPUT}
+        />
+      </Field>
+      {pick && (
+        <p className="text-xs text-gray-700 dark:text-gray-200">
+          Selected: <strong>{pickTitle(pick)}</strong>
+          {pick.kind === 'tmdb' && ' (will be added to your library)'}
+        </p>
+      )}
+      {searching && <p className="text-xs text-gray-500 dark:text-gray-400">Searching…</p>}
+      {options.length > 0 && (
+        <ul role="listbox" aria-label="Show matches" className="space-y-1">
+          {options.map((o) => {
+            const selected = isSamePick(pick, o.pick)
+            return (
+              <li key={o.key}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => onPick(o.pick)}
+                  className={`w-full text-left rounded border px-2 py-1.5 text-sm ${
+                    selected
+                      ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-900)]/40'
+                      : 'border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{o.label}</span>
+                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{o.detail}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+interface FilterSectionProps {
+  suggestLabel: string
+  suggestPending: boolean
+  onSuggest: () => void
+  include: string
+  onIncludeChange: (value: string) => void
+  exclude: string
+  onExcludeChange: (value: string) => void
+  ignoreInclude: boolean
+  onIgnoreIncludeChange: (value: boolean) => void
+  ignoreExclude: boolean
+  onIgnoreExcludeChange: (value: boolean) => void
+  match: RegexMatchReportRead | null
+}
+
+/** "Filter" section: suggest button, regex inputs, ignore-case flags and live preview. */
+function FilterSection({
+  suggestLabel,
+  suggestPending,
+  onSuggest,
+  include,
+  onIncludeChange,
+  exclude,
+  onExcludeChange,
+  ignoreInclude,
+  onIgnoreIncludeChange,
+  ignoreExclude,
+  onIgnoreExcludeChange,
+  match,
+}: FilterSectionProps) {
+  const includeEmpty = include.trim() === ''
+  return (
+    <section aria-label="Filter" className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
+        <Button variant="secondary" tone="light" size="sm" onClick={onSuggest} disabled={suggestPending}>
+          {suggestLabel}
+        </Button>
+      </div>
+      <Field label="Include (regex)">
+        <input
+          value={include}
+          onChange={(e) => onIncludeChange(e.target.value)}
+          aria-label="Include regex"
+          className={`${INPUT} font-mono`}
+        />
+      </Field>
+      <Field label="Exclude (regex, optional)">
+        <input
+          value={exclude}
+          onChange={(e) => onExcludeChange(e.target.value)}
+          aria-label="Exclude regex"
+          className={`${INPUT} font-mono`}
+        />
+      </Field>
+      <div className="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={ignoreInclude} onChange={(e) => onIgnoreIncludeChange(e.target.checked)} />
+          Ignore case (include)
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={ignoreExclude} onChange={(e) => onIgnoreExcludeChange(e.target.checked)} />
+          Ignore case (exclude)
+        </label>
+      </div>
+      <p
+        aria-live="polite"
+        className={`text-xs ${includeEmpty ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}
+      >
+        {matchSummary(match, includeEmpty)}
+      </p>
+      {match && !includeEmpty && (
+        <details className="text-xs text-gray-600 dark:text-gray-300">
+          <summary className="cursor-pointer">Show which titles</summary>
+          <ul className="mt-1 space-y-0.5 font-mono">
+            {match.matched_titles.map((t) => (
+              <li key={`m-${t}`} className="text-green-700 dark:text-green-400 truncate" title={t}>
+                ✓ {t}
+              </li>
+            ))}
+            {match.unmatched_titles.map((t) => (
+              <li key={`u-${t}`} className="text-gray-500 dark:text-gray-400 truncate" title={t}>
+                – {t}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        Preview shows which of the feed&apos;s current titles the filter selects; YaRSS2 also skips
+        items it has already seen.
+      </p>
+    </section>
+  )
+}
+
+/** "Subscription" section: optional name and the enable-now switch. */
+function SubscriptionSection({
+  placeholder,
+  name,
+  onNameChange,
+  enabled,
+  onEnabledChange,
+}: {
+  placeholder: string
+  name: string
+  onNameChange: (value: string) => void
+  enabled: boolean
+  onEnabledChange: (value: boolean) => void
+}) {
+  return (
+    <section aria-label="Subscription" className="space-y-2">
+      <Field label="Subscription name" note="Defaults to the show title.">
+        <input
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label="Subscription name"
+          className={INPUT}
+        />
+      </Field>
+      <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onEnabledChange(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          Enable now
+          <span className="block text-xs text-gray-500 dark:text-gray-400">
+            Active and included the next time you publish. Leave off to save it in Jidou only.
+          </span>
+        </span>
+      </label>
+    </section>
+  )
+}
+
+/**
  * Inline pane that adds a feed group's show to the library (or picks one
  * already there) and creates its subscription in one step, with the LLM
  * having seen the feed's real release titles.
@@ -213,194 +475,47 @@ export function AddShowFromFeedPane({
   }
 
   if (result) {
-    const title = result.show?.title ?? pickTitle(pick as Pick)
-    return (
-      <div role="status" className="mt-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-800 dark:text-green-200">
-        <p className="font-medium">
-          {result.show_created ? `Added “${title}” to your library` : `Using “${title}” from your library`}
-          {result.subscription_created
-            ? ' and created its subscription.'
-            : result.adopted_stub
-              ? ' and linked its existing subscription to this feed.'
-              : ' — it was already subscribed to this feed.'}
-        </p>
-        <p className="mt-1 text-xs">
-          {result.subscription_created || result.adopted_stub
-            ? enabled
-              ? 'It will be included the next time you publish.'
-              : 'It is saved in Jidou only; enable it to include it in the next publish.'
-            : 'Nothing was changed.'}
-          {result.alias_added && ` “${parsedName}” was added as an alias.`}
-        </p>
-        <div className="mt-2 flex items-center gap-3">
-          {result.show && (
-            <Link
-              to={`/shows/${result.show.id}`}
-              className="text-xs text-[var(--color-ocean-700)] dark:text-[var(--color-ocean-300)] hover:underline"
-            >
-              Open show
-            </Link>
-          )}
-          {onDone && (
-            <button onClick={onDone} className="text-xs text-gray-600 dark:text-gray-300 hover:underline">
-              Close
-            </button>
-          )}
-        </div>
-      </div>
-    )
+    return renderAddedSummary({ result, parsedName, pick, enabled, onDone })
   }
 
-  const includeEmpty = include.trim() === ''
   const error = add.error ?? suggest.error ?? testRegex.error
 
   return (
     <div className="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-4">
-      <section aria-label="Show" className="space-y-2">
-        <Field
-          label="Show"
-          note="Pick the library or TMDB show these releases belong to. The feed's name is taught as an alias."
-        >
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your library and TMDB"
-            aria-label="Search for the show"
-            className={INPUT}
-          />
-        </Field>
-        {pick && (
-          <p className="text-xs text-gray-700 dark:text-gray-200">
-            Selected: <strong>{pickTitle(pick)}</strong>
-            {pick.kind === 'tmdb' && ' (will be added to your library)'}
-          </p>
-        )}
-        {debouncedQuery.length >= 2 && (library.isLoading || tmdb.isLoading) && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">Searching…</p>
-        )}
-        {options.length > 0 && (
-          <ul role="listbox" aria-label="Show matches" className="space-y-1">
-            {options.map((o) => {
-              const selected = isSamePick(pick, o.pick)
-              return (
-                <li key={o.key}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => setPick(o.pick)}
-                    className={`w-full text-left rounded border px-2 py-1.5 text-sm ${
-                      selected
-                        ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-900)]/40'
-                        : 'border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{o.label}</span>
-                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{o.detail}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+      <ShowPicker
+        query={query}
+        onQueryChange={setQuery}
+        pick={pick}
+        onPick={setPick}
+        searching={debouncedQuery.length >= 2 && (library.isLoading || tmdb.isLoading)}
+        options={options}
+      />
 
       {pick && (
-        <section aria-label="Filter" className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Filter</span>
-            <Button
-              variant="secondary"
-              tone="light"
-              size="sm"
-              onClick={() => runSuggest(pickTitle(pick), previous)}
-              disabled={suggest.isPending}
-            >
-              {suggest.isPending ? 'Suggesting…' : previous.length ? 'Re-suggest' : 'Suggest filter'}
-            </Button>
-          </div>
-          <Field label="Include (regex)">
-            <input
-              value={include}
-              onChange={(e) => setInclude(e.target.value)}
-              aria-label="Include regex"
-              className={`${INPUT} font-mono`}
-            />
-          </Field>
-          <Field label="Exclude (regex, optional)">
-            <input
-              value={exclude}
-              onChange={(e) => setExclude(e.target.value)}
-              aria-label="Exclude regex"
-              className={`${INPUT} font-mono`}
-            />
-          </Field>
-          <div className="flex gap-4 text-xs text-gray-600 dark:text-gray-300">
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={ignoreInclude} onChange={(e) => setIgnoreInclude(e.target.checked)} />
-              Ignore case (include)
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={ignoreExclude} onChange={(e) => setIgnoreExclude(e.target.checked)} />
-              Ignore case (exclude)
-            </label>
-          </div>
-          <p
-            aria-live="polite"
-            className={`text-xs ${includeEmpty ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}
-          >
-            {matchSummary(match, includeEmpty)}
-          </p>
-          {match && !includeEmpty && (
-            <details className="text-xs text-gray-600 dark:text-gray-300">
-              <summary className="cursor-pointer">Show which titles</summary>
-              <ul className="mt-1 space-y-0.5 font-mono">
-                {match.matched_titles.map((t) => (
-                  <li key={`m-${t}`} className="text-green-700 dark:text-green-400 truncate" title={t}>
-                    ✓ {t}
-                  </li>
-                ))}
-                {match.unmatched_titles.map((t) => (
-                  <li key={`u-${t}`} className="text-gray-500 dark:text-gray-400 truncate" title={t}>
-                    – {t}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Preview shows which of the feed&apos;s current titles the filter selects; YaRSS2 also skips
-            items it has already seen.
-          </p>
-        </section>
+        <FilterSection
+          suggestLabel={suggest.isPending ? 'Suggesting…' : previous.length ? 'Re-suggest' : 'Suggest filter'}
+          suggestPending={suggest.isPending}
+          onSuggest={() => runSuggest(pickTitle(pick), previous)}
+          include={include}
+          onIncludeChange={setInclude}
+          exclude={exclude}
+          onExcludeChange={setExclude}
+          ignoreInclude={ignoreInclude}
+          onIgnoreIncludeChange={setIgnoreInclude}
+          ignoreExclude={ignoreExclude}
+          onIgnoreExcludeChange={setIgnoreExclude}
+          match={match}
+        />
       )}
 
       {pick && (
-        <section aria-label="Subscription" className="space-y-2">
-          <Field label="Subscription name" note="Defaults to the show title.">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={pickTitle(pick)}
-              aria-label="Subscription name"
-              className={INPUT}
-            />
-          </Field>
-          <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              Enable now
-              <span className="block text-xs text-gray-500 dark:text-gray-400">
-                Active and included the next time you publish. Leave off to save it in Jidou only.
-              </span>
-            </span>
-          </label>
-        </section>
+        <SubscriptionSection
+          placeholder={pickTitle(pick)}
+          name={name}
+          onNameChange={setName}
+          enabled={enabled}
+          onEnabledChange={setEnabled}
+        />
       )}
 
       {error && (

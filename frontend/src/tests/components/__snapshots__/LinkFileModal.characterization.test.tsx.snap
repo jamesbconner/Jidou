@@ -1,0 +1,376 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LinkFileModal characterization > assign failure shows the server error and keeps the modal open > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Enter file path</button>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Select a file available for this show</div>
+<select class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— pick a file —</option>
+<optgroup label="Existing files">
+<option value="e:100">b-real.mkv (routed)</option>
+<option value="e:102">c-import.mkv (matched)</option>
+<option value="e:105">f-nopath.mkv (unmatched)</option>
+</optgroup>
+<optgroup label="Imported">
+<option value="i:/lib/a.mkv">a.mkv (currently: S01E03 · Imp2)</option>
+<option value="i:/lib/z.mkv">z.mkv (currently: S01E02 · Imp)</option>
+</optgroup>
+</select>
+</div>
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">assign boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > existing mode: loading then empty message > empty 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Enter file path</button>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Select a file available for this show</div>
+<select class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— pick a file —</option>
+</select>
+<p class="text-xs text-zinc-500">No files available to link for this show.</p>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > existing mode: loading then empty message > loading 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Enter file path</button>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Select a file available for this show</div>
+<select disabled="" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— pick a file —</option>
+</select>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > existing mode: pools, verification filter and request order > bodies 1`] = `
+{
+  "POST /api/files/verify-paths": [
+    {
+      "paths": [
+        "/media/tv/a-missing.mkv",
+        "/media/tv/b-real.mkv",
+      ],
+    },
+  ],
+}
+`;
+
+exports[`LinkFileModal characterization > existing mode: pools, verification filter and request order > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Enter file path</button>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Select a file available for this show</div>
+<select class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— pick a file —</option>
+<optgroup label="Existing files">
+<option value="e:100">b-real.mkv (routed)</option>
+<option value="e:102">c-import.mkv (matched)</option>
+<option value="e:105">f-nopath.mkv (unmatched)</option>
+</optgroup>
+<optgroup label="Imported">
+<option value="i:/lib/a.mkv">a.mkv (currently: S01E03 · Imp2)</option>
+<option value="i:/lib/z.mkv">z.mkv (currently: S01E02 · Imp)</option>
+</optgroup>
+</select>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > existing mode: pools, verification filter and request order > requests 1`] = `
+[
+  "GET /api/files?show_id=1&show_ignored=true&limit=1000",
+  "GET /api/shows/1/episodes",
+  "GET /api/config",
+  "POST /api/files/verify-paths",
+]
+`;
+
+exports[`LinkFileModal characterization > link failure shows the server error and keeps the modal open > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Enter file path</button>
+</div>
+<div class="space-y-3">
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="anime" checked="" name="link_file_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="tv" name="link_file_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="movie" name="link_file_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Path within the anime folder (show / season / filename)</div>
+<input placeholder="Show Name/Season 01/show.s01e01.mkv" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50" value="S/x.mkv">
+<p class="text-xs text-zinc-500 font-mono truncate">/media/anime/S/x.mkv</p>
+</div>
+</div>
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">link boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > patch failure shows the server error and keeps the modal open > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Enter file path</button>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Select a file available for this show</div>
+<select class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— pick a file —</option>
+<optgroup label="Existing files">
+<option value="e:100">b-real.mkv (routed)</option>
+<option value="e:102">c-import.mkv (matched)</option>
+<option value="e:105">f-nopath.mkv (unmatched)</option>
+</optgroup>
+<optgroup label="Imported">
+<option value="i:/lib/a.mkv">a.mkv (currently: S01E03 · Imp2)</option>
+<option value="i:/lib/z.mkv">z.mkv (currently: S01E02 · Imp)</option>
+</optgroup>
+</select>
+</div>
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">patch boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > path mode retains typed text across a mode round trip and does not reseed > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Enter file path</button>
+</div>
+<div class="space-y-3">
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="anime" name="link_file_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="tv" name="link_file_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="movie" checked="" name="link_file_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Path within the movie folder (show / season / filename)</div>
+<input placeholder="Show Name/Season 01/show.s01e01.mkv" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50" value="/Typed/Season 01/ep.mkv">
+<p class="text-xs text-zinc-500 font-mono truncate">/media/movies/Typed/Season 01/ep.mkv</p>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > path mode seeds content type and folder from the show path once config loads > seeded dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="link-file-title">
+<div class="w-full max-w-lg panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="link-file-title" class="text-sm font-semibold text-zinc-100">Match file — S01E08 · Target Episode</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="flex gap-1.5 text-xs">
+<button class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Pick existing file</button>
+<button class="px-3 py-1.5 rounded border bg-[var(--color-ocean-600)] border-[var(--color-ocean-600)] text-white">Enter file path</button>
+</div>
+<div class="space-y-3">
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="anime" name="link_file_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="tv" checked="" name="link_file_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-sm text-zinc-200 cursor-pointer">
+<input class="accent-[var(--color-ocean-600)]" type="radio" value="movie" name="link_file_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Path within the anime folder (show / season / filename)</div>
+<input placeholder="Show Name/Season 01/show.s01e01.mkv" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50" value="My Show (2020)/">
+<p class="text-xs text-zinc-500 font-mono truncate">/media/anime/My Show (2020)/</p>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`LinkFileModal characterization > saving a typed path links it; empty path keeps Save disabled > bodies 1`] = `
+{
+  "POST /api/shows/1/episodes/10/link-file": [
+    {
+      "path": "/media/anime/Show/Season 01/x.mkv",
+    },
+  ],
+}
+`;
+
+exports[`LinkFileModal characterization > saving an existing file patches it and closes > bodies 1`] = `
+{
+  "PATCH /api/files/100": [
+    {
+      "episode_id": 10,
+      "error_message": null,
+      "status": "matched",
+    },
+  ],
+  "POST /api/files/verify-paths": [
+    {
+      "paths": [
+        "/media/tv/a-missing.mkv",
+        "/media/tv/b-real.mkv",
+      ],
+    },
+    {
+      "paths": [
+        "/media/tv/a-missing.mkv",
+        "/media/tv/b-real.mkv",
+      ],
+    },
+  ],
+}
+`;
+
+exports[`LinkFileModal characterization > saving an imported name assigns it > bodies 1`] = `
+{
+  "POST /api/files/verify-paths": [
+    {
+      "paths": [
+        "/media/tv/a-missing.mkv",
+        "/media/tv/b-real.mkv",
+      ],
+    },
+  ],
+  "POST /api/shows/1/episodes/10/assign-import": [
+    {
+      "filename": "/lib/a.mkv",
+    },
+  ],
+}
+`;

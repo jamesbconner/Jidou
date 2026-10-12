@@ -1,0 +1,1038 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RematchModal characterization: library mode > library confirm posts show_id then routes; empty search says none found > bodies 1`] = `
+{
+  "POST /api/files/100/match": [
+    {
+      "show_id": 7,
+    },
+  ],
+  "POST /api/tasks/trigger": [
+    {
+      "task_type": "route",
+    },
+  ],
+}
+`;
+
+exports[`RematchModal characterization: library mode > no library shows found > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">TMDB</button>
+</div>
+<input placeholder="Search your library…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="zz">
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-500 py-1">No library shows found.</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: library mode > switching clears the query, selection and error; results show paths and warnings > after switch 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">TMDB</button>
+</div>
+<input placeholder="Search your library…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="">
+<div class="space-y-1.5">
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: library mode > switching clears the query, selection and error; results show paths and warnings > library requests 1`] = `
+[
+  "GET /api/shows/search?query=Example%20Show&limit=8",
+]
+`;
+
+exports[`RematchModal characterization: library mode > switching clears the query, selection and error; results show paths and warnings > no path selected 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">TMDB</button>
+</div>
+<input placeholder="Search your library…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="path">
+<div class="space-y-1.5">
+<button class="w-full text-left px-3 py-2 rounded border text-xs transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="font-medium text-zinc-200">Has Path</div>
+<div class="text-zinc-500">#7 · /mnt/anime/Has Path</div>
+</button>
+<button class="w-full text-left px-3 py-2 rounded border text-xs transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<div class="font-medium text-zinc-200">No Path</div>
+<div class="text-zinc-500">#8 · no local path set</div>
+</button>
+<div class="text-xs text-yellow-400 bg-yellow-950/30 border border-yellow-800/40 rounded p-2 mt-1">This show has no local path — set one on the show detail page first.</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: library mode > switching clears the query, selection and error; results show paths and warnings > results 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">TMDB</button>
+</div>
+<input placeholder="Search your library…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="path">
+<div class="space-y-1.5">
+<button class="w-full text-left px-3 py-2 rounded border text-xs transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="font-medium text-zinc-200">Has Path</div>
+<div class="text-zinc-500">#7 · /mnt/anime/Has Path</div>
+</button>
+<button class="w-full text-left px-3 py-2 rounded border text-xs transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="font-medium text-zinc-200">No Path</div>
+<div class="text-zinc-500">#8 · no local path set</div>
+</button>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > already-in-library selections (with and without a local path) > known with path 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Already in library as show #55 — will use existing record</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > already-in-library selections (with and without a local path) > known without path 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-amber-400">Already in library as show #77 — no local path set, configure it in Shows first</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > confirm a new show: match payload then route, then close > bodies 1`] = `
+{
+  "POST /api/files/100/match": [
+    {
+      "content_type": "tv",
+      "local_path": "/media/tv/New Show",
+      "tmdb_id": 1,
+      "tmdb_media_type": "tv",
+    },
+  ],
+  "POST /api/tasks/trigger": [
+    {
+      "task_type": "route",
+    },
+  ],
+}
+`;
+
+exports[`RematchModal characterization: tmdb mode > confirm a new show: match payload then route, then close > posts 1`] = `
+[
+  "POST /api/files/100/match",
+  "POST /api/tasks/trigger",
+]
+`;
+
+exports[`RematchModal characterization: tmdb mode > confirm an existing show reuses its id > bodies 1`] = `
+{
+  "POST /api/files/100/match": [
+    {
+      "show_id": 55,
+    },
+  ],
+  "POST /api/tasks/trigger": [
+    {
+      "task_type": "route",
+    },
+  ],
+}
+`;
+
+exports[`RematchModal characterization: tmdb mode > file assigned to an unknown show title falls back to the id > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+<div class="text-xs text-zinc-500 mt-0.5">Currently assigned to show #9</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="text-xs text-zinc-500 py-1">Searching…</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > initial DOM, loading, results and request order > initial 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+<div class="text-xs text-zinc-500 mt-0.5">Currently assigned to Old Show</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="text-xs text-zinc-500 py-1">Searching…</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > initial DOM, loading, results and request order > requests 1`] = `
+[
+  "GET /api/config",
+  "GET /api/shows/tmdb/search?query=Example%20Show&media_type=multi",
+  "GET /api/shows?sort=title_asc&limit=10000",
+]
+`;
+
+exports[`RematchModal characterization: tmdb mode > initial DOM, loading, results and request order > results 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+<div class="text-xs text-zinc-500 mt-0.5">Currently assigned to Old Show</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > match failure shows its error and skips routing; route failure shows its own > match error 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" checked="" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="New Show">
+<div class="text-xs text-zinc-500 font-mono">/mnt/tv/New Show</div>
+</div>
+</div>
+</div>
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">match boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > no results message > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="text-xs text-zinc-500 py-1">No results.</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > route failure after a successful match > route error 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" checked="" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="New Show">
+<div class="text-xs text-zinc-500 font-mono">/mnt/tv/New Show</div>
+</div>
+</div>
+</div>
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">route boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > selecting a movie snaps the content type; no-title result asks for a folder > untitled selected 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" checked="" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Untitled">
+<div class="text-xs text-zinc-500 font-mono">/mnt/tv/Untitled</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > selecting a new tmdb result shows content type + folder, editable and live path > blank folder 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" checked="" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="   ">
+<div class="text-xs text-amber-400">This result has no title — enter a folder name above to continue.</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > selecting a new tmdb result shows content type + folder, editable and live path > edited 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" checked="" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Custom Folder">
+<div class="text-xs text-zinc-500 font-mono">/mnt/anime/Custom Folder</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`RematchModal characterization: tmdb mode > selecting a new tmdb result shows content type + folder, editable and live path > selected new 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="rematch-title">
+<div class="w-full max-w-2xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="rematch-title" class="text-sm font-semibold text-zinc-100">Fix show assignment</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">File</div>
+<div class="font-mono text-xs text-zinc-200 truncate">Example.Show.S01E01.mkv</div>
+</div>
+<div class="flex gap-1 bg-zinc-800 rounded p-1">
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium text-zinc-400 hover:text-zinc-200">Library</button>
+<button class="flex-1 text-xs py-1.5 rounded transition-colors font-medium bg-[var(--color-ocean-600)] text-white">TMDB</button>
+</div>
+<input placeholder="Search TMDB…" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="Example Show">
+<div class="space-y-3">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50">
+<img alt="New Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">New Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<div class="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">No image</div>
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">A Movie</div>
+<div class="text-xs text-zinc-500">2018 · movie</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known Show" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known Show</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="Known No Path" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">Known No Path</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+<button class="flex flex-col rounded border text-left overflow-hidden transition-colors border-zinc-700 bg-zinc-800 hover:border-zinc-500">
+<img alt="" class="w-full aspect-[2/3] object-cover" src="/api/images/w300/p.jpg">
+<div class="p-2 space-y-0.5">
+<div class="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
+</div>
+<div class="text-xs text-zinc-500">2021 · tv</div>
+</div>
+</button>
+</div>
+<div class="border border-zinc-700 rounded p-3 space-y-3">
+<div class="text-xs font-medium text-zinc-300">Not in library — will create a new show</div>
+<div class="space-y-1.5">
+<div class="text-xs text-zinc-400">Content type</div>
+<div class="flex gap-4">
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="anime" name="rematch_content_type">Anime</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="tv" checked="" name="rematch_content_type">Tv</label>
+<label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+<input class="accent-[var(--color-ocean-500)]" type="radio" value="movie" name="rematch_content_type">Movie</label>
+</div>
+</div>
+<div class="space-y-1">
+<div class="text-xs text-zinc-400">Show folder name</div>
+<input placeholder="Show Name" class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]" type="text" value="New Show">
+<div class="text-xs text-zinc-500 font-mono">/mnt/tv/New Show</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex justify-end gap-2 shrink-0">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Match &amp; Route</button>
+</div>
+</div>
+</div>
+</div>"
+`;
