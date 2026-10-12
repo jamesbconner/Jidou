@@ -1036,3 +1036,418 @@ def test_db_import_task_soft_timeout_calls_mark_timed_out() -> None:
         db_import_task(file_content="{}")
 
     assert len(mark_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Characterization tests (pin pre-decomposition behaviour of the restore paths)
+# ---------------------------------------------------------------------------
+
+
+def _full_episode() -> Episode:
+    """Return an Episode with every restorable field populated."""
+    return Episode(
+        show_id=1,
+        tmdb_id=500,
+        season_number=1,
+        episode_number=2,
+        name="Original",
+        overview="Original overview",
+        air_date=date(2020, 1, 1),
+        runtime=30,
+        absolute_episode_number=2,
+        episode_type="standard",
+        still_path="/s.jpg",
+        file_tracked=True,
+        file_tracked_at=datetime(2024, 1, 1, 12, 0, 0),
+        tracked_filename="a.mkv",
+        tracked_source="match",
+        watched=True,
+        watched_at=datetime(2024, 2, 2, 8, 0, 0),
+    )
+
+
+def test_update_episode_null_and_malformed_rules() -> None:
+    """Null clears file_tracked_at; malformed watched_at and null air_date change nothing."""
+    ep = _full_episode()
+    _update_episode(ep, {"file_tracked_at": None, "watched_at": "garbage", "air_date": None})
+    assert ep.file_tracked_at is None
+    assert ep.watched_at == datetime(2024, 2, 2, 8, 0, 0)
+    assert ep.air_date == date(2020, 1, 1)
+
+
+def test_update_episode_null_watched_at_clears_and_malformed_tracked_at_keeps() -> None:
+    """The two timestamp rules are symmetric: null clears, malformed is ignored."""
+    ep = _full_episode()
+    _update_episode(ep, {"watched_at": None, "file_tracked_at": "garbage"})
+    assert ep.watched_at is None
+    assert ep.file_tracked_at == datetime(2024, 1, 1, 12, 0, 0)
+
+
+def test_update_episode_empty_row_changes_nothing_and_never_rewrites_identity() -> None:
+    """An empty backup row changes nothing; show_id/tmdb_id in a row are never applied."""
+    ep = _full_episode()
+    before = {a.key: getattr(ep, a.key) for a in inspect(Episode).column_attrs}
+    _update_episode(ep, {})
+    _update_episode(ep, {"show_id": 999, "tmdb_id": 12345})
+    after = {a.key: getattr(ep, a.key) for a in inspect(Episode).column_attrs}
+    assert after == before
+
+
+def test_update_show_preserves_local_path_and_cached() -> None:
+    """A backup row with local_path=None / cached=False cannot clobber live values."""
+    show = Show(tmdb_id=1, title="T", local_path="/live/path", cached=True)
+    _update_show(show, {"local_path": None, "cached": False, "tmdb_id": 777})
+    assert show.local_path == "/live/path"
+    assert show.cached is True
+    assert show.tmdb_id == 1
+
+
+def test_update_show_empty_row_changes_no_column() -> None:
+    """An empty backup row changes no Show column."""
+    show = Show(
+        tmdb_id=1,
+        title="T",
+        overview="o",
+        media_type="movie",
+        vote_count=5,
+        content_type="anime",
+        aliases=["a"],
+        track_missing_episodes=False,
+        local_path="/p",
+    )
+    before = {a.key: getattr(show, a.key) for a in inspect(Show).column_attrs}
+    _update_show(show, {})
+    after = {a.key: getattr(show, a.key) for a in inspect(Show).column_attrs}
+    assert after == before
+
+
+def test_build_show_defaults() -> None:
+    """A row with only tmdb_id and title gets the documented defaults, None elsewhere."""
+    show = _build_show({"tmdb_id": 1, "title": "T"})
+    assert show.media_type == "tv"
+    assert show.vote_count == 0
+    assert show.cached is False
+    assert show.track_missing_episodes is True
+    defaulted = {"media_type", "vote_count", "cached", "track_missing_episodes", "tmdb_id", "title"}
+    checked = 0
+    for attr in inspect(Show).column_attrs:
+        if attr.key in {"id", "created_at", "updated_at"} | defaulted:
+            continue
+        assert getattr(show, attr.key) is None, attr.key
+        checked += 1
+    assert checked > 20
+
+
+@pytest.mark.parametrize("missing", ["tmdb_id", "title"])
+def test_build_show_requires_tmdb_id_and_title(missing: str) -> None:
+    """tmdb_id and title are mandatory when building a Show."""
+    row = {"tmdb_id": 1, "title": "T"}
+    del row[missing]
+    with pytest.raises(KeyError):
+        _build_show(row)
+
+
+@pytest.mark.parametrize("missing", ["show_id", "tmdb_id", "season_number", "episode_number"])
+def test_build_episode_requires_identity_fields(missing: str) -> None:
+    """show_id, tmdb_id, season_number and episode_number are mandatory for an Episode."""
+    row = {"show_id": 1, "tmdb_id": 2, "season_number": 1, "episode_number": 1}
+    del row[missing]
+    with pytest.raises(KeyError):
+        _build_episode(row)
+
+
+def test_build_episode_defaults() -> None:
+    """Absent optional keys give name '', flags False, everything else None."""
+    ep = _build_episode({"show_id": 1, "tmdb_id": 2, "season_number": 1, "episode_number": 1})
+    assert ep.name == ""
+    assert ep.file_tracked is False
+    assert ep.watched is False
+    assert ep.air_date is None
+    assert ep.file_tracked_at is None
+    assert ep.watched_at is None
+
+
+def test_enum_columns_pass_unrecognised_values_through_unchanged() -> None:
+    """Restore does no enum coercion: out-of-enum strings are kept verbatim.
+
+    ``str_enum(..., native_enum=False)`` has ``validate_strings=False``, so the bind
+    processor lets an unrecognised string through too; both must stay true so a
+    restore of such a backup behaves exactly as it always has.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    show = _build_show({"tmdb_id": 1, "title": "T", "content_type": "bogus"})
+    assert show.content_type == "bogus"
+    ep = _build_episode(
+        {
+            "show_id": 1,
+            "tmdb_id": 2,
+            "season_number": 1,
+            "episode_number": 1,
+            "tracked_source": "bogus",
+        }
+    )
+    assert ep.tracked_source == "bogus"
+
+    dialect = postgresql.dialect()
+    for column in (Show.__table__.c.content_type, Episode.__table__.c.tracked_source):
+        processor = column.type.dialect_impl(dialect).bind_processor(dialect)
+        assert processor is not None
+        assert processor("bogus") == "bogus"
+
+
+async def _run_work(
+    content: dict[str, object], session: AsyncMock, on_progress: AsyncMock
+) -> object:
+    """Run ``_db_import``'s work closure with a caller-supplied ``on_progress``."""
+    from jidou.workers.db_import_tasks import _db_import
+
+    patcher, captured = _capture_run_task_workflow("jidou.workers.db_import_tasks")
+    with patcher:
+        await _db_import("task-char", json.dumps(content))
+    with (
+        patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
+        patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
+    ):
+        return await captured["work"](session, on_progress, AsyncMock())  # type: ignore[operator]
+
+
+def _session_finding(existing: object | None = None) -> AsyncMock:
+    """Build a mock session whose every lookup returns ``existing`` (or nothing)."""
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = existing
+    session.execute = AsyncMock(return_value=result)
+    session.add = MagicMock(side_effect=lambda obj: setattr(obj, "id", 7))
+    return session
+
+
+@pytest.mark.asyncio
+async def test_episode_progress_cadence() -> None:
+    """Episode-phase progress fires only when the running total is a multiple of 100."""
+    shows = [{"id": 1, "tmdb_id": 10, "title": "S"}]
+    episodes = [
+        {"tmdb_id": 1000 + i, "show_id": 1, "season_number": 1, "episode_number": i}
+        for i in range(250)
+    ]
+    on_progress = AsyncMock()
+
+    await _run_work({"shows": shows, "episodes": episodes}, _session_finding(), on_progress)
+
+    calls = [c.args for c in on_progress.await_args_list]
+    assert calls[0] == (1, 251, "Shows: 10")
+    episode_calls = [c for c in calls if c[2].startswith("Episodes:")]
+    assert episode_calls == [(100, 251, "Episodes: 100"), (200, 251, "Episodes: 200")]
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_progress_counts_skipped_rows_without_reporting_them() -> None:
+    """Skipped show/episode/watchlist rows advance the counter but never report."""
+    content = {
+        "shows": [
+            {"id": 1, "tmdb_id": None, "title": "skip"},
+            {"id": 2, "tmdb_id": 20, "title": ""},
+            {"id": 3, "tmdb_id": 30, "title": "ok"},
+        ],
+        "episodes": [{"show_id": 3, "season_number": 1, "episode_number": 1}],
+        "watchlist": [{"show_id": 99, "status": "planned"}],
+    }
+    on_progress = AsyncMock()
+
+    result = await _run_work(content, _session_finding(), on_progress)
+
+    # Only the one successful show reports; its counter value includes the two skips.
+    assert [c.args for c in on_progress.await_args_list] == [(3, 5, "Shows: 30")]
+    assert result.progress_current == 5  # type: ignore[attr-defined]
+    assert result.result_summary["shows_created"] == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_commit_once_per_section_and_result_message() -> None:
+    """Three commits (shows, episodes, watchlist) and the exact completion message."""
+    session = _session_finding()
+    content = {
+        "shows": [{"id": 1, "tmdb_id": 10, "title": "S"}],
+        "episodes": [
+            {"tmdb_id": 11, "show_id": 1, "season_number": 1, "episode_number": 1},
+        ],
+        "watchlist": [{"show_id": 1, "status": "watching", "notes": "n", "position": 3}],
+    }
+    result = await _run_work(content, session, AsyncMock())
+    assert session.commit.await_count == 3
+    assert result.message == (  # type: ignore[attr-defined]
+        "Done — 1 shows created, 0 updated; 1 episodes created, 0 updated"
+    )
+    assert result.result_summary == {  # type: ignore[attr-defined]
+        "shows_created": 1,
+        "shows_updated": 0,
+        "episodes_created": 1,
+        "episodes_updated": 0,
+        "watchlist_created": 1,
+        "watchlist_updated": 0,
+    }
+    added = [c.args[0] for c in session.add.call_args_list]
+    assert [type(o).__name__ for o in added] == ["Show", "Episode", "WatchlistEntry"]
+    assert added[1].show_id == 7
+    assert added[2].show_id == 7
+    assert added[2].position == 3
+    assert added[2].notes == "n"
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_watchlist_update_keeps_existing_values_for_absent_keys() -> None:
+    """An existing watchlist entry keeps status/notes/position absent from the row."""
+    from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
+
+    entry = WatchlistEntry(show_id=7, status=WatchlistStatus("watching"), notes="keep", position=4)
+    existing_show = MagicMock()
+    existing_show.id = 7
+    existing_show.local_path = None
+    lookups = [existing_show, entry]
+
+    def _next(*_a: object, **_k: object) -> MagicMock:
+        found = MagicMock()
+        found.scalar_one_or_none.return_value = lookups.pop(0)
+        return found
+
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=_next)
+    session.add = MagicMock()
+    content = {
+        "shows": [{"id": 1, "tmdb_id": 10, "title": "S"}],
+        "watchlist": [{"show_id": 1}],
+    }
+    result = await _run_work(content, session, AsyncMock())
+    assert entry.status == WatchlistStatus("watching")
+    assert entry.notes == "keep"
+    assert entry.position == 4
+    assert result.result_summary["watchlist_updated"] == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_invalid_watchlist_status_raises_value_error() -> None:
+    """A watchlist status outside the enum propagates ValueError (unchanged behaviour)."""
+    content = {
+        "shows": [{"id": 1, "tmdb_id": 10, "title": "S"}],
+        "watchlist": [{"show_id": 1, "status": "bogus"}],
+    }
+    with pytest.raises(ValueError, match="bogus"):
+        await _run_work(content, _session_finding(), AsyncMock())
+
+
+# The hand-written column list restore used before ``_SHOW_COLUMNS`` was derived from
+# ``show_columns(...)``; kept verbatim so the derivation can never silently drift.
+_LEGACY_SHOW_HANDLED_COLUMNS = frozenset(
+    [
+        "tmdb_id",
+        "title",
+        "overview",
+        "media_type",
+        "poster_path",
+        "backdrop_path",
+        "vote_average",
+        "vote_count",
+        "release_date",
+        "original_language",
+        "cached",
+        "content_type",
+        "sys_name",
+        "aliases",
+        "aliases_sources",
+        "genres",
+        "origin_country",
+        "last_air_date",
+        "last_episode_to_air",
+        "next_episode_to_air",
+        "homepage",
+        "external_ids",
+        "episode_groups",
+        "episode_group_map",
+        "active_episode_group_id",
+        "active_episode_group_name",
+        "status",
+        "in_production",
+        "number_of_seasons",
+        "number_of_episodes",
+        "networks",
+        "show_type",
+        "runtime",
+        "tagline",
+        "local_path",
+        "adult",
+        "list_poster_path",
+        "detail_poster_path",
+        "banner_path",
+        "track_missing_episodes",
+    ]
+)
+
+_LEGACY_EPISODE_HANDLED_COLUMNS = frozenset(
+    [
+        "show_id",
+        "tmdb_id",
+        "season_number",
+        "episode_number",
+        "name",
+        "overview",
+        "air_date",
+        "runtime",
+        "absolute_episode_number",
+        "episode_type",
+        "still_path",
+        "file_tracked",
+        "file_tracked_at",
+        "tracked_filename",
+        "tracked_source",
+        "watched",
+        "watched_at",
+    ]
+)
+
+
+def test_column_tables_equal_legacy_handled_sets() -> None:
+    """The derived column tables restore exactly the columns the old literals listed."""
+    from jidou.workers.db_import_tasks import _EPISODE_COLUMNS, _SHOW_COLUMNS
+
+    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 40
+    assert {c.name for c in _SHOW_COLUMNS} == _LEGACY_SHOW_HANDLED_COLUMNS
+    assert len(_SHOW_COLUMNS) == len(_LEGACY_SHOW_HANDLED_COLUMNS)
+    assert {c.name for c in _EPISODE_COLUMNS} == _LEGACY_EPISODE_HANDLED_COLUMNS
+    assert len(_EPISODE_COLUMNS) == len(_LEGACY_EPISODE_HANDLED_COLUMNS)
+
+
+def test_column_defaults_and_update_exclusions() -> None:
+    """Build defaults and the insert-only / special-update sets match the documented rules."""
+    from jidou.workers.db_import_tasks import (
+        _EPISODE_COLUMNS,
+        _EPISODE_UPDATE_SPECIAL,
+        _SHOW_COLUMNS,
+        _SHOW_INSERT_ONLY,
+    )
+
+    show_defaults = {c.name: c.default for c in _SHOW_COLUMNS if c.default is not None}
+    assert show_defaults == {
+        "media_type": "tv",
+        "vote_count": 0,
+        "cached": False,
+        "track_missing_episodes": True,
+    }
+    assert {c.name for c in _SHOW_COLUMNS if c.required} == {"tmdb_id", "title"}
+    episode_defaults = {c.name: c.default for c in _EPISODE_COLUMNS if c.default is not None}
+    assert episode_defaults == {"name": "", "file_tracked": False, "watched": False}
+    assert {c.name for c in _EPISODE_COLUMNS if c.required} == {
+        "show_id",
+        "tmdb_id",
+        "season_number",
+        "episode_number",
+    }
+    assert {"tmdb_id", "cached"} == _SHOW_INSERT_ONLY
+    assert {
+        "show_id",
+        "tmdb_id",
+        "air_date",
+        "file_tracked_at",
+        "watched_at",
+    } == _EPISODE_UPDATE_SPECIAL
