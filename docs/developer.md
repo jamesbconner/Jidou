@@ -8,7 +8,7 @@ Tooling, conventions, and workflows for contributing to Jidou.
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) — dependency management and virtual environments
-- Node.js 20+ and npm — frontend
+- Node.js 24+ and npm — frontend (`npm ci` needs Node 24 or newer; `frontend/package.json` declares `engines.node >=24`)
 - Docker + Docker Compose — local infrastructure (Postgres, Redis)
 - [pre-commit](https://pre-commit.com/) — git hook automation
 
@@ -138,6 +138,67 @@ jidou/
 - **Frontend UI primitives live in `components/ui/`** — `Modal`, `Button`, `Card`, `Badge`, backed by `@layer components` recipes in `index.css`. New modals, cards, and badge-style pills should build on these instead of hand-typing Tailwind utility strings, which drifts visibly across call sites over time (see [Architecture — Shared UI primitives](architecture.md#shared-ui-primitives)).
 
 ---
+
+## Frontend structure
+
+All paths below are under `frontend/src/`.
+
+### Hooks boundary
+
+Pages and components never call the API client or the query client
+themselves. They read and mutate server data through a hook in `hooks/`, so
+cache keys and invalidation live in one layer. ESLint enforces this in
+`frontend/eslint.config.js` for `pages/**` and `components/**`: importing
+`@/api/client` (or any `**/api/client` relative spelling) and calling
+`useQueryClient` are both errors. Tests are outside the rule.
+
+### Query keys and shared hooks
+
+- Each data hook module exports a key factory (`showKeys`, `fileKeys`,
+  `taskKeys`, `rssKeys`, `configKeys`, `dashboardKeys`, `calendarKeys`,
+  `orphanKeys`, `watchlistKeys`, `settingsKeys`, `adminKeys`). Build query
+  keys and invalidations from the factory, not from string literals.
+- `hooks/invalidation.ts` holds `invalidateShowsAndFiles`, the shared
+  refetch for mutations that re-link files.
+- `useConfig` (`hooks/useConfig.ts`) is the single query for the server's
+  read-only `/config`, so every consumer shares one cache entry.
+- `useTaskUntilDone` (`hooks/useTasks.ts`) polls one task by id until it
+  reaches a terminal status (`TERMINAL_TASK_STATUSES`), then stops. Pass
+  `null` before the task exists.
+
+### Per-tab page layout
+
+Large pages are split so the route file wires tabs and sections together,
+and the pieces live in a folder named after the page:
+
+- `pages/settings/`: `GeneralTab`, `ServicesTab`, `FeaturesTab`, `DataTab`,
+  `LiveImportTask`, `rows`
+- `pages/shows/`: `LibraryTab`, `MissingTab`, `DataQualityTab`,
+  `ShowsHeader`, `ShowsSearchModal`, `styles`
+- `pages/showDetail/`: `EpisodesCard`, `ShowDetailSections`,
+  `ShowDetailModals`, `WatchlistControls`, `useShowDetailData`,
+  `modalState`, `episodeStats`
+- `pages/files/`: `FilesTable`, `FilesToolbar`, `InlineEditors`
+- `pages/rss/`: `RssHeader`, `SubscriptionFilters`, `rssFilters`
+
+Modals follow the same pattern: `components/linkFile/`,
+`components/rematch/` and `components/resolveFile/` hold the panes and hooks
+extracted from `LinkFileModal`, `RematchModal` and `ResolveFileModal`.
+
+### Complexity budget
+
+ESLint's `complexity` rule is a ratchet, currently `25`, and it may only be
+lowered. `RematchModal` and `ResolveFileModal` sit at the limit; every other
+function is at or below it. Test files are exempt. The ratchet came down from
+51 when FE-7 split `ShowDetail`, `Shows`, `FeaturesTab`, `ResolveFileModal`,
+`AddShowFromFeedPane`, `Files`, `RSS`, `LinkFileModal`, `RematchModal`,
+`ServiceRow`, `ScanLocalFilesModal` and `FeedFormModal`. When you touch a
+function near the limit, extract a helper or subcomponent rather than raising
+the number.
+
+### Node version
+
+The frontend needs Node 24 or newer for `npm ci` (`engines.node >=24`).
 
 ## Testing
 
