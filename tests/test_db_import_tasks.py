@@ -1335,3 +1335,119 @@ async def test_invalid_watchlist_status_raises_value_error() -> None:
     }
     with pytest.raises(ValueError, match="bogus"):
         await _run_work(content, _session_finding(), AsyncMock())
+
+
+# The hand-written column list restore used before ``_SHOW_COLUMNS`` was derived from
+# ``show_columns(...)``; kept verbatim so the derivation can never silently drift.
+_LEGACY_SHOW_HANDLED_COLUMNS = frozenset(
+    [
+        "tmdb_id",
+        "title",
+        "overview",
+        "media_type",
+        "poster_path",
+        "backdrop_path",
+        "vote_average",
+        "vote_count",
+        "release_date",
+        "original_language",
+        "cached",
+        "content_type",
+        "sys_name",
+        "aliases",
+        "aliases_sources",
+        "genres",
+        "origin_country",
+        "last_air_date",
+        "last_episode_to_air",
+        "next_episode_to_air",
+        "homepage",
+        "external_ids",
+        "episode_groups",
+        "episode_group_map",
+        "active_episode_group_id",
+        "active_episode_group_name",
+        "status",
+        "in_production",
+        "number_of_seasons",
+        "number_of_episodes",
+        "networks",
+        "show_type",
+        "runtime",
+        "tagline",
+        "local_path",
+        "adult",
+        "list_poster_path",
+        "detail_poster_path",
+        "banner_path",
+        "track_missing_episodes",
+    ]
+)
+
+_LEGACY_EPISODE_HANDLED_COLUMNS = frozenset(
+    [
+        "show_id",
+        "tmdb_id",
+        "season_number",
+        "episode_number",
+        "name",
+        "overview",
+        "air_date",
+        "runtime",
+        "absolute_episode_number",
+        "episode_type",
+        "still_path",
+        "file_tracked",
+        "file_tracked_at",
+        "tracked_filename",
+        "tracked_source",
+        "watched",
+        "watched_at",
+    ]
+)
+
+
+def test_column_tables_equal_legacy_handled_sets() -> None:
+    """The derived column tables restore exactly the columns the old literals listed."""
+    from jidou.workers.db_import_tasks import _EPISODE_COLUMNS, _SHOW_COLUMNS
+
+    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 40
+    assert {c.name for c in _SHOW_COLUMNS} == _LEGACY_SHOW_HANDLED_COLUMNS
+    assert len(_SHOW_COLUMNS) == len(_LEGACY_SHOW_HANDLED_COLUMNS)
+    assert {c.name for c in _EPISODE_COLUMNS} == _LEGACY_EPISODE_HANDLED_COLUMNS
+    assert len(_EPISODE_COLUMNS) == len(_LEGACY_EPISODE_HANDLED_COLUMNS)
+
+
+def test_column_defaults_and_update_exclusions() -> None:
+    """Build defaults and the insert-only / special-update sets match the documented rules."""
+    from jidou.workers.db_import_tasks import (
+        _EPISODE_COLUMNS,
+        _EPISODE_UPDATE_SPECIAL,
+        _SHOW_COLUMNS,
+        _SHOW_INSERT_ONLY,
+    )
+
+    show_defaults = {c.name: c.default for c in _SHOW_COLUMNS if c.default is not None}
+    assert show_defaults == {
+        "media_type": "tv",
+        "vote_count": 0,
+        "cached": False,
+        "track_missing_episodes": True,
+    }
+    assert {c.name for c in _SHOW_COLUMNS if c.required} == {"tmdb_id", "title"}
+    episode_defaults = {c.name: c.default for c in _EPISODE_COLUMNS if c.default is not None}
+    assert episode_defaults == {"name": "", "file_tracked": False, "watched": False}
+    assert {c.name for c in _EPISODE_COLUMNS if c.required} == {
+        "show_id",
+        "tmdb_id",
+        "season_number",
+        "episode_number",
+    }
+    assert {"tmdb_id", "cached"} == _SHOW_INSERT_ONLY
+    assert {
+        "show_id",
+        "tmdb_id",
+        "air_date",
+        "file_tracked_at",
+        "watched_at",
+    } == _EPISODE_UPDATE_SPECIAL
