@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router'
-import { ShowCard } from '@/components/ShowCard'
 import { TmdbResultCard } from '@/components/TmdbResultCard'
 import { useShows, useTmdbSearch, useLocalShowSearch, useCreateShow, useLibraryIndex, SHOW_SORT_LABELS } from '@/hooks/useShows'
 import type { ShowSortOrder } from '@/hooks/useShows'
@@ -10,153 +9,29 @@ import { OrphanResolveModal } from '@/components/OrphanResolveModal'
 import { DiscoverDetailModal } from '@/components/DiscoverDetailModal'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 import { ModalCloseButton } from '@/components/ui/ModalCloseButton'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import { DQ_CHECKS } from '@/utils/dqChecks'
 import { buildShowCreatePayload } from '@/utils/buildShowCreatePayload'
-import type { ShowList, TmdbResult, OrphanedTrackingRecord } from '@/types/api'
-
-interface ShowsFilterState {
-  sort: ShowSortOrder
-  filterContentType: string
-  filterStatus: string
-  filterGenre: string
-  filterLanguage: string
-  filterUpcoming: boolean
-  filterMinRating: string
-}
-
-const DEFAULT_SHOWS_FILTERS: ShowsFilterState = {
-  sort: 'title_asc',
-  filterContentType: '',
-  filterStatus: '',
-  filterGenre: '',
-  filterLanguage: '',
-  filterUpcoming: false,
-  filterMinRating: '',
-}
-
-interface MissingFilterState {
-  filterContentType: string
-  filterStatus: string
-  filterGenre: string
-  filterLanguage: string
-  filterMinMissing: string
-  filterFullSeasonMissing: string
-  filterMaxOwned: string
-  filterWatchlistOnly: boolean
-}
-
-const DEFAULT_MISSING_FILTERS: MissingFilterState = {
-  filterContentType: '',
-  filterStatus: '',
-  filterGenre: '',
-  filterLanguage: '',
-  filterMinMissing: '',
-  filterFullSeasonMissing: '',
-  filterMaxOwned: '',
-  filterWatchlistOnly: false,
-}
+import { DEFAULT_MISSING_FILTERS, DEFAULT_SHOWS_FILTERS } from '@/utils/showFilters'
+import type { MissingFilterState, ShowsFilterState } from '@/utils/showFilters'
+import type { TmdbResult, OrphanedTrackingRecord } from '@/types/api'
+import { LibraryTab } from './shows/LibraryTab'
+import { DataQualityTab } from './shows/DataQualityTab'
+import { MissingTab } from './shows/MissingTab'
+import { SELECT_CLS } from './shows/styles'
 
 const TMDB_IMG = '/api/images/w185'
 
 type Tab = 'library' | 'data' | 'missing'
 
-function sortShows(shows: ShowList[], sort: ShowSortOrder): ShowList[] {
-  function nullsLast<T>(
-    a: T | null | undefined,
-    b: T | null | undefined,
-    cmp: (a: T, b: T) => number,
-  ): number {
-    if (a == null && b == null) return 0
-    if (a == null) return 1
-    if (b == null) return -1
-    return cmp(a, b)
-  }
-  return shows.slice().sort((a, b) => {
-    switch (sort) {
-      case 'title_asc': return a.title.localeCompare(b.title)
-      case 'title_desc': return b.title.localeCompare(a.title)
-      case 'added_desc': return b.created_at.localeCompare(a.created_at)
-      case 'added_asc': return a.created_at.localeCompare(b.created_at)
-      case 'release_desc': return nullsLast(a.release_date, b.release_date, (x, y) => y.localeCompare(x))
-      case 'release_asc': return nullsLast(a.release_date, b.release_date, (x, y) => x.localeCompare(y))
-      case 'last_aired_desc': return nullsLast(a.last_air_date, b.last_air_date, (x, y) => y.localeCompare(x))
-      case 'rating_desc': return nullsLast(a.vote_average, b.vote_average, (x, y) => y - x)
-      case 'episodes_desc': return nullsLast(a.number_of_episodes, b.number_of_episodes, (x, y) => y - x)
-      case 'episodes_added_desc':
-        return nullsLast(a.latest_episode_added_at, b.latest_episode_added_at, (x, y) => y.localeCompare(x))
-    }
-  })
-}
-
-function applyFilters(
-  shows: ShowList[],
-  contentType: string,
-  status: string,
-  genre: string,
-  language: string,
-  upcoming: boolean,
-  minRating: string,
-): ShowList[] {
-  return shows.filter((s) => {
-    if (contentType === '__unset__') { if (s.content_type != null) return false }
-    else if (contentType && s.content_type !== contentType) return false
-
-    if (status && s.status !== status) return false
-
-    if (genre && !s.genres?.some((g) => g.name === genre)) return false
-
-    if (language && s.original_language !== language) return false
-
-    if (upcoming && !s.next_episode_to_air) return false
-
-    if (minRating) {
-      const min = Number(minRating)
-      if (s.vote_average == null || s.vote_average < min) return false
-    }
-
-    return true
-  })
-}
-
-function applyMissingFilters(
-  shows: ShowList[],
-  contentType: string,
-  status: string,
-  genre: string,
-  language: string,
-  minMissing: string,
-  fullSeasonMissing: string,
-  maxOwned: string,
-  watchlistOnly: boolean,
-  watchlistByShowId: Map<number, number>,
-): ShowList[] {
-  return shows.filter((s) => {
-    if (contentType === '__unset__') { if (s.content_type != null) return false }
-    else if (contentType && s.content_type !== contentType) return false
-
-    if (status && s.status !== status) return false
-
-    if (genre && !s.genres?.some((g) => g.name === genre)) return false
-
-    if (language && s.original_language !== language) return false
-
-    if (minMissing === 'eq1') { if (s.missing_episode_count !== 1) return false }
-    else if (minMissing && s.missing_episode_count < Number(minMissing)) return false
-
-    if (fullSeasonMissing && s.missing_full_season_count < Number(fullSeasonMissing)) return false
-
-    if (maxOwned && s.matched_file_count > Number(maxOwned)) return false
-
-    if (watchlistOnly && !watchlistByShowId.has(s.id)) return false
-
-    return true
-  })
-}
-
+/**
+ * Shows page shell. It owns every query, mutation and piece of state that
+ * must outlive a tab switch (filters, sort, search text, DQ filter, modals)
+ * and hands typed props to the per-tab components, which only render and
+ * derive from them.
+ */
 export default function Shows() {
   const [tab, setTab] = useState<Tab>('library')
   const [dqFilter, setDqFilter] = useState<string | null>(null)
@@ -178,13 +53,8 @@ export default function Shows() {
   const {
     sort, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating,
   } = filters
-  const setSort = (v: ShowSortOrder) => setFilters({ ...filters, sort: v })
-  const setFilterContentType = (v: string) => setFilters({ ...filters, filterContentType: v })
-  const setFilterStatus = (v: string) => setFilters({ ...filters, filterStatus: v })
-  const setFilterGenre = (v: string) => setFilters({ ...filters, filterGenre: v })
-  const setFilterLanguage = (v: string) => setFilters({ ...filters, filterLanguage: v })
-  const setFilterUpcoming = (v: boolean) => setFilters({ ...filters, filterUpcoming: v })
-  const setFilterMinRating = (v: string) => setFilters({ ...filters, filterMinRating: v })
+  const patchFilters = (patch: Partial<ShowsFilterState>) => setFilters({ ...filters, ...patch })
+  const setSort = (v: ShowSortOrder) => patchFilters({ sort: v })
 
   // Independent from the library tab's filter bar — persisted separately so
   // switching tabs never cross-affects the other's filter choices.
@@ -202,20 +72,13 @@ export default function Shows() {
     filterMaxOwned,
     filterWatchlistOnly: missingFilterWatchlistOnly,
   } = missingFilters
-  const setMissingFilterContentType = (v: string) => setMissingFilters({ ...missingFilters, filterContentType: v })
-  const setMissingFilterStatus = (v: string) => setMissingFilters({ ...missingFilters, filterStatus: v })
-  const setMissingFilterGenre = (v: string) => setMissingFilters({ ...missingFilters, filterGenre: v })
-  const setMissingFilterLanguage = (v: string) => setMissingFilters({ ...missingFilters, filterLanguage: v })
-  const setFilterMinMissing = (v: string) => setMissingFilters({ ...missingFilters, filterMinMissing: v })
-  const setFilterFullSeasonMissing = (v: string) => setMissingFilters({ ...missingFilters, filterFullSeasonMissing: v })
-  const setFilterMaxOwned = (v: string) => setMissingFilters({ ...missingFilters, filterMaxOwned: v })
-  const setMissingFilterWatchlistOnly = (v: boolean) => setMissingFilters({ ...missingFilters, filterWatchlistOnly: v })
+  const patchMissingFilters = (patch: Partial<MissingFilterState>) =>
+    setMissingFilters({ ...missingFilters, ...patch })
 
   const debouncedQuery = useDebounce(query, 300)
 
   // Single fetch covers both the modal search pool and the display grid.
   const { data: allShows = [], isLoading } = useShows('title_asc', 10000)
-  const displayShows = useMemo(() => sortShows(allShows, sort), [allShows, sort])
   const { data: searchData, isLoading: tmdbSearching } = useTmdbSearch(
     modalMode === 'tmdb' && query.length >= 2 ? debouncedQuery : '',
     'multi',
@@ -263,49 +126,16 @@ export default function Shows() {
     10,
   )
 
-  const genreOptions = useMemo(() => {
-    const names = new Set<string>()
-    allShows.forEach((s) => s.genres?.forEach((g) => { if (g.name) names.add(g.name as string) }))
-    return Array.from(names).sort()
-  }, [allShows])
-
-  const languageOptions = useMemo(() => {
-    const langs = new Set<string>()
-    allShows.forEach((s) => { if (s.original_language) langs.add(s.original_language) })
-    return Array.from(langs).sort()
-  }, [allShows])
-
-  const statusOptions = useMemo(() => {
-    const statuses = new Set<string>()
-    allShows.forEach((s) => { if (s.status) statuses.add(s.status) })
-    return Array.from(statuses).sort()
-  }, [allShows])
-
-  const filtered = useMemo(
-    () => applyFilters(displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating),
-    [displayShows, filterContentType, filterStatus, filterGenre, filterLanguage, filterUpcoming, filterMinRating],
-  )
-
   // The watchlist-only filter reads watchlistByShowId, which is empty until
   // the watchlist query resolves — without this, rows can flash to "no
   // matches" while the (slower) watchlist fetch is still in flight.
   const missingTabLoading = isLoading || (missingFilterWatchlistOnly && watchlistLoading)
 
-  const dqCounts = useMemo(
-    () => Object.fromEntries(DQ_CHECKS.map((c) => [c.key, allShows.filter(c.test).length])),
-    [allShows],
-  )
+  // Tab-bar badges need these totals even while their tab is not mounted.
   const totalDqIssues = useMemo(
     () => allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s))).length,
     [allShows],
   )
-  const dqRows = useMemo(() => {
-    const check = dqFilter ? DQ_CHECKS.find((c) => c.key === dqFilter) : null
-    return check
-      ? allShows.filter(check.test)
-      : allShows.filter((s) => DQ_CHECKS.some((c) => c.test(s)))
-  }, [allShows, dqFilter])
-
   const showsWithMissingEpisodes = useMemo(
     () => allShows.filter((s) => s.missing_episode_count > 0),
     [allShows],
@@ -313,36 +143,6 @@ export default function Shows() {
   const totalMissingEpisodes = useMemo(
     () => showsWithMissingEpisodes.reduce((sum, s) => sum + s.missing_episode_count, 0),
     [showsWithMissingEpisodes],
-  )
-  const missingFiltered = useMemo(
-    () => applyMissingFilters(
-      showsWithMissingEpisodes,
-      missingFilterContentType,
-      missingFilterStatus,
-      missingFilterGenre,
-      missingFilterLanguage,
-      filterMinMissing,
-      filterFullSeasonMissing,
-      filterMaxOwned,
-      missingFilterWatchlistOnly,
-      watchlistByShowId,
-    ),
-    [
-      showsWithMissingEpisodes, missingFilterContentType, missingFilterStatus, missingFilterGenre,
-      missingFilterLanguage, filterMinMissing, filterFullSeasonMissing, filterMaxOwned,
-      missingFilterWatchlistOnly, watchlistByShowId,
-    ],
-  )
-
-  const missingEpisodeRows = useMemo(() => {
-    const q = missingQuery.trim().toLowerCase()
-    return missingFiltered
-      .filter((s) => !q || s.title.toLowerCase().includes(q))
-      .sort((a, b) => b.missing_episode_count - a.missing_episode_count)
-  }, [missingFiltered, missingQuery])
-  const missingRowsTotal = useMemo(
-    () => missingEpisodeRows.reduce((sum, s) => sum + s.missing_episode_count, 0),
-    [missingEpisodeRows],
   )
 
   const activeFilterCount = [
@@ -384,7 +184,6 @@ export default function Shows() {
     createShow.mutate(buildShowCreatePayload(r))
   }
 
-  const selectCls = 'border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100'
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
       tab === t
@@ -408,7 +207,7 @@ export default function Shows() {
           </Button>
         )}
         {tab === 'library' && (
-          <select value={sort} onChange={(e) => setSort(e.target.value as ShowSortOrder)} className={selectCls}>
+          <select value={sort} onChange={(e) => setSort(e.target.value as ShowSortOrder)} className={SELECT_CLS}>
             {(Object.entries(SHOW_SORT_LABELS) as [ShowSortOrder, string][]).map(([v, l]) => (
               <option key={v} value={v}>{l}</option>
             ))}
@@ -445,503 +244,143 @@ export default function Shows() {
         </button>
       </div>
 
-      {(tab === 'library' || tmdbModalOpen) && (
-        <>
-          {/* Filter bar — shown only on library tab; modal overlay covers it on other tabs */}
-          {tab === 'library' && (
-          <div className="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
+      {tab === 'library' && (
+        <LibraryTab
+          allShows={allShows}
+          isLoading={isLoading}
+          filters={filters}
+          onFiltersChange={patchFilters}
+          activeFilterCount={activeFilterCount}
+          watchlistByShowId={watchlistByShowId}
+          pendingWatchlistShowIds={pendingWatchlistShowIds}
+          onWatchlistToggle={handleWatchlistToggle}
+        />
+      )}
 
-            <select value={filterContentType} onChange={(e) => setFilterContentType(e.target.value)} className={selectCls}>
-              <option value="">All types</option>
-              <option value="anime">Anime</option>
-              <option value="tv">TV</option>
-              <option value="movie">Movie</option>
-              <option value="__unset__">Unset</option>
-            </select>
+      {tmdbModalOpen && (
+        <Modal onClose={closeModal} tone="light" maxWidth="2xl" closeOnBackdropClick className="max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-semibold dark:text-gray-100">Search Shows</h3>
+              <ModalCloseButton onClose={closeModal} />
+            </div>
 
-            {statusOptions.length > 0 && (
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={selectCls}>
-                <option value="">All statuses</option>
-                {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            )}
-
-            {genreOptions.length > 0 && (
-              <select value={filterGenre} onChange={(e) => setFilterGenre(e.target.value)} className={selectCls}>
-                <option value="">All genres</option>
-                {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            )}
-
-            {languageOptions.length > 0 && (
-              <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} className={selectCls}>
-                <option value="">All languages</option>
-                {languageOptions.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
-              </select>
-            )}
-
-            <select value={filterMinRating} onChange={(e) => setFilterMinRating(e.target.value)} className={selectCls}>
-              <option value="">Any rating</option>
-              <option value="6">6+</option>
-              <option value="7">7+</option>
-              <option value="8">8+</option>
-              <option value="9">9+</option>
-            </select>
-
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filterUpcoming}
-                onChange={(e) => setFilterUpcoming(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-700 dark:text-gray-300">Upcoming episode</span>
-            </label>
-          </div>
-          )}
-
-          {/* Show search modal */}
-          {tmdbModalOpen && (
-            <Modal onClose={closeModal} tone="light" maxWidth="2xl" closeOnBackdropClick className="max-h-[80vh] flex flex-col">
-                <div className="flex items-center justify-between px-5 py-4 border-b">
-                  <h3 className="font-semibold dark:text-gray-100">Search Shows</h3>
-                  <ModalCloseButton onClose={closeModal} />
-                </div>
-
-                {/* Library / TMDB pill toggle */}
-                <div className="px-5 pt-4">
-                  <div className="flex rounded-lg border text-sm overflow-hidden">
-                    {(['library', 'tmdb'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => switchModalMode(m)}
-                        className={`flex-1 py-2 font-medium transition-colors ${
-                          modalMode === m ? 'bg-[var(--color-ocean-600)] text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {m === 'library' ? 'Library' : 'TMDB'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="px-5 pt-3 pb-3 border-b">
-                  <input
-                    type="search"
-                    autoFocus
-                    placeholder={modalMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-                  />
-                </div>
-
-                <div className="overflow-y-auto flex-1 p-5">
-                  {modalMode === 'library' ? (
-                    query.trim().length < 2 ? (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
-                    ) : librarySearching || debouncedQuery !== query ? (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
-                    ) : librarySearchResults.length === 0 ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No shows found for &quot;{query}&quot;.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {librarySearchResults.map((s) => (
-                          <Link
-                            key={s.id}
-                            to={`/shows/${s.id}`}
-                            onClick={closeModal}
-                            className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                          >
-                            {s.poster_path ? (
-                              <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded flex-shrink-0" loading="lazy" />
-                            ) : (
-                              <div className="w-8 h-12 bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate dark:text-gray-100">{s.title}</p>
-                              <p className="text-xs text-gray-400 dark:text-gray-500">
-                                {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
-                                {s.matched_on !== 'title' ? ` · matched ${s.matched_on === 'path' ? 'folder' : s.matched_on === 'sys_name' ? 'system name' : 'alias'}` : ''}
-                              </p>
-                            </div>
-                            <span className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] shrink-0">View →</span>
-                          </Link>
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    query.trim().length < 2 ? (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search TMDB.</p>
-                    ) : tmdbSearching || debouncedQuery !== query ? (
-                      <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
-                    ) : !searchData || searchData.results.length === 0 ? (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No results for &quot;{debouncedQuery}&quot;.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {searchData.results.slice(0, 12).map((r) => {
-                          const mediaType = r.media_type ?? 'tv'
-                          const libraryShow = libraryIndex.get(`${r.id}:${mediaType}`)
-                          return (
-                            <TmdbResultCard
-                              key={`${r.id}:${mediaType}`}
-                              result={r}
-                              inLibraryShowId={libraryShow?.id ?? null}
-                              onAdd={() => handleTrack(r)}
-                              addPending={createShow.isPending}
-                              onNavigate={closeModal}
-                              onCardClick={() => setDetailResult(r)}
-                            />
-                          )
-                        })}
-                      </div>
-                    )
-                  )}
-                </div>
-            </Modal>
-          )}
-
-          {tab === 'library' && (
-          <section>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              {activeFilterCount > 0 ? `${filtered.length} of ${allShows.length} shows` : `${allShows.length} show${allShows.length !== 1 ? 's' : ''}`}
-            </p>
-            {isLoading ? (
-              <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
-            ) : filtered.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                {allShows.length === 0 ? 'No shows in library yet. Search above to add one.' : 'No shows match the current filters.'}
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {filtered.map((s) => (
-                  <ShowCard
-                    key={s.id}
-                    show={s}
-                    watchlistEntryId={watchlistByShowId.get(s.id) ?? null}
-                    onWatchlistToggle={handleWatchlistToggle}
-                    watchlistPending={pendingWatchlistShowIds.has(s.id)}
-                  />
+            {/* Library / TMDB pill toggle */}
+            <div className="px-5 pt-4">
+              <div className="flex rounded-lg border text-sm overflow-hidden">
+                {(['library', 'tmdb'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => switchModalMode(m)}
+                    className={`flex-1 py-2 font-medium transition-colors ${
+                      modalMode === m ? 'bg-[var(--color-ocean-600)] text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {m === 'library' ? 'Library' : 'TMDB'}
+                  </button>
                 ))}
               </div>
-            )}
-          </section>
-          )}
-        </>
-      )}
-
-      {tab === 'data' && isLoading && (
-        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
-      )}
-
-      {tab === 'data' && !isLoading && (
-        <section className="space-y-6">
-          {/* Metric summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {DQ_CHECKS.map((c) => {
-              const count = dqCounts[c.key] ?? 0
-              const active = dqFilter === c.key
-              return (
-                <button
-                  key={c.key}
-                  title={c.description}
-                  onClick={() => setDqFilter(active ? null : c.key)}
-                  className={`text-left rounded-lg border p-3 transition-colors ${
-                    active
-                      ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/40'
-                      : count > 0
-                        ? 'border-amber-200 bg-white hover:bg-amber-50 dark:bg-gray-900 dark:hover:bg-amber-950/30'
-                        : 'border-gray-200 bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <p className={`text-2xl font-bold ${count > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {count}
-                  </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">{c.label}</p>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Active filter description */}
-          {dqFilter && (() => {
-            const check = DQ_CHECKS.find((c) => c.key === dqFilter)!
-            return (
-              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                <span className="font-medium text-gray-700 dark:text-gray-300">{check.label}:</span>
-                {check.description}
-                <button onClick={() => setDqFilter(null)} className="ml-2 text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">
-                  Show all issues
-                </button>
-              </p>
-            )
-          })()}
-
-          {/* Issue table */}
-          {dqRows.length === 0 && orphans.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {dqFilter
-                ? `No shows with this issue.`
-                : `No data quality issues found across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`}
-            </p>
-          ) : dqRows.length > 0 ? (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
-                  <th className="pb-2 pr-4 font-medium">Title</th>
-                  <th className="pb-2 font-medium">Issues</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dqRows.map((s) => {
-                  const issues = DQ_CHECKS.filter((c) => c.test(s))
-                  return (
-                    <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="py-2 pr-4 whitespace-nowrap">
-                        <Link to={`/shows/${s.id}`} className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium">
-                          {s.title}
-                        </Link>
-                      </td>
-                      <td className="py-2">
-                        <div className="flex gap-2 flex-wrap">
-                          {issues.map((c) => (
-                            <button
-                              key={c.key}
-                              title={c.description}
-                              onClick={() => setDqFilter(c.key)}
-                              className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded px-1.5 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-900/70"
-                            >
-                              {c.label}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          ) : null}
-
-          {/* Orphaned tracking records */}
-          {orphans.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Unresolved tracking records</h3>
-                <span className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs rounded-full px-1.5 py-0.5 font-medium">
-                  {orphans.length}
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                These episodes could not be migrated during a show rematch because their season/episode
-                number has no match in the new TMDB entry. Select <strong>Match</strong> to link
-                each file to the correct episode, or <strong>Dismiss</strong> to discard the record.
-              </p>
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b">
-                    <th className="pb-2 pr-4 font-medium">Show</th>
-                    <th className="pb-2 pr-4 font-medium">File</th>
-                    <th className="pb-2 pr-4 font-medium">Old S/E</th>
-                    <th className="pb-2 pr-4 font-medium">Source</th>
-                    <th className="pb-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orphans.map((o) => {
-                    const se = `S${String(o.old_season_number).padStart(2, '0')}E${String(o.old_episode_number).padStart(2, '0')}`
-                    const filename = o.tracked_filename_display
-                      ? o.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
-                        o.tracked_filename_display
-                      : '—'
-                    return (
-                      <tr key={o.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="py-2 pr-4 whitespace-nowrap">
-                          <Link to={`/shows/${o.show_id}`} className="text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline font-medium text-xs">
-                            {o.show_title}
-                          </Link>
-                        </td>
-                        <td className="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400 max-w-xs truncate">
-                          {filename}
-                        </td>
-                        <td className="py-2 pr-4 font-mono text-xs text-gray-500 dark:text-gray-400">{se}</td>
-                        <td className="py-2 pr-4">
-                          <span className={`text-xs font-medium ${o.tracked_source === 'import' ? 'text-blue-600' : 'text-green-600'}`}>
-                            {o.tracked_source === 'import' ? 'import' : 'download'}
-                          </span>
-                        </td>
-                        <td className="py-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setResolvingOrphan(o)}
-                              className="text-xs bg-[var(--color-ocean-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ocean-500)] transition-colors"
-                            >
-                              Match
-                            </button>
-                            <button
-                              onClick={() => dismissOrphan.mutate(o.id)}
-                              disabled={dismissOrphan.isPending && dismissOrphan.variables === o.id}
-                              className="text-xs bg-[var(--color-ember-600)] text-white rounded px-2 py-0.5 hover:bg-[var(--color-ember-500)] transition-colors disabled:opacity-50"
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
             </div>
-          )}
-        </section>
-      )}
 
-      {tab === 'missing' && missingTabLoading && (
-        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
-      )}
-
-      {tab === 'missing' && !missingTabLoading && (
-        <section className="space-y-3">
-          {showsWithMissingEpisodes.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap bg-gray-50 dark:bg-gray-900 border rounded-lg px-4 py-3">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Filter</span>
-
-              <select value={missingFilterContentType} onChange={(e) => setMissingFilterContentType(e.target.value)} className={selectCls}>
-                <option value="">All types</option>
-                <option value="anime">Anime</option>
-                <option value="tv">TV</option>
-                <option value="movie">Movie</option>
-                <option value="__unset__">Unset</option>
-              </select>
-
-              {statusOptions.length > 0 && (
-                <select value={missingFilterStatus} onChange={(e) => setMissingFilterStatus(e.target.value)} className={selectCls}>
-                  <option value="">All statuses</option>
-                  {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              )}
-
-              {genreOptions.length > 0 && (
-                <select value={missingFilterGenre} onChange={(e) => setMissingFilterGenre(e.target.value)} className={selectCls}>
-                  <option value="">All genres</option>
-                  {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
-              )}
-
-              {languageOptions.length > 0 && (
-                <select value={missingFilterLanguage} onChange={(e) => setMissingFilterLanguage(e.target.value)} className={selectCls}>
-                  <option value="">All languages</option>
-                  {languageOptions.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
-                </select>
-              )}
-
-              <select value={filterMinMissing} onChange={(e) => setFilterMinMissing(e.target.value)} className={selectCls}>
-                <option value="">Any missing</option>
-                <option value="eq1">Exactly 1 missing</option>
-                <option value="2">2+ missing</option>
-                <option value="5">5+ missing</option>
-                <option value="10">10+ missing</option>
-              </select>
-
-              <select value={filterFullSeasonMissing} onChange={(e) => setFilterFullSeasonMissing(e.target.value)} className={selectCls}>
-                <option value="">Any</option>
-                <option value="1">Missing a whole season</option>
-              </select>
-
-              <select value={filterMaxOwned} onChange={(e) => setFilterMaxOwned(e.target.value)} className={selectCls}>
-                <option value="">Any owned</option>
-                <option value="1">≤1 owned</option>
-                <option value="2">≤2 owned</option>
-                <option value="3">≤3 owned</option>
-              </select>
-
-              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={missingFilterWatchlistOnly}
-                  onChange={(e) => setMissingFilterWatchlistOnly(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-gray-700 dark:text-gray-300">Watchlist only</span>
-              </label>
-
+            <div className="px-5 pt-3 pb-3 border-b">
               <input
                 type="search"
-                placeholder="Filter by title…"
-                value={missingQuery}
-                onChange={(e) => setMissingQuery(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 text-sm w-56 ml-auto focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
+                autoFocus
+                placeholder={modalMode === 'library' ? 'Search your library…' : 'Search TMDB…'}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
               />
             </div>
-          )}
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {showsWithMissingEpisodes.length === 0
-              ? `No missing episodes across ${allShows.length} show${allShows.length !== 1 ? 's' : ''}.`
-              : missingEpisodeRows.length === 0
-                ? `0 of ${showsWithMissingEpisodes.length} shows match the current filters.`
-                : `${missingRowsTotal} missing episode${missingRowsTotal !== 1 ? 's' : ''} across ${missingEpisodeRows.length} of ${showsWithMissingEpisodes.length} show${showsWithMissingEpisodes.length !== 1 ? 's' : ''}.`}
-          </p>
-          {missingEpisodeRows.length > 0 && (
-            <Card className="overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Show</th>
-                    <th className="px-4 py-2 text-left">Missing Episodes</th>
-                    <th className="px-4 py-2 text-left">Episodes Matched</th>
-                    <th className="px-4 py-2 text-left">Total Episodes</th>
-                    <th className="px-4 py-2 text-left">Missing Seasons</th>
-                    <th className="px-4 py-2 text-left">Seasons Matched</th>
-                    <th className="px-4 py-2 text-left">Total Seasons</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {missingEpisodeRows.map((s) => (
-                    <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="px-4 py-2">
-                        <Link
-                          to={`/shows/${s.id}`}
-                          className="font-medium hover:underline text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)]"
-                        >
-                          {s.title}
-                        </Link>
-                        <span className="block text-xs text-gray-400 dark:text-gray-500">TMDB #{s.tmdb_id}</span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-medium rounded-full px-2 py-0.5">
-                          {s.missing_episode_count}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.matched_episode_count}
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.aired_episode_count}
-                      </td>
-                      <td className="px-4 py-2">
-                        {s.missing_full_season_count > 0 ? (
-                          <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 text-xs font-medium rounded-full px-2 py-0.5">
-                            {s.missing_full_season_count}
-                          </span>
+
+            <div className="overflow-y-auto flex-1 p-5">
+              {modalMode === 'library' ? (
+                query.trim().length < 2 ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search your library.</p>
+                ) : librarySearching || debouncedQuery !== query ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
+                ) : librarySearchResults.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No shows found for &quot;{query}&quot;.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {librarySearchResults.map((s) => (
+                      <Link
+                        key={s.id}
+                        to={`/shows/${s.id}`}
+                        onClick={closeModal}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      >
+                        {s.poster_path ? (
+                          <img src={`${TMDB_IMG}${s.poster_path}`} alt={s.title} className="w-8 h-12 object-cover rounded flex-shrink-0" loading="lazy" />
                         ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                          <div className="w-8 h-12 bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0" />
                         )}
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.matched_full_season_count}
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
-                        {s.aired_season_count}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          )}
-        </section>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate dark:text-gray-100">{s.title}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            {s.release_date?.slice(0, 4)}{s.content_type ? ` · ${s.content_type}` : ''}
+                            {s.matched_on !== 'title' ? ` · matched ${s.matched_on === 'path' ? 'folder' : s.matched_on === 'sys_name' ? 'system name' : 'alias'}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] shrink-0">View →</span>
+                      </Link>
+                    ))}
+                  </div>
+                )
+              ) : (
+                query.trim().length < 2 ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Type at least 2 characters to search TMDB.</p>
+                ) : tmdbSearching || debouncedQuery !== query ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500">Searching…</p>
+                ) : !searchData || searchData.results.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No results for &quot;{debouncedQuery}&quot;.</p>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {searchData.results.slice(0, 12).map((r) => {
+                      const mediaType = r.media_type ?? 'tv'
+                      const libraryShow = libraryIndex.get(`${r.id}:${mediaType}`)
+                      return (
+                        <TmdbResultCard
+                          key={`${r.id}:${mediaType}`}
+                          result={r}
+                          inLibraryShowId={libraryShow?.id ?? null}
+                          onAdd={() => handleTrack(r)}
+                          addPending={createShow.isPending}
+                          onNavigate={closeModal}
+                          onCardClick={() => setDetailResult(r)}
+                        />
+                      )
+                    })}
+                  </div>
+                )
+              )}
+            </div>
+        </Modal>
+      )}
+
+      {tab === 'data' && (
+        <DataQualityTab
+          allShows={allShows}
+          isLoading={isLoading}
+          orphans={orphans}
+          dqFilter={dqFilter}
+          onDqFilterChange={setDqFilter}
+          onResolveOrphan={setResolvingOrphan}
+          onDismissOrphan={(id) => dismissOrphan.mutate(id)}
+          dismissingOrphanId={dismissOrphan.isPending ? (dismissOrphan.variables ?? null) : null}
+        />
+      )}
+
+      {tab === 'missing' && (
+        <MissingTab
+          allShows={allShows}
+          showsWithMissingEpisodes={showsWithMissingEpisodes}
+          isLoading={missingTabLoading}
+          filters={missingFilters}
+          onFiltersChange={patchMissingFilters}
+          query={missingQuery}
+          onQueryChange={setMissingQuery}
+          watchlistByShowId={watchlistByShowId}
+        />
       )}
 
       {resolvingOrphan && (
