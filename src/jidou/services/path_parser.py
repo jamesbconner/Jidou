@@ -29,7 +29,7 @@ _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 
 # Every explicit-marker pattern below (SxxE, NxN, Episode, Ep, "- N", "N - Title")
 # takes 1-4 episode digits: long-running shows have passed episode 1,000 (D20).
-# The dash rules additionally skip release years and resolution tokens (see
+# The dash rules additionally skip release years and 4-digit resolution tokens (see
 # _EPISODE_RULES).
 
 # Standard SxxExx notation — always carries both season and episode.
@@ -87,6 +87,9 @@ _NON_EPISODE_ASSET_WORD = re.compile(r"\b(NCED|NCOP|OP|ED|PV|CM|SP|OVA|OAD)\b", 
 _COMPACT_EP = re.compile(r"\b(\d{3,4})\b")
 # Resolution tokens are never a compact code; shared with filename_parser (D21).
 _COMPACT_QUALITY = frozenset(RESOLUTION_TOKENS)
+# Dash markers skip only the 4-digit resolutions (owner ruling): a 3-digit episode
+# such as "Show - 720" keeps parsing after a dash, as it always has.
+_DASH_EXCLUDED_RESOLUTIONS = frozenset(t for t in RESOLUTION_TOKENS if len(t) == 4)
 
 
 @dataclass(frozen=True)
@@ -99,9 +102,10 @@ class _EpisodeRule:
             False when group 1 is the episode alone.
         blocked_by: When set and it matches the stem, this rule is skipped.
         skip_years_and_resolutions: When True, a match whose episode is a
-            release year or a resolution token is ignored and the search goes
-            on to the next match. Set on the dash rules, whose marker is too
-            weak to outweigh a year or resolution (owner ruling on D20).
+            release year or a 4-digit resolution token (1080, 2160, 4320) is
+            ignored and the search goes on to the next match. Set on the dash
+            rules, whose marker is too weak to outweigh a year or a 4-digit
+            resolution (owner rulings on D20).
     """
 
     pattern: re.Pattern[str]
@@ -134,7 +138,7 @@ class _EpisodeRule:
 
 
 def _is_year_or_resolution(raw: str) -> bool:
-    """Return True if the digit string *raw* is a release year or a resolution token.
+    """Return True if *raw* is a release year or a 4-digit resolution token.
 
     Args:
         raw: The captured episode digits.
@@ -142,7 +146,7 @@ def _is_year_or_resolution(raw: str) -> bool:
     Returns:
         True when the number should not be read as an episode.
     """
-    return raw in _COMPACT_QUALITY or is_release_year(int(raw))
+    return raw in _DASH_EXCLUDED_RESOLUTIONS or is_release_year(int(raw))
 
 
 # Ordered, first match wins; the compact SEEE guess runs after all of these.
@@ -152,7 +156,7 @@ _EPISODE_RULES: tuple[_EpisodeRule, ...] = (
     _EpisodeRule(_SEASON_EPISODE_WORD, has_season=True),
     _EpisodeRule(_EPISODE_WORD, has_season=False),
     _EpisodeRule(_EP_WORD, has_season=False),
-    # Dash markers skip years and resolutions ("Show - 2024", "2024 - Year in Review");
+    # Dash markers skip years and 4-digit resolutions ("Show - 2024", "Show - 1080 [x]");
     # word and SxxE/NxN markers above do not.
     _EpisodeRule(_DASH_EP, has_season=False, skip_years_and_resolutions=True),
     _EpisodeRule(_PREDASH_EP, has_season=False, skip_years_and_resolutions=True),

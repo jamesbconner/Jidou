@@ -86,13 +86,20 @@ SAMPLE: list[tuple[str, int | None, tuple[int | None, int | None, int | None]]] 
     ("Show - 1000", None, (None, 1000, None)),
     ("Show - 2024", None, (None, None, None)),
     ("Show - 1080 [x]", None, (None, None, None)),
-    # Owner ruling: dash markers skip years and resolutions; word and SxxE/NxN markers do not.
+    # Owner ruling: dash markers skip years and 4-digit resolutions; word and SxxE/NxN markers
+    # do not.
     ("Show - 1071", None, (None, 1071, None)),
     ("Show - 1100", None, (None, 1100, None)),
-    ("Show - 720 [x]", None, (None, None, None)),
+    ("Show - 720 [x]", None, (None, 720, None)),
     ("Show 1100 - Title", None, (None, 1100, None)),
-    ("Show 720 - Title", None, (None, None, None)),
-    ("720 - Title", None, (None, None, None)),
+    ("Show 720 - Title", None, (None, 720, None)),
+    ("720 - Title", None, (None, 720, None)),
+    # Owner ruling 2: dash markers skip only 4-digit resolutions; 480/576/720 still parse.
+    ("Show - 480", None, (None, 480, None)),
+    ("Show - 576 [x]", None, (None, 576, None)),
+    ("Show - 2160", None, (None, None, None)),
+    ("Show - 4320 [x]", None, (None, None, None)),
+    ("Show 1080 - Title", None, (None, None, None)),
     ("Show - 2024 - 05", None, (None, 5, None)),
     ("Show Ep 2024", None, (None, 2024, None)),
     ("Show 1x2024", None, (1, 2024, None)),
