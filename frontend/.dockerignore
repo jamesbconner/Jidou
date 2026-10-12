@@ -1,0 +1,11 @@
+# Keep the Docker build context to tracked sources only.
+#
+# The Dockerfile runs `npm ci` and then `COPY . .`. Without this file the
+# host's frontend/node_modules (installed by a different npm/Node, OS or
+# lockfile state) is copied over the clean `npm ci` install, so the image
+# can end up with a vite and rolldown pair that don't match each other and
+# fail while loading vite.config.ts.
+node_modules
+dist
+.vite
+*.tsbuildinfo
