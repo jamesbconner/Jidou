@@ -1,5 +1,7 @@
 # Jidou Simplification Roadmap (merged)
 
+> **Resuming?** Read `docs/superpowers/plans/2026-10-12-roadmap-status.md` first: execution status, open preconditions, process conventions and environment gotchas.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. This roadmap does **not** repeat task steps. Each roadmap item points at a PR in one of the seven layer plans, which holds the exact files, interfaces, tests and commands. Execute the items in the order of §4, running independent items in parallel sub-agents per §4A, after applying the reconciliations in §3 to the layer plans.
 
 **Goal:** Carry out the seven per-layer simplification plans as one ordered
