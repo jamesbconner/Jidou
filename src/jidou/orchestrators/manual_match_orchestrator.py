@@ -2,7 +2,6 @@
 
 import logging
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +13,7 @@ from jidou.orchestrators._show_provisioning import (
     insert_show_or_existing,
     sync_episodes_best_effort,
 )
+from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
@@ -61,12 +61,16 @@ class ManualMatchOrchestrator:
 
     Args:
         session: Active async SQLAlchemy session.
+        tmdb: TMDB service used to look up and sync shows created on demand.
         llm: Optional LLM service, used for alias generation on newly
             created shows.
     """
 
-    def __init__(self, session: AsyncSession, llm: LLMService | None = None) -> None:
+    def __init__(
+        self, session: AsyncSession, tmdb: TMDBService, llm: LLMService | None = None
+    ) -> None:
         self.session = session
+        self.tmdb = tmdb
         self.llm = llm
 
     async def match(self, file: DownloadedFile, payload: FileMatchRequest) -> DownloadedFile:
@@ -81,9 +85,8 @@ class ManualMatchOrchestrator:
             The updated DownloadedFile record.
 
         Raises:
-            HTTPException: 404 if the referenced show or TMDB resource is
-                not found.
-            HTTPException: 422 if the resolved show has no ``local_path``.
+            NotFoundError: If the referenced show or TMDB resource is not found.
+            InvalidRequestError: If the resolved show has no ``local_path``.
         """
         if payload.show_id is None and payload.tmdb_id is None:
             return await self._reset(file)
@@ -94,12 +97,9 @@ class ManualMatchOrchestrator:
             show = await self._resolve_show_by_id(payload)
 
         if show.local_path is None:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Show has no local_path configured; "
-                    "provide local_path or set it via PATCH /shows/{id}/paths"
-                ),
+            raise InvalidRequestError(
+                "Show has no local_path configured; "
+                "provide local_path or set it via PATCH /shows/{id}/paths"
             )
 
         await self._assign(file, show)
@@ -135,12 +135,12 @@ class ManualMatchOrchestrator:
             The matching Show record.
 
         Raises:
-            HTTPException: 404 if no show has that ID.
+            NotFoundError: If no show has that ID.
         """
         show_stmt = select(Show).where(Show.id == payload.show_id)
         show = (await self.session.execute(show_stmt)).scalar_one_or_none()
         if show is None:
-            raise HTTPException(status_code=404, detail="Show not found")
+            raise NotFoundError("Show not found")
         return show
 
     async def _resolve_show_by_tmdb_id(self, payload: FileMatchRequest) -> Show:
@@ -153,8 +153,8 @@ class ManualMatchOrchestrator:
             The existing or newly created Show record.
 
         Raises:
-            HTTPException: 422 if creating a new show and ``local_path`` is absent.
-            HTTPException: 404 if the TMDB lookup fails.
+            InvalidRequestError: If creating a new show and ``local_path`` is absent.
+            NotFoundError: If the TMDB lookup fails.
         """
         if payload.tmdb_id is None:
             raise ValueError("_resolve_show_by_tmdb_id requires payload.tmdb_id to be set")
@@ -169,16 +169,13 @@ class ManualMatchOrchestrator:
             # update it via the show detail page if they want to change it.
             _fill_missing_show_fields(show, payload)
             await self.session.flush()
-            await TMDBOrchestrator(self.session, TMDBService()).ensure_episode_group_map(show)
+            await TMDBOrchestrator(self.session, self.tmdb).ensure_episode_group_map(show)
             return show
 
         if not payload.local_path:
-            raise HTTPException(
-                status_code=422,
-                detail="local_path is required when creating a new show via tmdb_id",
-            )
+            raise InvalidRequestError("local_path is required when creating a new show via tmdb_id")
 
-        tmdb = TMDBService()
+        tmdb = self.tmdb
         # Use the TMDB-reported media_type from the search result (tv/movie).
         # Fall back to inferring from content_type only when not provided.
         media_type = payload.tmdb_media_type or (
@@ -187,7 +184,7 @@ class ManualMatchOrchestrator:
         try:
             data = await fetch_show_metadata(tmdb, tmdb_id, media_type)
         except Exception as exc:
-            raise HTTPException(status_code=404, detail=f"TMDB lookup failed: {exc}") from exc
+            raise NotFoundError(f"TMDB lookup failed: {exc}") from exc
 
         fields = build_show_fields(data, tmdb_id, media_type)
         new_show = Show(

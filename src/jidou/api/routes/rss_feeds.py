@@ -13,10 +13,7 @@ from jidou.api.routes._rss_common import get_feed_or_404, sub_stmt
 from jidou.database import get_session
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.feed_onboarding_orchestrator import (
-    FeedOnboardingError,
-    FeedOnboardingOrchestrator,
-)
+from jidou.orchestrators.feed_onboarding_orchestrator import FeedOnboardingOrchestrator
 from jidou.schemas.rss_schema import (
     FeedAddShowRequest,
     FeedAddShowResult,
@@ -426,12 +423,7 @@ async def add_show_from_feed(
         HTTPException: 404 if the feed or ``show_id`` does not exist.
     """
     feed = await get_feed_or_404(db_session, feed_id)
-    try:
-        outcome = await FeedOnboardingOrchestrator(db_session, tmdb, llm).add_show_from_feed(
-            feed, body
-        )
-    except FeedOnboardingError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    outcome = await FeedOnboardingOrchestrator(db_session, tmdb, llm).add_show_from_feed(feed, body)
 
     subscription: RssSubscription | None = None
     if outcome.subscription_id is not None:

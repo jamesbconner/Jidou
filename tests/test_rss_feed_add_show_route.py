@@ -12,10 +12,8 @@ from jidou.database import get_session
 from jidou.main import app
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.feed_onboarding_orchestrator import (
-    FeedOnboardingError,
-    OnboardingOutcome,
-)
+from jidou.orchestrators.errors import NotFoundError
+from jidou.orchestrators.feed_onboarding_orchestrator import OnboardingOutcome
 
 ORCH = "jidou.api.routes.rss_feeds.FeedOnboardingOrchestrator"
 URL = "/api/rss/feeds/7/add-show"
@@ -181,7 +179,7 @@ def test_add_show_unknown_library_show_maps_orchestrator_error(wired) -> None:
 
     with patch(ORCH) as orch_cls:
         orch_cls.return_value.add_show_from_feed = AsyncMock(
-            side_effect=FeedOnboardingError(404, "Show not found")
+            side_effect=NotFoundError("Show not found")
         )
         r = TestClient(app).post(URL, json={"parsed_name": "x", "show_id": 999})
 

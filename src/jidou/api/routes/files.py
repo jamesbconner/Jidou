@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from jidou.api.dependencies import get_llm_service
+from jidou.api.dependencies import get_llm_service, get_tmdb
 from jidou.api.lookups import get_or_404, one_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
@@ -393,6 +393,7 @@ async def manual_match_file(
     file_id: int,
     payload: FileMatchRequest,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
     llm: LLMService = Depends(get_llm_service),  # noqa: B008
 ) -> DownloadedFile:
     """Assign a show to an unmatched file, or reset it for automatic re-matching.
@@ -444,4 +445,4 @@ async def manual_match_file(
             f"only {', '.join(s.value for s in matchable)} files can be matched",
         )
 
-    return await ManualMatchOrchestrator(db_session, llm).match(file, payload)
+    return await ManualMatchOrchestrator(db_session, tmdb, llm).match(file, payload)
