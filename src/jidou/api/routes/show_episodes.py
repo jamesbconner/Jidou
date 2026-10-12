@@ -6,8 +6,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from jidou.api.file_read_query import reload_file_read, select_file_read
 from jidou.api.lookups import get_or_404, get_show_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
@@ -301,16 +301,9 @@ async def begin_episode_rematch(
 
     if file_id is not None:
         # Caller specified which file to re-match (multiple-file episode).
-        specific_stmt = (
-            select(DownloadedFile)
-            .where(
-                DownloadedFile.id == file_id,
-                DownloadedFile.episode_id == episode_id,
-            )
-            .options(
-                selectinload(DownloadedFile.show),
-                selectinload(DownloadedFile.episode),
-            )
+        specific_stmt = select_file_read().where(
+            DownloadedFile.id == file_id,
+            DownloadedFile.episode_id == episode_id,
         )
         backing = (await db_session.execute(specific_stmt)).scalar_one_or_none()
         if backing is None:
@@ -318,15 +311,7 @@ async def begin_episode_rematch(
     else:
         # Look for any backing DownloadedFile — handles downloaded and legacy
         # pre-migration episodes where tracked_source is null.
-        any_stmt = (
-            select(DownloadedFile)
-            .where(DownloadedFile.episode_id == episode_id)
-            .options(
-                selectinload(DownloadedFile.show),
-                selectinload(DownloadedFile.episode),
-            )
-            .limit(1)
-        )
+        any_stmt = select_file_read().where(DownloadedFile.episode_id == episode_id).limit(1)
         backing = (await db_session.execute(any_stmt)).scalar_one_or_none()
 
     if backing is None:
@@ -630,13 +615,7 @@ async def link_episode_file(
     await db_session.commit()
 
     remote_path = synthetic_remote_path(payload.path)
-    refreshed = (
-        await db_session.execute(
-            select(DownloadedFile)
-            .where(DownloadedFile.remote_path == remote_path)
-            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
-        )
-    ).scalar_one()
+    refreshed = await reload_file_read(db_session, DownloadedFile.remote_path == remote_path)
     logger.info(
         "Linked file path=%r to episode id=%d (show id=%d)", payload.path, episode_id, show_id
     )

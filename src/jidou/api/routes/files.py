@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service, get_tmdb
+from jidou.api.file_read_query import reload_file_read, select_file_read
 from jidou.api.lookups import get_or_404, one_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
@@ -96,8 +96,7 @@ async def list_files(
     response.headers["X-Total-Count"] = str(total or 0)
 
     stmt = (
-        select(DownloadedFile)
-        .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
+        select_file_read()
         .where(*filters)
         .order_by(DownloadedFile.created_at.desc())
         .offset(offset)
@@ -163,7 +162,7 @@ async def list_unmatched_files(
         List of unmatched :class:`DownloadedFile` records.
     """
     stmt = (
-        select(DownloadedFile)
+        select_file_read()
         .where(DownloadedFile.status == FileStatus.UNMATCHED)
         .order_by(DownloadedFile.created_at.desc())
         .offset(offset)
@@ -190,11 +189,7 @@ async def get_file(
     Raises:
         HTTPException: 404 if the file is not found.
     """
-    stmt = (
-        select(DownloadedFile)
-        .where(DownloadedFile.id == file_id)
-        .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
-    )
+    stmt = select_file_read().where(DownloadedFile.id == file_id)
     file = await one_or_404(db_session, stmt, detail="File not found")
     return file
 
@@ -325,13 +320,7 @@ async def patch_file(
     if "error_message" in fields:
         file.error_message = payload.error_message
     await _flush_patch(db_session)
-    refreshed = (
-        await db_session.execute(
-            select(DownloadedFile)
-            .where(DownloadedFile.id == file_id)
-            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
-        )
-    ).scalar_one()
+    refreshed = await reload_file_read(db_session, DownloadedFile.id == file_id)
     logger.info("Patched file id=%d fields=%s", file_id, payload.model_fields_set)
     return refreshed
 
@@ -377,13 +366,7 @@ async def ignore_file(
     file.error_message = None
 
     await db_session.flush()
-    refreshed = (
-        await db_session.execute(
-            select(DownloadedFile)
-            .where(DownloadedFile.id == file_id)
-            .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
-        )
-    ).scalar_one()
+    refreshed = await reload_file_read(db_session, DownloadedFile.id == file_id)
     logger.info("Manually ignored file id=%d", file_id)
     return refreshed
 
@@ -445,4 +428,6 @@ async def manual_match_file(
             f"only {', '.join(s.value for s in matchable)} files can be matched",
         )
 
-    return await ManualMatchOrchestrator(db_session, tmdb, llm).match(file, payload)
+    matched = await ManualMatchOrchestrator(db_session, tmdb, llm).match(file, payload)
+    # The orchestrator commits; re-select so the response carries show/episode.
+    return await reload_file_read(db_session, DownloadedFile.id == matched.id)
