@@ -78,17 +78,40 @@ export function useEnsureRssStub() {
   })
 }
 
+function patchRssSubscription({ id, update }: { id: number; update: RssSubscriptionUpdate }) {
+  return api.patch<RssSubscriptionRead>(`/rss/subscriptions/${id}`, update)
+}
+
 export function usePatchRssSubscription() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, update }: { id: number; update: RssSubscriptionUpdate }) =>
-      api.patch<RssSubscriptionRead>(`/rss/subscriptions/${id}`, update),
+    mutationFn: patchRssSubscription,
     onSuccess: (updated) => {
       qc.setQueriesData<RssSubscriptionRead[]>(
         { queryKey: rssKeys.subscriptions() },
         (old) => old?.map((s) => (s.id === updated.id ? updated : s)),
       )
       qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    },
+  })
+}
+
+/**
+ * Accept one activate/deactivate recommendation. Same PATCH as
+ * `usePatchRssSubscription`, but the recommendation list must also refetch
+ * because the accepted row should drop out of it.
+ */
+export function useAcceptRssRecommendation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: patchRssSubscription,
+    onSuccess: (updated) => {
+      qc.setQueriesData<RssSubscriptionRead[]>(
+        { queryKey: rssKeys.subscriptions() },
+        (old) => old?.map((s) => (s.id === updated.id ? updated : s)),
+      )
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+      qc.invalidateQueries({ queryKey: rssKeys.recommendations() })
     },
   })
 }
