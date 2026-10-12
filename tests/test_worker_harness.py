@@ -180,7 +180,9 @@ async def test_on_progress_checks_cancellation_updates_status_and_emits() -> Non
     async def fake_emit(message: dict) -> None:
         calls.append(f"emit:{message['type']}")
 
-    async def work(session: object, on_progress: object, on_event: object) -> WorkflowResult:
+    async def work(
+        session: object, on_progress: object, on_event: object, set_total: object
+    ) -> WorkflowResult:
         await on_progress(1, 2, "halfway")  # type: ignore[operator]
         return _success_result()
 
@@ -217,7 +219,9 @@ async def test_on_event_uses_a_separate_session_per_call() -> None:
     pending = MagicMock(status=TaskStatus.PENDING.value)
     completed = MagicMock(status=TaskStatus.COMPLETED.value)
 
-    async def work(session: object, on_progress: object, on_event: object) -> WorkflowResult:
+    async def work(
+        session: object, on_progress: object, on_event: object, set_total: object
+    ) -> WorkflowResult:
         await on_event("info", "did a thing", {"k": "v"})  # type: ignore[operator]
         return _success_result()
 
@@ -579,3 +583,61 @@ async def test_finish_success_emits_complete_with_summary_when_completed() -> No
     mock_emit.assert_awaited_once_with(
         {"celery_task_id": "tid-f3", "type": "complete", "data": {"summary": {"n": 1}}}
     )
+
+
+@pytest.mark.asyncio
+async def test_set_total_updates_running_total_on_the_work_session_without_emitting() -> None:
+    """set_total writes progress_total/message as RUNNING on the work session, and nothing else.
+
+    It must not check cancellation or publish a WS message: the import workers'
+    original direct ``update_task_status`` call did neither, and DF-15 is a
+    behaviour-preserving move of that write behind the harness callback.
+    """
+    mock_engine, session, mock_factory = _worker_session_mocks()
+    pending = MagicMock(status=TaskStatus.PENDING.value)
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+    calls: list[str] = []
+
+    async def fake_check_cancelled(session: object, celery_task_id: str) -> None:
+        calls.append("check_cancelled")
+
+    async def fake_update_status(
+        sess: object, celery_task_id: str, status: object, **kwargs: object
+    ) -> object:
+        calls.append(f"update:{status}:{sorted(kwargs.items())}")
+        assert sess is session
+        return completed
+
+    async def fake_emit(message: dict) -> None:
+        calls.append(f"emit:{message['type']}")
+
+    async def work(
+        sess: object, on_progress: object, on_event: object, set_total: object
+    ) -> WorkflowResult:
+        assert sess is session
+        await set_total(7, "Found 7 things")  # type: ignore[operator]
+        return _success_result()
+
+    with (
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+        patch(
+            "jidou.workers._harness.create_task_record",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
+        patch("jidou.workers._harness.update_task_status", side_effect=fake_update_status),
+        patch("jidou.workers._harness.check_task_cancelled", side_effect=fake_check_cancelled),
+        patch("jidou.workers._harness.emit_progress", side_effect=fake_emit),
+    ):
+        await run_task_workflow("tid-st", "import", work)
+
+    assert calls == [
+        f"update:{TaskStatus.RUNNING}:[('progress_message', 'Starting...')]",
+        f"update:{TaskStatus.RUNNING}:"
+        "[('progress_message', 'Found 7 things'), ('progress_total', 7)]",
+        f"update:{TaskStatus.COMPLETED}:"
+        "[('progress_current', 3), ('progress_message', 'Done'), ('progress_total', 3), "
+        "('result_summary', {'count': 3})]",
+        "emit:complete",
+    ]

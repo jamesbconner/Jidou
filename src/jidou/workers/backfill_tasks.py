@@ -10,6 +10,7 @@ from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -35,7 +36,10 @@ async def _backfill(celery_task_id: str, dry_run: bool = False) -> str:
     """Async implementation of the metadata backfill task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         tmdb_svc = TMDBService()
         result = await ShowMetadataBackfillOrchestrator(session, tmdb_svc).run(

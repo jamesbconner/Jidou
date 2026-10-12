@@ -10,6 +10,7 @@ from jidou.services.sftp_service import create_sftp_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -37,7 +38,10 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
     """Async implementation of the RSS import task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         sftp = create_sftp_service(settings)
         orchestrator = RssImportOrchestrator(
@@ -112,7 +116,10 @@ async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:
     """Async implementation of the RSS publish task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         sftp = create_sftp_service(settings)
         orchestrator = RssPublishOrchestrator(

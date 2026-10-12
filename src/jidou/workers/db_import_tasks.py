@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
 from jidou.models.show import Show, show_columns
-from jidou.models.task import TaskStatus
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
-from jidou.services.progress import check_task_cancelled, update_task_status
+from jidou.services.progress import check_task_cancelled
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -215,7 +215,10 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
     """Async implementation of the database import task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         data: dict[str, Any] = json.loads(file_content)
         shows_data: list[dict[str, Any]] = data.get("shows", [])
@@ -223,16 +226,11 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
         watchlist_data: list[dict[str, Any]] = data.get("watchlist", [])
 
         total = len(shows_data) + len(episodes_data) + len(watchlist_data)
-        await update_task_status(
-            session,
-            celery_task_id,
-            TaskStatus.RUNNING,
-            progress_total=total,
-            progress_message=(
-                f"Found {len(shows_data)} shows, "
-                f"{len(episodes_data)} episodes, "
-                f"{len(watchlist_data)} watchlist entries"
-            ),
+        await set_total(
+            total,
+            f"Found {len(shows_data)} shows, "
+            f"{len(episodes_data)} episodes, "
+            f"{len(watchlist_data)} watchlist entries",
         )
 
         progress = _Progress(total, on_progress)

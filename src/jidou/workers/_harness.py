@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 ProgressFn = OnProgress
 EventFn = OnEvent
 
+# ``set_total(total, message)``: publish the task's expected step count once the
+# worker has learned it (e.g. after parsing the input file). Harness-provided so
+# workers never write the task row themselves.
+SetTotalFn = Callable[[int, str], Awaitable[None]]
+
 
 @dataclass
 class WorkflowResult:
@@ -74,7 +79,7 @@ def summarize(result: "DataclassInstance", *, dry_run: bool) -> dict[str, object
     return {**asdict(result), "dry_run": dry_run}
 
 
-WorkFn = Callable[[AsyncSession, ProgressFn, EventFn], Awaitable[WorkflowResult]]
+WorkFn = Callable[[AsyncSession, ProgressFn, EventFn, SetTotalFn], Awaitable[WorkflowResult]]
 
 
 async def _finish(session: AsyncSession, celery_task_id: str, result: WorkflowResult) -> str | None:
@@ -150,7 +155,8 @@ async def run_task_workflow(
         celery_task_id: The Celery task ID (also the BackgroundTask row's key).
         task_type: Type label (e.g. ``"scan"``, ``"rss_import"``).
         work: Async callable performing the actual orchestrator work. Receives
-            ``(session, on_progress, on_event)`` and returns a WorkflowResult.
+            ``(session, on_progress, on_event, set_total)`` and returns a
+            WorkflowResult.
         progress_total: Initial progress_total for the task record.
         dry_run: Whether this is a dry-run.
         running_message: Message set when the task first transitions to RUNNING.
@@ -206,6 +212,19 @@ async def run_task_workflow(
                         }
                     )
 
+                async def set_total(total: int, message: str) -> None:
+                    # Same session as the work (not a fresh one): the write commits the
+                    # work session's pending state exactly as the workers' former direct
+                    # update_task_status call did. No cancellation check and no WS
+                    # message, again matching that call.
+                    await update_task_status(
+                        session,
+                        celery_task_id,
+                        TaskStatus.RUNNING,
+                        progress_total=total,
+                        progress_message=message,
+                    )
+
                 async def on_event(
                     level: str, msg: str, ctx: dict[str, object] | None = None
                 ) -> None:
@@ -214,7 +233,7 @@ async def run_task_workflow(
                     async with session_factory() as event_session:
                         await append_task_event(event_session, celery_task_id, level, msg, ctx)
 
-                result = await work(session, on_progress, on_event)
+                result = await work(session, on_progress, on_event, set_total)
 
                 soft_failure = await _finish(session, celery_task_id, result)
 

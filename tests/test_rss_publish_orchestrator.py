@@ -1420,7 +1420,7 @@ async def test_celery_publish_task_marks_failed_and_raises() -> None:
             return_value=error_result,
         ),
     ):
-        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
+        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
     assert wf_result.errors == ["Backup upload failed"]  # type: ignore[attr-defined]
 

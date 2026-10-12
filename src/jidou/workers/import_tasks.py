@@ -6,16 +6,16 @@ from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
-from jidou.models.task import TaskStatus
 from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
 from jidou.services.llm_service import create_llm_service
 from jidou.services.path_parser import parse_file
 from jidou.services.path_resolution import library_root
-from jidou.services.progress import append_task_event, update_task_status
+from jidou.services.progress import append_task_event
 from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -89,7 +89,10 @@ async def _path_import(
     """Async implementation of the path-file import task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         entries = parse_file(
             file_content,
@@ -113,12 +116,8 @@ async def _path_import(
             logger.warning("Path import %s: %s", celery_task_id, warning)
             await append_task_event(session, celery_task_id, "warn", warning)
 
-        await update_task_status(
-            session,
-            celery_task_id,
-            TaskStatus.RUNNING,
-            progress_total=total_shows,
-            progress_message=f"Found {total_shows} unique show(s) in {len(entries)} entries",
+        await set_total(
+            total_shows, f"Found {total_shows} unique show(s) in {len(entries)} entries"
         )
 
         tmdb = TMDBService()
