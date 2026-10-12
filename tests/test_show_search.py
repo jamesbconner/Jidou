@@ -8,7 +8,7 @@ from sqlalchemy.dialects import postgresql
 
 from jidou.services.show_search import (
     _best_match,
-    _escape_like,
+    escape_like,
     search_local_shows,
 )
 
@@ -107,7 +107,7 @@ class TestEscapeLike:
         [("100%", "100\\%"), ("a_b", "a\\_b"), ("a\\b", "a\\\\b"), ("plain", "plain")],
     )
     def test_escapes_wildcards(self, raw: str, expected: str) -> None:
-        assert _escape_like(raw) == expected
+        assert escape_like(raw) == expected
 
 
 class TestSearchLocalShows:

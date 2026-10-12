@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import cast, literal, select, update
+from sqlalchemy import Select, cast, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,25 @@ async def emit_progress(message: dict[str, object]) -> None:
             logger.warning("Failed to emit progress: %s", exc)
 
 
+def _select_task(celery_task_id: str, *, refresh: bool) -> Select[tuple[BackgroundTask]]:
+    """Build the SELECT for one BackgroundTask row by its Celery id.
+
+    Args:
+        celery_task_id: The Celery task identifier.
+        refresh: When True, force a fresh DB read of this row only
+            (``populate_existing``) so changes made by the cancel endpoint on a
+            separate connection are visible, without expiring unrelated objects
+            (files, shows) still held in the session.
+
+    Returns:
+        The unexecuted statement.
+    """
+    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
+    if refresh:
+        stmt = stmt.execution_options(populate_existing=True)
+    return stmt
+
+
 async def update_task_status(
     session: AsyncSession,
     celery_task_id: str,
@@ -59,15 +78,8 @@ async def update_task_status(
     Returns:
         The updated BackgroundTask, or None if not found or cancelled.
     """
-    # populate_existing=True forces a fresh DB read for this row only, so we
-    # see changes made by the cancel endpoint on a separate connection — without
-    # expiring unrelated objects (files, shows) still held in the session.
-    stmt = (
-        select(BackgroundTask)
-        .where(BackgroundTask.celery_task_id == celery_task_id)
-        .execution_options(populate_existing=True)
-    )
-    result = await session.execute(stmt)
+    # refresh=True: see changes made by the cancel endpoint on a separate connection.
+    result = await session.execute(_select_task(celery_task_id, refresh=True))
     task = result.scalar_one_or_none()
     if task is None:
         logger.warning("BackgroundTask not found for celery_task_id=%s", celery_task_id)
@@ -123,15 +135,9 @@ async def check_task_cancelled(
     Raises:
         TaskCancelledError: When the task status is ``CANCELLED``.
     """
-    # populate_existing=True forces a fresh DB read for this row only, so we
-    # see a CANCELLED status written by the cancel endpoint on a separate
-    # connection — without expiring unrelated objects in the session.
-    stmt = (
-        select(BackgroundTask)
-        .where(BackgroundTask.celery_task_id == celery_task_id)
-        .execution_options(populate_existing=True)
-    )
-    result = await session.execute(stmt)
+    # refresh=True: see a CANCELLED status written by the cancel endpoint on a
+    # separate connection.
+    result = await session.execute(_select_task(celery_task_id, refresh=True))
     task = result.scalar_one_or_none()
 
     if task is None:
@@ -213,8 +219,7 @@ async def create_task_record(
     Returns:
         The BackgroundTask row.
     """
-    stmt = select(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
-    result = await session.execute(stmt)
+    result = await session.execute(_select_task(celery_task_id, refresh=False))
     task = result.scalar_one_or_none()
 
     if task is None:

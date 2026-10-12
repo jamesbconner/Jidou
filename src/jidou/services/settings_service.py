@@ -70,6 +70,19 @@ async def set_setting(session: AsyncSession, key: str, value: Any) -> None:
     await session.execute(stmt)
 
 
+async def _get_bool(session: AsyncSession, key: str) -> bool:
+    """Read a boolean setting, using its registered default when unset.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        key: Dotted setting name; must be a key of ``_DEFAULTS``.
+
+    Returns:
+        The stored value coerced to ``bool``, or the default.
+    """
+    return bool(await get_setting(session, key, _DEFAULTS[key]))
+
+
 async def get_show_adult_content(session: AsyncSession) -> bool:
     """Whether adult-flagged shows/episodes should appear on the dashboard.
 
@@ -79,7 +92,7 @@ async def get_show_adult_content(session: AsyncSession) -> bool:
     Returns:
         ``True`` if adult content should be shown; ``False`` by default.
     """
-    return bool(await get_setting(session, SHOW_ADULT_CONTENT, _DEFAULTS[SHOW_ADULT_CONTENT]))
+    return await _get_bool(session, SHOW_ADULT_CONTENT)
 
 
 async def get_similar_titles_enabled(session: AsyncSession) -> bool:
@@ -91,9 +104,7 @@ async def get_similar_titles_enabled(session: AsyncSession) -> bool:
     Returns:
         ``True`` if the section should be shown; ``True`` by default.
     """
-    return bool(
-        await get_setting(session, SIMILAR_TITLES_ENABLED, _DEFAULTS[SIMILAR_TITLES_ENABLED])
-    )
+    return await _get_bool(session, SIMILAR_TITLES_ENABLED)
 
 
 async def get_similar_titles_count(session: AsyncSession) -> int:
@@ -125,13 +136,7 @@ async def get_similar_titles_include_external(session: AsyncSession) -> bool:
         ``True`` if titles absent from the library should be shown (with an Add
         action); ``True`` by default.
     """
-    return bool(
-        await get_setting(
-            session,
-            SIMILAR_TITLES_INCLUDE_EXTERNAL,
-            _DEFAULTS[SIMILAR_TITLES_INCLUDE_EXTERNAL],
-        )
-    )
+    return await _get_bool(session, SIMILAR_TITLES_INCLUDE_EXTERNAL)
 
 
 async def get_all_settings(session: AsyncSession) -> dict[str, Any]:

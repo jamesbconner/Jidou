@@ -5,6 +5,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
+from jidou.services.alias_handling import sanitize_alias
+from jidou.services.show_search import escape_like
 
 
 async def find_show_by_name(
@@ -41,7 +43,7 @@ async def find_show_by_name(
     Returns:
         Matching :class:`Show`, or None.
     """
-    normalised = name.strip().lower()
+    normalised = sanitize_alias(name)
 
     alias_stmt = (
         select(Show)
@@ -56,7 +58,7 @@ async def find_show_by_name(
     if fuzzy:
         # Escape % and _ so parsed names containing SQL wildcard characters
         # do not match arbitrary shows.
-        escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        escaped = escape_like(name)
         # A substring match can hit multiple shows (e.g. "Daredevil" also
         # matches "Daredevil: Born Again"). Order the exact title match first
         # -- `!=` is False (sorts first) for the exact match, True for every

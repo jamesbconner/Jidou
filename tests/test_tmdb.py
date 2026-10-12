@@ -784,7 +784,7 @@ class TestTMDBCallSurfaceCharacterization:
     add, remove or reorder any call for valid inputs.
     """
 
-    _VALID_CALLS = [
+    _VALID_CALLS = (
         ("get_trending", ("tv",), "/trending/tv/day", None),
         ("get_trending", ("multi", "week"), "/trending/multi/week", None),
         ("search", ("q", "movie"), "/search/movie", {"query": "q"}),
@@ -797,7 +797,7 @@ class TestTMDBCallSurfaceCharacterization:
         ("get_external_ids", (7, "tv"), "/tv/7/external_ids", None),
         ("get_images", (7, "movie"), "/movie/7/images", None),
         ("get_show_seasons", (7,), "/tv/7", None),
-    ]
+    )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(("method", "args", "endpoint", "params"), _VALID_CALLS)
