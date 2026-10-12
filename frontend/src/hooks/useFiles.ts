@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { showKeys } from '@/hooks/useShows'
+import { invalidateShowsAndFiles } from '@/hooks/invalidation'
 import type { FileRead, FileMatchRequest, FileStatus, TmdbSuggestionsResponse } from '@/types/api'
 
 interface FilesListParams {
@@ -70,8 +71,94 @@ export function useRematchFile() {
       api.post<FileRead>(`/files/${id}/match`, payload),
     onSuccess: (data) => {
       qc.setQueryData(fileKeys.detail(data.id), data)
-      qc.invalidateQueries({ queryKey: fileKeys.all })
-      qc.invalidateQueries({ queryKey: showKeys.all })
+      invalidateShowsAndFiles(qc)
+    },
+  })
+}
+
+/**
+ * Reassign a file to a different show (or detach it with `null`) from the
+ * Files table. Owns its cache refresh so the page never touches the query
+ * client.
+ */
+export function useAssignFileShow(fileId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (newShowId: number | null) =>
+      api.patch<FileRead>(`/files/${fileId}`, { show_id: newShowId }),
+    onSuccess: () => {
+      invalidateShowsAndFiles(qc)
+    },
+  })
+}
+
+/**
+ * Reassign a file to a different episode (or clear it with `null`) from the
+ * Files table. The cached list rows are patched in place first so the row
+ * does not flicker back to its old episode while the refetch is in flight.
+ * `onSuccess` / `onError` let the row component reset its local edit state.
+ */
+export function useAssignFileEpisode(
+  fileId: number,
+  callbacks: { onSuccess?: () => void; onError?: (err: unknown) => void } = {},
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (newEpisodeId: number | null) =>
+      api.patch<FileRead>(`/files/${fileId}`, {
+        episode_id: newEpisodeId,
+        ...(newEpisodeId !== null ? { status: 'matched', error_message: null } : {}),
+      }),
+    onSuccess: (updated) => {
+      callbacks.onSuccess?.()
+      qc.setQueriesData<FilesPage>({ queryKey: [...fileKeys.all, 'list'] }, (old) =>
+        old
+          ? { ...old, data: old.data.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)) }
+          : old,
+      )
+      invalidateShowsAndFiles(qc)
+    },
+    onError: (err: unknown) => callbacks.onError?.(err),
+  })
+}
+
+/**
+ * Attach an existing, unlinked file to an episode (LinkFileModal's "pick an
+ * existing file" mode).
+ */
+export function useLinkExistingFile(episodeId: number, callbacks: { onSuccess?: () => void } = {}) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (fileId: number) =>
+      api.patch<FileRead>(`/files/${fileId}`, {
+        episode_id: episodeId,
+        status: 'matched',
+        error_message: null,
+      }),
+    onSuccess: () => {
+      invalidateShowsAndFiles(qc)
+      callbacks.onSuccess?.()
+    },
+  })
+}
+
+/**
+ * Set or clear the episode a file is assigned to (FixEpisodeModal). Clearing
+ * also resets the status to `unmatched` so the file re-enters the queue.
+ */
+export function useFixFileEpisode(fileId: number, callbacks: { onSuccess?: () => void } = {}) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (episodeId: number | null) =>
+      api.patch<FileRead>(`/files/${fileId}`, {
+        episode_id: episodeId,
+        ...(episodeId !== null
+          ? { status: 'matched', error_message: null }
+          : { status: 'unmatched' }),
+      }),
+    onSuccess: () => {
+      invalidateShowsAndFiles(qc)
+      callbacks.onSuccess?.()
     },
   })
 }
@@ -139,8 +226,7 @@ export function useLinkMovieFile() {
       replace?: boolean
     }) => api.post<FileRead>(`/shows/${showId}/link-movie-file`, { path, replace }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: showKeys.all })
-      qc.invalidateQueries({ queryKey: fileKeys.all })
+      invalidateShowsAndFiles(qc)
     },
   })
 }

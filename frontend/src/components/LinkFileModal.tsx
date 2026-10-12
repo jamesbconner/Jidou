@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useFilesByShow, useLinkEpisodeFile, useVerifyPaths, fileKeys } from '@/hooks/useFiles'
-import { showKeys, useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
+import { useFilesByShow, useLinkEpisodeFile, useLinkExistingFile, useVerifyPaths } from '@/hooks/useFiles'
+import { useShowEpisodes, useAssignImportEpisode } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { api } from '@/api/client'
 import { useConfig } from '@/hooks/useConfig'
 import { parseContainerPath } from '@/utils/paths'
 import type { ContentType, EpisodeList, FileRead, FileStatus } from '@/types/api'
@@ -41,7 +39,6 @@ const UNAVAILABLE_STATUSES = new Set<FileStatus>([
 ])
 
 export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props) {
-  const qc = useQueryClient()
   const [mode, setMode] = useState<'existing' | 'path'>('existing')
   const [selected, setSelected] = useState('')
   const [contentType, setContentType] = useState<ContentType>('tv')
@@ -131,19 +128,7 @@ export function LinkFileModal({ showId, showLocalPath, episode, onClose }: Props
   const relativeTrimmed = relativePath.replace(/^\/+/, '').trim()
   const fullPath = containerBase && relativeTrimmed ? `${containerBase}/${relativeTrimmed}` : null
 
-  const linkExisting = useMutation({
-    mutationFn: (fileId: number) =>
-      api.patch<FileRead>(`/files/${fileId}`, {
-        episode_id: episode.id,
-        status: 'matched',
-        error_message: null,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: fileKeys.all })
-      qc.invalidateQueries({ queryKey: showKeys.all })
-      onClose()
-    },
-  })
+  const linkExisting = useLinkExistingFile(episode.id, { onSuccess: onClose })
 
   const linkPath = useLinkEpisodeFile()
   const assignImport = useAssignImportEpisode()
