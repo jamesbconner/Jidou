@@ -177,8 +177,13 @@ def test_admin_redis_unconfigured_makes_no_connection(
     session_factory: Callable[[AsyncMock], None],
 ) -> None:
     body, from_url = _get_admin(_ok_session(), session_factory, redis_url="")
-    assert body["services"]["redis"] == {"ok": True, "configured": False}
-    assert body["healthy"] is True
+    # D9: Redis is required, so an unset REDIS_URL is a failure (still no connection attempt).
+    assert body["services"]["redis"] == {
+        "ok": False,
+        "configured": False,
+        "error": "REDIS_URL not set",
+    }
+    assert body["healthy"] is False
     from_url.assert_not_called()
 
 

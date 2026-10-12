@@ -270,9 +270,10 @@ async def system_health(
 ) -> dict[str, Any]:
     """Run a comprehensive system health check.
 
-    Checks the database, Redis (if configured), Celery worker liveness, and
-    TMDB/SFTP/LLM configuration presence. Each check reports ``ok`` and,
-    where applicable, ``latency_ms`` and an optional ``error`` field.
+    Checks the database, Redis (required: unreachable or unconfigured is
+    unhealthy), Celery worker liveness, and TMDB/SFTP/LLM configuration
+    presence. Each check reports ``ok`` and, where applicable, ``latency_ms``
+    and an optional ``error`` field.
 
     Args:
         db_session: DB session (injected).
@@ -298,11 +299,11 @@ async def system_health(
     redis_url = settings.redis_url
     results: dict[str, Any] = {
         "database": (await run_probe(check_database)).as_dict(),
-        # Redis is optional here: unconfigured must not drag overall health to false.
+        # Redis is required, as in /api/health: unconfigured is a failure, not a skip.
         "redis": (
             (await run_probe(lambda: ping_redis(redis_url))).as_dict()
             if redis_url
-            else {"ok": True, "configured": False}
+            else {"ok": False, "configured": False, "error": "REDIS_URL not set"}
         ),
         "celery": (await run_probe(check_celery)).as_dict(),
         **_config_checks(),

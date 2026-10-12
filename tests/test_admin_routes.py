@@ -365,9 +365,11 @@ def test_health_database_alembic_version_lookup_failure_stays_healthy() -> None:
     try:
         with (
             patch("jidou.api.routes.admin.settings") as mock_settings,
+            patch("redis.asyncio.from_url", return_value=AsyncMock()),
             patch("jidou.api.routes.admin.celery_app", _mock_celery_ping(ok=True)),
         ):
-            mock_settings.redis_url = ""
+            # Redis is required (D9): configure it so only the alembic lookup is under test.
+            mock_settings.redis_url = "redis://localhost:6379/0"
             mock_settings.tmdb_api_key = "set"
             mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
@@ -408,8 +410,8 @@ def test_health_returns_healthy_false_when_db_fails() -> None:
         app.dependency_overrides.clear()
 
 
-def test_health_redis_not_configured_does_not_make_unhealthy() -> None:
-    """GET /api/admin/health must not report unhealthy just because REDIS_URL is unset."""
+def test_health_redis_not_configured_is_unhealthy() -> None:
+    """GET /api/admin/health treats an unset REDIS_URL as a failure (D9), like /api/health."""
     from jidou.database import get_session
 
     async def _ok_session() -> AsyncMock:
@@ -430,12 +432,14 @@ def test_health_redis_not_configured_does_not_make_unhealthy() -> None:
             mock_settings.tmdb_api_key = "set"
             mock_settings.sftp_host = "sftp.example.com"
             response = TestClient(app).get("/api/admin/health")
+        # The endpoint reports health in the body; the HTTP status stays 200.
         assert response.status_code == 200
         body = response.json()
-        # Redis not configured is not a failure
-        assert body["services"]["redis"]["ok"] is True
-        assert body["services"]["redis"]["configured"] is False
-        # Overall health should not be dragged down by unconfigured optional Redis
-        assert body["healthy"] is True
+        assert body["services"]["redis"] == {
+            "ok": False,
+            "configured": False,
+            "error": "REDIS_URL not set",
+        }
+        assert body["healthy"] is False
     finally:
         app.dependency_overrides.clear()
