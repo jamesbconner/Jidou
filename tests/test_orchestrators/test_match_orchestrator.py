@@ -1131,3 +1131,57 @@ async def test_on_event_called_in_dry_run():
 
     dry_run_calls = [c for c in on_event.call_args_list if "Dry run" in c[0][1]]
     assert len(dry_run_calls) == 1
+
+
+async def test_run_out_of_vocabulary_content_type_keeps_match_and_skips_backfill(caplog):
+    """An LLM content_type outside anime/tv/movie must not turn a match into ERROR.
+
+    Not every provider enforces the response schema. The backfill is skipped (storing
+    the raw string would make the show unloadable) and a warning is logged, while the
+    file stays MATCHED and keeps the raw answer in parsed_content_type.
+    """
+    show = _make_show(title="Attack on Titan")
+    show.sys_name = "Attack on Titan"
+    show.content_type = None
+    show.media_type = "tv"
+    show.local_path = None
+
+    file1 = _make_file(filename="Attack.on.Titan.S01E01.1080p.mkv")
+
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = [file1]
+    show_result = MagicMock()
+    show_result.scalar_one_or_none.return_value = show
+    show_result.scalars.return_value.first.return_value = show
+    ep_result = MagicMock()
+    ep_result.scalar_one_or_none.return_value = None
+
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.execute = AsyncMock(side_effect=[file_result, show_result, show_result, ep_result])
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm_response = MagicMock()
+    llm_response.content = (
+        '{"show_name": "Attack on Titan", "season": 1, "episode": 1, '
+        '"crc32": null, "content_type": "Anime", "confidence": 0.95, '
+        '"reasoning": "Clear S01E01."}'
+    )
+    llm.complete = AsyncMock(return_value=llm_response)
+
+    orch = ParseOrchestrator(
+        session,
+        llm=llm,
+        local_tv_path="/media/tv",
+        local_anime_path="/media/anime",
+        local_movie_path="/media/movies",
+    )
+    with caplog.at_level("WARNING", logger="jidou.orchestrators.parse_orchestrator"):
+        await orch.run()
+
+    assert file1.status == FileStatus.MATCHED
+    assert show.content_type is None
+    assert file1.parsed_content_type == "Anime"
+    assert "out-of-vocabulary content_type 'Anime'" in caplog.text

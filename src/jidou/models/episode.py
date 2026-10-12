@@ -1,11 +1,19 @@
 """Episode model for TV show episodes."""
 
 from datetime import date, datetime
+from enum import StrEnum
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
+
+
+class TrackedSource(StrEnum):
+    """How a tracked file got attached to an episode."""
+
+    MATCH = "match"
+    IMPORT = "import"
 
 
 class Episode(TimestampMixin, Base):
@@ -42,7 +50,10 @@ class Episode(TimestampMixin, Base):
     file_tracked: Mapped[bool] = mapped_column(Boolean, default=False)
     file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    tracked_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # VARCHAR(20), no native enum: same DDL as the plain-string column it replaces.
+    tracked_source: Mapped[TrackedSource | None] = mapped_column(
+        str_enum(TrackedSource, native_enum=False, length=20), nullable=True
+    )
     watched: Mapped[bool] = mapped_column(Boolean, default=False)
     watched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

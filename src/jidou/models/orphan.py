@@ -3,7 +3,8 @@
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
+from jidou.models.episode import TrackedSource
 
 
 class OrphanedTrackingRecord(TimestampMixin, Base):
@@ -27,7 +28,9 @@ class OrphanedTrackingRecord(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), index=True)
     tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    tracked_source: Mapped[str] = mapped_column(String(20))
+    tracked_source: Mapped[TrackedSource] = mapped_column(
+        str_enum(TrackedSource, native_enum=False, length=20)
+    )
     old_season_number: Mapped[int] = mapped_column(Integer)
     old_episode_number: Mapped[int] = mapped_column(Integer)
     downloaded_file_id: Mapped[int | None] = mapped_column(

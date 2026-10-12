@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile
-from jidou.models.episode import Episode
+from jidou.models.episode import Episode, TrackedSource
 from jidou.models.orphan import OrphanedTrackingRecord
 
 # Sentinel distinguishing "caller passed None" from "caller omitted tracked_at".
@@ -33,17 +33,20 @@ def mark_episode_tracked(
         ep: Episode ORM object to mutate in place.
         filename: Path or name of the file that tracks this episode.
             May be ``None`` when restoring from a snapshot that had no filename.
-        source: Origin of the tracking event (``"match"``, ``"import"``, etc.).
+        source: Origin of the tracking event (``"match"`` or ``"import"``).
             May be ``None`` when restoring an orphan record that had no source.
         tracked_at: Explicit timestamp for ``file_tracked_at``.  Omit (or do
             not pass the keyword) to use ``datetime.now(UTC)``.  Pass ``None``
             to restore a snapshot that had a NULL timestamp — this is distinct
             from omitting the argument.
+
+    Raises:
+        ValueError: If *source* is neither ``None`` nor a ``TrackedSource`` value.
     """
     ep.file_tracked = True
     ep.file_tracked_at = datetime.now(UTC) if tracked_at is _UNSET else tracked_at
     ep.tracked_filename = filename
-    ep.tracked_source = source
+    ep.tracked_source = TrackedSource(source) if source is not None else None
 
 
 def clear_episode_tracking(ep: Episode) -> None:

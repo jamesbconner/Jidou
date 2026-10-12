@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
-from jidou.models.show import Show
+from jidou.models.show import ContentType, Show
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
@@ -149,7 +149,7 @@ class ManualMatchOrchestrator:
             if payload.local_path and not show.local_path:
                 show.local_path = payload.local_path
             if payload.content_type and not show.content_type:
-                show.content_type = payload.content_type
+                show.content_type = ContentType(payload.content_type)
             await self.session.flush()
             await TMDBOrchestrator(self.session, TMDBService()).ensure_episode_group_map(show)
             return show
@@ -193,7 +193,7 @@ class ManualMatchOrchestrator:
             if payload.local_path and not show.local_path:
                 show.local_path = payload.local_path
             if payload.content_type and not show.content_type:
-                show.content_type = payload.content_type
+                show.content_type = ContentType(payload.content_type)
             await self.session.flush()
         else:
             logger.info(
