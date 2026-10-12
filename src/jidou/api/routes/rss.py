@@ -10,8 +10,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from jidou.api.dependencies import get_feed_fetch_service, get_llm_service
-from jidou.api.routes.shows import get_tmdb
+from jidou.api.dependencies import get_feed_fetch_service, get_llm_service, get_tmdb
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
