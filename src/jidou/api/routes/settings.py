@@ -1,7 +1,7 @@
 """API routes for runtime-configurable application settings."""
 
 import logging
-from typing import Any
+from typing import Any, Final
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,20 @@ from jidou.services.settings_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# PATCH body field -> persisted settings key. Iterated in this order.
+_PATCH_FIELD_TO_KEY: Final[dict[str, str]] = {
+    "show_adult_content": SHOW_ADULT_CONTENT,
+    "calendar_enabled": CALENDAR_ENABLED,
+    "discover_enabled": DISCOVER_ENABLED,
+    "dashboard_page_enabled": DASHBOARD_PAGE_ENABLED,
+    "recent_episodes_enabled": RECENT_EPISODES_ENABLED,
+    "recent_movies_enabled": RECENT_MOVIES_ENABLED,
+    "recent_episodes_prefer_posters": RECENT_EPISODES_PREFER_POSTERS,
+    "similar_titles_enabled": SIMILAR_TITLES_ENABLED,
+    "similar_titles_count": SIMILAR_TITLES_COUNT,
+    "similar_titles_include_external": SIMILAR_TITLES_INCLUDE_EXTERNAL,
+}
 
 
 def _to_read_model(values: dict[str, Any]) -> AppSettingsRead:
@@ -78,48 +92,10 @@ async def update_settings(
     Returns:
         The full settings state after applying the update.
     """
-    if "show_adult_content" in payload.model_fields_set:
-        await set_setting(db_session, SHOW_ADULT_CONTENT, payload.show_adult_content)
-        await db_session.flush()
-
-    if "calendar_enabled" in payload.model_fields_set:
-        await set_setting(db_session, CALENDAR_ENABLED, payload.calendar_enabled)
-        await db_session.flush()
-
-    if "discover_enabled" in payload.model_fields_set:
-        await set_setting(db_session, DISCOVER_ENABLED, payload.discover_enabled)
-        await db_session.flush()
-
-    if "dashboard_page_enabled" in payload.model_fields_set:
-        await set_setting(db_session, DASHBOARD_PAGE_ENABLED, payload.dashboard_page_enabled)
-        await db_session.flush()
-
-    if "recent_episodes_enabled" in payload.model_fields_set:
-        await set_setting(db_session, RECENT_EPISODES_ENABLED, payload.recent_episodes_enabled)
-        await db_session.flush()
-
-    if "recent_movies_enabled" in payload.model_fields_set:
-        await set_setting(db_session, RECENT_MOVIES_ENABLED, payload.recent_movies_enabled)
-        await db_session.flush()
-
-    if "recent_episodes_prefer_posters" in payload.model_fields_set:
-        await set_setting(
-            db_session, RECENT_EPISODES_PREFER_POSTERS, payload.recent_episodes_prefer_posters
-        )
-        await db_session.flush()
-
-    if "similar_titles_enabled" in payload.model_fields_set:
-        await set_setting(db_session, SIMILAR_TITLES_ENABLED, payload.similar_titles_enabled)
-        await db_session.flush()
-
-    if "similar_titles_count" in payload.model_fields_set:
-        await set_setting(db_session, SIMILAR_TITLES_COUNT, payload.similar_titles_count)
-        await db_session.flush()
-
-    if "similar_titles_include_external" in payload.model_fields_set:
-        await set_setting(
-            db_session, SIMILAR_TITLES_INCLUDE_EXTERNAL, payload.similar_titles_include_external
-        )
+    changed = [f for f in _PATCH_FIELD_TO_KEY if f in payload.model_fields_set]
+    for field in changed:
+        await set_setting(db_session, _PATCH_FIELD_TO_KEY[field], getattr(payload, field))
+    if changed:
         await db_session.flush()
 
     values = await get_all_settings(db_session)

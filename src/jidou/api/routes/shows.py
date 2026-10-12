@@ -19,7 +19,6 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
-from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
 from jidou.schemas.calendar_schema import CalendarEpisode, CalendarSyncResult
 from jidou.schemas.discover_schema import DiscoverResult
 from jidou.schemas.episode_schema import BackingFile, BulkWatchedRequest, EpisodeList
@@ -43,6 +42,7 @@ from jidou.schemas.show_schema import (
     ShowSearchResult,
 )
 from jidou.services.cache import cache
+from jidou.services.discover_feed import build_discover_feed, to_discover_result
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.episode_watching import clear_episode_watched, mark_episode_watched
@@ -142,56 +142,11 @@ async def get_tmdb_details(
         raise
 
 
-# Number of most-recently-updated watching/completed watchlist entries used to
-# seed recommendations. Each seed show costs one rate-limited TMDB call
-# (~2s, serialized — the shared RateLimiter holds a single lock across all
-# callers, so concurrency doesn't help here), so this also bounds worst-case
-# latency on a cache-cold request to roughly _DISCOVER_SEED_LIMIT * 2s.
-_DISCOVER_SEED_LIMIT = 5
-# Recommendations taken from each seed show, before dedup/exclusion.
-_DISCOVER_PER_SHOW_LIMIT = 10
-_DISCOVER_CACHE_TTL = 86_400  # 24h — the assembled/deduped feed, not the underlying TMDB calls
-
 # Per-show "Similar Titles" carousel. Merges TMDB /recommendations and /similar
 # for one show; the assembled list is cached for 24h keyed by
 # (show_id, count, include_external). The underlying TMDB calls have their own
 # 7-day cache in TMDBService.
 _SIMILAR_CACHE_TTL = 86_400
-
-
-def _to_discover_result(
-    raw: dict[str, Any], media_type: str, seeded_from: list[str]
-) -> DiscoverResult:
-    """Build a :class:`DiscoverResult` from a raw TMDB result dict.
-
-    Args:
-        raw: Raw TMDB result entry (from a recommendations or trending response).
-        media_type: ``"tv"`` or ``"movie"`` — recommendations responses are
-            already scoped to one type and don't include this field themselves.
-        seeded_from: Watchlist show titles this result was recommended because
-            of. Empty for trending-only fill items.
-
-    Returns:
-        A populated :class:`DiscoverResult`.
-    """
-    return DiscoverResult(
-        id=raw["id"],
-        media_type=media_type,
-        name=raw.get("name"),
-        title=raw.get("title"),
-        overview=raw.get("overview"),
-        poster_path=raw.get("poster_path"),
-        backdrop_path=raw.get("backdrop_path"),
-        vote_average=raw.get("vote_average"),
-        vote_count=raw.get("vote_count"),
-        release_date=raw.get("release_date"),
-        first_air_date=raw.get("first_air_date"),
-        original_language=raw.get("original_language"),
-        genre_ids=raw.get("genre_ids"),
-        origin_country=raw.get("origin_country"),
-        adult=raw.get("adult"),
-        seeded_from=seeded_from,
-    )
 
 
 @router.get("/tmdb/discover", response_model=list[DiscoverResult])
@@ -216,68 +171,7 @@ async def discover_shows(
     Returns:
         List of :class:`DiscoverResult`, seeded items first.
     """
-    seed_stmt = (
-        select(WatchlistEntry)
-        .where(WatchlistEntry.status.in_([WatchlistStatus.WATCHING, WatchlistStatus.COMPLETED]))
-        .options(selectinload(WatchlistEntry.show))
-        .order_by(WatchlistEntry.updated_at.desc())
-        .limit(_DISCOVER_SEED_LIMIT)
-    )
-    seed_entries = (await db_session.execute(seed_stmt)).scalars().all()
-
-    cache_key_parts = sorted(f"{e.show.tmdb_id}:{e.show.media_type}" for e in seed_entries)
-    cache_key = cache.make_key("discover:" + ",".join(cache_key_parts))
-    cached = await cache.get(cache_key)
-    if cached is not None:
-        return [DiscoverResult(**item) for item in cached][:limit]
-
-    existing_stmt = select(Show.tmdb_id, Show.media_type)
-    existing = {(t, m) for t, m in (await db_session.execute(existing_stmt)).all()}
-
-    seeded: dict[tuple[int, str], DiscoverResult] = {}
-    for entry in seed_entries:
-        show = entry.show
-        if show.media_type not in {"movie", "tv"}:
-            continue
-        try:
-            data = await tmdb.get_recommendations(show.tmdb_id, show.media_type)
-        except (ValueError, httpx.HTTPStatusError):
-            logger.warning("Discover: recommendations failed for show_id=%d", show.id)
-            continue
-        for raw in data.get("results", [])[:_DISCOVER_PER_SHOW_LIMIT]:
-            key = (raw["id"], show.media_type)
-            if key in existing:
-                continue
-            if key in seeded:
-                seeded[key].seeded_from.append(show.title)
-            else:
-                seeded[key] = _to_discover_result(raw, show.media_type, [show.title])
-
-    results = sorted(seeded.values(), key=lambda r: (-len(r.seeded_from), -(r.vote_average or 0)))
-
-    if len(results) < limit:
-        try:
-            trending = await tmdb.get_trending(media_type="multi", time_window="week")
-        except (ValueError, httpx.HTTPStatusError):
-            logger.warning("Discover: trending fallback failed")
-            trending = {"results": []}
-        for raw in trending.get("results", []):
-            media_type = raw.get("media_type")
-            if media_type not in {"movie", "tv"}:
-                continue
-            key = (raw["id"], media_type)
-            if key in existing or key in seeded:
-                continue
-            seeded[key] = _to_discover_result(raw, media_type, [])
-            results.append(seeded[key])
-            if len(results) >= limit:
-                break
-
-    results = results[:limit]
-    await cache.set(
-        cache_key, [r.model_dump() for r in results], label="discover", ttl=_DISCOVER_CACHE_TTL
-    )
-    return results
+    return await build_discover_feed(db_session, tmdb, limit)
 
 
 # ---------------------------------------------------------------------------
@@ -832,7 +726,7 @@ async def get_similar_shows(
                 continue
             if not include_external and (tmdb_id, media_type) not in library:
                 continue
-            merged[tmdb_id] = _to_discover_result(raw, media_type, [])
+            merged[tmdb_id] = to_discover_result(raw, media_type, [])
 
     results = list(merged.values())[:count]
     # Don't persist an empty list that only exists because TMDB was unreachable

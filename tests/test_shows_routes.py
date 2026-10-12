@@ -4382,6 +4382,181 @@ def test_discover_sorts_by_seeded_count_then_rating() -> None:
         app.dependency_overrides.clear()
 
 
+# --- Characterization tests for the remaining discover branches (pin pre-refactor behaviour) ---
+
+
+def _discover_call(
+    *,
+    seeds: list[MagicMock],
+    existing: list[tuple[int, str]],
+    tmdb_mock: AsyncMock,
+    query: str = "",
+) -> tuple[object, AsyncMock]:
+    """Run GET /tmdb/discover with a cold cache; return (response, cache.set mock)."""
+    from jidou.api.dependencies import get_tmdb
+    from jidou.database import get_session
+    from jidou.services.cache import cache
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        seed_result = MagicMock()
+        seed_result.scalars.return_value.all.return_value = seeds
+        existing_result = MagicMock()
+        existing_result.all.return_value = existing
+        session.execute = AsyncMock(side_effect=[seed_result, existing_result])
+        yield session
+
+    cache_set = AsyncMock()
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
+    try:
+        with (
+            patch.object(cache, "get", AsyncMock(return_value=None)),
+            patch.object(cache, "set", cache_set),
+        ):
+            response = TestClient(app).get(f"/api/shows/tmdb/discover{query}")
+    finally:
+        app.dependency_overrides.clear()
+    return response, cache_set
+
+
+def test_discover_skips_non_tv_movie_seed_and_calls_tmdb_with_expected_args() -> None:
+    """A non-tv/movie seed is skipped; others call get_recommendations(id, type)."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 7, "name": "R"}]})
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+    seeds = [
+        _make_seed_entry(tmdb_id=1, media_type="person", title="P"),
+        _make_seed_entry(tmdb_id=2, media_type="movie", title="M"),
+    ]
+    response, _ = _discover_call(seeds=seeds, existing=[], tmdb_mock=tmdb_mock)
+    assert response.status_code == 200
+    tmdb_mock.get_recommendations.assert_awaited_once_with(2, "movie")
+    tmdb_mock.get_trending.assert_awaited_once_with(media_type="multi", time_window="week")
+    assert [(r["id"], r["media_type"]) for r in response.json()] == [(7, "movie")]
+
+
+def test_discover_value_error_from_recommendations_is_skipped() -> None:
+    """ValueError (e.g. bad TMDB payload) on one seed is logged and the next seed still runs."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        side_effect=[ValueError("bad"), {"results": [{"id": 9, "name": "Ok"}]}]
+    )
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+    seeds = [_make_seed_entry(tmdb_id=1, title="A"), _make_seed_entry(tmdb_id=2, title="B")]
+    response, _ = _discover_call(seeds=seeds, existing=[], tmdb_mock=tmdb_mock)
+    assert response.status_code == 200
+    assert [(r["id"], r["seeded_from"]) for r in response.json()] == [(9, ["B"])]
+
+
+def test_discover_per_show_limit_truncates_recommendations() -> None:
+    """Only the first 10 recommendations of each seed are considered."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={"results": [{"id": i, "name": f"R{i}"} for i in range(1, 16)]}
+    )
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+    response, _ = _discover_call(
+        seeds=[_make_seed_entry(tmdb_id=1)], existing=[], tmdb_mock=tmdb_mock
+    )
+    assert sorted(r["id"] for r in response.json()) == list(range(1, 11))
+
+
+def test_discover_trending_failure_returns_seeded_only() -> None:
+    """If the trending fallback fails, the seeded results are still returned and cached."""
+    import httpx2 as httpx
+
+    req = httpx.Request("GET", "https://api.themoviedb.org/3/trending/all/week")
+    error = httpx.HTTPStatusError("500", request=req, response=httpx.Response(500))
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 4, "name": "S"}]})
+    tmdb_mock.get_trending = AsyncMock(side_effect=error)
+    response, cache_set = _discover_call(
+        seeds=[_make_seed_entry(tmdb_id=1, title="Seed")], existing=[], tmdb_mock=tmdb_mock
+    )
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()] == [4]
+    cache_set.assert_awaited_once()
+
+
+def test_discover_trending_value_error_returns_seeded_only() -> None:
+    """ValueError from trending is swallowed the same way as an HTTP error."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": []})
+    tmdb_mock.get_trending = AsyncMock(side_effect=ValueError("bad"))
+    response, _ = _discover_call(
+        seeds=[_make_seed_entry(tmdb_id=1)], existing=[], tmdb_mock=tmdb_mock
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_discover_trending_dedupes_and_stops_at_limit() -> None:
+    """Trending skips library items, already-seeded items and non-tv/movie types, up to limit."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 1, "name": "Seed"}]})
+    tmdb_mock.get_trending = AsyncMock(
+        return_value={
+            "results": [
+                {"id": 1, "media_type": "tv"},  # already seeded
+                {"id": 2, "media_type": "tv"},  # in library
+                {"id": 3, "media_type": "person"},  # wrong type
+                {"id": 4, "media_type": "movie"},
+                {"id": 5, "media_type": "tv"},
+                {"id": 6, "media_type": "tv"},
+            ]
+        }
+    )
+    response, _ = _discover_call(
+        seeds=[_make_seed_entry(tmdb_id=10)],
+        existing=[(2, "tv")],
+        tmdb_mock=tmdb_mock,
+        query="?limit=3",
+    )
+    assert [(r["id"], r["media_type"]) for r in response.json()] == [
+        (1, "tv"),
+        (4, "movie"),
+        (5, "tv"),
+    ]
+
+
+def test_discover_trending_not_called_when_seeded_fills_limit() -> None:
+    """With enough seeded results to reach the limit, trending is never requested."""
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(
+        return_value={"results": [{"id": 1}, {"id": 2}, {"id": 3}]}
+    )
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+    response, _ = _discover_call(
+        seeds=[_make_seed_entry(tmdb_id=10)], existing=[], tmdb_mock=tmdb_mock, query="?limit=2"
+    )
+    assert len(response.json()) == 2
+    tmdb_mock.get_trending.assert_not_called()
+
+
+def test_discover_caches_result_with_key_label_and_ttl() -> None:
+    """The assembled feed is cached under the seed-set key with the 24h discover TTL."""
+    from jidou.services.cache import cache
+
+    tmdb_mock = _make_tmdb_mock()
+    tmdb_mock.get_recommendations = AsyncMock(return_value={"results": [{"id": 1, "name": "X"}]})
+    tmdb_mock.get_trending = AsyncMock(return_value={"results": []})
+    seeds = [
+        _make_seed_entry(tmdb_id=200, media_type="movie", title="B"),
+        _make_seed_entry(tmdb_id=100, media_type="tv", title="A"),
+    ]
+    response, cache_set = _discover_call(
+        seeds=seeds, existing=[], tmdb_mock=tmdb_mock, query="?limit=7"
+    )
+    assert response.status_code == 200
+    expected_key = cache.make_key("discover:100:tv,200:movie")
+    cache_set.assert_awaited_once()
+    args, kwargs = cache_set.await_args
+    assert args[0] == expected_key
+    assert sorted((r["id"], r["media_type"]) for r in args[1]) == [(1, "movie"), (1, "tv")]
+    assert kwargs == {"label": "discover", "ttl": 86_400}
+
+
 # ---------------------------------------------------------------------------
 # GET /api/shows/{show_id}/similar
 # ---------------------------------------------------------------------------
