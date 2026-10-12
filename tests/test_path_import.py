@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jidou.services.file_filters import MEDIA_EXTENSIONS
 from jidou.services.path_parser import (
     group_by_show,
     parse_file,
@@ -25,6 +26,14 @@ class TestParseLine:
     def test_skips_blank_line(self) -> None:
         assert parse_line("") is None
         assert parse_line("   ") is None
+
+    @pytest.mark.parametrize("ext", sorted(MEDIA_EXTENSIONS))
+    def test_parse_line_accepts_every_scan_extension(self, ext: str) -> None:
+        # Bulk import must track every extension the SFTP scan tracks (D19).
+        assert len(MEDIA_EXTENSIONS) >= 12
+        entry = parse_line(rf"Z:\anime tv\Dorohedoro\Season 01\Dorohedoro.S01E03{ext}")
+        assert entry is not None
+        assert entry.show_dir == "Dorohedoro"
 
     def test_skips_comment(self) -> None:
         assert parse_line("# this is a comment") is None
