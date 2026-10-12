@@ -976,7 +976,7 @@ class SFTPService:
         )
 
 
-def create_sftp_service(settings: Settings) -> SFTPService:
+def create_sftp_service(settings: Settings, remote_base_path: str | None = None) -> SFTPService:
     """Build an SFTPService from application settings.
 
     Host-key verification stays disabled (``known_hosts=None``), matching the
@@ -984,6 +984,8 @@ def create_sftp_service(settings: Settings) -> SFTPService:
 
     Args:
         settings: Application settings supplying the ``sftp_*`` values.
+        remote_base_path: Optional base directory for listings. When ``None``
+            the base path is ``"/"``, the service default.
 
     Returns:
         A configured, not-yet-connected SFTPService.
@@ -998,4 +1000,5 @@ def create_sftp_service(settings: Settings) -> SFTPService:
         max_workers=settings.sftp_max_workers,
         max_retries=settings.sftp_max_retries,
         retry_delay=settings.sftp_retry_delay,
+        remote_base_path=remote_base_path if remote_base_path is not None else "/",
     )
