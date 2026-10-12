@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 
+from jidou.models.show import ContentType
 from jidou.schemas._base import ORMModel
 
 
@@ -12,7 +13,7 @@ class RecentShowItem(ORMModel):
     tmdb_id: int
     title: str
     media_type: str
-    content_type: str | None = None
+    content_type: ContentType | None = None
     poster_path: str | None = None
     backdrop_path: str | None = None
     overview: str | None = None
@@ -33,7 +34,7 @@ class DashboardShowSummary(ORMModel):
 
     id: int
     title: str
-    content_type: str | None = None
+    content_type: ContentType | None = None
     media_type: str
     poster_path: str | None = None
     vote_average: float | None = None

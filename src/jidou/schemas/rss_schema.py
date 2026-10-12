@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from jidou.models.rss import SnapshotType
 from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, ORMModel, RegexPattern
 from jidou.schemas.show_schema import ShowCreate
 
@@ -169,7 +170,7 @@ class RssConfigDiff(BaseModel):
     """
 
     snapshot_id: int
-    snapshot_type: str
+    snapshot_type: SnapshotType
     snapshot_created_at: datetime
     has_changes: bool
     diff: list[str]

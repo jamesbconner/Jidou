@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from jidou.models.downloaded_file import FileStatus
+from jidou.models.downloaded_file import FileStatus, IgnoredReason, MatchedBy
 from jidou.schemas._base import ORMModel
 
 
@@ -36,8 +36,8 @@ class FileRead(ORMModel):
     file_size: int
     hash_sha256: str | None = None
     status: FileStatus
-    matched_by: str | None = None
-    ignored_reason: str | None = None
+    matched_by: MatchedBy | None = None
+    ignored_reason: IgnoredReason | None = None
     error_message: str | None = None
     parsed_show_name: str | None = None
     parsed_season: int | None = None

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, computed_field
 
+from jidou.models.episode import TrackedSource
 from jidou.services.path_transport import decode_path_bytes_for_display
 
 
@@ -14,7 +15,7 @@ class OrphanRead(BaseModel):
     show_id: int
     show_title: str
     tracked_filename: str | None
-    tracked_source: str
+    tracked_source: TrackedSource
     old_season_number: int
     old_episode_number: int
     downloaded_file_id: int | None
