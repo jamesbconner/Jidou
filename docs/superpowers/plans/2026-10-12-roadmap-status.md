@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12, at commit `52cd4d3`.
+Last updated: 2026-10-12 (P1 recorded).
 
 ---
 
@@ -33,16 +33,30 @@ Last updated: 2026-10-12, at commit `52cd4d3`.
   - The coordinator merges PRs one at a time, and opens the
     `chore/release-wave-<n>` PR at the end of each wave (decision D1).
 
-## 2. Open preconditions
+## 2. Preconditions
 
-| ID | What | Who | Blocks |
-|---|---|---|---|
-| P1 | Run the four `SELECT DISTINCT` queries in models plan Task 4 Step 1 (`shows.content_type`, `episodes.tracked_source`, `orphaned_tracking_records.tracked_source`, `rss_config_snapshots.snapshot_type`) against the **production** database. Every non-NULL value must be a member of the target enum. | Repository owner (needs production database access) | MDL-3 (roadmap item 24, Wave 2) |
+**None open.**
+
+| ID | What | Result |
+|---|---|---|
+| P1 | The models plan Task 4 Step 1 data check: no stored value outside the target enums | **Passed on 2026-10-12** against production (the owner ran the check). The violations query returned no rows. MDL-3 can proceed as written. |
+
+The value distribution found by P1 (useful for MDL-3 and DF-10):
+
+| Column | Values (rows) |
+|---|---|
+| `shows.content_type` | `anime` 724, `tv` 474, `movie` 5; **no NULLs** |
+| `episodes.tracked_source` | NULL 8,078 (untracked; real NULLs, not empty strings), `import` 32,529, `match` 1,330 |
+| `orphaned_tracking_records.tracked_source` | the table is empty |
+| `rss_config_snapshots.snapshot_type` | `import` 1, `pre_publish` 24, `post_publish` 17 |
 
 Already settled, so don't ask again:
 - There are **no `pending` rows** in `downloaded_files`; D24 is not
   needed.
-- The library holds **several thousand shows**; this sized D10 / DF-18.
+- **Library size:** 1,203 shows (from P1, 2026-10-12). D10 was sized
+  for "several thousand", the expected growth. DF-18 stays in scope;
+  the Shows/Watchlist pagination backlog item is not urgent at this
+  size.
 
 ## 3. Progress ledger
 
@@ -58,7 +72,7 @@ item is its open or merged PR on GitHub.
 |---|---|---|
 | 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | todo |
 | 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | todo |
-| 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (needs P1), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | todo |
+| 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | todo |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | todo |
 | 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | todo |
 | 5 | DF-1 … DF-20, then XL-3 | todo |
