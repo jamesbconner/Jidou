@@ -152,12 +152,14 @@ def test_empty_hint_fails_on_length_not_item_count() -> None:
 
 
 def test_task_trigger_validation_is_stable() -> None:
-    """TaskTrigger coerces dry_run, ignores extras, and requires task_type."""
-    trigger = TaskTrigger.model_validate({"task_type": "scan", "dry_run": "true", "extra": 1})
+    """TaskTrigger coerces dry_run, rejects extras (D4), and requires task_type."""
+    trigger = TaskTrigger.model_validate({"task_type": "scan", "dry_run": "true"})
     assert trigger.task_type == "scan"
     assert trigger.dry_run is True
     assert TaskTrigger(task_type="scan").dry_run is False
-    assert not hasattr(trigger, "extra")
+    with pytest.raises(ValidationError) as extra_exc:
+        TaskTrigger.model_validate({"task_type": "scan", "dry_run": "true", "extra": 1})
+    assert [e["type"] for e in extra_exc.value.errors()] == ["extra_forbidden"]
     with pytest.raises(ValidationError):
         TaskTrigger.model_validate({})
     with pytest.raises(ValidationError):
@@ -165,16 +167,16 @@ def test_task_trigger_validation_is_stable() -> None:
 
 
 def test_show_patch_validation_is_stable() -> None:
-    """ShowPatch accepts fields by name, tracks which were set, and ignores extras."""
-    patch = ShowPatch.model_validate(
-        {"banner_path": None, "track_missing_episodes": False, "bogus": 1}
-    )
+    """ShowPatch accepts fields by name, tracks which were set, and rejects extras (D4)."""
+    patch = ShowPatch.model_validate({"banner_path": None, "track_missing_episodes": False})
     assert patch.model_fields_set == {"banner_path", "track_missing_episodes"}
     assert patch.model_dump(exclude_unset=True) == {
         "banner_path": None,
         "track_missing_episodes": False,
     }
-    assert not hasattr(patch, "bogus")
+    with pytest.raises(ValidationError) as extra_exc:
+        ShowPatch.model_validate({"banner_path": None, "track_missing_episodes": False, "bogus": 1})
+    assert [e["type"] for e in extra_exc.value.errors()] == ["extra_forbidden"]
     with pytest.raises(ValidationError):
         ShowPatch.model_validate({"content_type": "not-a-content-type"})
 

@@ -6,12 +6,19 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from jidou.models.show import ContentType
-from jidou.schemas._base import MediaType, ORMModel, TmdbEpisodeRef, TmdbGenre, TmdbNetwork
+from jidou.schemas._base import (
+    MediaType,
+    ORMModel,
+    RequestModel,
+    TmdbEpisodeRef,
+    TmdbGenre,
+    TmdbNetwork,
+)
 from jidou.schemas.episode_schema import EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief
 
 
-class ShowCreate(BaseModel):
+class ShowCreate(RequestModel):
     """Payload for adding a show to the database.
 
     All TMDB fields mirror the search/trending response so the frontend can
@@ -80,7 +87,7 @@ class ShowCreate(BaseModel):
     )
 
 
-class ShowPatch(BaseModel):
+class ShowPatch(RequestModel):
     """Payload for partial updates to a show's user-managed fields.
 
     Only fields present in the request body are applied; omitted fields are
@@ -149,13 +156,13 @@ class EpisodeGroupApplyResponse(BaseModel):
     orphaned_watched_count: int
 
 
-class ShowPaths(BaseModel):
+class ShowPaths(RequestModel):
     """Payload for updating a show's local filesystem path."""
 
     local_path: str | None = None
 
 
-class ShowAliasesUpdate(BaseModel):
+class ShowAliasesUpdate(RequestModel):
     """Payload for replacing the user-defined alias list on a show.
 
     Only the ``user`` source is modified; TMDB and LLM aliases are preserved
@@ -213,13 +220,13 @@ class ShowRead(ORMModel):
     updated_at: datetime
 
 
-class AssignImportRequest(BaseModel):
+class AssignImportRequest(RequestModel):
     """Payload for reassigning an imported episode's tracked filename."""
 
     filename: str
 
 
-class LinkFileRequest(BaseModel):
+class LinkFileRequest(RequestModel):
     """Payload for manually linking an on-disk file path to an episode.
 
     ``replace`` mirrors ``LinkMovieFileRequest``: when the target episode is
@@ -264,7 +271,7 @@ class ScannedFileMatch(BaseModel):
     )
 
 
-class RematchRequest(BaseModel):
+class RematchRequest(RequestModel):
     """Payload for re-matching a show to a different TMDB entry."""
 
     tmdb_id: int

@@ -31,6 +31,19 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RequestModel(BaseModel):
+    """Base for every request-body schema, and the request-only models nested in one.
+
+    ``extra="forbid"`` turns an unknown field into a 422 ``extra_forbidden`` error
+    instead of silently dropping it, so a misspelled or stale field name fails
+    loudly. It also adds ``additionalProperties: false`` to the OpenAPI schema.
+    Response models must not use this base: a response built from stored data
+    with an extra key would then fail with a 500.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class _TmdbObject(BaseModel):
     """Base for a raw TMDB JSON object stored verbatim and echoed back by the API.
 

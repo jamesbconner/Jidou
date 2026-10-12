@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from jidou.models.downloaded_file import FileStatus, IgnoredReason, MatchedBy
 from jidou.models.show import ContentType
-from jidou.schemas._base import MediaType, ORMModel
+from jidou.schemas._base import MediaType, ORMModel, RequestModel
 
 
 class FileShowBrief(ORMModel):
@@ -54,7 +54,7 @@ class FileRead(ORMModel):
     episode: EpisodeBrief | None = None
 
 
-class FileMatchRequest(BaseModel):
+class FileMatchRequest(RequestModel):
     """Request body for assigning a show to an unmatched file.
 
     Three modes:
@@ -86,7 +86,7 @@ class FileMatchRequest(BaseModel):
     )
 
 
-class VerifyPathsRequest(BaseModel):
+class VerifyPathsRequest(RequestModel):
     """Request body for checking which candidate paths still exist on disk."""
 
     paths: list[str] = Field(max_length=500)
@@ -98,7 +98,7 @@ class VerifyPathsResponse(BaseModel):
     existing: list[str]
 
 
-class FilePatch(BaseModel):
+class FilePatch(RequestModel):
     """Request body for manually overriding fields on a downloaded file."""
 
     show_id: int | None = None

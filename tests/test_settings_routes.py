@@ -721,9 +721,9 @@ class TestPatchCharacterization:
         assert status == 200
         assert calls == [(CALENDAR_ENABLED, None)]
 
-    def test_unknown_field_is_ignored(self) -> None:
+    def test_unknown_field_is_rejected_without_writes(self) -> None:
         status, calls, session = self._patch({"bogus": True})
-        assert status == 200
+        assert status == 422
         assert calls == []
         session.flush.assert_not_awaited()
 

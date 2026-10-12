@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, computed_field
 
-from jidou.schemas._base import ORMModel
+from jidou.schemas._base import ORMModel, RequestModel
 from jidou.services.path_transport import decode_path_bytes_for_display
 
 
@@ -56,7 +56,7 @@ class EpisodeList(ORMModel):
         )
 
 
-class BulkWatchedRequest(BaseModel):
+class BulkWatchedRequest(RequestModel):
     """Request body for bulk watched/unwatched endpoints.
 
     ``season_number`` scopes the operation to one season; omit (or pass

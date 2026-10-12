@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AppSettingsPatch": {
+        "additionalProperties": false,
         "description": "Partial update payload; only fields present in the request are applied.",
         "properties": {
           "calendar_enabled": {
@@ -192,6 +193,7 @@
         "type": "object"
       },
       "AssignImportRequest": {
+        "additionalProperties": false,
         "description": "Payload for reassigning an imported episode's tracked filename.",
         "properties": {
           "filename": {
@@ -268,6 +270,7 @@
         "type": "object"
       },
       "BulkWatchedRequest": {
+        "additionalProperties": false,
         "description": "Request body for bulk watched/unwatched endpoints.\n\n``season_number`` scopes the operation to one season; omit (or pass\n``null``) to apply it to every episode in the show.",
         "properties": {
           "season_number": {
@@ -929,6 +932,7 @@
         "type": "object"
       },
       "FeedAddShowRequest": {
+        "additionalProperties": false,
         "description": "Create (or reuse) a show and its subscription from one feed group.\n\nExactly one of ``show_id`` (a show already in the library) or ``show`` (a\nTMDB result to add) must be given.\n\nAttributes:\n    parsed_name: The group's ``parsed_name`` from the entries response.\n        Taught as an alias of the chosen show so later files and entries\n        named that way match it directly.\n    show_id: Existing library show to subscribe.\n    show: TMDB result to add to the library first.\n    name: Subscription name; defaults to the show title.\n    regex_include: Include pattern (empty/None selects nothing in YaRSS2).\n    regex_exclude: Exclude pattern.\n    regex_include_ignorecase: Case-insensitive include matching.\n    regex_exclude_ignorecase: Case-insensitive exclude matching.\n    enabled: When true the subscription is active and included in the next\n        publish; when false it is saved in Jidou only.\n    dry_run: Validate and report what would happen without writing.",
         "properties": {
           "dry_run": {
@@ -1226,6 +1230,7 @@
         "type": "object"
       },
       "FeedRegexSuggestRequest": {
+        "additionalProperties": false,
         "description": "Request a regex suggestion for a group of a feed's entries.\n\nAttributes:\n    parsed_name: The group's ``parsed_name`` from the feed entries response.\n        The group's real release titles are re-read server-side (from the\n        short-lived feed cache), never trusted from the client.\n    show_title: Title of the show the user picked (library or TMDB). Used as\n        the prompt's show label; ``parsed_name`` is used when omitted.\n    previous: Earlier ``regex_include`` suggestions this session. When\n        non-empty the LLM cache is bypassed and the model must differ.",
         "properties": {
           "parsed_name": {
@@ -1295,6 +1300,7 @@
         "type": "object"
       },
       "FeedRegexTestRequest": {
+        "additionalProperties": false,
         "description": "Preview a hand-edited filter against a feed group's current titles.\n\nAttributes:\n    parsed_name: The group's ``parsed_name`` from the feed entries response.\n    regex_include: Include pattern. Empty/None selects nothing, matching\n        YaRSS2 (a subscription without an include pattern never matches).\n    regex_exclude: Exclude pattern; empty/None means no exclude filter.\n    regex_include_ignorecase: Case-insensitive include matching.\n    regex_exclude_ignorecase: Case-insensitive exclude matching.",
         "properties": {
           "parsed_name": {
@@ -1345,6 +1351,7 @@
         "type": "object"
       },
       "FileMatchRequest": {
+        "additionalProperties": false,
         "description": "Request body for assigning a show to an unmatched file.\n\nThree modes:\n- ``show_id`` only: assign an existing tracked show (fast path).\n- ``tmdb_id`` only or with ``local_path``/``content_type``: look up or\n  create the show on demand, then assign.\n- All omitted: reset the file to ``downloaded`` for automatic re-matching.",
         "properties": {
           "content_type": {
@@ -1415,6 +1422,7 @@
         "type": "object"
       },
       "FilePatch": {
+        "additionalProperties": false,
         "description": "Request body for manually overriding fields on a downloaded file.",
         "properties": {
           "episode_id": {
@@ -1731,6 +1739,7 @@
         "type": "string"
       },
       "LinkFileRequest": {
+        "additionalProperties": false,
         "description": "Payload for manually linking an on-disk file path to an episode.\n\n``replace`` mirrors ``LinkMovieFileRequest``: when the target episode is\nalready tracked, pass ``replace=True`` to unlink whatever currently\ntracks it (see ``_detach_episode_tracking``) and link *path* in its\nplace, instead of getting a 422.",
         "properties": {
           "path": {
@@ -1750,6 +1759,7 @@
         "type": "object"
       },
       "LinkMovieFileRequest": {
+        "additionalProperties": false,
         "description": "Payload for linking (or replacing) a movie's on-disk file.\n\nSee ``POST /shows/{show_id}/link-movie-file``.",
         "properties": {
           "path": {
@@ -1861,6 +1871,7 @@
         "type": "object"
       },
       "OrphanResolveRequest": {
+        "additionalProperties": false,
         "description": "Payload for resolving an orphaned tracking record.",
         "properties": {
           "episode_id": {
@@ -2210,6 +2221,27 @@
         "title": "RegexHintSample",
         "type": "object"
       },
+      "RegexHintSampleRequest": {
+        "additionalProperties": false,
+        "description": "Request-side :class:`RegexHintSample`: same fields, unknown fields rejected.\n\nSplit from :class:`RegexHintSample` because that model is also part of the\n``RssFeedRead`` response, which is built from stored JSONB and must keep\naccepting whatever keys a stored sample holds.",
+        "properties": {
+          "hint": {
+            "minLength": 1,
+            "title": "Hint",
+            "type": "string"
+          },
+          "sample_name": {
+            "default": "",
+            "title": "Sample Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hint"
+        ],
+        "title": "RegexHintSampleRequest",
+        "type": "object"
+      },
       "RegexMatchReportRead": {
         "description": "Which of a feed group's current titles a regex filter selects.\n\nAttributes:\n    matched_titles: Titles the filter would download.\n    unmatched_titles: Titles the filter would skip.\n    total: Number of titles evaluated.",
         "properties": {
@@ -2241,6 +2273,7 @@
         "type": "object"
       },
       "RematchRequest": {
+        "additionalProperties": false,
         "description": "Payload for re-matching a show to a different TMDB entry.",
         "properties": {
           "media_type": {
@@ -2307,6 +2340,7 @@
         "type": "object"
       },
       "RssFeedCreate": {
+        "additionalProperties": false,
         "description": "Request body for creating an RSS feed.",
         "properties": {
           "active": {
@@ -2367,7 +2401,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RegexHintSample"
+                  "$ref": "#/components/schemas/RegexHintSampleRequest"
                 },
                 "maxItems": 3,
                 "type": "array"
@@ -2519,6 +2553,7 @@
         "type": "object"
       },
       "RssFeedUpdate": {
+        "additionalProperties": false,
         "description": "Request body for updating an RSS feed \u2014 all fields optional.",
         "properties": {
           "active": {
@@ -2592,7 +2627,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/RegexHintSample"
+                  "$ref": "#/components/schemas/RegexHintSampleRequest"
                 },
                 "maxItems": 3,
                 "type": "array"
@@ -2630,6 +2665,7 @@
         "type": "object"
       },
       "RssRegexSuggestRequest": {
+        "additionalProperties": false,
         "description": "Optional unsaved context for an LLM regex suggestion.\n\nAttributes:\n    feed_id: Feed currently selected in the edit form. When the field is\n        present it overrides the subscription's persisted feed for hint\n        lookup (``None`` means \"no feed\"); when omitted the persisted feed\n        is used.\n    previous: Earlier ``regex_include`` suggestions from this session. When\n        non-empty the request is a re-suggest: the LLM cache is bypassed and\n        the model is told not to repeat these.",
         "properties": {
           "feed_id": {
@@ -2728,6 +2764,7 @@
         "type": "object"
       },
       "RssSubscriptionBulkPatchItem": {
+        "additionalProperties": false,
         "description": "Single item in a bulk-patch request.",
         "properties": {
           "active": {
@@ -2747,6 +2784,7 @@
         "type": "object"
       },
       "RssSubscriptionCreate": {
+        "additionalProperties": false,
         "description": "Request body for creating an RSS subscription.",
         "properties": {
           "active": {
@@ -3267,6 +3305,7 @@
         "type": "object"
       },
       "RssSubscriptionUpdate": {
+        "additionalProperties": false,
         "description": "Request body for updating an RSS subscription \u2014 all fields optional.",
         "properties": {
           "active": {
@@ -3481,6 +3520,7 @@
         "type": "object"
       },
       "ShowAliasesUpdate": {
+        "additionalProperties": false,
         "description": "Payload for replacing the user-defined alias list on a show.\n\nOnly the ``user`` source is modified; TMDB and LLM aliases are preserved\nand the flat ``aliases`` column is rebuilt as their union.",
         "properties": {
           "aliases": {
@@ -3495,6 +3535,7 @@
         "type": "object"
       },
       "ShowCreate": {
+        "additionalProperties": false,
         "description": "Payload for adding a show to the database.\n\nAll TMDB fields mirror the search/trending response so the frontend can\npass a result card directly to ``POST /shows`` without an extra round-trip.\n``content_type`` and ``sys_name`` are optional user-assigned fields.",
         "properties": {
           "adult": {
@@ -4332,6 +4373,7 @@
         "type": "object"
       },
       "ShowPatch": {
+        "additionalProperties": false,
         "description": "Payload for partial updates to a show's user-managed fields.\n\nOnly fields present in the request body are applied; omitted fields are\nleft unchanged.  Use ``null`` to clear a field.",
         "properties": {
           "banner_path": {
@@ -4398,6 +4440,7 @@
         "type": "object"
       },
       "ShowPaths": {
+        "additionalProperties": false,
         "description": "Payload for updating a show's local filesystem path.",
         "properties": {
           "local_path": {
@@ -5265,6 +5308,7 @@
         "type": "string"
       },
       "TaskTrigger": {
+        "additionalProperties": false,
         "description": "Request body for triggering a background task.\n\ntask_type stays a plain str (not the narrower Literal subset of TaskType\nthat POST /tasks/trigger actually accepts) so the route's own explicit\n400 \"Unknown task type\" check keeps running -- typing this as a Literal\nwould make Pydantic reject bad values at validation time with a generic\n422 before the route body ever runs, changing the endpoint's existing\nerror-response contract for no gain (there's no OpenAPI consumer this\nwould help; see PR-17 of the sequenced refactoring plan).",
         "properties": {
           "dry_run": {
@@ -5566,6 +5610,7 @@
         "type": "object"
       },
       "VerifyPathsRequest": {
+        "additionalProperties": false,
         "description": "Request body for checking which candidate paths still exist on disk.",
         "properties": {
           "paths": {
@@ -5601,6 +5646,7 @@
         "type": "object"
       },
       "WatchlistCreate": {
+        "additionalProperties": false,
         "description": "Request body for adding a show to the watchlist.",
         "properties": {
           "notes": {
@@ -5676,6 +5722,7 @@
         "type": "object"
       },
       "WatchlistPositionItem": {
+        "additionalProperties": false,
         "description": "Position update for a single entry in a bulk reorder request.",
         "properties": {
           "id": {
@@ -5813,6 +5860,7 @@
         "type": "string"
       },
       "WatchlistUpdate": {
+        "additionalProperties": false,
         "description": "Request body for updating a watchlist entry \u2014 all fields optional.",
         "properties": {
           "notes": {

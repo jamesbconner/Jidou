@@ -3,10 +3,8 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
-
 from jidou.models.task import TaskStatus
-from jidou.schemas._base import ORMModel
+from jidou.schemas._base import ORMModel, RequestModel
 
 # Every task_type string a worker actually creates a BackgroundTask row under
 # (see the run_task_workflow(celery_task_id, "<type>", ...) call in each
@@ -52,7 +50,7 @@ class TaskRead(TaskList):
     event_log: list[dict[str, object]] = []  # noqa: RUF012
 
 
-class TaskTrigger(BaseModel):
+class TaskTrigger(RequestModel):
     """Request body for triggering a background task.
 
     task_type stays a plain str (not the narrower Literal subset of TaskType

@@ -2,10 +2,8 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel
-
 from jidou.models.watchlist import WatchlistStatus
-from jidou.schemas._base import ORMModel
+from jidou.schemas._base import ORMModel, RequestModel
 
 
 class WatchlistShowBrief(ORMModel):
@@ -32,7 +30,7 @@ class WatchlistNextUpEpisode(ORMModel):
     file_tracked: bool
 
 
-class WatchlistCreate(BaseModel):
+class WatchlistCreate(RequestModel):
     """Request body for adding a show to the watchlist."""
 
     show_id: int
@@ -41,7 +39,7 @@ class WatchlistCreate(BaseModel):
     position: int = 0
 
 
-class WatchlistUpdate(BaseModel):
+class WatchlistUpdate(RequestModel):
     """Request body for updating a watchlist entry — all fields optional."""
 
     status: WatchlistStatus | None = None
@@ -49,7 +47,7 @@ class WatchlistUpdate(BaseModel):
     position: int | None = None
 
 
-class WatchlistPositionItem(BaseModel):
+class WatchlistPositionItem(RequestModel):
     """Position update for a single entry in a bulk reorder request."""
 
     id: int
