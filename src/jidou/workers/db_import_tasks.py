@@ -267,7 +267,6 @@ async def _db_import(celery_task_id: str, file_content: str) -> str:
         celery_task_id,
         "db_import",
         _work,
-        progress_total=0,
         dry_run=False,
         running_message="Parsing backup file…",
     )

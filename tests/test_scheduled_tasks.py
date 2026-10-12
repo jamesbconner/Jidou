@@ -15,13 +15,14 @@ import pytest
 def _make_session(active_count: int = 0) -> MagicMock:
     """Return a minimal async session stub that reports *active_count* active tasks.
 
-    ``scalar_one`` is used by the COUNT check; ``scalar_one_or_none`` is used
-    by ``create_task_record``'s SELECT — returns None so the insert path runs.
+    ``scalar_one_or_none`` is called twice: first by ``get_active_task`` (an
+    active row when *active_count* > 0, else None), then by
+    ``create_task_record``'s SELECT (None, so the insert path runs).
     """
     session = MagicMock()
     result = MagicMock()
-    result.scalar_one.return_value = active_count
-    result.scalar_one_or_none.return_value = None  # no pre-existing task record
+    active_row = MagicMock() if active_count else None
+    result.scalar_one_or_none.side_effect = [active_row, None, None]
     session.execute = AsyncMock(return_value=result)
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
@@ -301,3 +302,253 @@ class TestDeleteTaskRecord:
             await _delete_task_record("orphan-id")
 
         session.commit.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Characterization: scheduled dispatch flow (skip reasons, log lines, task types)
+# ---------------------------------------------------------------------------
+
+_LOGGER_NAME = "jidou.workers.scheduled_tasks"
+
+
+class TestScheduledFlowCharacterization:
+    """Pin the claim -> lazy import -> dispatch sequence of each scheduled task."""
+
+    @pytest.mark.asyncio
+    async def test_sync_skips_with_info_log_when_claim_fails(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_sync
+
+        with (
+            caplog.at_level("INFO", logger=_LOGGER_NAME),
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled", new_callable=AsyncMock
+            ) as dispatch,
+        ):
+            assert await _scheduled_sync() == "skipped"
+
+        assert claim.await_args is not None
+        assert claim.await_args.args[0] == "sync"
+        dispatch.assert_not_awaited()
+        records = [r for r in caplog.records if r.name == _LOGGER_NAME]
+        assert [(r.levelname, r.getMessage()) for r in records] == [
+            ("INFO", "Scheduled sync skipped: a sync task is already active")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_sync_dispatches_sync_all_task_with_claimed_id(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_sync
+        from jidou.workers.sync_tasks import sync_all_task
+
+        with (
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled",
+                new_callable=AsyncMock,
+                return_value="the-id",
+            ) as dispatch,
+        ):
+            assert await _scheduled_sync() == "the-id"
+
+        assert claim.await_args is not None
+        claimed_id = claim.await_args.args[1]
+        dispatch.assert_awaited_once_with("sync", sync_all_task, claimed_id)
+
+    @pytest.mark.asyncio
+    async def test_rss_skips_with_warning_before_claim_when_path_unset(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_rss_import
+
+        with (
+            caplog.at_level("INFO", logger=_LOGGER_NAME),
+            patch("jidou.workers.scheduled_tasks.settings") as mock_settings,
+            patch("jidou.workers.scheduled_tasks._try_claim_task", new_callable=AsyncMock) as claim,
+        ):
+            mock_settings.rss_config_remote_path = ""
+            assert await _scheduled_rss_import() == "skipped"
+
+        claim.assert_not_awaited()
+        records = [r for r in caplog.records if r.name == _LOGGER_NAME]
+        assert [(r.levelname, r.getMessage()) for r in records] == [
+            ("WARNING", "Scheduled RSS import skipped: RSS_CONFIG_REMOTE_PATH is not configured")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_rss_skips_with_info_log_when_claim_fails(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_rss_import
+
+        with (
+            caplog.at_level("INFO", logger=_LOGGER_NAME),
+            patch("jidou.workers.scheduled_tasks.settings") as mock_settings,
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled", new_callable=AsyncMock
+            ) as dispatch,
+        ):
+            mock_settings.rss_config_remote_path = "/remote/rss.json"
+            assert await _scheduled_rss_import() == "skipped"
+
+        assert claim.await_args is not None
+        assert claim.await_args.args[0] == "rss_import"
+        dispatch.assert_not_awaited()
+        records = [r for r in caplog.records if r.name == _LOGGER_NAME]
+        assert [(r.levelname, r.getMessage()) for r in records] == [
+            ("INFO", "Scheduled RSS import skipped: an rss_import task is already active")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_rss_dispatches_rss_import_task_with_claimed_id(self) -> None:
+        from jidou.workers.rss_tasks import rss_import_task
+        from jidou.workers.scheduled_tasks import _scheduled_rss_import
+
+        with (
+            patch("jidou.workers.scheduled_tasks.settings") as mock_settings,
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled",
+                new_callable=AsyncMock,
+                return_value="rss-id",
+            ) as dispatch,
+        ):
+            mock_settings.rss_config_remote_path = "/remote/rss.json"
+            assert await _scheduled_rss_import() == "rss-id"
+
+        assert claim.await_args is not None
+        dispatch.assert_awaited_once_with("rss_import", rss_import_task, claim.await_args.args[1])
+
+    @pytest.mark.asyncio
+    async def test_claim_inserts_pending_row_with_task_type_and_no_dry_run(self) -> None:
+        from jidou.workers.scheduled_tasks import _try_claim_task
+
+        p1, p2 = _patch_db(active_count=0)
+        with (
+            p1,
+            p2,
+            patch(
+                "jidou.workers.scheduled_tasks.create_task_record", new_callable=AsyncMock
+            ) as create,
+        ):
+            assert await _try_claim_task("rss_import", "new-id") is True
+
+        assert create.await_args is not None
+        assert create.await_args.args[1:] == ("new-id", "rss_import")
+        assert create.await_args.kwargs == {"dry_run": False}
+
+    @pytest.mark.asyncio
+    async def test_claim_does_not_insert_when_active(self) -> None:
+        from jidou.workers.scheduled_tasks import _try_claim_task
+
+        p1, p2 = _patch_db(active_count=1)
+        with (
+            p1,
+            p2,
+            patch(
+                "jidou.workers.scheduled_tasks.create_task_record", new_callable=AsyncMock
+            ) as create,
+        ):
+            assert await _try_claim_task("rss_import", "new-id") is False
+
+        create.assert_not_awaited()
+
+    def test_celery_names_are_unchanged(self) -> None:
+        from jidou.workers.scheduled_tasks import scheduled_rss_import_task, scheduled_sync_task
+
+        assert scheduled_sync_task.name == "jidou.workers.scheduled_tasks.scheduled_sync_task"
+        assert (
+            scheduled_rss_import_task.name
+            == "jidou.workers.scheduled_tasks.scheduled_rss_import_task"
+        )
+
+
+# ---------------------------------------------------------------------------
+# _run_scheduled
+# ---------------------------------------------------------------------------
+
+
+class TestRunScheduled:
+    @pytest.mark.asyncio
+    async def test_skip_reason_short_circuits_before_claim(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A precondition message is logged as a warning; no slot is claimed or loaded."""
+        from jidou.workers.scheduled_tasks import _run_scheduled
+
+        load_task = MagicMock()
+        with (
+            caplog.at_level("INFO", logger=_LOGGER_NAME),
+            patch("jidou.workers.scheduled_tasks._try_claim_task", new_callable=AsyncMock) as claim,
+        ):
+            result = await _run_scheduled(
+                "demo",
+                load_task,
+                claim_skipped_message="unused",
+                skip_reason=lambda: "not configured",
+            )
+
+        assert result == "skipped"
+        claim.assert_not_awaited()
+        load_task.assert_not_called()
+        assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
+            ("WARNING", "not configured")
+        ]
+
+    @pytest.mark.asyncio
+    async def test_skip_reason_returning_none_proceeds_to_claim(self) -> None:
+        from jidou.workers.scheduled_tasks import _run_scheduled
+
+        celery_task = MagicMock()
+        with (
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled",
+                new_callable=AsyncMock,
+                return_value="x",
+            ) as dispatch,
+        ):
+            result = await _run_scheduled(
+                "demo", lambda: celery_task, claim_skipped_message="m", skip_reason=lambda: None
+            )
+
+        assert result == "x"
+        assert dispatch.await_args is not None
+        assert dispatch.await_args.args[:2] == ("demo", celery_task)
+
+    @pytest.mark.asyncio
+    async def test_load_task_not_called_when_claim_fails(self) -> None:
+        from jidou.workers.scheduled_tasks import _run_scheduled
+
+        load_task = MagicMock()
+        with patch(
+            "jidou.workers.scheduled_tasks._try_claim_task",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            result = await _run_scheduled("demo", load_task, claim_skipped_message="m")
+
+        assert result == "skipped"
+        load_task.assert_not_called()

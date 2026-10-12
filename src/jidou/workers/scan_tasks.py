@@ -1,7 +1,5 @@
 """Celery tasks for scanning remote SFTP for new files."""
 
-import logging
-
 from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +14,6 @@ from jidou.workers._harness import (
     run_task_workflow,
     summarize,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
@@ -70,7 +66,6 @@ async def _scan_remote(
         celery_task_id,
         "scan",
         _work,
-        progress_total=0,
         dry_run=dry_run,
         running_message="Scanning remote directories...",
     )

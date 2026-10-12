@@ -169,7 +169,6 @@ async def _path_import(
         celery_task_id,
         "import",
         _work,
-        progress_total=0,
         dry_run=dry_run,
         running_message="Parsing file…",
     )

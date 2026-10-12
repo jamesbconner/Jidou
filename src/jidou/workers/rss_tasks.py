@@ -1,7 +1,5 @@
 """Celery tasks for RSS config import and publish operations."""
 
-import logging
-
 from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +14,6 @@ from jidou.workers._harness import (
     run_harnessed,
     run_task_workflow,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
@@ -90,7 +86,6 @@ async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
         celery_task_id,
         "rss_import",
         _work,
-        progress_total=0,
         dry_run=dry_run,
         running_message="Downloading RSS config…",
     )
@@ -166,7 +161,6 @@ async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:
         celery_task_id,
         "rss_publish",
         _work,
-        progress_total=0,
         dry_run=dry_run,
         running_message="Publishing RSS config…",
     )
