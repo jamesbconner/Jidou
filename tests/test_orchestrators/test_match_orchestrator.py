@@ -7,13 +7,14 @@ confidence gate, DB show/episode lookup, alias handling, and local_path
 resolution.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jidou.models.downloaded_file import FileStatus
+from jidou.models.downloaded_file import FileStatus, MatchedBy
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
 from jidou.services.alias_handling import sanitize_alias
+from jidou.services.filename_parser import FilenameParseResult
 
 # ---------------------------------------------------------------------------
 # Unit helpers
@@ -1185,3 +1186,341 @@ async def test_run_out_of_vocabulary_content_type_keeps_match_and_skips_backfill
     assert show.content_type is None
     assert file1.parsed_content_type == "Anime"
     assert "out-of-vocabulary content_type 'Anime'" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Characterization — per-file outcomes, event payloads, flush/commit placement
+# ---------------------------------------------------------------------------
+
+_MOD = "jidou.orchestrators.parse_orchestrator"
+
+
+def _parsed(
+    show_name: str | None = "Test Show",
+    season: int | None = 1,
+    episode: int | None = 1,
+    content_type: str | None = "tv",
+    confidence: float = 0.9,
+    llm_ok: bool = True,
+    crc32: str | None = None,
+) -> FilenameParseResult:
+    return FilenameParseResult(
+        show_name=show_name,
+        season=season,
+        episode=episode,
+        crc32=crc32,
+        content_type=content_type,
+        confidence=confidence,
+        llm_ok=llm_ok,
+    )
+
+
+def _llm(available: bool = True) -> MagicMock:
+    llm = MagicMock()
+    llm.is_available.return_value = available
+    return llm
+
+
+def _recording_parse_session(files: list) -> tuple[MagicMock, list[str]]:
+    """Session whose flush/commit append to the same ordered log as events."""
+    log: list[str] = []
+    session = MagicMock()
+    file_result = MagicMock()
+    file_result.scalars.return_value.all.return_value = files
+    session.execute = AsyncMock(return_value=file_result)
+
+    async def _flush() -> None:
+        log.append("flush")
+
+    async def _commit() -> None:
+        log.append("commit")
+
+    session.flush = AsyncMock(side_effect=_flush)
+    session.commit = AsyncMock(side_effect=_commit)
+    return session, log
+
+
+def _recording_event(log: list[str]) -> AsyncMock:
+    async def _event(level: str, msg: str, ctx: dict) -> None:
+        log.append(f"event:{level}")
+
+    return AsyncMock(side_effect=_event)
+
+
+@pytest.mark.asyncio
+async def test_characterize_match_state_events_and_flush_order():
+    """A match persists metadata, resolves the episode, backfills season, then flushes."""
+    file = _make_file(filename="Show.mkv")
+    show = _make_show(title="Test Show", aliases=["other"], local_path=None)
+    show.sys_name = "Test Show"
+    show.content_type = None
+    show.media_type = "tv"
+    ep = MagicMock()
+    ep.id = 77
+    ep.season_number = 2
+    session, log = _recording_parse_session([file])
+    on_event = _recording_event(log)
+
+    with (
+        patch(
+            f"{_MOD}.parse_filename",
+            AsyncMock(return_value=_parsed(season=None, crc32="ABCD1234")),
+        ),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=ep)),
+        patch(f"{_MOD}.dismiss_orphans_for_file", AsyncMock()) as dismiss,
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run(on_event=on_event)
+
+    assert (result.files_processed, result.files_matched) == (1, 1)
+    assert (result.files_unmatched, result.files_failed) == (0, 0)
+    assert log == ["event:info", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "info", "Matched 'Show.mkv' → 'Test Show'", {"file_id": 1, "show_id": 10}
+    )
+    assert file.status == FileStatus.MATCHED
+    assert file.matched_by == MatchedBy.LLM
+    assert file.show_id == 10
+    assert file.episode_id == 77
+    assert file.parsed_season == 2  # backfilled from the resolved episode
+    assert file.parsed_episode == 1
+    assert file.parsed_show_name == "Test Show"
+    assert file.parsed_confidence == 0.9
+    assert file.parsed_content_type == "tv"
+    assert file.crc32_declared == "ABCD1234"
+    assert file.error_message is None
+    dismiss.assert_awaited_once()
+    assert show.aliases == ["other", "test show"]
+    assert show.content_type.value == "tv"
+    assert show.local_path == "/data/media/tv/Test Show"
+
+
+@pytest.mark.asyncio
+async def test_characterize_unmatched_messages_and_payloads():
+    """No show name vs. unknown show: distinct error_message, one warn event each."""
+    f_noname = _make_file(file_id=1, filename="a.mkv")
+    f_unknown = _make_file(file_id=2, filename="b.mkv")
+    session, log = _recording_parse_session([f_noname, f_unknown])
+    on_event = _recording_event(log)
+    parsed = [_parsed(show_name=None), _parsed(show_name="Ghost")]
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(side_effect=parsed)),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=None)) as find,
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run(on_event=on_event)
+
+    find.assert_awaited_once()  # no lookup without a parsed name
+    assert (result.files_matched, result.files_unmatched, result.files_failed) == (0, 2, 0)
+    assert log == ["event:warn", "flush", "event:warn", "flush", "commit"]
+    assert f_noname.status == FileStatus.UNMATCHED
+    assert f_noname.error_message == "LLM could not identify a show name"
+    assert f_unknown.error_message == "No show found for parsed name 'Ghost'"
+    assert on_event.await_args_list[0].args == (
+        "warn",
+        "Unmatched 'a.mkv' (parsed_name=None)",
+        {"file_id": 1, "parsed_name": None},
+    )
+    assert on_event.await_args_list[1].args == (
+        "warn",
+        "Unmatched 'b.mkv' (parsed_name='Ghost')",
+        {"file_id": 2, "parsed_name": "Ghost"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_characterize_low_confidence_gate_skips_lookup():
+    """Below-threshold LLM result: metadata persisted, UNMATCHED, warn event, flush, no lookup."""
+    file = _make_file(filename="x.mkv")
+    session, log = _recording_parse_session([file])
+    on_event = _recording_event(log)
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(return_value=_parsed(confidence=0.4))),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock()) as find,
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run(on_event=on_event)
+
+    find.assert_not_awaited()
+    assert result.files_unmatched == 1
+    assert log == ["event:warn", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "warn",
+        "Low confidence (0.40) for 'x.mkv', flagging UNMATCHED",
+        {"file_id": 1, "confidence": 0.4},
+    )
+    assert file.status == FileStatus.UNMATCHED
+    assert file.error_message == (
+        "Parse confidence 0.40 below threshold 0.7 — manual review required"
+    )
+    assert file.parsed_show_name == "Test Show"
+    assert file.parsed_confidence == 0.4
+
+
+@pytest.mark.asyncio
+async def test_characterize_exception_marks_error_and_continues():
+    """A failure on one file becomes ERROR + error event; the next file still runs."""
+    bad = _make_file(file_id=1, filename="bad.mkv")
+    good = _make_file(file_id=2, filename="good.mkv")
+    show = _make_show(title="Test Show")
+    show.content_type = None
+    show.media_type = "tv"
+    show.local_path = "/x"
+    session, log = _recording_parse_session([bad, good])
+    on_event = _recording_event(log)
+
+    with (
+        patch(
+            f"{_MOD}.parse_filename",
+            AsyncMock(side_effect=[RuntimeError("boom"), _parsed()]),
+        ),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run(on_event=on_event)
+
+    assert (result.files_matched, result.files_failed) == (1, 1)
+    assert log == ["event:error", "flush", "event:info", "flush", "commit"]
+    assert on_event.await_args_list[0].args == (
+        "error",
+        "Failed to parse 'bad.mkv': boom",
+        {"file_id": 1, "error": "boom"},
+    )
+    assert bad.status == FileStatus.ERROR
+    assert bad.error_message == "boom"
+    assert good.status == FileStatus.MATCHED
+
+
+@pytest.mark.asyncio
+async def test_characterize_dry_run_plans_without_touching_db():
+    """Dry run: match/gate/unmatched previews, no file mutation, no flush, no commit."""
+    f_match = _make_file(file_id=1, filename="m.mkv")
+    f_gated = _make_file(file_id=2, filename="g.mkv")
+    f_none = _make_file(file_id=3, filename="n.mkv")
+    show = _make_show(title="Test Show")
+    session, log = _recording_parse_session([f_match, f_gated, f_none])
+    on_event = _recording_event(log)
+    parsed = [_parsed(), _parsed(confidence=0.2), _parsed(show_name=None)]
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(side_effect=parsed)),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run(dry_run=True, on_event=on_event)
+
+    assert (result.files_matched, result.files_unmatched, result.dry_run) == (1, 2, True)
+    assert log == ["event:info", "event:info", "event:info"]
+    assert on_event.await_args_list[0].args == (
+        "info",
+        "[Dry run] Would match 'm.mkv' → 'Test Show'",
+        {"file_id": 1, "show_id": 10},
+    )
+    assert on_event.await_args_list[1].args == (
+        "info",
+        "[Dry run] Would leave unmatched: 'g.mkv'",
+        {"file_id": 2},
+    )
+    for f in (f_match, f_gated, f_none):
+        assert f.status == FileStatus.DOWNLOADED
+        assert f.parsed_show_name is None
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_characterize_dry_run_failure_counts_without_status_change():
+    """A dry-run exception emits the error event and counts failed, leaving status alone."""
+    file = _make_file(filename="d.mkv")
+    session, log = _recording_parse_session([file])
+    on_event = _recording_event(log)
+
+    with patch(f"{_MOD}.parse_filename", AsyncMock(side_effect=RuntimeError("nope"))):
+        result = await ParseOrchestrator(session, llm=_llm()).run(dry_run=True, on_event=on_event)
+
+    assert result.files_failed == 1
+    assert log == ["event:error"]
+    assert file.status == FileStatus.DOWNLOADED
+    assert file.error_message is None
+
+
+@pytest.mark.asyncio
+async def test_characterize_heuristic_match_without_llm():
+    """Without an LLM: matched_by HEURISTIC, no episode-title fallback, gate not applied."""
+    file = _make_file(filename="h.mkv")
+    show = _make_show(title="Test Show", local_path="/x")
+    show.content_type = None
+    show.media_type = "tv"
+    session, _ = _recording_parse_session([file])
+
+    with (
+        patch(
+            f"{_MOD}.parse_filename",
+            AsyncMock(return_value=_parsed(confidence=0.1, llm_ok=False, content_type=None)),
+        ),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.llm_match_episode", AsyncMock()) as llm_ep,
+    ):
+        result = await ParseOrchestrator(session, llm=None).run()
+
+    llm_ep.assert_not_awaited()
+    assert result.files_matched == 1
+    assert file.matched_by == MatchedBy.HEURISTIC
+    assert file.status == FileStatus.MATCHED
+    assert file.episode_id is None
+
+
+@pytest.mark.asyncio
+async def test_matched_by_uses_run_level_llm_availability():
+    """LLM availability is probed once per run and drives matched_by for every file."""
+    files = [_make_file(file_id=i, filename=f"Show.S01E0{i}.mkv") for i in (1, 2, 3)]
+    show = _make_show(title="Test Show", local_path="/x")
+    show.content_type = None
+    show.media_type = "tv"
+    session, _ = _recording_parse_session(files)
+    llm = _llm(available=True)
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(return_value=_parsed())),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.llm_match_episode", AsyncMock(return_value=(None, None, None))),
+    ):
+        result = await ParseOrchestrator(session, llm=llm).run()
+
+    assert result.files_matched == 3
+    llm.is_available.assert_called_once_with()
+    assert all(f.matched_by == MatchedBy.LLM for f in files)
+
+
+@pytest.mark.parametrize(
+    ("parsed", "found_show", "expected"),
+    [
+        pytest.param(_parsed(), True, (1, 0, 1), id="matched-then-flush-fails"),
+        pytest.param(_parsed(confidence=0.3), True, (0, 1, 1), id="low-confidence-flush-fails"),
+        pytest.param(_parsed(), False, (0, 1, 1), id="no-show-flush-fails"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_characterize_flush_failure_counts_decided_outcome_and_failed(
+    parsed, found_show, expected
+):
+    """A failing closing flush leaves the decided bucket counted AND counts the file failed."""
+    file = _make_file(filename="f.mkv")
+    show = _make_show(title="Test Show", local_path="/x")
+    show.content_type = None
+    show.media_type = "tv"
+    session, _ = _recording_parse_session([file])
+    # First flush (the closing one) raises; the ERROR-marking flush in the handler succeeds.
+    session.flush = AsyncMock(side_effect=[RuntimeError("flush failed"), None])
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(return_value=parsed)),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show if found_show else None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run()
+
+    assert (result.files_matched, result.files_unmatched, result.files_failed) == expected
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "flush failed"

@@ -3,7 +3,9 @@
 import logging
 import re
 import shutil
+from collections import Counter
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 
 from sqlalchemy import select
@@ -117,6 +119,42 @@ class RouteResult:
     dry_run: bool
 
 
+class RouteOutcome(Enum):
+    """How routing one file ended, as tallied by :meth:`RouteOrchestrator.run`."""
+
+    ROUTED = auto()  # moved, already in place, or (dry run) would be routed
+    FAILED = auto()
+    SKIPPED_NO_COMMIT = auto()  # dry-run skip: counted nowhere, nothing committed
+    # Marked ROUTED, then a later step (tracking, retry commit) raised. The batch
+    # result has always counted such a file as both routed and failed; kept as is.
+    ROUTED_THEN_FAILED = auto()
+
+
+def _unique_destination(dest: Path, current_local_path: str | None) -> Path:
+    """Return a destination that will not overwrite a different existing file.
+
+    If *dest* is occupied by a file other than the one being routed, a numeric
+    suffix (``name.1.ext``, ``name.2.ext``, ...) is added until the path is free.
+
+    Args:
+        dest: The preferred destination path.
+        current_local_path: The file's current ``local_path``. When it already
+            equals *dest* the file is its own occupant and *dest* is returned
+            unchanged.
+
+    Returns:
+        *dest* itself, or the first free suffixed sibling of it.
+    """
+    if not dest.exists() or str(current_local_path) == str(dest):
+        return dest
+    counter = 1
+    candidate = dest
+    while candidate.exists():
+        candidate = dest.parent / f"{dest.stem}.{counter}{dest.suffix}"
+        counter += 1
+    return candidate
+
+
 class RouteOrchestrator:
     """Move MATCHED files from the staging area to their final local paths.
 
@@ -142,10 +180,7 @@ class RouteOrchestrator:
             show_id: Show to search within when resolving by parsed numbers.
         """
         if file.episode_id is not None:
-            ep_result = await self.session.execute(
-                select(Episode).where(Episode.id == file.episode_id)
-            )
-            ep = ep_result.scalar_one_or_none()
+            ep = await self.session.get(Episode, file.episode_id)
         elif file.parsed_episode is not None:
             # Covers both regular TV (season + episode known) and anime
             # (season=None -> absolute_episode_number, then Season-1 fallback).
@@ -172,10 +207,340 @@ class RouteOrchestrator:
             )
             return
 
-        # local_path is already the final routed path by this point (set just
-        # above in run(), before this is called) — falling back to
+        # local_path is already the final routed path by this point (set by
+        # _mark_routed() before this is called) — falling back to
         # original_filename only covers the case where routing left it unset.
         mark_episode_tracked(ep, file.local_path or file.original_filename, "match")
+
+    async def _effective_season(self, file: DownloadedFile, *, is_movie: bool) -> int | None:
+        """Return the season used to pick the destination directory.
+
+        For anime parsed without a season (``parsed_season=None``), the
+        ParseOrchestrator now backfills ``parsed_season`` from the resolved
+        episode. For files that were matched before that fix, recover the season
+        from the episode row here so the file doesn't land at the show root.
+
+        Args:
+            file: The file being routed.
+            is_movie: Whether the show is a movie (movies never use a season).
+
+        Returns:
+            The season number, or None when there is none to use.
+        """
+        if file.parsed_season is not None or is_movie or file.episode_id is None:
+            return file.parsed_season
+        ep = await self.session.get(Episode, file.episode_id)
+        return ep.season_number if ep is not None else None
+
+    async def _mark_routed(self, file: DownloadedFile, dest: Path | None, show_id: int) -> None:
+        """Record a successful route and set the episode as tracked.
+
+        Args:
+            file: The routed file.
+            dest: Final path to store as ``local_path``. ``None`` leaves
+                ``local_path`` as it is (the file was already at its destination, and it
+                may hold the percent-encoded form, which must not be rewritten).
+            show_id: Show to search within when resolving the episode.
+        """
+        if dest is not None:
+            file.local_path = str(dest)
+        file.status = FileStatus.ROUTED
+        file.error_message = None
+        await self._update_episode_tracking(file, show_id)
+
+    async def _skip_without_local_path(
+        self, file: DownloadedFile, show: Show, *, dry_run: bool, sink: EventSink
+    ) -> RouteOutcome:
+        """Handle a file whose show has no ``local_path`` configured.
+
+        Args:
+            file: The file that cannot be routed.
+            show: Its show.
+            dry_run: When True nothing is written or committed.
+            sink: Event sink for the skip warning.
+
+        Returns:
+            ``FAILED`` after committing ``ERROR`` in a real run, otherwise
+            ``SKIPPED_NO_COMMIT``.
+        """
+        logger.warning(
+            "Show id=%d has no local_path; cannot route file id=%d",
+            show.id,
+            file.id,
+        )
+        await sink(
+            "warn",
+            f"Skipped {file.original_filename!r}: show {show.title!r} has no local path configured",
+            {"file_id": file.id, "show_id": show.id},
+        )
+        if dry_run:
+            return RouteOutcome.SKIPPED_NO_COMMIT
+        file.status = FileStatus.ERROR
+        file.error_message = "Show has no local_path configured"
+        await self.session.flush()
+        await self.session.commit()
+        return RouteOutcome.FAILED
+
+    async def _complete_prior_move(
+        self,
+        file: DownloadedFile,
+        show: Show,
+        source: Path,
+        dest: Path,
+        sink: EventSink,
+    ) -> bool:
+        """Finish a ROUTING retry whose move completed but whose commit did not.
+
+        If the source is already gone but the dest exists, record ROUTED and
+        commit; the caller must then skip its own closing flush/commit.
+
+        Args:
+            file: The file being routed.
+            show: Its show.
+            source: Decoded staging path.
+            dest: Computed destination.
+            sink: Event sink.
+
+        Returns:
+            True when the retry was completed (and committed) here, False when
+            this is not a retry and normal routing should continue.
+
+        Raises:
+            FileNotFoundError: The destination exists but its size does not match
+                the tracked file, so it is not assumed to be our own prior move.
+        """
+        if source.exists() or not dest.exists() or str(file.local_path) == str(dest):
+            return False
+        # Verify dest actually holds *this* file's content before
+        # accepting "my own prior move must have succeeded" —
+        # otherwise a genuine destination collision landing
+        # exactly when a retry is in flight would misattribute
+        # someone else's file to this DB row. file_size == 0 means
+        # "unknown" (e.g. legacy rows predating this field) and
+        # skips the check, matching the prior, unverified behavior.
+        if file.file_size and dest.stat().st_size != file.file_size:
+            raise FileNotFoundError(
+                f"Staging file not found: {source} (destination {dest} "
+                "exists but its size does not match the tracked file, "
+                "so this is not assumed to be our own prior move)"
+            )
+        logger.warning(
+            "Retry: staging gone but dest exists for file id=%d; marking ROUTED",
+            file.id,
+        )
+        await sink(
+            "info",
+            f"Already routed (retry): {file.original_filename!r} → {dest}",
+            {"file_id": file.id, "dest": str(dest)},
+        )
+        await self._mark_routed(file, dest, show.id)
+        await self.session.flush()
+        await self.session.commit()
+        return True
+
+    async def _move_to_destination(
+        self, file: DownloadedFile, show: Show, source: Path, dest: Path, sink: EventSink
+    ) -> None:
+        """Move *source* to *dest*, tolerating a copy that cannot delete the original.
+
+        Args:
+            file: The file being routed.
+            show: Its show (for event context).
+            source: Decoded staging path.
+            dest: Final destination path.
+            sink: Event sink.
+
+        Raises:
+            OSError: The move failed and *dest* does not hold a full copy of *source*.
+        """
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(str(source), str(dest))
+        except OSError as move_exc:
+            # shutil.move falls back to copy-then-delete when a fast
+            # rename isn't possible (e.g. correcting a mis-routed
+            # file already on the NAS). Some NAS accounts are
+            # deliberately granted no delete permission to prevent
+            # a catastrophic accidental wipe, so the copy can
+            # succeed while the cleanup delete of the original
+            # fails. Detect that specific case (dest now holds a
+            # full copy of source) and treat it as a successful
+            # route with a warning, rather than failing the file
+            # and leaving it stuck as MATCHED/ERROR forever.
+            if not (
+                dest.exists() and source.exists() and dest.stat().st_size == source.stat().st_size
+            ):
+                raise
+            logger.warning(
+                "Routed %s → %s, but could not remove the original "
+                "(likely no delete permission on the source share): %s",
+                source,
+                dest,
+                move_exc,
+            )
+            await sink(
+                "warn",
+                f"Routed {file.original_filename!r} → {dest}, but could not "
+                f"delete the original at {source} ({move_exc}). "
+                f"Remove it manually to reclaim space.",
+                {
+                    "file_id": file.id,
+                    "show": show.title,
+                    "dest": str(dest),
+                    "leftover_source": str(source),
+                },
+            )
+        else:
+            logger.info("Routed %s → %s", source, dest)
+            await sink(
+                "info",
+                f"Routed {file.original_filename!r} → {dest}",
+                {"file_id": file.id, "show": show.title, "dest": str(dest)},
+            )
+
+    async def _place_file(
+        self, file: DownloadedFile, show: Show, source: Path, dest: Path, sink: EventSink
+    ) -> None:
+        """Put *source* at *dest* (or a collision-free sibling) and mark it routed.
+
+        Args:
+            file: The file being routed.
+            show: Its show.
+            source: Decoded staging path.
+            dest: Computed destination.
+            sink: Event sink.
+
+        Raises:
+            FileNotFoundError: The staging file does not exist.
+            OSError: The move failed unrecoverably.
+        """
+        if not source.exists():
+            raise FileNotFoundError(f"Staging file not found: {source}")
+
+        # Resolve basename collision: if dest is already occupied by a
+        # *different* file, add a numeric suffix rather than overwriting.
+        unique = _unique_destination(dest, file.local_path)
+        if unique != dest:
+            dest = unique
+            logger.warning(
+                "Destination collision for file id=%d; writing to %s instead",
+                file.id,
+                dest,
+            )
+
+        # Synthetic import files already live at their final path —
+        # skip the move to avoid shutil.Error(src == dst).
+        if str(source) == str(dest):
+            logger.info(
+                "File id=%d already at destination; no move needed: %s",
+                file.id,
+                dest,
+            )
+            await sink(
+                "info",
+                f"Already at destination: {file.original_filename!r}",
+                {"file_id": file.id, "dest": str(dest)},
+            )
+            await self._mark_routed(file, None, show.id)
+            return
+
+        await self._move_to_destination(file, show, source, dest, sink)
+        # Only point local_path at dest once the move (or the NAS
+        # copy-then-failed-delete fallback) has actually happened.
+        # Writing this before the move and then crashing before
+        # shutil.move runs would durably orphan the file: the DB
+        # would say it's at dest while the file is still sitting
+        # untouched at the old staging path, with no durable record
+        # of where it really is. A crash *after* the move but before
+        # the commit is still recovered by the ROUTING-retry branch
+        # (_complete_prior_move) on the next run.
+        await self._mark_routed(file, dest, show.id)
+
+    async def _route_one(
+        self, file: DownloadedFile, show: Show, *, dry_run: bool, sink: EventSink
+    ) -> RouteOutcome:
+        """Route a single file, owning its per-file flush/commit.
+
+        Args:
+            file: The MATCHED/ROUTING file.
+            show: Its show.
+            dry_run: Plan and log only; no status change, move or commit.
+            sink: Event sink.
+
+        Returns:
+            How the file ended; a dry-run plan counts as ``ROUTED``.
+        """
+        if show.local_path is None:
+            return await self._skip_without_local_path(file, show, dry_run=dry_run, sink=sink)
+
+        is_movie = (show.content_type or show.media_type) == "movie"
+        effective_season = await self._effective_season(file, is_movie=is_movie)
+        dest = _final_path_for(
+            show.local_path,
+            effective_season,
+            file.original_filename,
+            is_movie=is_movie,
+        )
+
+        if dry_run:
+            logger.info(
+                "[DRY RUN] Would route %s → %s",
+                file.local_path or file.original_filename,
+                dest,
+            )
+            await sink(
+                "info",
+                f"[Dry run] Would route {file.original_filename!r} → {dest}",
+                {"file_id": file.id, "dest": str(dest)},
+            )
+            return RouteOutcome.ROUTED
+
+        file.status = FileStatus.ROUTING
+        await self.session.flush()
+        await self.session.commit()
+
+        staging_path: str | None = file.local_path
+        outcome = RouteOutcome.ROUTED
+        try:
+            if file.local_path is None:
+                raise FileNotFoundError(f"File id={file.id} has no local_path in staging")
+
+            # local_path may be percent-encoded (see path_transport) if it
+            # was ever written by a code path that stores the JSON/DB-safe
+            # encoded form — decode back to the real bytes before touching
+            # the filesystem. A no-op for the plain paths this orchestrator
+            # normally sees.
+            source = Path(decode_path_bytes(file.local_path))
+
+            # A completed retry has already committed; skip the closing commit.
+            if await self._complete_prior_move(file, show, source, dest, sink):
+                return RouteOutcome.ROUTED
+            await self._place_file(file, show, source, dest, sink)
+        except Exception as exc:
+            logger.error(
+                "Failed to route file id=%d (%s): %s",
+                file.id,
+                file.original_filename,
+                exc,
+            )
+            await sink(
+                "error",
+                f"Failed to route {file.original_filename!r}: {exc}",
+                {"file_id": file.id, "error": str(exc)},
+            )
+            # Status is ROUTED only if a later step failed after _mark_routed();
+            # that file has always been counted as both routed and failed.
+            was_routed = file.status == FileStatus.ROUTED
+            # Reset local_path to the original staging path so a future retry
+            # can still locate the source file.
+            file.local_path = staging_path
+            file.status = FileStatus.ERROR
+            file.error_message = str(exc)
+            outcome = RouteOutcome.ROUTED_THEN_FAILED if was_routed else RouteOutcome.FAILED
+
+        await self.session.flush()
+        await self.session.commit()
+        return outcome
 
     async def run(
         self,
@@ -190,7 +555,7 @@ class RouteOrchestrator:
         the destination filesystem allows writes but not deletes (e.g. a
         deliberately delete-restricted NAS account), a copy that succeeds but
         fails to remove the original is still treated as ROUTED, with a
-        warning logged instead of an error — see ``run()`` below.
+        warning logged instead of an error — see ``_move_to_destination()``.
 
         Args:
             dry_run: Log what would happen without moving any files.
@@ -202,7 +567,7 @@ class RouteOrchestrator:
             RouteResult with counts.
         """
 
-        _emit = EventSink(on_event, swallow_errors=True)
+        sink = EventSink(on_event, swallow_errors=True)
 
         stmt = (
             select(DownloadedFile, Show)
@@ -212,241 +577,14 @@ class RouteOrchestrator:
         rows = list((await self.session.execute(stmt)).all())
         total = len(rows)
 
-        files_routed = 0
-        files_failed = 0
-
+        counts: Counter[RouteOutcome] = Counter()
         for idx, (file, show) in enumerate(rows, 1):
             if on_progress:
                 await on_progress(idx, total, f"Routing {file.original_filename}")
+            counts[await self._route_one(file, show, dry_run=dry_run, sink=sink)] += 1
 
-            if show.local_path is None:
-                logger.warning(
-                    "Show id=%d has no local_path; cannot route file id=%d",
-                    show.id,
-                    file.id,
-                )
-                await _emit(
-                    "warn",
-                    f"Skipped {file.original_filename!r}: "
-                    f"show {show.title!r} has no local path configured",
-                    {"file_id": file.id, "show_id": show.id},
-                )
-                if not dry_run:
-                    file.status = FileStatus.ERROR
-                    file.error_message = "Show has no local_path configured"
-                    files_failed += 1
-                    await self.session.flush()
-                    await self.session.commit()
-                continue
-
-            is_movie = (show.content_type or show.media_type) == "movie"
-            # For anime parsed without a season (season=None), the ParseOrchestrator
-            # now backfills parsed_season from the resolved episode.  For files that
-            # were matched before that fix, recover the season from the episode row
-            # here so the file doesn't land at the show root.
-            effective_season = file.parsed_season
-            if effective_season is None and not is_movie and file.episode_id is not None:
-                ep_stmt = select(Episode).where(Episode.id == file.episode_id)
-                ep_row = (await self.session.execute(ep_stmt)).scalar_one_or_none()
-                if ep_row is not None:
-                    effective_season = ep_row.season_number
-            dest = _final_path_for(
-                show.local_path,
-                effective_season,
-                file.original_filename,
-                is_movie=is_movie,
-            )
-
-            if dry_run:
-                logger.info(
-                    "[DRY RUN] Would route %s → %s",
-                    file.local_path or file.original_filename,
-                    dest,
-                )
-                await _emit(
-                    "info",
-                    f"[Dry run] Would route {file.original_filename!r} → {dest}",
-                    {"file_id": file.id, "dest": str(dest)},
-                )
-                files_routed += 1
-                continue
-
-            if not dry_run:
-                file.status = FileStatus.ROUTING
-                await self.session.flush()
-                await self.session.commit()
-
-            staging_path: str | None = file.local_path
-            try:
-                if file.local_path is None:
-                    raise FileNotFoundError(f"File id={file.id} has no local_path in staging")
-
-                # local_path may be percent-encoded (see path_transport) if it
-                # was ever written by a code path that stores the JSON/DB-safe
-                # encoded form — decode back to the real bytes before touching
-                # the filesystem. A no-op for the plain paths this orchestrator
-                # normally sees.
-                source = Path(decode_path_bytes(file.local_path))
-
-                # Handle ROUTING retry: if the source is already gone but the
-                # dest exists, the move completed but the commit didn't — just
-                # record ROUTED and move on.
-                if not source.exists() and dest.exists() and str(file.local_path) != str(dest):
-                    # Verify dest actually holds *this* file's content before
-                    # accepting "my own prior move must have succeeded" —
-                    # otherwise a genuine destination collision landing
-                    # exactly when a retry is in flight would misattribute
-                    # someone else's file to this DB row. file_size == 0 means
-                    # "unknown" (e.g. legacy rows predating this field) and
-                    # skips the check, matching the prior, unverified behavior.
-                    if file.file_size and dest.stat().st_size != file.file_size:
-                        raise FileNotFoundError(
-                            f"Staging file not found: {source} (destination {dest} "
-                            "exists but its size does not match the tracked file, "
-                            "so this is not assumed to be our own prior move)"
-                        )
-                    logger.warning(
-                        "Retry: staging gone but dest exists for file id=%d; marking ROUTED",
-                        file.id,
-                    )
-                    await _emit(
-                        "info",
-                        f"Already routed (retry): {file.original_filename!r} → {dest}",
-                        {"file_id": file.id, "dest": str(dest)},
-                    )
-                    file.local_path = str(dest)
-                    file.status = FileStatus.ROUTED
-                    file.error_message = None
-                    files_routed += 1
-                    await self._update_episode_tracking(file, show.id)
-                    await self.session.flush()
-                    await self.session.commit()
-                    continue
-
-                if not source.exists():
-                    raise FileNotFoundError(f"Staging file not found: {source}")
-
-                # Resolve basename collision: if dest is already occupied by a
-                # *different* file, add a numeric suffix rather than overwriting.
-                if dest.exists() and str(file.local_path) != str(dest):
-                    stem = dest.stem
-                    suffix = dest.suffix
-                    parent = dest.parent
-                    counter = 1
-                    while dest.exists():
-                        dest = parent / f"{stem}.{counter}{suffix}"
-                        counter += 1
-                    logger.warning(
-                        "Destination collision for file id=%d; writing to %s instead",
-                        file.id,
-                        dest,
-                    )
-
-                # Synthetic import files already live at their final path —
-                # skip the move to avoid shutil.Error(src == dst).
-                if str(source) == str(dest):
-                    logger.info(
-                        "File id=%d already at destination; no move needed: %s",
-                        file.id,
-                        dest,
-                    )
-                    await _emit(
-                        "info",
-                        f"Already at destination: {file.original_filename!r}",
-                        {"file_id": file.id, "dest": str(dest)},
-                    )
-                    file.status = FileStatus.ROUTED
-                    file.error_message = None
-                    files_routed += 1
-                    await self._update_episode_tracking(file, show.id)
-                else:
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-
-                    try:
-                        shutil.move(str(source), str(dest))
-                    except OSError as move_exc:
-                        # shutil.move falls back to copy-then-delete when a fast
-                        # rename isn't possible (e.g. correcting a mis-routed
-                        # file already on the NAS). Some NAS accounts are
-                        # deliberately granted no delete permission to prevent
-                        # a catastrophic accidental wipe, so the copy can
-                        # succeed while the cleanup delete of the original
-                        # fails. Detect that specific case (dest now holds a
-                        # full copy of source) and treat it as a successful
-                        # route with a warning, rather than failing the file
-                        # and leaving it stuck as MATCHED/ERROR forever.
-                        if (
-                            dest.exists()
-                            and source.exists()
-                            and dest.stat().st_size == source.stat().st_size
-                        ):
-                            logger.warning(
-                                "Routed %s → %s, but could not remove the original "
-                                "(likely no delete permission on the source share): %s",
-                                source,
-                                dest,
-                                move_exc,
-                            )
-                            await _emit(
-                                "warn",
-                                f"Routed {file.original_filename!r} → {dest}, but could not "
-                                f"delete the original at {source} ({move_exc}). "
-                                f"Remove it manually to reclaim space.",
-                                {
-                                    "file_id": file.id,
-                                    "show": show.title,
-                                    "dest": str(dest),
-                                    "leftover_source": str(source),
-                                },
-                            )
-                        else:
-                            raise
-                    else:
-                        logger.info("Routed %s → %s", source, dest)
-                        await _emit(
-                            "info",
-                            f"Routed {file.original_filename!r} → {dest}",
-                            {"file_id": file.id, "show": show.title, "dest": str(dest)},
-                        )
-
-                    # Only point local_path at dest once the move (or the NAS
-                    # copy-then-failed-delete fallback above) has actually
-                    # happened. Writing this before the move and then crashing
-                    # before shutil.move runs would durably orphan the file:
-                    # the DB would say it's at dest while the file is still
-                    # sitting untouched at the old staging path, with no
-                    # durable record of where it really is. A crash *after*
-                    # the move but before this commit is still recovered by
-                    # the ROUTING-retry branch above on the next run.
-                    file.local_path = str(dest)
-                    file.status = FileStatus.ROUTED
-                    file.error_message = None
-                    files_routed += 1
-
-                    await self._update_episode_tracking(file, show.id)
-
-            except Exception as exc:
-                logger.error(
-                    "Failed to route file id=%d (%s): %s",
-                    file.id,
-                    file.original_filename,
-                    exc,
-                )
-                await _emit(
-                    "error",
-                    f"Failed to route {file.original_filename!r}: {exc}",
-                    {"file_id": file.id, "error": str(exc)},
-                )
-                # Reset local_path to the original staging path so a future retry
-                # can still locate the source file.
-                file.local_path = staging_path
-                file.status = FileStatus.ERROR
-                file.error_message = str(exc)
-                files_failed += 1
-
-            await self.session.flush()
-            await self.session.commit()
-
+        files_routed = counts[RouteOutcome.ROUTED] + counts[RouteOutcome.ROUTED_THEN_FAILED]
+        files_failed = counts[RouteOutcome.FAILED] + counts[RouteOutcome.ROUTED_THEN_FAILED]
         if dry_run:
             logger.info(
                 "Route dry-run complete: %d would be routed (dry_run=True)",

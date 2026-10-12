@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.route_orchestrator import RouteOrchestrator, _final_path_for
+from jidou.orchestrators._events import EventSink
+from jidou.orchestrators.route_orchestrator import (
+    RouteOrchestrator,
+    RouteOutcome,
+    _final_path_for,
+    _unique_destination,
+)
 
 # ---------------------------------------------------------------------------
 # _final_path_for unit tests
@@ -202,9 +208,8 @@ def _make_session(
 ) -> MagicMock:
     """Build a mock AsyncSession for RouteOrchestrator.run().
 
-    Execute side_effect order:
-      1. files+shows query         → .all()
-      2. episode lookup (optional) → .scalar_one_or_none()
+    ``execute`` serves only the files+shows query (``.all()``); episode lookups
+    by primary key go through ``session.get`` and return *ep*.
     """
     session = MagicMock()
     session.flush = AsyncMock()
@@ -214,12 +219,10 @@ def _make_session(
     files_result.all.return_value = file_show_pairs
 
     side_effects: list = [files_result]
-    if ep is not None:
-        ep_result = MagicMock()
-        ep_result.scalar_one_or_none.return_value = ep
-        side_effects.append(ep_result)
 
     session.execute = AsyncMock(side_effect=side_effects)
+    # Episode lookups by primary key (``session.get``) return the same row.
+    session.get = AsyncMock(return_value=ep)
     return session
 
 
@@ -778,17 +781,9 @@ async def test_run_anime_no_season_routes_to_season_dir_via_episode_id(tmp_path:
     show = _make_show(local_path=str(show_dir), content_type="anime", media_type="tv")
     ep = _make_episode(ep_id=12, season=1, ep_num=12)
 
-    # Execute order: files query → season-lookup-by-episode-id → episode-tracking-by-episode-id
-    files_result = MagicMock()
-    files_result.all.return_value = [(file, show)]
-    season_ep_result = MagicMock()
-    season_ep_result.scalar_one_or_none.return_value = ep
-    tracking_ep_result = MagicMock()
-    tracking_ep_result.scalar_one_or_none.return_value = ep
-    session = MagicMock()
-    session.flush = AsyncMock()
-    session.commit = AsyncMock()
-    session.execute = AsyncMock(side_effect=[files_result, season_ep_result, tracking_ep_result])
+    # Both the season lookup and the episode tracking resolve the episode by
+    # primary key (session.get); the only execute() is the files+shows query.
+    session = _make_session([(file, show)], ep=ep)
 
     orch = RouteOrchestrator(session)
     result = await orch.run()
@@ -916,3 +911,306 @@ async def test_run_on_event_called_on_routing_failure(tmp_path: Path) -> None:
     error_calls = [c for c in on_event.call_args_list if c[0][0] == "error"]
     assert len(error_calls) > 0
     assert "disk full" in error_calls[0].args[1]
+
+
+# ---------------------------------------------------------------------------
+# Characterization — ordered events and flush/commit placement per outcome
+# ---------------------------------------------------------------------------
+
+
+def _recording_session(
+    file_show_pairs: list[tuple], ep: MagicMock | None = None
+) -> tuple[MagicMock, list[str], AsyncMock]:
+    """Build a session whose flush/commit and on_event calls share one ordered log."""
+    session = _make_session(file_show_pairs, ep=ep)
+    log: list[str] = []
+
+    async def _flush() -> None:
+        log.append("flush")
+
+    async def _commit() -> None:
+        log.append("commit")
+
+    session.flush = AsyncMock(side_effect=_flush)
+    session.commit = AsyncMock(side_effect=_commit)
+
+    async def _event(level: str, message: str, ctx: dict) -> None:
+        log.append(f"event:{level}")
+
+    return session, log, AsyncMock(side_effect=_event)
+
+
+@pytest.mark.asyncio
+async def test_characterize_success_event_and_commit_order(tmp_path: Path) -> None:
+    """Real route: ROUTING flush+commit, move, event, tracking, final flush+commit."""
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"video")
+    show_dir = tmp_path / "show"
+    file = _make_file(filename="ep.mkv", local_path=str(staging))
+    show = _make_show(local_path=str(show_dir))
+    show.title = "Show"
+    ep = _make_episode()
+    session, log, on_event = _recording_session([(file, show)], ep=ep)
+
+    result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    dest = show_dir / "Season 01" / "ep.mkv"
+    assert (result.files_routed, result.files_failed) == (1, 0)
+    assert log == ["flush", "commit", "event:info", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "info", f"Routed 'ep.mkv' \u2192 {dest}", {"file_id": 1, "show": "Show", "dest": str(dest)}
+    )
+    assert file.local_path == str(dest)
+    assert file.status == FileStatus.ROUTED
+    assert ep.file_tracked is True
+    assert ep.tracked_filename == str(dest)
+
+
+@pytest.mark.asyncio
+async def test_characterize_retry_branch_commits_once_after_routing_commit(
+    tmp_path: Path,
+) -> None:
+    """Retry (staging gone, dest present): one event, tracking, and a single closing commit."""
+    dest_dir = tmp_path / "media" / "Season 01"
+    dest_dir.mkdir(parents=True)
+    dest = dest_dir / "Show.S01E01.mkv"
+    dest.write_bytes(b"video")
+    file = _make_file(local_path=str(tmp_path / "gone.mkv"), status=FileStatus.ROUTING)
+    show = _make_show(local_path=str(tmp_path / "media"))
+    ep = _make_episode()
+    session, log, on_event = _recording_session([(file, show)], ep=ep)
+
+    result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    assert (result.files_routed, result.files_failed) == (1, 0)
+    assert log == ["flush", "commit", "event:info", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "info",
+        f"Already routed (retry): 'Show.S01E01.mkv' \u2192 {dest}",
+        {"file_id": 1, "dest": str(dest)},
+    )
+    assert file.local_path == str(dest)
+    assert file.status == FileStatus.ROUTED
+    assert ep.file_tracked is True
+
+
+@pytest.mark.asyncio
+async def test_characterize_already_at_destination(tmp_path: Path) -> None:
+    """Source == dest: event, ROUTED, tracking, no move, local_path untouched."""
+    show_dir = tmp_path / "media"
+    dest = show_dir / "Season 01" / "Show.S01E01.mkv"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"video")
+    file = _make_file(local_path=str(dest))
+    show = _make_show(local_path=str(show_dir))
+    ep = _make_episode()
+    session, log, on_event = _recording_session([(file, show)], ep=ep)
+
+    with patch("shutil.move") as mock_move:
+        result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    mock_move.assert_not_called()
+    assert result.files_routed == 1
+    assert log == ["flush", "commit", "event:info", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "info", "Already at destination: 'Show.S01E01.mkv'", {"file_id": 1, "dest": str(dest)}
+    )
+    assert file.status == FileStatus.ROUTED
+    assert ep.file_tracked is True
+
+
+@pytest.mark.asyncio
+async def test_characterize_failure_resets_path_and_commits_error(tmp_path: Path) -> None:
+    """Move failure: error event, ERROR status/message, staging path restored, final commit."""
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"video")
+    file = _make_file(filename="ep.mkv", local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    ep = _make_episode()
+    session, log, on_event = _recording_session([(file, show)], ep=ep)
+
+    with patch("shutil.move", side_effect=OSError("disk full")):
+        result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    assert (result.files_routed, result.files_failed) == (0, 1)
+    assert log == ["flush", "commit", "event:error", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "error", "Failed to route 'ep.mkv': disk full", {"file_id": 1, "error": "disk full"}
+    )
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "disk full"
+    assert file.local_path == str(staging)
+
+
+@pytest.mark.asyncio
+async def test_characterize_no_local_path_real_run_flushes_and_commits() -> None:
+    """Real run, show without local_path: warn event, ERROR, one flush+commit, failed count."""
+    file = _make_file()
+    show = _make_show(local_path=None)
+    show.title = "Show"
+    session, log, on_event = _recording_session([(file, show)])
+
+    result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    assert (result.files_routed, result.files_failed) == (0, 1)
+    assert log == ["event:warn", "flush", "commit"]
+    on_event.assert_awaited_once_with(
+        "warn",
+        "Skipped 'Show.S01E01.mkv': show 'Show' has no local path configured",
+        {"file_id": 1, "show_id": 10},
+    )
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "Show has no local_path configured"
+
+
+@pytest.mark.asyncio
+async def test_characterize_dry_run_mixed_files_never_touches_db_or_disk() -> None:
+    """Dry run: routable file counts as routed, no-path file counts nowhere; no flush/commit."""
+    routable = _make_file(file_id=1)
+    skipped = _make_file(file_id=2)
+    good_show = _make_show(show_id=10)
+    bad_show = _make_show(show_id=11, local_path=None)
+    bad_show.title = "Bad"
+    session, log, on_event = _recording_session([(routable, good_show), (skipped, bad_show)])
+
+    with patch("shutil.move") as mock_move:
+        result = await RouteOrchestrator(session).run(dry_run=True, on_event=on_event)
+
+    mock_move.assert_not_called()
+    assert (result.files_routed, result.files_failed, result.dry_run) == (1, 0, True)
+    assert log == ["event:info", "event:warn"]
+    assert routable.status == FileStatus.MATCHED
+    assert skipped.status == FileStatus.MATCHED
+
+
+@pytest.mark.asyncio
+async def test_characterize_progress_and_events_interleave_in_order(tmp_path: Path) -> None:
+    """Two files in one run: progress callbacks interleave with per-file results in order."""
+    s1 = tmp_path / "a.mkv"
+    s1.write_bytes(b"video")
+    f1 = _make_file(file_id=1, filename="a.mkv", local_path=str(s1))
+    f2 = _make_file(file_id=2, filename="b.mkv", local_path=str(tmp_path / "missing.mkv"))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    ep = _make_episode()
+    session = _make_session([(f1, show), (f2, show)], ep=ep)
+    order: list[str] = []
+
+    async def _progress(cur: int, total: int, msg: str) -> None:
+        order.append(f"progress:{cur}/{total}:{msg}")
+
+    async def _event(level: str, msg: str, ctx: dict) -> None:
+        order.append(f"event:{level}")
+
+    result = await RouteOrchestrator(session).run(on_progress=_progress, on_event=_event)
+
+    assert (result.files_routed, result.files_failed) == (1, 1)
+    assert order == [
+        "progress:1/2:Routing a.mkv",
+        "event:info",
+        "progress:2/2:Routing b.mkv",
+        "event:error",
+    ]
+    assert f2.status == FileStatus.ERROR
+    assert f2.error_message is not None and "Staging file not found" in f2.error_message
+
+
+# ---------------------------------------------------------------------------
+# _unique_destination / _route_one
+# ---------------------------------------------------------------------------
+
+
+def test_unique_destination_appends_counter(tmp_path: Path) -> None:
+    """An occupied destination gets the first free ``.N`` suffix."""
+    dest = tmp_path / "a.mkv"
+    dest.write_bytes(b"x")
+    (tmp_path / "a.1.mkv").write_bytes(b"x")
+
+    assert _unique_destination(dest, "/staging/a.mkv") == tmp_path / "a.2.mkv"
+
+
+def test_unique_destination_unchanged_when_current_path_is_dest(tmp_path: Path) -> None:
+    """A file already at dest is its own occupant, so dest is returned as-is."""
+    dest = tmp_path / "a.mkv"
+    dest.write_bytes(b"x")
+
+    assert _unique_destination(dest, str(dest)) == dest
+
+
+def test_unique_destination_unchanged_when_free(tmp_path: Path) -> None:
+    """A free destination is returned untouched."""
+    dest = tmp_path / "a.mkv"
+
+    assert _unique_destination(dest, None) == dest
+
+
+@pytest.mark.asyncio
+async def test_route_one_retry_size_mismatch_is_failure(tmp_path: Path) -> None:
+    """Retry whose dest holds a different-size file is FAILED and keeps the staging path."""
+    dest_dir = tmp_path / "media" / "tv" / "Show" / "Season 01"
+    dest_dir.mkdir(parents=True)
+    (dest_dir / "Show.S01E01.mkv").write_bytes(b"unrelated file with a different size entirely")
+    staging_path = str(tmp_path / "staging" / "Show.S01E01.mkv")  # does not exist
+
+    file = _make_file(local_path=staging_path, file_size=5)
+    show = _make_show(local_path=str(tmp_path / "media" / "tv" / "Show"))
+    session = _make_session([(file, show)], ep=_make_episode())
+
+    outcome = await RouteOrchestrator(session)._route_one(
+        file, show, dry_run=False, sink=EventSink(None, swallow_errors=True)
+    )
+
+    assert outcome is RouteOutcome.FAILED
+    assert file.status == FileStatus.ERROR
+    assert file.local_path == staging_path
+
+
+@pytest.mark.asyncio
+async def test_route_one_dry_run_no_local_path_is_skipped_without_commit() -> None:
+    """A dry-run skip for a show without local_path counts nowhere and commits nothing."""
+    file = _make_file()
+    show = _make_show(local_path=None)
+    session = _make_session([(file, show)])
+
+    outcome = await RouteOrchestrator(session)._route_one(
+        file, show, dry_run=True, sink=EventSink(None, swallow_errors=True)
+    )
+
+    assert outcome is RouteOutcome.SKIPPED_NO_COMMIT
+    session.commit.assert_not_awaited()
+    assert file.status == FileStatus.MATCHED
+
+
+@pytest.mark.asyncio
+async def test_characterize_tracking_failure_after_move_counts_routed_and_failed(
+    tmp_path: Path,
+) -> None:
+    """Tracking raising after a real move: info then error event, ERROR, staging path restored.
+
+    The batch result has always counted this file as both routed and failed.
+    """
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"video")
+    file = _make_file(filename="ep.mkv", local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    show.title = "Show"
+    session, _log, on_event = _recording_session([(file, show)], ep=_make_episode())
+    # Episode lookup fails whether it goes through session.get or session.execute.
+    session.get = AsyncMock(side_effect=RuntimeError("db gone"))
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    session.execute = AsyncMock(side_effect=[files_result, RuntimeError("db gone")])
+
+    result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    dest = tmp_path / "show" / "Season 01" / "ep.mkv"
+    assert [c.args[0] for c in on_event.await_args_list] == ["info", "error"]
+    assert on_event.await_args_list[0].args[1] == f"Routed 'ep.mkv' → {dest}"
+    assert on_event.await_args_list[1].args == (
+        "error",
+        "Failed to route 'ep.mkv': db gone",
+        {"file_id": 1, "error": "db gone"},
+    )
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "db gone"
+    assert file.local_path == str(staging)
+    assert (result.files_routed, result.files_failed) == (1, 1)
