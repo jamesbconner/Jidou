@@ -12,9 +12,10 @@ from pathlib import Path
 
 _ORCH_DIR = Path(__file__).resolve().parents[2] / "src" / "jidou" / "orchestrators"
 
-# Measured: the worst offender is path_import_orchestrator.py _process_show_entries (21). Lower this
-# as orchestrators are simplified; never raise it.
-_ORCH_MAX_COMPLEXITY = 21
+# Measured: several functions sit at 9 (e.g. path_import_orchestrator.py ``run``,
+# route_orchestrator.py ``_season_dir_name``). Lower this as orchestrators are simplified; never
+# raise it.
+_ORCH_MAX_COMPLEXITY = 9
 
 # Empty: orchestrators raise the domain errors in ``errors.py``; only ``jidou.main`` maps them
 # to HTTP.

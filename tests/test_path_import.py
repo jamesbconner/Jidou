@@ -1,6 +1,7 @@
 """Tests for path-file batch import — parser and orchestrator."""
 
 import os
+import pprint
 import sys
 from datetime import date
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -4166,3 +4167,1277 @@ async def test_resolve_show_found_with_episodes_does_not_resync() -> None:
 
     mock_tmdb_orch_cls.return_value.sync_show_episodes.assert_not_called()
     session.scalar.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# ORC-11 characterization: the full observable sequence of a path import
+# (events, progress ticks, session writes, TMDB calls, collaborator calls),
+# pinned before ``_process_show_entries`` / ``_tmdb_create_show`` were
+# decomposed. Each scenario yields one ordered log compared against a golden
+# value, so a refactor that reorders or drops any step fails here. The golden
+# values were captured from, and verified against, the pre-refactor code.
+# ---------------------------------------------------------------------------
+
+
+def _orc11_entry(name: str, season: int | None = 1, episode: int | None = 1) -> Any:
+    from jidou.services.path_parser import ParsedPathEntry
+
+    return ParsedPathEntry(
+        raw_path=rf"Z:\anime tv\Frieren\Season 01\{name}",
+        show_dir="Frieren",
+        show_root=r"Z:\anime tv\Frieren",
+        season=season,
+        episode=episode,
+        is_absolute=season is None,
+    )
+
+
+def _orc11_raised(exc: Exception) -> tuple[str, str, str]:
+    """Describe a propagated error; DB errors use ``orig`` to avoid version-specific doc URLs."""
+    orig = getattr(exc, "orig", None)
+    return ("raised", type(exc).__name__, str(orig if orig is not None else exc))
+
+
+def _orc11_base(path: str) -> str:
+    return path.rsplit("\\", 1)[-1]
+
+
+class _Orc11Harness:
+    """Records every observable step of a path import into one ordered ``log``."""
+
+    def __init__(self, *, ep_count: int = 5, raise_in_event: str | None = None) -> None:
+        self.log: list[tuple[Any, ...]] = []
+        self.raise_in_event = raise_in_event
+        self.ep_count = ep_count
+        self.search_result: Any = {"results": [{"id": 77, "name": "Frieren", "media_type": "tv"}]}
+        self.search_error: Exception | None = None
+        self.details_error: Exception | None = None
+        self.sync_error: Exception | None = None
+        self.flush_error: Exception | None = None
+        self.match_plan: dict[str, Any] = {}
+        self.session = AsyncMock()
+        self.session.add = MagicMock(
+            side_effect=lambda obj: self.log.append(("add", type(obj).__name__))
+        )
+        self.session.commit = AsyncMock(side_effect=lambda: self.log.append(("commit",)))
+        self.session.rollback = AsyncMock(side_effect=lambda: self.log.append(("rollback",)))
+        self.session.flush = AsyncMock(side_effect=self._flush)
+        self.session.scalar = AsyncMock(side_effect=self._scalar)
+        self.tmdb = AsyncMock()
+        self.tmdb.search = AsyncMock(side_effect=self._search)
+        self.tmdb.get_details = AsyncMock(side_effect=self._get_details)
+        self.tmdb.get_external_ids = AsyncMock(side_effect=self._external_ids)
+        self.tmdb.get_episode_groups = AsyncMock(side_effect=self._groups)
+
+    async def _flush(self) -> None:
+        self.log.append(("flush",))
+        if self.flush_error:
+            raise self.flush_error
+
+    async def _scalar(self, *_a: object, **_k: object) -> int:
+        self.log.append(("count_episodes",))
+        return self.ep_count
+
+    async def _search(self, query: str, media_type: str = "tv") -> Any:
+        self.log.append(("tmdb.search", query, media_type))
+        if self.search_error:
+            raise self.search_error
+        return self.search_result
+
+    async def _get_details(self, tmdb_id: int, media_type: str = "tv") -> Any:
+        self.log.append(("tmdb.get_details", tmdb_id, media_type))
+        if self.details_error:
+            raise self.details_error
+        return {"name": "Frieren", "id": tmdb_id}
+
+    async def _external_ids(self, *a: object, **_k: object) -> Any:
+        self.log.append(("tmdb.get_external_ids", *a))
+        return {}
+
+    async def _groups(self, *a: object, **_k: object) -> Any:
+        self.log.append(("tmdb.get_episode_groups", *a))
+        return {"results": []}
+
+    async def on_event(self, level: str, msg: str, ctx: object = None) -> None:
+        self.log.append(("event", level, msg, ctx))
+        if self.raise_in_event and self.raise_in_event in msg:
+            raise RuntimeError("sink down")
+
+    async def on_progress(self, cur: int, total: int, msg: str) -> None:
+        self.log.append(("progress", cur, total, msg))
+        if self.match_plan.get("cancel_at") == cur:
+            raise RuntimeError("cancelled")
+
+    def _fake_tmdb_orchestrator(self) -> Any:
+        harness = self
+
+        class _Fake:
+            def __init__(self, session: object, tmdb: object) -> None:
+                pass
+
+            async def sync_show_episodes(self, show: Any) -> None:
+                harness.log.append(("sync_show_episodes", show.title))
+                if harness.sync_error:
+                    raise harness.sync_error
+
+            async def ensure_episode_group_map(self, show: Any) -> None:
+                harness.log.append(("ensure_episode_group_map", show.title))
+
+        return _Fake
+
+    async def _match(
+        self,
+        session: object,
+        llm: object,
+        show_id: int | None,
+        show_title: str,
+        entry: Any,
+        episode_group_map: object = None,
+        on_event: object = None,
+    ) -> Any:
+        name = _orc11_base(entry.raw_path)
+        self.log.append(("match", show_id, show_title, name, episode_group_map))
+        plan = self.match_plan[name]
+        if isinstance(plan, Exception):
+            raise plan
+        return plan
+
+    async def _synthetic(
+        self, session: object, show_id: int, ep_id: int, path: str, **kw: Any
+    ) -> None:
+        self.log.append(("synthetic", show_id, ep_id, _orc11_base(path), kw))
+        if "synthetic" in self.match_plan:
+            raise self.match_plan["synthetic"]
+
+    def patches(self) -> Any:
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        mod = "jidou.orchestrators.path_import_orchestrator"
+        fake = self._fake_tmdb_orchestrator()
+        stack.enter_context(patch(f"{mod}.TMDBOrchestrator", fake))
+        stack.enter_context(patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator", fake))
+        stack.enter_context(patch(f"{mod}.match_entry_to_episode", self._match))
+        stack.enter_context(patch(f"{mod}.create_synthetic_import_file", self._synthetic))
+
+        async def gen_aliases(show: Any, tmdb: object, llm: object = None) -> None:
+            self.log.append(("generate_aliases", show.title))
+
+        stack.enter_context(
+            patch("jidou.orchestrators._show_provisioning.generate_aliases", gen_aliases)
+        )
+        return stack
+
+    def orchestrator(self, **kw: Any) -> Any:
+        from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
+
+        return PathImportOrchestrator(self.session, self.tmdb, on_event=self.on_event, **kw)
+
+
+def _orc11_show(*, local_path: str | None = None, id: int | None = 1) -> MagicMock:
+    show = _make_show(id=id, tmdb_id=77, title="Frieren")  # type: ignore[arg-type]
+    show.local_path = local_path
+    show.episode_group_map = None
+    return show
+
+
+def _orc11_ep(id: int, season: int, episode: int, tracked: bool = False) -> MagicMock:
+    ep = _make_episode(id=id, show_id=1, season=season, episode=episode)
+    ep.file_tracked = tracked
+    return ep
+
+
+def _orc11_summary(result: Any) -> Any:
+    return (
+        result.shows_processed,
+        result.shows_created,
+        result.shows_found,
+        result.shows_not_found,
+        result.episodes_tracked,
+        result.episodes_unmatched,
+        result.episodes_already_tracked,
+        result.mode,
+        [
+            (
+                r.show_dir,
+                r.tmdb_id,
+                r.tmdb_title,
+                r.action,
+                r.episodes_tracked,
+                r.episodes_unmatched,
+                r.episodes_already_tracked,
+                [_orc11_base(p) for p in r.unmatched_paths],
+                [_orc11_base(p) for p in r.already_tracked_paths],
+            )
+            for r in result.show_results
+        ],
+    )
+
+
+_ORC11_MIXED_NAMES = ("a.mkv", "b.mkv", "c.mkv", "d.mkv", "e.mkv")
+
+
+def _orc11_mixed_plan(h: _Orc11Harness) -> tuple[MagicMock, MagicMock]:
+    """Plan: new, unmatched, duplicate of new, previously tracked, unmatched without numbers."""
+    ep1 = _orc11_ep(1, 1, 1)
+    ep3 = _orc11_ep(3, 1, 3, tracked=True)
+    h.match_plan = {
+        "a.mkv": (ep1, 1, 1),
+        "b.mkv": (None, 1, 2),
+        "c.mkv": (ep1, 1, 1),
+        "d.mkv": (ep3, 1, 3),
+        "e.mkv": (None, None, None),
+    }
+    return ep1, ep3
+
+
+async def _orc11_run(
+    h: _Orc11Harness,
+    *,
+    show: Any = None,
+    entries: list[Any] | None = None,
+    progress: bool = True,
+    **orch_kw: Any,
+) -> tuple[Any, Any]:
+    """Run ``orch.run``; return ``(summary-or-exception-repr, log)``."""
+    orch = h.orchestrator(**orch_kw)
+    entries = entries or [_orc11_entry(n) for n in _ORC11_MIXED_NAMES]
+    outcome: Any
+    with h.patches(), patch.object(orch, "_db_find_show", AsyncMock(return_value=show)):
+        try:
+            result = await orch.run(entries, on_progress=h.on_progress if progress else None)
+            outcome = _orc11_summary(result)
+        except Exception as exc:
+            outcome = _orc11_raised(exc)
+    return outcome, h.log
+
+
+async def _orc11_success() -> Any:
+    h = _Orc11Harness()
+    show = _orc11_show()
+    ep1, ep3 = _orc11_mixed_plan(h)
+    out = await _orc11_run(h, show=show)
+    return (
+        *out,
+        ep1.file_tracked,
+        ep1.tracked_filename and _orc11_base(ep1.tracked_filename),
+        ep3.file_tracked,
+        show.local_path is not None,
+    )
+
+
+async def _orc11_dry_run_existing() -> Any:
+    h = _Orc11Harness()
+    show = _orc11_show()
+    ep1, ep3 = _orc11_mixed_plan(h)
+    ep3.file_tracked = False
+    out = await _orc11_run(h, show=show, dry_run=True)
+    return (*out, ep1.file_tracked, ep3.file_tracked, show.local_path)
+
+
+async def _orc11_dry_run_new_show() -> Any:
+    """Dry-run create: no id, so counts are estimated from the parsed entries."""
+    h = _Orc11Harness()
+    entries = [
+        _orc11_entry("a.mkv"),
+        _orc11_entry("b.mkv", None, None),
+        _orc11_entry("c.mkv", 1, 3),
+    ]
+    return await _orc11_run(h, show=None, entries=entries, dry_run=True)
+
+
+async def _orc11_create_full() -> Any:
+    """Non-dry-run create: insert, commit, sync, aliases, then match, then commit."""
+    h = _Orc11Harness()
+    h.match_plan = {"a.mkv": (_orc11_ep(1, 1, 1), 1, 1)}
+    return await _orc11_run(h, show=None, entries=[_orc11_entry("a.mkv")])
+
+
+async def _orc11_create_sync_fails() -> Any:
+    h = _Orc11Harness()
+    h.sync_error = RuntimeError("tmdb down")
+    h.match_plan = {"a.mkv": (None, 1, 1)}
+    return await _orc11_run(h, show=None, entries=[_orc11_entry("a.mkv")])
+
+
+async def _orc11_tmdb_search_fails() -> Any:
+    h = _Orc11Harness()
+    h.search_error = RuntimeError("search 500")
+    return await _orc11_run(h, show=None)
+
+
+async def _orc11_tmdb_details_fail() -> Any:
+    h = _Orc11Harness()
+    h.details_error = RuntimeError("details 500")
+    return await _orc11_run(h, show=None)
+
+
+async def _orc11_tmdb_no_results() -> Any:
+    h = _Orc11Harness()
+    h.search_result = {"results": [{"id": 1, "name": "x", "media_type": "person"}]}
+    return await _orc11_run(h, show=None)
+
+
+async def _orc11_tmdb_fallback_no_exact() -> Any:
+    h = _Orc11Harness()
+    h.search_result = {
+        "results": [
+            {"id": 5, "name": "Other One", "media_type": "tv"},
+            {"id": 6, "name": "Other Two"},
+        ]
+    }
+    h.match_plan = {"a.mkv": (None, 1, 1)}
+    return await _orc11_run(h, show=None, entries=[_orc11_entry("a.mkv")])
+
+
+async def _orc11_create_insert_race_loses() -> Any:
+    """Flush raises IntegrityError: rollback, refind the winner, adopt it."""
+    from sqlalchemy.exc import IntegrityError
+
+    h = _Orc11Harness()
+    h.flush_error = IntegrityError("stmt", {}, Exception("dup"))
+    winner = _orc11_show()
+    h.match_plan = {"a.mkv": (None, 1, 1)}
+    orch = h.orchestrator()
+    outcome: Any
+    # First lookup (directory name) misses; the post-rollback refind finds the winner.
+    finder = AsyncMock(side_effect=[None, winner])
+    with h.patches(), patch.object(orch, "_db_find_show", finder):
+        try:
+            outcome = _orc11_summary(await orch.run([_orc11_entry("a.mkv")]))
+        except Exception as exc:
+            outcome = _orc11_raised(exc)
+    return outcome, h.log
+
+
+async def _orc11_mid_show_db_error() -> Any:
+    from sqlalchemy.exc import OperationalError
+
+    h = _Orc11Harness()
+    ep1, _ = _orc11_mixed_plan(h)
+    h.match_plan["b.mkv"] = OperationalError("stmt", {}, Exception("conn lost"))
+    out = await _orc11_run(h, show=_orc11_show())
+    return (*out, ep1.file_tracked)
+
+
+async def _orc11_synthetic_file_error() -> Any:
+    h = _Orc11Harness()
+    _orc11_mixed_plan(h)
+    h.match_plan["synthetic"] = RuntimeError("insert failed")
+    return await _orc11_run(h, show=_orc11_show())
+
+
+async def _orc11_sync_if_needed_fails() -> Any:
+    """Found show with zero episodes whose sync fails: rollback, error event, import continues."""
+    h = _Orc11Harness(ep_count=0)
+    h.sync_error = RuntimeError("sync boom")
+    _orc11_mixed_plan(h)
+    return await _orc11_run(h, show=_orc11_show())
+
+
+async def _orc11_sync_if_needed_ok_dry_run() -> Any:
+    h = _Orc11Harness(ep_count=0)
+    _orc11_mixed_plan(h)
+    return await _orc11_run(h, show=_orc11_show(), dry_run=True)
+
+
+async def _orc11_event_raises_on_no_match() -> Any:
+    h = _Orc11Harness(raise_in_event="No match")
+    _orc11_mixed_plan(h)
+    return await _orc11_run(h, show=_orc11_show())
+
+
+async def _orc11_event_raises_on_duplicate() -> Any:
+    h = _Orc11Harness(raise_in_event="resolved to the same episode")
+    _orc11_mixed_plan(h)
+    return await _orc11_run(h, show=_orc11_show())
+
+
+async def _orc11_event_raises_on_summary() -> Any:
+    h = _Orc11Harness(raise_in_event="file(s) for 'Frieren'")
+    _orc11_mixed_plan(h)
+    return await _orc11_run(h, show=_orc11_show())
+
+
+async def _orc11_event_raises_on_clean_summary() -> Any:
+    h = _Orc11Harness(raise_in_event="Tracked 1 episode(s)")
+    h.match_plan = {"a.mkv": (_orc11_ep(1, 1, 1), 1, 1)}
+    return await _orc11_run(h, show=_orc11_show(), entries=[_orc11_entry("a.mkv")])
+
+
+async def _orc11_cancelled_on_second_show() -> Any:
+    h = _Orc11Harness()
+    h.match_plan = {"a.mkv": (_orc11_ep(1, 1, 1), 1, 1), "cancel_at": 2}
+    first = _orc11_entry("a.mkv")
+    second = _orc11_entry("a.mkv")
+    second.show_dir = "Other"
+    return await _orc11_run(h, show=_orc11_show(), entries=[first, second])
+
+
+async def _orc11_shows_only() -> Any:
+    h = _Orc11Harness()
+    return await _orc11_run(h, show=_orc11_show(), mode="shows_only")
+
+
+async def _orc11_shows_only_dry_run() -> Any:
+    h = _Orc11Harness()
+    return await _orc11_run(h, show=_orc11_show(), mode="shows_only", dry_run=True)
+
+
+async def _orc11_episodes_only_missing_show() -> Any:
+    h = _Orc11Harness()
+    return await _orc11_run(h, show=None, mode="episodes_only")
+
+
+async def _orc11_local_path_already_set() -> Any:
+    h = _Orc11Harness()
+    h.match_plan = {"a.mkv": (_orc11_ep(1, 1, 1), 1, 1)}
+    show = _orc11_show(local_path="/already")
+    out = await _orc11_run(h, show=show, entries=[_orc11_entry("a.mkv")])
+    return (*out, show.local_path)
+
+
+async def _orc11_split_off_secondary_show() -> Any:
+    """A file whose own name disagrees is resolved as a second show with no auto local_path."""
+    from jidou.services.filename_parser import FilenameParseResult
+
+    h = _Orc11Harness()
+    primary = _orc11_show()
+    other = _make_show(id=2, tmdb_id=88, title="Other Show")
+    other.local_path = None
+    other.episode_group_map = None
+    ep1 = _orc11_ep(1, 1, 1)
+    h.match_plan = {"a.mkv": (ep1, 1, 1), "b.mkv": (ep1, 1, 1)}
+
+    async def parse(filename: str, llm: object = None) -> Any:
+        name = "Frieren" if filename == "a.mkv" else "Other Show"
+        return FilenameParseResult(
+            show_name=name,
+            season=1,
+            episode=1,
+            crc32=None,
+            content_type="anime",
+            confidence=0.9,
+            llm_ok=True,
+        )
+
+    orch = h.orchestrator()
+    finder = AsyncMock(side_effect=[primary, other])
+    entries = [_orc11_entry("a.mkv"), _orc11_entry("b.mkv")]
+    outcome: Any
+    with (
+        h.patches(),
+        patch.object(orch, "_db_find_show", finder),
+        patch("jidou.orchestrators.path_import_orchestrator.parse_filename", parse),
+    ):
+        try:
+            outcome = _orc11_summary(await orch.run(entries))
+        except Exception as exc:
+            outcome = _orc11_raised(exc)
+    return outcome, h.log
+
+
+ORC11_SCENARIOS: dict[str, Any] = {
+    "success": _orc11_success,
+    "dry_run_existing": _orc11_dry_run_existing,
+    "dry_run_new_show": _orc11_dry_run_new_show,
+    "create_full": _orc11_create_full,
+    "create_sync_fails": _orc11_create_sync_fails,
+    "tmdb_search_fails": _orc11_tmdb_search_fails,
+    "tmdb_details_fail": _orc11_tmdb_details_fail,
+    "tmdb_no_results": _orc11_tmdb_no_results,
+    "tmdb_fallback_no_exact": _orc11_tmdb_fallback_no_exact,
+    "create_insert_race_loses": _orc11_create_insert_race_loses,
+    "mid_show_db_error": _orc11_mid_show_db_error,
+    "synthetic_file_error": _orc11_synthetic_file_error,
+    "sync_if_needed_fails": _orc11_sync_if_needed_fails,
+    "sync_if_needed_ok_dry_run": _orc11_sync_if_needed_ok_dry_run,
+    "event_raises_on_no_match": _orc11_event_raises_on_no_match,
+    "event_raises_on_duplicate": _orc11_event_raises_on_duplicate,
+    "event_raises_on_summary": _orc11_event_raises_on_summary,
+    "event_raises_on_clean_summary": _orc11_event_raises_on_clean_summary,
+    "cancelled_on_second_show": _orc11_cancelled_on_second_show,
+    "shows_only": _orc11_shows_only,
+    "shows_only_dry_run": _orc11_shows_only_dry_run,
+    "episodes_only_missing_show": _orc11_episodes_only_missing_show,
+    "local_path_already_set": _orc11_local_path_already_set,
+    "split_off_secondary_show": _orc11_split_off_secondary_show,
+}
+
+ORC11_GOLDEN: dict[str, str] = {
+    "cancelled_on_second_show": r"""
+(('raised', 'RuntimeError', 'cancelled'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 2, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('event', 'info', "Tracked 1 episode(s) for 'Frieren'", None),
+  ('commit',),
+  ('progress', 2, 2, 'Importing Other')])""",
+    "create_full": r"""
+((1, 1, 0, 0, 1, 0, 0, 'full', [('Frieren', 77, 'Frieren', 'created', 1, 0, 0, [], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'info',
+   "TMDB matched 'Frieren' (id=77)",
+   {'candidates': 1, 'match': 'exact', 'tmdb_id': 77}),
+  ('tmdb.get_details', 77, 'tv'),
+  ('tmdb.get_external_ids', 77),
+  ('tmdb.get_episode_groups', 77),
+  ('add', 'Show'),
+  ('flush',),
+  ('commit',),
+  ('event',
+   'info',
+   "Created show 'Frieren' (id=None, tmdb_id=77)",
+   {'show_id': None, 'tmdb_id': 77}),
+  ('event', 'info', "Syncing episodes for 'Frieren' from TMDB", None),
+  ('sync_show_episodes', 'Frieren'),
+  ('count_episodes',),
+  ('event', 'info', "Synced 5 episodes for 'Frieren'", None),
+  ('generate_aliases', 'Frieren'),
+  ('flush',),
+  ('event', 'info', "Generated aliases for 'Frieren'", None),
+  ('match', None, 'Frieren', 'a.mkv', None),
+  ('synthetic', None, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('event', 'info', "Tracked 1 episode(s) for 'Frieren'", None),
+  ('commit',)])""",
+    "create_insert_race_loses": r"""
+((1, 0, 1, 0, 0, 1, 0, 'full', [('Frieren', 77, 'Frieren', 'found', 0, 1, 0, ['a.mkv'], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'info',
+   "TMDB matched 'Frieren' (id=77)",
+   {'candidates': 1, 'match': 'exact', 'tmdb_id': 77}),
+  ('tmdb.get_details', 77, 'tv'),
+  ('tmdb.get_external_ids', 77),
+  ('tmdb.get_episode_groups', 77),
+  ('add', 'Show'),
+  ('flush',),
+  ('rollback',),
+  ('event', 'info', "Show 'Frieren' already existed (concurrent create)", None),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('event',
+   'warn',
+   'No match: a.mkv (S01E01)',
+   {'episode': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\a.mkv', 'season': 1}),
+  ('event',
+   'warn',
+   "1 unmatched file(s) for 'Frieren'",
+   {'episodes_already_tracked': 0, 'episodes_tracked': 0, 'episodes_unmatched': 1}),
+  ('commit',)])""",
+    "create_sync_fails": r"""
+((1, 1, 0, 0, 0, 1, 0, 'full', [('Frieren', 77, 'Frieren', 'created', 0, 1, 0, ['a.mkv'], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'info',
+   "TMDB matched 'Frieren' (id=77)",
+   {'candidates': 1, 'match': 'exact', 'tmdb_id': 77}),
+  ('tmdb.get_details', 77, 'tv'),
+  ('tmdb.get_external_ids', 77),
+  ('tmdb.get_episode_groups', 77),
+  ('add', 'Show'),
+  ('flush',),
+  ('commit',),
+  ('event',
+   'info',
+   "Created show 'Frieren' (id=None, tmdb_id=77)",
+   {'show_id': None, 'tmdb_id': 77}),
+  ('event', 'info', "Syncing episodes for 'Frieren' from TMDB", None),
+  ('sync_show_episodes', 'Frieren'),
+  ('rollback',),
+  ('event', 'error', "Episode sync failed for 'Frieren': tmdb down", None),
+  ('generate_aliases', 'Frieren'),
+  ('flush',),
+  ('event', 'info', "Generated aliases for 'Frieren'", None),
+  ('match', None, 'Frieren', 'a.mkv', None),
+  ('event',
+   'warn',
+   'No match: a.mkv (S01E01)',
+   {'episode': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\a.mkv', 'season': 1}),
+  ('event',
+   'warn',
+   "1 unmatched file(s) for 'Frieren'",
+   {'episodes_already_tracked': 0, 'episodes_tracked': 0, 'episodes_unmatched': 1}),
+  ('commit',)])""",
+    "dry_run_existing": r"""
+((1,
+  0,
+  1,
+  0,
+  2,
+  2,
+  1,
+  'full',
+  [('Frieren', 77, 'Frieren', 'found', 2, 2, 1, ['b.mkv', 'e.mkv'], ['c.mkv'])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'd.mkv', None),
+  ('match', 1, 'Frieren', 'e.mkv', None),
+  ('event',
+   'warn',
+   'No match: e.mkv (S?E?)',
+   {'episode': None, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\e.mkv', 'season': None}),
+  ('event',
+   'warn',
+   "2 unmatched, 1 resolved to a duplicate episode file(s) for 'Frieren'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 2, 'episodes_unmatched': 2})],
+ False,
+ False,
+ None)""",
+    "dry_run_new_show": r"""
+((1, 1, 0, 0, 2, 1, 0, 'full', [('Frieren', 77, 'Frieren', 'created', 2, 1, 0, ['b.mkv'], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'info',
+   "TMDB matched 'Frieren' (id=77)",
+   {'candidates': 1, 'match': 'exact', 'tmdb_id': 77}),
+  ('tmdb.get_details', 77, 'tv'),
+  ('tmdb.get_external_ids', 77),
+  ('tmdb.get_episode_groups', 77),
+  ('event', 'info', "[dry-run] Would create show 'Frieren' (tmdb_id=77)", None)])""",
+    "episodes_only_missing_show": r"""
+((1,
+  0,
+  0,
+  1,
+  0,
+  5,
+  0,
+  'episodes_only',
+  [('Frieren',
+    None,
+    None,
+    'not_found',
+    0,
+    5,
+    0,
+    ['a.mkv', 'b.mkv', 'c.mkv', 'd.mkv', 'e.mkv'],
+    [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('event',
+   'info',
+   'Running in episodes-only mode — no new shows will be created; files under a show not already '
+   'in the database will be reported unmatched',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — skipping (episodes-only mode): 'Frieren'", None),
+  ('event',
+   'warn',
+   "Show 'Frieren' not found in database (episodes-only mode) — 5 file(s) unmatched",
+   None)])""",
+    "event_raises_on_clean_summary": r"""
+(('raised', 'RuntimeError', 'sink down'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('event', 'info', "Tracked 1 episode(s) for 'Frieren'", None)])""",
+    "event_raises_on_duplicate": r"""
+(('raised', 'RuntimeError', 'sink down'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1,
+    'episode_id': 1,
+    'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv',
+    'season': 1})])""",
+    "event_raises_on_no_match": r"""
+(('raised', 'RuntimeError', 'sink down'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1})])""",
+    "event_raises_on_summary": r"""
+(('raised', 'RuntimeError', 'sink down'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'd.mkv', None),
+  ('match', 1, 'Frieren', 'e.mkv', None),
+  ('event',
+   'warn',
+   'No match: e.mkv (S?E?)',
+   {'episode': None, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\e.mkv', 'season': None}),
+  ('event',
+   'warn',
+   "2 unmatched, 1 resolved to a duplicate episode file(s) for 'Frieren'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 1, 'episodes_unmatched': 2})])""",
+    "local_path_already_set": r"""
+((1, 0, 1, 0, 1, 0, 0, 'full', [('Frieren', 77, 'Frieren', 'found', 1, 0, 0, [], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('event', 'info', "Tracked 1 episode(s) for 'Frieren'", None),
+  ('commit',)],
+ '/already')""",
+    "mid_show_db_error": r"""
+(('raised', 'OperationalError', 'conn lost'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None)],
+ True)""",
+    "shows_only": r"""
+((1, 0, 1, 0, 0, 0, 0, 'shows_only', [('Frieren', 77, 'Frieren', 'found', 0, 0, 0, [], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('event',
+   'info',
+   'Running in shows-only mode — episode matching will be skipped for all shows',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('event',
+   'info',
+   "Show ready: 'Frieren' (found) — episode matching skipped (shows-only mode)",
+   None),
+  ('commit',)])""",
+    "shows_only_dry_run": r"""
+((1, 0, 1, 0, 0, 0, 0, 'shows_only', [('Frieren', 77, 'Frieren', 'found', 0, 0, 0, [], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('event',
+   'info',
+   'Running in shows-only mode — episode matching will be skipped for all shows',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('event',
+   'info',
+   "Show ready: 'Frieren' (found) — episode matching skipped (shows-only mode)",
+   None)])""",
+    "split_off_secondary_show": r"""
+((1,
+  0,
+  2,
+  0,
+  1,
+  0,
+  1,
+  'full',
+  [('Frieren', 77, 'Frieren', 'found', 1, 0, 0, [], []),
+   ('Other Show', 88, 'Other Show', 'found', 0, 0, 1, [], ['b.mkv'])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('event', 'info', "Tracked 1 episode(s) for 'Frieren'", None),
+  ('commit',),
+  ('event',
+   'warn',
+   "1 file(s) under 'Frieren' appear to belong to 'Other Show' instead — resolving separately",
+   {'count': 1, 'directory': 'Frieren', 'extracted_name': 'Other Show'}),
+  ('event', 'info', "Found in DB: 'Other Show'", {'show_id': 2, 'tmdb_id': 88}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Other Show'),
+  ('event',
+   'warn',
+   "'Other Show' was split off from a mismatched directory — local_path was not auto-set; "
+   'configure it manually via PATCH /shows/2',
+   {'show_id': 2}),
+  ('match', 2, 'Other Show', 'b.mkv', None),
+  ('event',
+   'warn',
+   "'b.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('event',
+   'warn',
+   "1 resolved to a duplicate episode file(s) for 'Other Show'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 0, 'episodes_unmatched': 0}),
+  ('commit',)])""",
+    "success": r"""
+((1,
+  0,
+  1,
+  0,
+  1,
+  2,
+  1,
+  'full',
+  [('Frieren', 77, 'Frieren', 'found', 1, 2, 1, ['b.mkv', 'e.mkv'], ['c.mkv'])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'd.mkv', None),
+  ('match', 1, 'Frieren', 'e.mkv', None),
+  ('event',
+   'warn',
+   'No match: e.mkv (S?E?)',
+   {'episode': None, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\e.mkv', 'season': None}),
+  ('event',
+   'warn',
+   "2 unmatched, 1 resolved to a duplicate episode file(s) for 'Frieren'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 1, 'episodes_unmatched': 2}),
+  ('commit',)],
+ True,
+ 'a.mkv',
+ True,
+ True)""",
+    "sync_if_needed_fails": r"""
+((1,
+  0,
+  1,
+  0,
+  1,
+  2,
+  1,
+  'full',
+  [('Frieren', 77, 'Frieren', 'found', 1, 2, 1, ['b.mkv', 'e.mkv'], ['c.mkv'])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('event', 'info', "No episodes synced yet — fetching from TMDB for 'Frieren'", None),
+  ('sync_show_episodes', 'Frieren'),
+  ('rollback',),
+  ('event', 'error', "Episode sync failed for 'Frieren': sync boom", None),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1}),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'd.mkv', None),
+  ('match', 1, 'Frieren', 'e.mkv', None),
+  ('event',
+   'warn',
+   'No match: e.mkv (S?E?)',
+   {'episode': None, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\e.mkv', 'season': None}),
+  ('event',
+   'warn',
+   "2 unmatched, 1 resolved to a duplicate episode file(s) for 'Frieren'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 1, 'episodes_unmatched': 2}),
+  ('commit',)])""",
+    "sync_if_needed_ok_dry_run": r"""
+((1,
+  0,
+  1,
+  0,
+  1,
+  2,
+  1,
+  'full',
+  [('Frieren', 77, 'Frieren', 'found', 1, 2, 1, ['b.mkv', 'e.mkv'], ['c.mkv'])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('match', 1, 'Frieren', 'b.mkv', None),
+  ('event',
+   'warn',
+   'No match: b.mkv (S01E02)',
+   {'episode': 2, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\b.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'c.mkv', None),
+  ('event',
+   'warn',
+   "'c.mkv' resolved to the same episode (S01E01) as another file in this import — check for a "
+   'season/episode numbering mismatch',
+   {'episode': 1, 'episode_id': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\c.mkv', 'season': 1}),
+  ('match', 1, 'Frieren', 'd.mkv', None),
+  ('match', 1, 'Frieren', 'e.mkv', None),
+  ('event',
+   'warn',
+   'No match: e.mkv (S?E?)',
+   {'episode': None, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\e.mkv', 'season': None}),
+  ('event',
+   'warn',
+   "2 unmatched, 1 resolved to a duplicate episode file(s) for 'Frieren'",
+   {'episodes_already_tracked': 1, 'episodes_tracked': 1, 'episodes_unmatched': 2})])""",
+    "synthetic_file_error": r"""
+(('raised', 'RuntimeError', 'insert failed'),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Found in DB: 'Frieren'", {'show_id': 1, 'tmdb_id': 77}),
+  ('count_episodes',),
+  ('ensure_episode_group_map', 'Frieren'),
+  ('match', 1, 'Frieren', 'a.mkv', None),
+  ('synthetic', 1, 1, 'a.mkv', {'parsed_episode': 1, 'parsed_season': 1})])""",
+    "tmdb_details_fail": r"""
+((1,
+  0,
+  0,
+  1,
+  0,
+  5,
+  0,
+  'full',
+  [('Frieren',
+    None,
+    None,
+    'not_found',
+    0,
+    5,
+    0,
+    ['a.mkv', 'b.mkv', 'c.mkv', 'd.mkv', 'e.mkv'],
+    [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'info',
+   "TMDB matched 'Frieren' (id=77)",
+   {'candidates': 1, 'match': 'exact', 'tmdb_id': 77}),
+  ('tmdb.get_details', 77, 'tv'),
+  ('event', 'error', 'TMDB get_details failed for id=77: details 500', None),
+  ('event', 'warn', "No TMDB match found for 'Frieren' — 5 file(s) unmatched", None)])""",
+    "tmdb_fallback_no_exact": r"""
+((1, 1, 0, 0, 0, 1, 0, 'full', [('Frieren', 5, 'Frieren', 'created', 0, 1, 0, ['a.mkv'], [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event',
+   'warn',
+   "No exact TMDB match for 'Frieren' in 2 result(s) — falling back to top result 'Other One' "
+   '(id=5)',
+   {'candidates': 2,
+    'match': 'fallback',
+    'tmdb_id': 5,
+    'top_candidates': ['Other One', 'Other Two']}),
+  ('tmdb.get_details', 5, 'tv'),
+  ('tmdb.get_external_ids', 5),
+  ('tmdb.get_episode_groups', 5),
+  ('add', 'Show'),
+  ('flush',),
+  ('commit',),
+  ('event', 'info', "Created show 'Frieren' (id=None, tmdb_id=5)", {'show_id': None, 'tmdb_id': 5}),
+  ('event', 'info', "Syncing episodes for 'Frieren' from TMDB", None),
+  ('sync_show_episodes', 'Frieren'),
+  ('count_episodes',),
+  ('event', 'info', "Synced 5 episodes for 'Frieren'", None),
+  ('generate_aliases', 'Frieren'),
+  ('flush',),
+  ('event', 'info', "Generated aliases for 'Frieren'", None),
+  ('match', None, 'Frieren', 'a.mkv', None),
+  ('event',
+   'warn',
+   'No match: a.mkv (S01E01)',
+   {'episode': 1, 'path': 'Z:\\anime tv\\Frieren\\Season 01\\a.mkv', 'season': 1}),
+  ('event',
+   'warn',
+   "1 unmatched file(s) for 'Frieren'",
+   {'episodes_already_tracked': 0, 'episodes_tracked': 0, 'episodes_unmatched': 1}),
+  ('commit',)])""",
+    "tmdb_no_results": r"""
+((1,
+  0,
+  0,
+  1,
+  0,
+  5,
+  0,
+  'full',
+  [('Frieren',
+    None,
+    None,
+    'not_found',
+    0,
+    5,
+    0,
+    ['a.mkv', 'b.mkv', 'c.mkv', 'd.mkv', 'e.mkv'],
+    [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event', 'warn', "TMDB returned no results for 'Frieren'", None),
+  ('event', 'warn', "No TMDB match found for 'Frieren' — 5 file(s) unmatched", None)])""",
+    "tmdb_search_fails": r"""
+((1,
+  0,
+  0,
+  1,
+  0,
+  5,
+  0,
+  'full',
+  [('Frieren',
+    None,
+    None,
+    'not_found',
+    0,
+    5,
+    0,
+    ['a.mkv', 'b.mkv', 'c.mkv', 'd.mkv', 'e.mkv'],
+    [])]),
+ [('event',
+   'warn',
+   "LLM not configured or unavailable — filenames that regex can't parse, and shows TMDB can't "
+   'match exactly, will not get an LLM fallback attempt for this run',
+   None),
+  ('progress', 1, 1, 'Importing Frieren'),
+  ('event', 'info', "Not in DB — searching TMDB for 'Frieren'", None),
+  ('event', 'info', "Calling TMDB search for 'Frieren'", None),
+  ('tmdb.search', 'Frieren', 'tv'),
+  ('event', 'error', "TMDB search failed for 'Frieren': search 500", None),
+  ('event', 'warn', "No TMDB match found for 'Frieren' — 5 file(s) unmatched", None)])""",
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", sorted(ORC11_SCENARIOS))
+async def test_orc11_path_import_sequence_is_unchanged(name: str) -> None:
+    """Each scenario's complete ordered log matches the pre-refactor capture."""
+    assert len(ORC11_SCENARIOS) >= 20
+    assert set(ORC11_GOLDEN) == set(ORC11_SCENARIOS)
+    actual = await ORC11_SCENARIOS[name]()
+    assert "\n" + pprint.pformat(actual, width=100) == ORC11_GOLDEN[name]
+    # Guard against a vacuous golden: every scenario records at least one step.
+    assert ORC11_GOLDEN[name].count("\n") > 2
+
+
+# ---------------------------------------------------------------------------
+# _pick_tmdb_candidate (ORC-11)
+# ---------------------------------------------------------------------------
+
+
+def test_pick_tmdb_candidate_prefers_normalized_exact() -> None:
+    """A normalized exact title match beats a higher-ranked partial match."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Daredevil: Born Again"}, {"id": 2, "name": "Daredevil"}]
+
+    best, exact = _pick_tmdb_candidate("Daredevil", candidates)
+
+    assert best["name"] == "Daredevil"
+    assert exact is True
+
+
+def test_pick_tmdb_candidate_ignores_punctuation_when_matching() -> None:
+    """Punctuation in the TMDB title does not defeat an otherwise exact match."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Other"}, {"id": 2, "name": "Daredevil: Born Again"}]
+
+    best, exact = _pick_tmdb_candidate("daredevil born again", candidates)
+
+    assert (best["id"], exact) == (2, True)
+
+
+def test_pick_tmdb_candidate_falls_back_to_first_when_nothing_matches() -> None:
+    """With no exact match the first (top-relevance) candidate is returned, flagged inexact."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Alpha"}, {"id": 2, "name": "Beta"}]
+
+    best, exact = _pick_tmdb_candidate("Gamma", candidates)
+
+    assert best is candidates[0]
+    assert exact is False
+
+
+def test_pick_tmdb_candidate_tolerates_missing_name() -> None:
+    """A candidate without a name never matches and does not raise."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates: list[dict[str, Any]] = [{"id": 1}, {"id": 2, "name": "Target"}]
+
+    assert _pick_tmdb_candidate("Target", candidates) == (candidates[1], True)
