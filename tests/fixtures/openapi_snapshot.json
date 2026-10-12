@@ -5878,7 +5878,7 @@
     },
     "/api/admin/health": {
       "get": {
-        "description": "Run a comprehensive system health check.\n\nChecks the database, Redis (if configured), Celery worker liveness, and\nTMDB/SFTP/LLM configuration presence. Each check reports ``ok`` and,\nwhere applicable, ``latency_ms`` and an optional ``error`` field.\n\nArgs:\n    db_session: DB session (injected).\n\nReturns:\n    Dictionary with an overall ``healthy`` flag, the running application\n    ``version``, and per-service results.",
+        "description": "Run a comprehensive system health check.\n\nChecks the database, Redis (required: unreachable or unconfigured is\nunhealthy), Celery worker liveness, and TMDB/SFTP/LLM configuration\npresence. Each check reports ``ok`` and, where applicable, ``latency_ms``\nand an optional ``error`` field.\n\nArgs:\n    db_session: DB session (injected).\n\nReturns:\n    Dictionary with an overall ``healthy`` flag, the running application\n    ``version``, and per-service results.",
         "operationId": "system_health_api_admin_health_get",
         "parameters": [
           {

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators._events import log_only_event
+from jidou.orchestrators._events import EventSink, log_only_event
 from jidou.services.callbacks import OnEvent
 from jidou.services.fuzzy_match import unambiguous_best_match
 from jidou.services.rss_config import compute_subscription_deltas, parse_rss_config
@@ -155,7 +155,8 @@ class RssImportOrchestrator:
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
-        self._on_event = on_event or log_only_event
+        # Event logging is best-effort: a failing callback is logged, never aborts the run.
+        self._on_event = EventSink(on_event or log_only_event, swallow_errors=True)
         self._snapshot_type = snapshot_type
 
     async def run(self) -> RssImportResult:

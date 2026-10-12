@@ -75,3 +75,21 @@ async def find_show_by_name(
             select(Show).where(func.lower(Show.title) == normalised).order_by(Show.id).limit(1)
         )
     return (await session.execute(title_stmt)).scalars().first()
+
+
+async def find_show_by_tmdb_id(session: AsyncSession, tmdb_id: int) -> Show | None:
+    """Look up a show by its TMDB ID.
+
+    ``Show.tmdb_id`` is unique, so this is the lookup that identifies the row a
+    concurrent insert of the same TMDB show created; a title or alias match could
+    be a different show that merely shares the name.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        tmdb_id: TMDB ID to look up.
+
+    Returns:
+        Matching :class:`Show`, or None.
+    """
+    stmt = select(Show).where(Show.tmdb_id == tmdb_id)
+    return (await session.execute(stmt)).scalar_one_or_none()

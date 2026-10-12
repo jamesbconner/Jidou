@@ -1040,3 +1040,21 @@ async def test_llm_match_episode_final_lookup_is_ordered_and_limited() -> None:
     compiled = str(last_stmt.compile())
     assert "ORDER BY episodes.id" in compiled
     assert "LIMIT" in compiled
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_event_failure_is_swallowed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A raising on_event is logged and the parse result is unaffected."""
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("connection refused"))
+    broken = AsyncMock(side_effect=RuntimeError("log down"))
+
+    with caplog.at_level("WARNING"):
+        result = await llm_parse_episode(llm, "Bamboo Blade 20.mkv", on_event=broken)
+
+    assert result == (None, None)
+    assert broken.await_count >= 1
+    assert any(r.getMessage() == "Event logging failed; continuing" for r in caplog.records)

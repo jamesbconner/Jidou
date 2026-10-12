@@ -19,7 +19,6 @@ title so future lookups (parse orchestrator, manual search) hit the GIN index.
 """
 
 import logging
-import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
@@ -35,6 +34,7 @@ from jidou.orchestrators._show_provisioning import (
     sync_episodes_best_effort,
 )
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.alias_handling import names_agree, normalize_name
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_lookup import count_show_episodes
@@ -45,17 +45,13 @@ from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.path_transport import basename_any
-from jidou.services.show_lookup import find_show_by_name
+from jidou.services.show_lookup import find_show_by_name, find_show_by_tmdb_id
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
-
-# Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
-# comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
-_PUNCT = re.compile(r"[^\w\s]")
 
 
 def _directory_alias_fields(
@@ -82,21 +78,6 @@ def _directory_alias_fields(
     return [dir_alias], {"user": [dir_alias]}
 
 
-def _normalize_title(s: str) -> str:
-    """Lowercase and strip punctuation for loose title comparison.
-
-    Allows directory names like "Daredevil Born Again" to match TMDB titles
-    like "Daredevil: Born Again" without false-positives from shorter prefixes.
-
-    Args:
-        s: Title string to normalize.
-
-    Returns:
-        Normalized string with punctuation removed and whitespace collapsed.
-    """
-    return re.sub(r"\s+", " ", _PUNCT.sub(" ", s).lower()).strip()
-
-
 def _pick_tmdb_candidate(
     show_dir: str, candidates: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], bool]:
@@ -117,32 +98,11 @@ def _pick_tmdb_candidate(
         ``(best, exact)`` where ``exact`` is True when ``best`` matched the
         directory name after normalization.
     """
-    show_dir_norm = _normalize_title(show_dir)
+    show_dir_norm = normalize_name(show_dir)
     for candidate in candidates:
-        if _normalize_title(candidate.get("name", "")) == show_dir_norm:
+        if normalize_name(candidate.get("name", "")) == show_dir_norm:
             return candidate, True
     return candidates[0], False
-
-
-def _agrees_with_show(name: str, show: Show) -> bool:
-    """Return True when *name* refers to the same show as *show*.
-
-    Reuses the same normalized-title/alias matching semantics as
-    ``_db_find_show``, so a filename-extracted show name is treated as
-    agreeing whenever it would have independently resolved to the same show.
-
-    Args:
-        name: Extracted show name to check (e.g. from ``parse_filename``).
-        show: The already-resolved show to check agreement against.
-
-    Returns:
-        True if *name* normalizes to the same title as *show*, or is one of
-        its known aliases.
-    """
-    if _normalize_title(name) == _normalize_title(show.title):
-        return True
-    normalised = name.strip().lower()
-    return bool(show.aliases and normalised in show.aliases)
 
 
 # ---------------------------------------------------------------------------
@@ -273,8 +233,8 @@ class PathImportOrchestrator:
         self.dry_run = dry_run
         self.llm = llm
         self.on_event = on_event
-        # Propagating sink: path import has always aborted when the event callback fails.
-        self._emit = EventSink(on_event, swallow_errors=False)
+        # Event logging is best-effort: a broken sink is logged, never aborts the import.
+        self._emit = EventSink(on_event, swallow_errors=True)
         self.mode = mode
         self.local_tv_path = local_tv_path
         self.local_anime_path = local_anime_path
@@ -373,7 +333,7 @@ class PathImportOrchestrator:
         "filename" would just be its own directory name, so the comparison
         would only be against a differently-normalized copy of itself (e.g.
         the LLM's title-cleanup pass merging "Iron Blooded" into
-        "Ironblooded", which then disagrees with ``_agrees_with_show``'s
+        "Ironblooded", which then disagrees with ``names_agree``'s
         punctuation-stripped "Iron Blooded") rather than any real signal.
 
         Args:
@@ -411,7 +371,7 @@ class PathImportOrchestrator:
                 # directory, so running it through parse_filename() only
                 # compares that name against itself via two different
                 # normalizers (this one's LLM-based title cleanup vs.
-                # _agrees_with_show's punctuation stripping), which can
+                # names_agree's punctuation stripping), which can
                 # legitimately diverge (e.g. "Iron Blooded" -> "Ironblooded")
                 # and produce a false-positive split.
                 matched.append(entry)
@@ -431,11 +391,11 @@ class PathImportOrchestrator:
             if (
                 not parsed.llm_ok
                 or parsed.show_name is None
-                or _agrees_with_show(parsed.show_name, primary_show)
+                or names_agree(parsed.show_name, primary_show)
             ):
                 matched.append(entry)
             else:
-                norm = _normalize_title(parsed.show_name)
+                norm = normalize_name(parsed.show_name)
                 mismatched.setdefault(norm, []).append(entry)
                 mismatched_display.setdefault(norm, parsed.show_name)
 
@@ -983,8 +943,10 @@ class PathImportOrchestrator:
             logger.info("[dry-run] Would create show %r (tmdb_id=%d)", title, tmdb_id)
             return show, "created"
 
+        # Recover a lost race by tmdb_id (unique), not by title: another show can share the
+        # title, and adopting it would import this directory's files into the wrong show.
         winner, inserted = await insert_show_or_existing(
-            self.session, show, refind=lambda: self._db_find_show(title)
+            self.session, show, refind=lambda: find_show_by_tmdb_id(self.session, tmdb_id)
         )
         if not inserted:
             return await self._adopt_race_winner(winner, title)
@@ -1086,7 +1048,7 @@ class PathImportOrchestrator:
         """Sync a just-created show's episodes from TMDB; failures are reported, not raised.
 
         The show row is already committed, so a failure here (including one in
-        the follow-up episode count or its event) only rolls back this step's
+        the follow-up episode count) only rolls back this step's
         own partial work and import proceeds with whatever was synced.
 
         Args:
@@ -1102,12 +1064,14 @@ class PathImportOrchestrator:
         if error is None:
             try:
                 ep_count = await count_show_episodes(self.session, show.id)
-                await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
             except Exception as exc:
-                # The count and the success event were part of the step, so
-                # a failure in either gets the same rollback and reporting.
+                # The count is part of the step, so a failure gets the same
+                # rollback and reporting. The success event is best-effort and
+                # outside the try: a failing sink must not roll back synced work.
                 await self.session.rollback()
                 error = exc
+            else:
+                await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
         if error is not None:
             await self._emit("error", f"Episode sync failed for '{title}': {error}")
             logger.error("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id, exc_info=error)
@@ -1135,13 +1099,10 @@ class PathImportOrchestrator:
             rollback_on_failure=True,
         )
         if error is None:
-            try:
-                await self._emit("info", f"Generated aliases for '{title}'")
-            except Exception as exc:
-                # The success event was part of the step; mirror a failed step.
-                await self.session.rollback()
-                error = exc
-        if error is not None:
+            # Best-effort event: a failing sink is swallowed by the emitter and must not
+            # undo the aliases that were just generated.
+            await self._emit("info", f"Generated aliases for '{title}'")
+        else:
             logger.warning(
                 "Alias generation failed for %r (tmdb_id=%d); "
                 "aliases can be regenerated via the Manage Aliases modal",

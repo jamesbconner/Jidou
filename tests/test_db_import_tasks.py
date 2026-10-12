@@ -496,10 +496,9 @@ def _capture_run_task_workflow(module_path: str) -> tuple:
 async def _invoke_work(captured: dict[str, object], session: AsyncMock) -> object:
     """Call the captured `_work` closure with a no-op check_task_cancelled/update_task_status."""
     with (
-        patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
     ):
-        return await captured["work"](session, AsyncMock(), AsyncMock())  # type: ignore[operator]
+        return await captured["work"](session, AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
@@ -689,7 +688,6 @@ async def test_db_import_cancellation_propagates_from_work() -> None:
 
     session = AsyncMock()
     with (
-        patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
         patch(
             "jidou.workers.db_import_tasks.check_task_cancelled",
             new_callable=AsyncMock,
@@ -697,7 +695,7 @@ async def test_db_import_cancellation_propagates_from_work() -> None:
         ),
         pytest.raises(TaskCancelledError),
     ):
-        await captured["work"](session, AsyncMock(), AsyncMock())  # type: ignore[operator]
+        await captured["work"](session, AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +716,7 @@ async def test_db_import_malformed_json_propagates_from_work() -> None:
         await _db_import("task-008", content)
 
     with pytest.raises(json_module.JSONDecodeError):
-        await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
+        await captured["work"](AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 # ---------------------------------------------------------------------------
@@ -1206,10 +1204,9 @@ async def _run_work(
     with patcher:
         await _db_import("task-char", json.dumps(content))
     with (
-        patch("jidou.workers.db_import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.db_import_tasks.check_task_cancelled", new_callable=AsyncMock),
     ):
-        return await captured["work"](session, on_progress, AsyncMock())  # type: ignore[operator]
+        return await captured["work"](session, on_progress, AsyncMock(), AsyncMock())  # type: ignore[operator]
 
 
 def _session_finding(existing: object | None = None) -> AsyncMock:

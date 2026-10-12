@@ -100,8 +100,16 @@ _MAX_EPISODES_IN_PROMPT = 1500
 async def _emit(
     on_event: OnEvent | None, level: str, msg: str, ctx: dict[str, Any] | None = None
 ) -> None:
+    """Forward one event to ``on_event``; a failing callback is logged, never raised.
+
+    Event logging is best-effort, so an exception from the callback must not abort
+    the LLM matching that is reporting through it.
+    """
     if on_event:
-        await on_event(level, msg, ctx)
+        try:
+            await on_event(level, msg, ctx)
+        except Exception:
+            logger.warning("Event logging failed; continuing", exc_info=True)
 
 
 async def _report_parse_failure(

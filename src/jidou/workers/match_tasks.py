@@ -9,6 +9,7 @@ from jidou.services.llm_service import create_llm_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -40,7 +41,10 @@ async def _match_files(
     """Async implementation of the parse/match task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         llm = create_llm_service(settings)
 

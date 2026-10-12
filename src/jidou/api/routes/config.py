@@ -112,19 +112,13 @@ async def test_sftp() -> dict[str, Any]:
         return {"ok": False, "error": "SFTP_HOST is not configured"}
 
     try:
-        from jidou.services.sftp_service import SFTPService
+        from jidou.services.sftp_service import create_sftp_service
 
-        sftp = SFTPService(
-            host=settings.sftp_host,
-            port=settings.sftp_port,
-            username=settings.sftp_username or "",
-            password=settings.sftp_password,
-            key_path=settings.sftp_key_path,
+        sftp = create_sftp_service(
+            settings,
             remote_base_path=settings.sftp_remote_paths_list[0]
             if settings.sftp_remote_paths_list
             else "/",
-            max_retries=settings.sftp_max_retries,
-            retry_delay=settings.sftp_retry_delay,
         )
         files = await sftp.list_remote_files()
         return {"ok": True, "file_count": len(files)}

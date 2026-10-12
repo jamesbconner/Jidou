@@ -860,7 +860,7 @@ async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> No
             return_value=error_result,
         ),
     ):
-        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
+        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
     assert wf_result.errors == ["Failed to parse RSS config: malformed JSON"]  # type: ignore[attr-defined]
 
@@ -1468,27 +1468,23 @@ async def test_upsert_empty_everything_flushes_twice_and_emits_nothing() -> None
 
 
 @pytest.mark.asyncio
-async def test_upsert_event_failure_on_new_row_warning_propagates_before_count() -> None:
-    """on_event errors propagate; a new row's warning fires before add/count."""
+async def test_upsert_event_failure_on_new_row_warning_is_swallowed() -> None:
+    """A failing on_event is swallowed; the new row is still added and counted."""
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 
     session = _upsert_session([])
     orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
     result = RssImportResult()
 
-    with pytest.raises(RuntimeError, match="sink down"):
-        await orc._upsert_subscriptions(
-            {"1": {"name": "X", "rssfeed_key": "zz"}}, {"f1": 1}, result
-        )
+    await orc._upsert_subscriptions({"1": {"name": "X", "rssfeed_key": "zz"}}, {"f1": 1}, result)
 
-    assert result.subscriptions_created == 0
-    session.add.assert_not_called()
-    session.flush.assert_not_called()
+    assert result.subscriptions_created == 1
+    session.add.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_upsert_event_failure_on_stub_warning_propagates_after_count() -> None:
-    """A stub's warning fires AFTER it was mutated and counted (count stays 1)."""
+async def test_upsert_event_failure_on_stub_warning_is_swallowed() -> None:
+    """A failing on_event is swallowed; the stub is still promoted and counted."""
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 
     stub = _stub_row(name="Daredevil")
@@ -1496,18 +1492,16 @@ async def test_upsert_event_failure_on_stub_warning_propagates_after_count() -> 
     orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
     result = RssImportResult()
 
-    with pytest.raises(RuntimeError, match="sink down"):
-        await orc._upsert_subscriptions(
-            {"5": {"name": "Daredevil", "rssfeed_key": "zz"}}, {"f1": 1}, result
-        )
+    await orc._upsert_subscriptions(
+        {"5": {"name": "Daredevil", "rssfeed_key": "zz"}}, {"f1": 1}, result
+    )
 
     assert result.stubs_promoted == 1
     assert stub.remote_key == "5"
-    session.flush.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_upsert_event_failure_on_update_warning_leaves_row_partially_updated() -> None:
+async def test_upsert_event_failure_on_update_warning_is_swallowed_and_row_fully_updated() -> None:
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 
     row = _keyed_row(feed_id=None, extra={"old": 1})
@@ -1515,27 +1509,24 @@ async def test_upsert_event_failure_on_update_warning_leaves_row_partially_updat
     orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
     result = RssImportResult()
 
-    with pytest.raises(RuntimeError, match="sink down"):
-        await orc._upsert_subscriptions(
-            {"0": {"name": "Severance", "active": False, "rssfeed_key": "zz"}}, {"f1": 1}, result
-        )
+    await orc._upsert_subscriptions(
+        {"0": {"name": "Severance", "active": False, "rssfeed_key": "zz"}}, {"f1": 1}, result
+    )
 
-    assert result.subscriptions_updated == 0
-    assert row.active is False  # columns were applied before the warning
-    assert row.extra_config == {"old": 1}  # extra_config rebuild comes after the warning
-    assert session.flush.await_count == 1  # only the post-create flush ran
+    assert result.subscriptions_updated == 1
+    assert row.active is False
+    assert row.extra_config != {"old": 1}  # the rebuild after the warning now runs
 
 
 @pytest.mark.asyncio
-async def test_upsert_event_failure_on_remote_deleted_counts_first() -> None:
+async def test_upsert_event_failure_on_remote_deleted_is_swallowed() -> None:
     from jidou.orchestrators.rss_import_orchestrator import RssImportResult
 
     session = _upsert_session([_keyed_row(remote_key="99")])
     orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
     result = RssImportResult()
 
-    with pytest.raises(RuntimeError, match="sink down"):
-        await orc._upsert_subscriptions({}, {}, result)
+    await orc._upsert_subscriptions({}, {}, result)
 
     assert result.subscriptions_remote_deleted == 1
 

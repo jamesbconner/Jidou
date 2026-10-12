@@ -204,6 +204,9 @@ class ManualMatchOrchestrator:
             # doesn't already have values — never overwrite existing config.
             _fill_missing_show_fields(winner, payload)
             await self.session.flush()
+            # Treat the winner like a show found up front: it may predate the episode-group
+            # map and still lack one.
+            await TMDBOrchestrator(self.session, self.tmdb).ensure_episode_group_map(winner)
             return winner
 
         resolved, created = await insert_show_or_existing(self.session, new_show, refind=refind)

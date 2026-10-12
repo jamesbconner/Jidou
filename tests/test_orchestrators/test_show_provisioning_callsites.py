@@ -307,8 +307,8 @@ async def test_manual_match_race_winner_gets_fields_filled_then_syncs(mm_patches
     mm_patches["sync"].assert_awaited_once_with(winner)
     session.commit.assert_awaited_once()
     mm_patches["aliases"].assert_awaited_once()
-    # The winner's episode-group map is NOT ensured on this path.
-    mm_patches["ensure"].assert_not_awaited()
+    # DF-8 (D14): the winner's episode-group map is ensured, as for a pre-existing show.
+    mm_patches["ensure"].assert_awaited_once_with(winner)
 
 
 async def test_manual_match_race_winner_keeps_existing_fields(mm_patches) -> None:
@@ -483,7 +483,7 @@ async def test_path_import_sync_and_alias_failures_each_roll_back(pi_patches) ->
     assert session.rollback.await_count == 2
 
 
-async def test_path_import_race_uses_title_lookup_and_does_not_commit(pi_patches) -> None:
+async def test_path_import_race_uses_tmdb_id_lookup_and_does_not_commit(pi_patches) -> None:
     events: list[tuple[str, str]] = []
     orch, session = _pi_orch(events)
     session.flush.side_effect = IntegrityError("stmt", {}, Exception("dup"))
@@ -492,28 +492,22 @@ async def test_path_import_race_uses_title_lookup_and_does_not_commit(pi_patches
     existing.title = "SomeShow"
     finder = AsyncMock(return_value=existing)
 
-    with patch.object(orch, "_db_find_show", finder):
+    with patch("jidou.orchestrators.path_import_orchestrator.find_show_by_tmdb_id", finder):
         show, action = await orch._tmdb_create_show("SomeShow")
 
     assert (show, action) == (existing, "found")
-    finder.assert_awaited_once_with("SomeShow")
+    finder.assert_awaited_once_with(session, 42)
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
     pi_patches["aliases"].assert_not_awaited()
     assert ("info", "Show 'SomeShow' already existed (concurrent create)") in events
 
 
-@pytest.mark.parametrize(
-    ("failing_prefix", "expected_error_prefix"),
-    [
-        ("Synced", "Episode sync failed for 'SomeShow': "),
-        ("Generated aliases", None),
-    ],
-)
-async def test_path_import_raising_success_event_is_swallowed_with_rollback(
-    pi_patches, failing_prefix: str, expected_error_prefix: str | None
+@pytest.mark.parametrize("failing_prefix", ["Synced", "Generated aliases"])
+async def test_path_import_raising_success_event_is_swallowed_without_rollback(
+    pi_patches, failing_prefix: str
 ) -> None:
-    """A raising ``on_event`` for a step's success message counts as that step failing."""
+    """A raising ``on_event`` for a step's success message is swallowed, not a step failure."""
     events: list[tuple[str, str]] = []
 
     async def flaky(level: str, msg: str, ctx: object = None) -> None:
@@ -527,11 +521,100 @@ async def test_path_import_raising_success_event_is_swallowed_with_rollback(
     show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created" and show is not None
-    session.rollback.assert_awaited_once()
+    session.rollback.assert_not_awaited()
     errors = [m for lvl, m in events if lvl == "error"]
-    if expected_error_prefix is None:
-        assert errors == []
-        pi_patches["aliases"].assert_awaited_once()
-    else:
-        assert len(errors) == 1 and errors[0].startswith(expected_error_prefix)
-        assert "sink broke" in errors[0]
+    assert errors == []
+    pi_patches["aliases"].assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# DF-8 (D14): race recovery looks the winner up by tmdb_id and ensures its group map
+# ---------------------------------------------------------------------------
+
+
+def _filters_on_tmdb_id(stmt: object) -> bool:
+    """Whether a SELECT's WHERE clause compares ``shows.tmdb_id`` (not just selects it)."""
+    where = getattr(stmt, "whereclause", None)
+    return where is not None and "shows.tmdb_id" in str(where)
+
+
+async def test_path_import_race_refinds_by_tmdb_id_not_title(pi_patches) -> None:
+    """A same-titled show with another tmdb_id must not be adopted as the race winner."""
+    events: list[tuple[str, str]] = []
+    orch, session = _pi_orch(events)
+    session.flush.side_effect = IntegrityError("stmt", {}, Exception("dup"))
+
+    tmdb_match = MagicMock(spec=Show)
+    tmdb_match.id = 99
+    tmdb_match.tmdb_id = 42
+    tmdb_match.title = "SomeShow (2019)"
+    title_match = MagicMock(spec=Show)
+    title_match.id = 5
+    title_match.tmdb_id = 7
+    title_match.title = "SomeShow"
+
+    async def execute(stmt: object) -> MagicMock:
+        # Answer by what the query filters on: a tmdb_id lookup finds the race winner,
+        # any title/alias lookup finds the unrelated show that happens to share the title.
+        hit = tmdb_match if _filters_on_tmdb_id(stmt) else title_match
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = hit
+        result.scalars.return_value.first.return_value = hit
+        return result
+
+    session.execute = AsyncMock(side_effect=execute)
+
+    with patch.object(TMDBOrchestrator, "ensure_episode_group_map", new=AsyncMock()) as ensure:
+        show, action = await orch._tmdb_create_show("SomeShow")
+
+    assert action == "found"
+    assert show is tmdb_match, f"adopted show tmdb_id={getattr(show, 'tmdb_id', None)}, want 42"
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    # The winner already has episodes (count=10), so its group map is ensured, not re-synced.
+    ensure.assert_awaited_once_with(tmdb_match)
+    pi_patches["sync"].assert_not_awaited()
+    assert ("info", "Show 'SomeShow' already existed (concurrent create)") in events
+
+
+async def test_manual_match_race_ensures_group_map(mm_patches) -> None:
+    """The race winner gets the same fill -> flush -> ensure treatment as a pre-existing show."""
+    winner = MagicMock(spec=Show)
+    winner.id = 7
+    winner.tmdb_id = 1396
+    winner.media_type = "tv"
+    winner.local_path = None
+    winner.content_type = None
+    session = _mm_session(None, winner)
+    order: list[str] = []
+    flushes = iter([IntegrityError("stmt", {}, Exception("dup")), None, None, None])
+
+    def flush() -> None:
+        order.append("flush")
+        exc = next(flushes)
+        if exc is not None:
+            raise exc
+
+    session.flush.side_effect = flush
+    session.rollback.side_effect = lambda: order.append("rollback")
+    session.commit.side_effect = lambda: order.append("commit")
+    mm_patches["ensure"].side_effect = lambda _s: order.append("ensure")
+    mm_patches["sync"].side_effect = lambda _s: order.append("sync")
+    mm_patches["aliases"].side_effect = lambda *a, **k: order.append("aliases")
+
+    show = await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
+        _mm_payload()
+    )
+
+    assert show is winner
+    mm_patches["ensure"].assert_awaited_once_with(winner)
+    assert order == [
+        "flush",  # the losing INSERT
+        "rollback",
+        "flush",  # caller's path/type filled onto the winner
+        "ensure",
+        "sync",
+        "commit",
+        "aliases",
+        "flush",
+    ]

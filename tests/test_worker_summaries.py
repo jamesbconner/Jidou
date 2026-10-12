@@ -64,7 +64,7 @@ async def _run_work(
             stack.enter_context(patch(f"{base}.{name}"))
         await impl()
         work = run_workflow.call_args.args[2]
-        wr: WorkflowResult = await work(MagicMock(), AsyncMock(), AsyncMock())
+        wr: WorkflowResult = await work(MagicMock(), AsyncMock(), AsyncMock(), AsyncMock())
     return wr
 
 
@@ -313,7 +313,6 @@ async def test_import_summary(mode: str) -> None:
     # parse_file / task-status / event writes are patched so no DB or file parsing happens.
     with (
         patch("jidou.workers.import_tasks.parse_file", return_value=[entry]),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
     ):
         wr = await _run_work(
