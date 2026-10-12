@@ -12,6 +12,8 @@ from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.orchestrators.alias_orchestrator import generate_aliases
+from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
@@ -66,8 +68,6 @@ class ShowRematchOrchestrator:
         Raises:
             UpstreamError: If TMDB details or episode sync fails.
         """
-        from jidou.orchestrators.alias_orchestrator import generate_aliases
-
         data = await self._fetch_tmdb_details(payload)
         self._apply_tmdb_metadata(show, payload, data)
 
@@ -212,8 +212,6 @@ class ShowRematchOrchestrator:
         Raises:
             UpstreamError: If the TMDB episode sync fails.
         """
-        from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
-
         try:
             await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
         except Exception as exc:
