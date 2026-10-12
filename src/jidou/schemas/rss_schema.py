@@ -1,11 +1,11 @@
 """Pydantic schemas for RSS feed and subscription API endpoints."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from jidou.schemas._base import BoundedRegexPattern, RegexPattern
+from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, RegexPattern
 from jidou.schemas.show_schema import ShowCreate
 
 MAX_REGEX_SAMPLES = 3
@@ -21,7 +21,7 @@ class RegexHintSample(BaseModel):
     """
 
     sample_name: str = ""
-    hint: Annotated[RegexPattern, Field(min_length=1)]
+    hint: NonEmptyRegexPattern
 
 
 class RssShowBrief(BaseModel):

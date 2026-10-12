@@ -122,3 +122,13 @@ def test_length_cap_runs_before_regex_check(
     first = exc_info.value.errors()[0]
     assert first["type"] == "string_too_long"
     assert first["loc"][-1] == field
+
+
+def test_empty_hint_fails_on_length_not_item_count() -> None:
+    """An empty hint keeps the plain-string ``string_too_short`` error type."""
+    with pytest.raises(ValidationError) as exc_info:
+        RegexHintSample.model_validate({"hint": ""})
+
+    first = exc_info.value.errors()[0]
+    assert first["type"] == "string_too_short"
+    assert first["loc"] == ("hint",)

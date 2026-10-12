@@ -38,3 +38,6 @@ MAX_REGEX_PATTERN_LENGTH = 512
 BoundedRegexPattern = Annotated[
     str, Field(max_length=MAX_REGEX_PATTERN_LENGTH), AfterValidator(_validate_regex)
 ]
+
+# Non-empty variant for required hints; same ordering rule as above.
+NonEmptyRegexPattern = Annotated[str, Field(min_length=1), AfterValidator(_validate_regex)]
