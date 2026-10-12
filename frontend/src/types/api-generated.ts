@@ -3426,9 +3426,7 @@ export interface components {
              * Genres
              * @description TMDB genre objects: [{"id": 16, "name": "Animation"}]
              */
-            genres?: {
-                [key: string]: unknown;
-            }[] | null;
+            genres?: components["schemas"]["TmdbGenre"][] | null;
         };
         /**
          * CalendarSyncResult
@@ -3465,9 +3463,7 @@ export interface components {
             /** Vote Average */
             vote_average?: number | null;
             /** Genres */
-            genres?: {
-                [key: string]: unknown;
-            }[] | null;
+            genres?: components["schemas"]["TmdbGenre"][] | null;
             /** Adult */
             adult?: boolean | null;
         };
@@ -4166,9 +4162,7 @@ export interface components {
             /** Vote Average */
             vote_average?: number | null;
             /** Genres */
-            genres?: {
-                [key: string]: unknown;
-            }[] | null;
+            genres?: components["schemas"]["TmdbGenre"][] | null;
             /** Release Date */
             release_date?: string | null;
             /** Status */
@@ -4798,21 +4792,13 @@ export interface components {
             /** Sys Name */
             sys_name?: string | null;
             /** Genres */
-            genres?: {
-                [key: string]: unknown;
-            }[] | null;
+            genres?: components["schemas"]["TmdbGenre"][] | null;
             /** Origin Country */
             origin_country?: string[] | null;
             /** Last Air Date */
             last_air_date?: string | null;
-            /** Last Episode To Air */
-            last_episode_to_air?: {
-                [key: string]: unknown;
-            } | null;
-            /** Next Episode To Air */
-            next_episode_to_air?: {
-                [key: string]: unknown;
-            } | null;
+            last_episode_to_air?: components["schemas"]["TmdbEpisodeRef"] | null;
+            next_episode_to_air?: components["schemas"]["TmdbEpisodeRef"] | null;
             /** Homepage */
             homepage?: string | null;
             /** External Ids */
@@ -4836,9 +4822,7 @@ export interface components {
             /** Number Of Episodes */
             number_of_episodes?: number | null;
             /** Networks */
-            networks?: {
-                [key: string]: unknown;
-            }[] | null;
+            networks?: components["schemas"]["TmdbNetwork"][] | null;
             /** Show Type */
             show_type?: string | null;
             /** Runtime */
@@ -4990,21 +4974,13 @@ export interface components {
                 [key: string]: string[];
             } | null;
             /** Genres */
-            genres?: {
-                [key: string]: unknown;
-            }[] | null;
+            genres?: components["schemas"]["TmdbGenre"][] | null;
             /** Origin Country */
             origin_country?: string[] | null;
             /** Last Air Date */
             last_air_date?: string | null;
-            /** Last Episode To Air */
-            last_episode_to_air?: {
-                [key: string]: unknown;
-            } | null;
-            /** Next Episode To Air */
-            next_episode_to_air?: {
-                [key: string]: unknown;
-            } | null;
+            last_episode_to_air?: components["schemas"]["TmdbEpisodeRef"] | null;
+            next_episode_to_air?: components["schemas"]["TmdbEpisodeRef"] | null;
             /** Homepage */
             homepage?: string | null;
             /** External Ids */
@@ -5032,9 +5008,7 @@ export interface components {
             /** Number Of Episodes */
             number_of_episodes?: number | null;
             /** Networks */
-            networks?: {
-                [key: string]: unknown;
-            }[] | null;
+            networks?: components["schemas"]["TmdbNetwork"][] | null;
             /** Show Type */
             show_type?: string | null;
             /** Runtime */
@@ -5301,6 +5275,68 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+        };
+        /**
+         * TmdbEpisodeRef
+         * @description A TMDB ``last_episode_to_air`` / ``next_episode_to_air`` episode summary.
+         */
+        TmdbEpisodeRef: {
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Overview */
+            overview?: string | null;
+            /** Vote Average */
+            vote_average?: number | null;
+            /** Vote Count */
+            vote_count?: number | null;
+            /** Air Date */
+            air_date?: string | null;
+            /** Episode Number */
+            episode_number?: number | null;
+            /** Episode Type */
+            episode_type?: string | null;
+            /** Production Code */
+            production_code?: string | null;
+            /** Runtime */
+            runtime?: number | null;
+            /** Season Number */
+            season_number?: number | null;
+            /** Show Id */
+            show_id?: number | null;
+            /** Still Path */
+            still_path?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TmdbGenre
+         * @description A TMDB genre object, e.g. ``{"id": 16, "name": "Animation"}``.
+         */
+        TmdbGenre: {
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TmdbNetwork
+         * @description A TMDB network object (TV broadcaster or streaming service).
+         */
+        TmdbNetwork: {
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Logo Path */
+            logo_path?: string | null;
+            /** Origin Country */
+            origin_country?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * TrackedSource

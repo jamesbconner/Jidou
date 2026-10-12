@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from jidou.models.show import ContentType
-from jidou.schemas._base import MediaType, ORMModel
+from jidou.schemas._base import MediaType, ORMModel, TmdbEpisodeRef, TmdbGenre, TmdbNetwork
 from jidou.schemas.episode_schema import EpisodeList
 from jidou.schemas.file_schema import EpisodeBrief
 
@@ -184,11 +184,11 @@ class ShowRead(ORMModel):
     sys_name: str | None = None
     aliases: list[str] | None = None
     aliases_sources: dict[str, list[str]] | None = None
-    genres: list[dict[str, object]] | None = None
+    genres: list[TmdbGenre] | None = None
     origin_country: list[str] | None = None
     last_air_date: str | None = None
-    last_episode_to_air: dict[str, object] | None = None
-    next_episode_to_air: dict[str, object] | None = None
+    last_episode_to_air: TmdbEpisodeRef | None = None
+    next_episode_to_air: TmdbEpisodeRef | None = None
     homepage: str | None = None
     external_ids: dict[str, object] | None = None
     episode_groups: list[dict[str, object]] | None = None
@@ -199,7 +199,7 @@ class ShowRead(ORMModel):
     in_production: bool | None = None
     number_of_seasons: int | None = None
     number_of_episodes: int | None = None
-    networks: list[dict[str, object]] | None = None
+    networks: list[TmdbNetwork] | None = None
     show_type: str | None = None
     runtime: int | None = None
     tagline: str | None = None
@@ -310,11 +310,11 @@ class ShowList(ORMModel):
     original_language: str | None = None
     content_type: ContentType | None = None
     sys_name: str | None = None
-    genres: list[dict[str, object]] | None = None
+    genres: list[TmdbGenre] | None = None
     origin_country: list[str] | None = None
     last_air_date: str | None = None
-    last_episode_to_air: dict[str, object] | None = None
-    next_episode_to_air: dict[str, object] | None = None
+    last_episode_to_air: TmdbEpisodeRef | None = None
+    next_episode_to_air: TmdbEpisodeRef | None = None
     homepage: str | None = None
     external_ids: dict[str, object] | None = None
     episode_groups: list[dict[str, object]] | None = None
@@ -323,7 +323,7 @@ class ShowList(ORMModel):
     in_production: bool | None = None
     number_of_seasons: int | None = None
     number_of_episodes: int | None = None
-    networks: list[dict[str, object]] | None = None
+    networks: list[TmdbNetwork] | None = None
     show_type: str | None = None
     runtime: int | None = None
     tagline: str | None = None

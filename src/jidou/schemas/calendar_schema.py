@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from jidou.models.show import ContentType
+from jidou.schemas._base import TmdbGenre
 
 
 class CalendarEpisode(BaseModel):
@@ -35,7 +36,7 @@ class CalendarEpisode(BaseModel):
     # than a manual opt-out.
     has_active_rss_subscription: bool
     content_type: ContentType | None = None
-    genres: list[dict[str, object]] | None = Field(
+    genres: list[TmdbGenre] | None = Field(
         default=None,
         description='TMDB genre objects: [{"id": 16, "name": "Animation"}]',
     )

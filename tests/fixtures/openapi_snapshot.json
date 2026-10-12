@@ -315,8 +315,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbGenre"
                 },
                 "type": "array"
               },
@@ -450,8 +449,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbGenre"
                 },
                 "type": "array"
               },
@@ -2045,8 +2043,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbGenre"
                 },
                 "type": "array"
               },
@@ -3935,8 +3932,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbGenre"
                 },
                 "type": "array"
               },
@@ -3991,14 +3987,12 @@
           "last_episode_to_air": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/TmdbEpisodeRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Last Episode To Air"
+            ]
           },
           "latest_episode_added_at": {
             "anyOf": [
@@ -4067,8 +4061,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbNetwork"
                 },
                 "type": "array"
               },
@@ -4081,14 +4074,12 @@
           "next_episode_to_air": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/TmdbEpisodeRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Next Episode To Air"
+            ]
           },
           "number_of_episodes": {
             "anyOf": [
@@ -4500,8 +4491,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbGenre"
                 },
                 "type": "array"
               },
@@ -4551,14 +4541,12 @@
           "last_episode_to_air": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/TmdbEpisodeRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Last Episode To Air"
+            ]
           },
           "list_poster_path": {
             "anyOf": [
@@ -4590,8 +4578,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/TmdbNetwork"
                 },
                 "type": "array"
               },
@@ -4604,14 +4591,12 @@
           "next_episode_to_air": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/TmdbEpisodeRef"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Next Episode To Air"
+            ]
           },
           "number_of_episodes": {
             "anyOf": [
@@ -5210,6 +5195,239 @@
           "task_type"
         ],
         "title": "TaskTrigger",
+        "type": "object"
+      },
+      "TmdbEpisodeRef": {
+        "additionalProperties": true,
+        "description": "A TMDB ``last_episode_to_air`` / ``next_episode_to_air`` episode summary.",
+        "properties": {
+          "air_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Date"
+          },
+          "episode_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Number"
+          },
+          "episode_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode Type"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "overview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overview"
+          },
+          "production_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Code"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime"
+          },
+          "season_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Number"
+          },
+          "show_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Id"
+          },
+          "still_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Path"
+          },
+          "vote_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vote Average"
+          },
+          "vote_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vote Count"
+          }
+        },
+        "title": "TmdbEpisodeRef",
+        "type": "object"
+      },
+      "TmdbGenre": {
+        "additionalProperties": true,
+        "description": "A TMDB genre object, e.g. ``{\"id\": 16, \"name\": \"Animation\"}``.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "TmdbGenre",
+        "type": "object"
+      },
+      "TmdbNetwork": {
+        "additionalProperties": true,
+        "description": "A TMDB network object (TV broadcaster or streaming service).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "logo_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Path"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "origin_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Country"
+          }
+        },
+        "title": "TmdbNetwork",
         "type": "object"
       },
       "TrackedSource": {

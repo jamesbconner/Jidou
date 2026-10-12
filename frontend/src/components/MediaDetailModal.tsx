@@ -78,8 +78,8 @@ export function MediaDetailModal({ item, onClose }: Props) {
               </div>
               {genres && genres.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {genres.map((g) => (
-                    <span key={g.id} className="text-[10px] bg-[var(--color-ocean-50)] text-[var(--color-ocean-600)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] px-1.5 py-0.5 rounded">
+                  {genres.map((g, i) => (
+                    <span key={g.id ?? g.name ?? i} className="text-[10px] bg-[var(--color-ocean-50)] text-[var(--color-ocean-600)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] px-1.5 py-0.5 rounded">
                       {g.name}
                     </span>
                   ))}
