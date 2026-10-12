@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 
+from jidou.schemas._base import RequestModel
 from jidou.services.settings_service import SIMILAR_TITLES_COUNT_MAX, SIMILAR_TITLES_COUNT_MIN
 
 
@@ -48,7 +49,7 @@ class AppSettingsRead(BaseModel):
     )
 
 
-class AppSettingsPatch(BaseModel):
+class AppSettingsPatch(RequestModel):
     """Partial update payload; only fields present in the request are applied."""
 
     show_adult_content: bool | None = None

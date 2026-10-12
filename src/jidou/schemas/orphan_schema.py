@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, computed_field
 
 from jidou.models.episode import TrackedSource
+from jidou.schemas._base import RequestModel
 from jidou.services.path_transport import decode_path_bytes_for_display
 
 
@@ -40,7 +41,7 @@ class OrphanRead(BaseModel):
         )
 
 
-class OrphanResolveRequest(BaseModel):
+class OrphanResolveRequest(RequestModel):
     """Payload for resolving an orphaned tracking record."""
 
     episode_id: int

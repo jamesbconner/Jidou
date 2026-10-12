@@ -6,7 +6,13 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from jidou.models.rss import SnapshotType
-from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, ORMModel, RegexPattern
+from jidou.schemas._base import (
+    BoundedRegexPattern,
+    NonEmptyRegexPattern,
+    ORMModel,
+    RegexPattern,
+    RequestModel,
+)
 from jidou.schemas.show_schema import ShowCreate
 
 MAX_REGEX_SAMPLES = 3
@@ -25,6 +31,15 @@ class RegexHintSample(BaseModel):
     hint: NonEmptyRegexPattern
 
 
+class RegexHintSampleRequest(RequestModel, RegexHintSample):
+    """Request-side :class:`RegexHintSample`: same fields, unknown fields rejected.
+
+    Split from :class:`RegexHintSample` because that model is also part of the
+    ``RssFeedRead`` response, which is built from stored JSONB and must keep
+    accepting whatever keys a stored sample holds.
+    """
+
+
 class RssShowBrief(ORMModel):
     """Minimal show info embedded in subscription responses."""
 
@@ -34,7 +49,7 @@ class RssShowBrief(ORMModel):
     poster_path: str | None
 
 
-class RssFeedCreate(BaseModel):
+class RssFeedCreate(RequestModel):
     """Request body for creating an RSS feed."""
 
     remote_key: str | None = None
@@ -43,14 +58,14 @@ class RssFeedCreate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool = True
-    regex_include_samples: list[RegexHintSample] | None = Field(
+    regex_include_samples: list[RegexHintSampleRequest] | None = Field(
         default=None, max_length=MAX_REGEX_SAMPLES
     )
     regex_exclude_hint: RegexPattern | None = None
     extra_config: dict[str, object] | None = None
 
 
-class RssFeedUpdate(BaseModel):
+class RssFeedUpdate(RequestModel):
     """Request body for updating an RSS feed — all fields optional."""
 
     remote_key: str | None = None
@@ -59,7 +74,7 @@ class RssFeedUpdate(BaseModel):
     default_download_location: str | None = None
     default_move_completed: str | None = None
     active: bool | None = None
-    regex_include_samples: list[RegexHintSample] | None = Field(
+    regex_include_samples: list[RegexHintSampleRequest] | None = Field(
         default=None, max_length=MAX_REGEX_SAMPLES
     )
     regex_exclude_hint: RegexPattern | None = None
@@ -83,7 +98,7 @@ class RssFeedRead(ORMModel):
     updated_at: datetime
 
 
-class RssSubscriptionCreate(BaseModel):
+class RssSubscriptionCreate(RequestModel):
     """Request body for creating an RSS subscription."""
 
     feed_id: int | None = None
@@ -101,7 +116,7 @@ class RssSubscriptionCreate(BaseModel):
     extra_config: dict[str, object] | None = None
 
 
-class RssSubscriptionUpdate(BaseModel):
+class RssSubscriptionUpdate(RequestModel):
     """Request body for updating an RSS subscription — all fields optional."""
 
     feed_id: int | None = None
@@ -150,7 +165,7 @@ class RssSubscriptionRecommendation(RssSubscriptionRead):
     recommendation: Literal["activate", "deactivate"]
 
 
-class RssSubscriptionBulkPatchItem(BaseModel):
+class RssSubscriptionBulkPatchItem(RequestModel):
     """Single item in a bulk-patch request."""
 
     id: int
@@ -176,7 +191,7 @@ class RssConfigDiff(BaseModel):
     diff: list[str]
 
 
-class RssRegexSuggestRequest(BaseModel):
+class RssRegexSuggestRequest(RequestModel):
     """Optional unsaved context for an LLM regex suggestion.
 
     Attributes:
@@ -273,7 +288,7 @@ class RegexMatchReportRead(BaseModel):
     total: int
 
 
-class FeedRegexSuggestRequest(BaseModel):
+class FeedRegexSuggestRequest(RequestModel):
     """Request a regex suggestion for a group of a feed's entries.
 
     Attributes:
@@ -301,7 +316,7 @@ class FeedRegexSuggestion(RssRegexSuggestion):
     match: RegexMatchReportRead
 
 
-class FeedRegexTestRequest(BaseModel):
+class FeedRegexTestRequest(RequestModel):
     """Preview a hand-edited filter against a feed group's current titles.
 
     Attributes:
@@ -320,7 +335,7 @@ class FeedRegexTestRequest(BaseModel):
     regex_exclude_ignorecase: bool = True
 
 
-class FeedAddShowRequest(BaseModel):
+class FeedAddShowRequest(RequestModel):
     """Create (or reuse) a show and its subscription from one feed group.
 
     Exactly one of ``show_id`` (a show already in the library) or ``show`` (a

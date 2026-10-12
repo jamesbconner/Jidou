@@ -4199,6 +4199,23 @@ export interface components {
             hint: string;
         };
         /**
+         * RegexHintSampleRequest
+         * @description Request-side :class:`RegexHintSample`: same fields, unknown fields rejected.
+         *
+         *     Split from :class:`RegexHintSample` because that model is also part of the
+         *     ``RssFeedRead`` response, which is built from stored JSONB and must keep
+         *     accepting whatever keys a stored sample holds.
+         */
+        RegexHintSampleRequest: {
+            /**
+             * Sample Name
+             * @default
+             */
+            sample_name: string;
+            /** Hint */
+            hint: string;
+        };
+        /**
          * RegexMatchReportRead
          * @description Which of a feed group's current titles a regex filter selects.
          *
@@ -4282,7 +4299,7 @@ export interface components {
              */
             active: boolean;
             /** Regex Include Samples */
-            regex_include_samples?: components["schemas"]["RegexHintSample"][] | null;
+            regex_include_samples?: components["schemas"]["RegexHintSampleRequest"][] | null;
             /** Regex Exclude Hint */
             regex_exclude_hint?: string | null;
             /** Extra Config */
@@ -4346,7 +4363,7 @@ export interface components {
             /** Active */
             active?: boolean | null;
             /** Regex Include Samples */
-            regex_include_samples?: components["schemas"]["RegexHintSample"][] | null;
+            regex_include_samples?: components["schemas"]["RegexHintSampleRequest"][] | null;
             /** Regex Exclude Hint */
             regex_exclude_hint?: string | null;
             /** Extra Config */
