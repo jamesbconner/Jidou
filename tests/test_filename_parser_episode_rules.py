@@ -68,6 +68,14 @@ SAMPLE: list[tuple[str, tuple[str | None, int | None, int | None]]] = [
     ("Show - 1000.mkv", ("Show", None, 1000)),
     ("Show - 2024.mkv", ("Show - 2024", None, None)),
     ("Show - 1080 [x].mkv", ("Show -", None, None)),
+    # Owner ruling: dash markers skip years and resolutions. This parser's dash handling is the
+    # guarded bare-number rule, and it has no "Ep N"/"Episode N" word rule (tracker titles aside).
+    ("Show - 1071.mkv", ("Show", None, 1071)),
+    ("Show - 1100.mkv", ("Show", None, 1100)),
+    ("Show - 720 [x].mkv", ("Show -", None, None)),
+    ("Show 1100 - Title.mkv", ("Show", None, 1100)),
+    ("Show Ep 2024.mkv", ("Show Ep 2024", None, None)),
+    ("Show 1x2024.mkv", ("Show 1x2024", None, None)),
     ("Show - 9999.mkv", ("Show", None, 9999)),
     ("Show Part 2 - 05.mkv", ("Show Part 2", None, 5)),
     ("Show 1001 - Big Title.mkv", ("Show", None, 1001)),
@@ -162,6 +170,7 @@ SE_HINT_ROWS: list[tuple[str, tuple[int, int] | None]] = [
     ("Show 1x100.mkv", (1, 100)),
     ("Show 12x999.mkv", (12, 999)),
     ("Show S01E2024.mkv", (1, 2024)),
+    ("Show 1x2024.mkv", (1, 2024)),
     ("ShowName.1920x1080.mkv", None),
     ("Show 2x1080.mkv", (2, 1080)),
     ("Show S10E100.mkv", (10, 100)),

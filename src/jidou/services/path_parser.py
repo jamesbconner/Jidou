@@ -29,6 +29,8 @@ _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 
 # Every explicit-marker pattern below (SxxE, NxN, Episode, Ep, "- N", "N - Title")
 # takes 1-4 episode digits: long-running shows have passed episode 1,000 (D20).
+# The dash rules additionally skip release years and resolution tokens (see
+# _EPISODE_RULES).
 
 # Standard SxxExx notation — always carries both season and episode.
 _SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})")
@@ -96,11 +98,16 @@ class _EpisodeRule:
         has_season: True when group 1 is the season and group 2 the episode;
             False when group 1 is the episode alone.
         blocked_by: When set and it matches the stem, this rule is skipped.
+        skip_years_and_resolutions: When True, a match whose episode is a
+            release year or a resolution token is ignored and the search goes
+            on to the next match. Set on the dash rules, whose marker is too
+            weak to outweigh a year or resolution (owner ruling on D20).
     """
 
     pattern: re.Pattern[str]
     has_season: bool
     blocked_by: re.Pattern[str] | None = None
+    skip_years_and_resolutions: bool = False
 
     def match(self, stem: str) -> tuple[int | None, int, None] | None:
         """Apply this rule to *stem*.
@@ -116,12 +123,26 @@ class _EpisodeRule:
         # guess still get their chance, exactly as the old inline `if` did.
         if self.blocked_by is not None and self.blocked_by.search(stem):
             return None
-        m = self.pattern.search(stem)
-        if m is None:
-            return None
-        if self.has_season:
-            return int(m.group(1)), int(m.group(2)), None
-        return None, int(m.group(1)), None
+        for m in self.pattern.finditer(stem):
+            raw = m.group(2) if self.has_season else m.group(1)
+            if self.skip_years_and_resolutions and _is_year_or_resolution(raw):
+                continue
+            if self.has_season:
+                return int(m.group(1)), int(raw), None
+            return None, int(raw), None
+        return None
+
+
+def _is_year_or_resolution(raw: str) -> bool:
+    """Return True if the digit string *raw* is a release year or a resolution token.
+
+    Args:
+        raw: The captured episode digits.
+
+    Returns:
+        True when the number should not be read as an episode.
+    """
+    return raw in _COMPACT_QUALITY or is_release_year(int(raw))
 
 
 # Ordered, first match wins; the compact SEEE guess runs after all of these.
@@ -131,9 +152,11 @@ _EPISODE_RULES: tuple[_EpisodeRule, ...] = (
     _EpisodeRule(_SEASON_EPISODE_WORD, has_season=True),
     _EpisodeRule(_EPISODE_WORD, has_season=False),
     _EpisodeRule(_EP_WORD, has_season=False),
-    _EpisodeRule(_DASH_EP, has_season=False),
-    _EpisodeRule(_PREDASH_EP, has_season=False),
-    _EpisodeRule(_LEADING_EP, has_season=False),
+    # Dash markers skip years and resolutions ("Show - 2024", "2024 - Year in Review");
+    # word and SxxE/NxN markers above do not.
+    _EpisodeRule(_DASH_EP, has_season=False, skip_years_and_resolutions=True),
+    _EpisodeRule(_PREDASH_EP, has_season=False, skip_years_and_resolutions=True),
+    _EpisodeRule(_LEADING_EP, has_season=False, skip_years_and_resolutions=True),
     # Bonus-content markers mean a trailing number is a clip index, not an episode.
     _EpisodeRule(_BARE_TRAILING_EP, has_season=False, blocked_by=_NON_EPISODE_ASSET_WORD),
 )
