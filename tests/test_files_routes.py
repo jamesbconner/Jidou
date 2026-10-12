@@ -1162,3 +1162,22 @@ def test_patch_file_unrecognised_integrity_error_is_reraised_after_rollback() ->
         rollback.assert_awaited_once()
     finally:
         app.dependency_overrides.clear()
+
+
+def test_file_match_invalid_content_type_is_422_enum_error() -> None:
+    """POST /api/files/{id}/match rejects an unknown content_type with an enum error."""
+    from jidou.database import get_session
+
+    f = _make_file(id=1, status=FileStatus.UNMATCHED)
+    app.dependency_overrides[get_session] = _session_override(single=f)
+    try:
+        response = TestClient(app).post(
+            "/api/files/1/match",
+            json={"tmdb_id": 99, "local_path": "/x", "content_type": "documentary"},
+        )
+        assert response.status_code == 422
+        error = response.json()["detail"][0]
+        assert error["loc"][-1] == "content_type"
+        assert error["type"] == "enum"
+    finally:
+        app.dependency_overrides.clear()

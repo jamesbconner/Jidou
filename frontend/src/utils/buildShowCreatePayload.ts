@@ -29,7 +29,8 @@ export function buildShowCreatePayload(result: ShowCreatePayloadInput): ShowCrea
   return {
     tmdb_id: result.id,
     title: result.name ?? result.title ?? 'Unknown',
-    media_type: result.media_type ?? 'tv',
+    // TMDB reports the bare string; the API now validates it as 'tv' | 'movie'.
+    media_type: (result.media_type ?? 'tv') as ShowCreate['media_type'],
     overview: result.overview ?? null,
     poster_path: result.poster_path ?? null,
     backdrop_path: result.backdrop_path ?? null,
