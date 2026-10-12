@@ -1178,3 +1178,39 @@ async def test_route_one_dry_run_no_local_path_is_skipped_without_commit() -> No
     assert outcome is RouteOutcome.SKIPPED_NO_COMMIT
     session.commit.assert_not_awaited()
     assert file.status == FileStatus.MATCHED
+
+
+@pytest.mark.asyncio
+async def test_characterize_tracking_failure_after_move_counts_routed_and_failed(
+    tmp_path: Path,
+) -> None:
+    """Tracking raising after a real move: info then error event, ERROR, staging path restored.
+
+    The batch result has always counted this file as both routed and failed.
+    """
+    staging = tmp_path / "ep.mkv"
+    staging.write_bytes(b"video")
+    file = _make_file(filename="ep.mkv", local_path=str(staging))
+    show = _make_show(local_path=str(tmp_path / "show"))
+    show.title = "Show"
+    session, _log, on_event = _recording_session([(file, show)], ep=_make_episode())
+    # Episode lookup fails whether it goes through session.get or session.execute.
+    session.get = AsyncMock(side_effect=RuntimeError("db gone"))
+    files_result = MagicMock()
+    files_result.all.return_value = [(file, show)]
+    session.execute = AsyncMock(side_effect=[files_result, RuntimeError("db gone")])
+
+    result = await RouteOrchestrator(session).run(on_event=on_event)
+
+    dest = tmp_path / "show" / "Season 01" / "ep.mkv"
+    assert [c.args[0] for c in on_event.await_args_list] == ["info", "error"]
+    assert on_event.await_args_list[0].args[1] == f"Routed 'ep.mkv' → {dest}"
+    assert on_event.await_args_list[1].args == (
+        "error",
+        "Failed to route 'ep.mkv': db gone",
+        {"file_id": 1, "error": "db gone"},
+    )
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "db gone"
+    assert file.local_path == str(staging)
+    assert (result.files_routed, result.files_failed) == (1, 1)

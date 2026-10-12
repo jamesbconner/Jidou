@@ -125,6 +125,9 @@ class RouteOutcome(Enum):
     ROUTED = auto()  # moved, already in place, or (dry run) would be routed
     FAILED = auto()
     SKIPPED_NO_COMMIT = auto()  # dry-run skip: counted nowhere, nothing committed
+    # Marked ROUTED, then a later step (tracking, retry commit) raised. The batch
+    # result has always counted such a file as both routed and failed; kept as is.
+    ROUTED_THEN_FAILED = auto()
 
 
 def _unique_destination(dest: Path, current_local_path: str | None) -> Path:
@@ -235,7 +238,8 @@ class RouteOrchestrator:
         Args:
             file: The routed file.
             dest: Final path to store as ``local_path``. ``None`` leaves
-                ``local_path`` as it is (the file was already at its destination).
+                ``local_path`` as it is (the file was already at its destination, and it
+                may hold the percent-encoded form, which must not be rewritten).
             show_id: Show to search within when resolving the episode.
         """
         if dest is not None:
@@ -524,12 +528,15 @@ class RouteOrchestrator:
                 f"Failed to route {file.original_filename!r}: {exc}",
                 {"file_id": file.id, "error": str(exc)},
             )
+            # Status is ROUTED only if a later step failed after _mark_routed();
+            # that file has always been counted as both routed and failed.
+            was_routed = file.status == FileStatus.ROUTED
             # Reset local_path to the original staging path so a future retry
             # can still locate the source file.
             file.local_path = staging_path
             file.status = FileStatus.ERROR
             file.error_message = str(exc)
-            outcome = RouteOutcome.FAILED
+            outcome = RouteOutcome.ROUTED_THEN_FAILED if was_routed else RouteOutcome.FAILED
 
         await self.session.flush()
         await self.session.commit()
@@ -576,8 +583,8 @@ class RouteOrchestrator:
                 await on_progress(idx, total, f"Routing {file.original_filename}")
             counts[await self._route_one(file, show, dry_run=dry_run, sink=sink)] += 1
 
-        files_routed = counts[RouteOutcome.ROUTED]
-        files_failed = counts[RouteOutcome.FAILED]
+        files_routed = counts[RouteOutcome.ROUTED] + counts[RouteOutcome.ROUTED_THEN_FAILED]
+        files_failed = counts[RouteOutcome.FAILED] + counts[RouteOutcome.ROUTED_THEN_FAILED]
         if dry_run:
             logger.info(
                 "Route dry-run complete: %d would be routed (dry_run=True)",

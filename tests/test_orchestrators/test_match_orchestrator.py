@@ -1491,3 +1491,36 @@ async def test_matched_by_uses_run_level_llm_availability():
     assert result.files_matched == 3
     llm.is_available.assert_called_once_with()
     assert all(f.matched_by == MatchedBy.LLM for f in files)
+
+
+@pytest.mark.parametrize(
+    ("parsed", "found_show", "expected"),
+    [
+        pytest.param(_parsed(), True, (1, 0, 1), id="matched-then-flush-fails"),
+        pytest.param(_parsed(confidence=0.3), True, (0, 1, 1), id="low-confidence-flush-fails"),
+        pytest.param(_parsed(), False, (0, 1, 1), id="no-show-flush-fails"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_characterize_flush_failure_counts_decided_outcome_and_failed(
+    parsed, found_show, expected
+):
+    """A failing closing flush leaves the decided bucket counted AND counts the file failed."""
+    file = _make_file(filename="f.mkv")
+    show = _make_show(title="Test Show", local_path="/x")
+    show.content_type = None
+    show.media_type = "tv"
+    session, _ = _recording_parse_session([file])
+    # First flush (the closing one) raises; the ERROR-marking flush in the handler succeeds.
+    session.flush = AsyncMock(side_effect=[RuntimeError("flush failed"), None])
+
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(return_value=parsed)),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show if found_show else None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+    ):
+        result = await ParseOrchestrator(session, llm=_llm()).run()
+
+    assert (result.files_matched, result.files_unmatched, result.files_failed) == expected
+    assert file.status == FileStatus.ERROR
+    assert file.error_message == "flush failed"

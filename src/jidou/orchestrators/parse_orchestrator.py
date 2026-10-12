@@ -45,6 +45,17 @@ class ParseOutcome(Enum):
     MATCHED = auto()
     UNMATCHED = auto()
     FAILED = auto()
+    # Decided MATCHED/UNMATCHED, then the closing flush (or a late step) raised. The batch
+    # result has always counted such a file in both buckets; kept as is.
+    MATCHED_THEN_FAILED = auto()
+    UNMATCHED_THEN_FAILED = auto()
+
+
+# Maps the outcome decided before a failure to the outcome that preserves its count.
+_FAILED_AFTER: dict[ParseOutcome | None, ParseOutcome] = {
+    ParseOutcome.MATCHED: ParseOutcome.MATCHED_THEN_FAILED,
+    ParseOutcome.UNMATCHED: ParseOutcome.UNMATCHED_THEN_FAILED,
+}
 
 
 def _is_exact_alias_match(show: Show, name: str) -> bool:
@@ -137,7 +148,7 @@ class ParseOrchestrator:
         Enables the substring title fallback (``fuzzy=True``) since the LLM's
         parsed name is not guaranteed to equal the show's exact stored title.
         A fuzzy hit must not be trusted as a valid alias on its own — see the
-        exactness check in ``run()`` before ``add_alias`` is called.
+        exactness check in ``_apply_match()`` before ``add_alias`` is called.
 
         Args:
             parsed_name: The extracted show name (not yet normalised).
@@ -380,7 +391,6 @@ class ParseOrchestrator:
             f"Low confidence ({confidence:.2f}) for {file.original_filename!r}, flagging UNMATCHED",
             {"file_id": file.id, "confidence": confidence},
         )
-        await self.session.flush()
         return ParseOutcome.UNMATCHED
 
     async def _mark_unmatched(
@@ -429,6 +439,9 @@ class ParseOrchestrator:
         Returns:
             How the file ended.
         """
+        # Set once MATCHED/UNMATCHED is decided, so a failure in the closing flush is
+        # still counted the way it always was (in both buckets).
+        decided: ParseOutcome | None = None
         try:
             # Stage 1a: regex anchors season/episode (fast, structural)
             se = heuristic_se(file.original_filename)
@@ -467,7 +480,9 @@ class ParseOrchestrator:
             # Stage 2: confidence gate — skipped for heuristic results (llm_ok=False)
             # and for movies (null episode is expected, not a sign of uncertainty).
             if apply_gate and parsed.confidence < _CONFIDENCE_THRESHOLD:
-                return await self._flag_low_confidence(file, parsed.confidence, sink)
+                decided = await self._flag_low_confidence(file, parsed.confidence, sink)
+                await self.session.flush()
+                return decided
 
             # Stage 3: DB lookup
             show = await self._find_show(parsed.show_name) if parsed.show_name else None
@@ -482,12 +497,12 @@ class ParseOrchestrator:
                     llm_active=llm_active,
                     sink=sink,
                 )
-                outcome = ParseOutcome.MATCHED
+                decided = ParseOutcome.MATCHED
             else:
                 await self._mark_unmatched(file, parsed.show_name, sink)
-                outcome = ParseOutcome.UNMATCHED
+                decided = ParseOutcome.UNMATCHED
             await self.session.flush()
-            return outcome
+            return decided
 
         except Exception as exc:
             logger.error("Failed to parse %s: %s", file.original_filename, exc)
@@ -500,7 +515,7 @@ class ParseOrchestrator:
                 file.status = FileStatus.ERROR
                 file.error_message = str(exc)
                 await self.session.flush()
-            return ParseOutcome.FAILED
+            return _FAILED_AFTER.get(decided, ParseOutcome.FAILED)
 
     async def run(
         self,
@@ -554,9 +569,15 @@ class ParseOrchestrator:
         if not dry_run:
             await self.session.commit()
 
-        files_matched = counts[ParseOutcome.MATCHED]
-        files_unmatched = counts[ParseOutcome.UNMATCHED]
-        files_failed = counts[ParseOutcome.FAILED]
+        files_matched = counts[ParseOutcome.MATCHED] + counts[ParseOutcome.MATCHED_THEN_FAILED]
+        files_unmatched = (
+            counts[ParseOutcome.UNMATCHED] + counts[ParseOutcome.UNMATCHED_THEN_FAILED]
+        )
+        files_failed = (
+            counts[ParseOutcome.FAILED]
+            + counts[ParseOutcome.MATCHED_THEN_FAILED]
+            + counts[ParseOutcome.UNMATCHED_THEN_FAILED]
+        )
         logger.info(
             "Parse complete: %d matched, %d unmatched, %d failed (dry_run=%s)",
             files_matched,
