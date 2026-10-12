@@ -17,13 +17,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
-from jidou.models.task import BackgroundTask, TaskStatus
+from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask
 from jidou.services.progress import create_task_record
 
 logger = logging.getLogger(__name__)
-
-# Statuses that indicate a task is still occupying the pipeline.
-_ACTIVE_STATUSES = {TaskStatus.PENDING.value, TaskStatus.RUNNING.value}
 
 
 async def _try_claim_task(task_type: str, task_id: str) -> bool:
@@ -51,7 +48,7 @@ async def _try_claim_task(task_type: str, task_id: str) -> bool:
                 await session.execute(
                     select(func.count()).where(
                         BackgroundTask.task_type == task_type,
-                        BackgroundTask.status.in_(_ACTIVE_STATUSES),
+                        BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
                     )
                 )
             ).scalar_one()
@@ -97,7 +94,7 @@ async def _dispatch_scheduled(task_type: str, celery_task: Any, task_id: str) ->
     in the task history that no user asked for and nothing will ever surface
     to them. Deleting it also isn't load-bearing for the overlap guard in
     ``_try_claim_task`` either way, since FAILED (like a deleted row) is not
-    in ``_ACTIVE_STATUSES`` — this is purely about not polluting the UI.
+    in ``ACTIVE_TASK_STATUSES`` — this is purely about not polluting the UI.
 
     Args:
         task_type: Type label used in the overlap guard and log messages.

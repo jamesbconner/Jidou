@@ -5,11 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
 
 if TYPE_CHECKING:
     from jidou.models.show import Show
@@ -34,7 +33,7 @@ class WatchlistEntry(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"))
     status: Mapped[WatchlistStatus] = mapped_column(
-        SAEnum(WatchlistStatus, values_callable=lambda e: [x.value for x in e]),
+        str_enum(WatchlistStatus),
         default=WatchlistStatus.PLANNED,
     )
     notes: Mapped[str | None] = mapped_column(String(1000))

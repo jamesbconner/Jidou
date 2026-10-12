@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
-from jidou.models.task import TaskStatus
+from jidou.models.task import TERMINAL_TASK_STATUSES, TaskStatus
 from jidou.services.progress import (
     TaskCancelledError,
     append_task_event,
@@ -21,12 +21,6 @@ logger = logging.getLogger(__name__)
 
 ProgressFn = Callable[[int, int, str], Awaitable[None]]
 EventFn = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
-
-_TERMINAL_STATUSES = {
-    TaskStatus.COMPLETED.value,
-    TaskStatus.FAILED.value,
-    TaskStatus.CANCELLED.value,
-}
 
 
 @dataclass
@@ -98,7 +92,7 @@ async def run_task_workflow(
                 session, celery_task_id, task_type, progress_total=progress_total, dry_run=dry_run
             )
             # Redelivered Celery messages must not rerun finished work.
-            if task.status in _TERMINAL_STATUSES:
+            if task.status in TERMINAL_TASK_STATUSES:
                 logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
                 return celery_task_id
 
@@ -161,7 +155,7 @@ async def run_task_workflow(
                     progress_message=result.message,
                     result_summary=result.result_summary,
                 )
-                if completed is not None and completed.status == TaskStatus.COMPLETED.value:
+                if completed is not None and completed.status == TaskStatus.COMPLETED:
                     await emit_progress(
                         {
                             "celery_task_id": celery_task_id,
