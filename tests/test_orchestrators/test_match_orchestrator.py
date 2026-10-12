@@ -101,6 +101,19 @@ def _stub_llm_match_episode(monkeypatch):
     return stub
 
 
+@pytest.fixture(autouse=True)
+def _stub_find_duplicate_original(monkeypatch):
+    """Default "no duplicate" stub for the duplicate-file lookup (DF-13).
+
+    The lookup is one more query after an episode resolves; these tests'
+    scripted mock sessions do not script it. Duplicate flagging itself is
+    covered in test_parse_duplicate_flag.py.
+    """
+    stub = AsyncMock(return_value=None)
+    monkeypatch.setattr("jidou.orchestrators.parse_orchestrator.find_duplicate_original", stub)
+    return stub
+
+
 async def test_run_no_llm_marks_unmatched():
     """Without LLM, heuristic name extracted but no DB match → file is UNMATCHED."""
     file1 = _make_file(filename="UnknownFile.S01E01.mkv")

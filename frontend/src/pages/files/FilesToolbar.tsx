@@ -29,9 +29,50 @@ interface FilesToolbarProps {
   onMaxRecordsChange: (value: number | null) => void
   showIgnored: boolean
   onShowIgnoredChange: (value: boolean) => void
+  duplicatesOnly: boolean
+  onDuplicatesOnlyChange: (value: boolean) => void
 }
 
-/** Title row with the search box and the status / paging / ignored filters. */
+interface FilterSwitchProps {
+  checked: boolean
+  /** Accessible name while on (describes what clicking does). */
+  onLabel: string
+  /** Accessible name while off. */
+  offLabel: string
+  text: string
+  onChange: (value: boolean) => void
+}
+
+/** A small on/off switch for a boolean list filter. */
+function FilterSwitch({ checked, onLabel, offLabel, text, onChange }: FilterSwitchProps) {
+  const label = checked ? onLabel : offLabel
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+    >
+      <span
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+          checked ? 'bg-[var(--color-ocean-600)]' : 'bg-gray-300 dark:bg-gray-700'
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+            checked ? 'translate-x-3.5' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+      {text}
+    </button>
+  )
+}
+
+/** Title row with the search box and the status / paging / ignored / duplicate filters. */
 export function FilesToolbar({
   search,
   onSearchChange,
@@ -43,6 +84,8 @@ export function FilesToolbar({
   onMaxRecordsChange,
   showIgnored,
   onShowIgnoredChange,
+  duplicatesOnly,
+  onDuplicatesOnlyChange,
 }: FilesToolbarProps) {
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -90,28 +133,20 @@ export function FilesToolbar({
           <option value="all">All</option>
         </select>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={showIgnored}
-        aria-label={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
-        title={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
-        onClick={() => onShowIgnoredChange(!showIgnored)}
-        className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-      >
-        <span
-          className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-            showIgnored ? 'bg-[var(--color-ocean-600)]' : 'bg-gray-300 dark:bg-gray-700'
-          }`}
-        >
-          <span
-            className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-              showIgnored ? 'translate-x-3.5' : 'translate-x-0.5'
-            }`}
-          />
-        </span>
-        Show ignored
-      </button>
+      <FilterSwitch
+        checked={showIgnored}
+        onLabel="Hide ignored files"
+        offLabel="Show ignored files"
+        text="Show ignored"
+        onChange={onShowIgnoredChange}
+      />
+      <FilterSwitch
+        checked={duplicatesOnly}
+        onLabel="Show all files"
+        offLabel="Show only duplicate files"
+        text="Duplicates only"
+        onChange={onDuplicatesOnlyChange}
+      />
     </div>
   )
 }

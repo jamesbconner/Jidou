@@ -218,6 +218,60 @@ def test_list_files_explicit_status_ignores_show_ignored_flag() -> None:
         app.dependency_overrides.clear()
 
 
+def _captured_list_sql(query: str) -> tuple[str, str, list[dict[str, object]]]:
+    """GET /api/files?<query> and return the count SQL, the page SQL and the body.
+
+    Args:
+        query: The query string (without ``?``).
+
+    Returns:
+        ``(count_sql, page_sql, json_body)`` with literal binds compiled in.
+    """
+    from jidou.database import get_session
+
+    sessions: list[AsyncMock] = []
+    row = _make_file(id=2, status=FileStatus.MATCHED)
+    row.duplicate_of_file_id = 1
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+        session.execute = AsyncMock(return_value=result)
+        session.scalar = AsyncMock(return_value=1)
+        sessions.append(session)
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).get(f"/api/files?{query}")
+        assert response.status_code == 200
+        count_stmt = sessions[0].scalar.await_args_list[0].args[0]
+        page_stmt = sessions[0].execute.await_args_list[0].args[0]
+        return (
+            str(count_stmt.compile(compile_kwargs={"literal_binds": True})),
+            str(page_stmt.compile(compile_kwargs={"literal_binds": True})),
+            response.json(),
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_files_duplicates_only_filters_flagged_files() -> None:
+    """GET /api/files?duplicates_only=true keeps only flagged duplicates (D33)."""
+    count_sql, page_sql, body = _captured_list_sql("duplicates_only=true")
+    assert "downloaded_files.duplicate_of_file_id IS NOT NULL" in count_sql
+    assert "downloaded_files.duplicate_of_file_id IS NOT NULL" in page_sql
+    assert body[0]["duplicate_of_file_id"] == 1
+
+
+def test_list_files_without_duplicates_only_does_not_filter_duplicates() -> None:
+    """The duplicate filter is off by default."""
+    count_sql, page_sql, _ = _captured_list_sql("")
+    assert "duplicate_of_file_id IS NOT NULL" not in count_sql
+    assert "duplicate_of_file_id IS NOT NULL" not in page_sql
+
+
 # ---------------------------------------------------------------------------
 # GET /api/files/{file_id}
 # ---------------------------------------------------------------------------

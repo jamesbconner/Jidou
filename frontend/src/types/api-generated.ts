@@ -1366,6 +1366,8 @@ export interface paths {
          *         show_ignored: When *status* is unset, include ``ignored`` files in the
          *             unfiltered result. Has no effect when *status* is explicitly
          *             provided — an explicit filter always wins.
+         *         duplicates_only: Only return files flagged as duplicates of an
+         *             earlier file for the same episode (``duplicate_of_file_id`` set).
          *         limit: Maximum results to return (1-1000, default 50).
          *         offset: Number of results to skip for pagination.
          *         response: FastAPI response object used to set ``X-Total-Count`` header.
@@ -3959,6 +3961,8 @@ export interface components {
             parsed_confidence?: number | null;
             /** Parsed Content Type */
             parsed_content_type?: string | null;
+            /** Duplicate Of File Id */
+            duplicate_of_file_id?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -6866,6 +6870,7 @@ export interface operations {
                 show_id?: number | null;
                 search?: string | null;
                 show_ignored?: boolean;
+                duplicates_only?: boolean;
                 limit?: number;
                 offset?: number;
             };
