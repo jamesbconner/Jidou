@@ -1,6 +1,7 @@
 """Tests for the /config API routes."""
 
 from datetime import date
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -224,3 +225,117 @@ def test_test_redis_returns_ok_false_on_ping_failure() -> None:
     assert response.status_code == 200
     assert response.json()["ok"] is False
     assert "error" in response.json()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/config/test/sftp -- constructor-argument characterization
+# ---------------------------------------------------------------------------
+
+
+def _sftp_settings(**overrides: object) -> MagicMock:
+    """Build a settings stand-in carrying every ``sftp_*`` value the route reads."""
+    values: dict[str, object] = {
+        "sftp_host": "sftp.example.test",
+        "sftp_port": 2222,
+        "sftp_username": "alice",
+        "sftp_password": None,
+        "sftp_key_path": None,
+        "sftp_remote_paths": "/downloads,/completed",
+        "sftp_remote_paths_list": ["/downloads", "/completed"],
+        "sftp_max_workers": 8,
+        "sftp_max_retries": 5,
+        "sftp_retry_delay": 2.5,
+    }
+    values.update(overrides)
+    mock_settings = MagicMock()
+    for name, value in values.items():
+        setattr(mock_settings, name, value)
+    return mock_settings
+
+
+def _post_sftp_test(
+    mock_settings: MagicMock, listing: list[str] | None = None
+) -> tuple[Any, MagicMock]:
+    """POST the SFTP test with a patched SFTPService; return (response, class mock)."""
+    service = MagicMock()
+    service.list_remote_files = AsyncMock(return_value=listing or [])
+    with (
+        patch("jidou.api.routes.config.settings", mock_settings),
+        patch("jidou.services.sftp_service.SFTPService", return_value=service) as service_cls,
+    ):
+        response = TestClient(app).post("/api/config/test/sftp")
+    return response, service_cls
+
+
+def _shared_kwargs(service_cls: MagicMock) -> dict[str, object]:
+    """Return the connection-relevant constructor kwargs the route used."""
+    service_cls.assert_called_once()
+    assert service_cls.call_args.args == ()
+    keys = (
+        "host",
+        "port",
+        "username",
+        "password",
+        "key_path",
+        "remote_base_path",
+        "max_retries",
+        "retry_delay",
+    )
+    kwargs = service_cls.call_args.kwargs
+    return {k: kwargs[k] for k in keys}
+
+
+def test_sftp_test_password_auth_uses_first_remote_path() -> None:
+    """Password auth: credentials and first configured path reach the service."""
+    response, service_cls = _post_sftp_test(
+        _sftp_settings(sftp_password="s3cret"),
+        ["a", "b", "c"],
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "file_count": 3}
+    assert _shared_kwargs(service_cls) == {
+        "host": "sftp.example.test",
+        "port": 2222,
+        "username": "alice",
+        "password": "s3cret",
+        "key_path": None,
+        "remote_base_path": "/downloads",
+        "max_retries": 5,
+        "retry_delay": 2.5,
+    }
+    assert service_cls.call_args.kwargs.get("known_hosts") is None
+
+
+def test_sftp_test_key_auth_with_no_remote_paths_defaults_to_root() -> None:
+    """Key auth with no configured paths: base path falls back to ``/``."""
+    response, service_cls = _post_sftp_test(
+        _sftp_settings(
+            sftp_key_path="/keys/id_test",
+            sftp_remote_paths="",
+            sftp_remote_paths_list=[],
+        )
+    )
+    assert response.json() == {"ok": True, "file_count": 0}
+    assert _shared_kwargs(service_cls) == {
+        "host": "sftp.example.test",
+        "port": 2222,
+        "username": "alice",
+        "password": None,
+        "key_path": "/keys/id_test",
+        "remote_base_path": "/",
+        "max_retries": 5,
+        "retry_delay": 2.5,
+    }
+
+
+def test_sftp_test_failure_returns_error_text() -> None:
+    """A listing failure yields ok=False with the exception text, status 200."""
+    service = MagicMock()
+    service.list_remote_files = AsyncMock(side_effect=OSError("connection refused"))
+    with (
+        patch("jidou.api.routes.config.settings", _sftp_settings()),
+        patch("jidou.services.sftp_service.SFTPService", return_value=service),
+    ):
+        response = TestClient(app).post("/api/config/test/sftp")
+    assert response.status_code == 200
+    assert response.json() == {"ok": False, "error": "connection refused"}

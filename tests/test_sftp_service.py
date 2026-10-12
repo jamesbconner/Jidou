@@ -1764,3 +1764,32 @@ class TestCreateSftpService:
             sftp_retry_delay=1.0,
         )
         assert create_sftp_service(cfg).host == ""  # type: ignore[arg-type]
+
+    def test_create_sftp_service_remote_base_path_override(self) -> None:
+        """An explicit remote_base_path reaches the service."""
+        cfg = SimpleNamespace(
+            sftp_host="h",
+            sftp_port=22,
+            sftp_username=None,
+            sftp_password=None,
+            sftp_key_path=None,
+            sftp_max_workers=8,
+            sftp_max_retries=3,
+            sftp_retry_delay=1.0,
+        )
+        svc = create_sftp_service(cfg, remote_base_path="/downloads")  # type: ignore[arg-type]
+        assert svc.remote_base_path == "/downloads"
+
+    def test_create_sftp_service_default_remote_base_path_is_root(self) -> None:
+        """Without an override the service keeps its default base path."""
+        cfg = SimpleNamespace(
+            sftp_host="h",
+            sftp_port=22,
+            sftp_username=None,
+            sftp_password=None,
+            sftp_key_path=None,
+            sftp_max_workers=8,
+            sftp_max_retries=3,
+            sftp_retry_delay=1.0,
+        )
+        assert create_sftp_service(cfg).remote_base_path == "/"  # type: ignore[arg-type]
