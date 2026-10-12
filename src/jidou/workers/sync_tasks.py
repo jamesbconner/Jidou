@@ -1,7 +1,5 @@
 """Celery tasks for running full sync pipelines."""
 
-import logging
-
 from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,8 +15,6 @@ from jidou.workers._harness import (
     run_harnessed,
     run_task_workflow,
 )
-
-logger = logging.getLogger(__name__)
 
 
 # Overrides the app-wide 50min/60min limits (celery_app.py) for this task

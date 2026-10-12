@@ -1,7 +1,5 @@
 """Celery tasks for routing MATCHED files from staging to their final paths."""
 
-import logging
-
 from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +12,6 @@ from jidou.workers._harness import (
     run_task_workflow,
     summarize,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True)  # type: ignore[untyped-decorator]
@@ -63,7 +59,6 @@ async def _route_files(
         celery_task_id,
         "route",
         _work,
-        progress_total=0,
         dry_run=dry_run,
         running_message="Starting route...",
     )

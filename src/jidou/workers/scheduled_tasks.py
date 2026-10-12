@@ -19,7 +19,7 @@ from sqlalchemy import delete
 
 from jidou.config import settings
 from jidou.database import task_sessionmaker
-from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask
+from jidou.models.task import BackgroundTask
 from jidou.services.progress import create_task_record
 from jidou.services.task_dispatch import get_active_task
 

@@ -15,7 +15,7 @@ from jidou.workers.celery_app import celery_app
 WORKERS_DIR = Path(__file__).resolve().parent.parent / "src" / "jidou" / "workers"
 
 # Measured max is 9 (``run_task_workflow``) after the db-import decomposition; only ever lower this.
-_WORKERS_MAX_COMPLEXITY = 9
+_WORKERS_MAX_COMPLEXITY = 8
 
 
 def test_workers_cyclomatic_complexity_ratchet() -> None:
