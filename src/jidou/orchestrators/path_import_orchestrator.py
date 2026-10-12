@@ -21,9 +21,12 @@ title so future lookups (parse orchestrator, manual search) hit the GIN index.
 import logging
 import re
 from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.orchestrators._events import EventSink
 from jidou.orchestrators._show_provisioning import (
@@ -92,6 +95,33 @@ def _normalize_title(s: str) -> str:
         Normalized string with punctuation removed and whitespace collapsed.
     """
     return re.sub(r"\s+", " ", _PUNCT.sub(" ", s).lower()).strip()
+
+
+def _pick_tmdb_candidate(
+    show_dir: str, candidates: list[dict[str, Any]]
+) -> tuple[dict[str, Any], bool]:
+    """Pick the TMDB search result that best matches a directory name.
+
+    A normalized exact match wins; otherwise the top relevance result is used.
+    Normalization strips punctuation so "Daredevil Born Again" matches TMDB's
+    "Daredevil: Born Again" without matching the shorter "Daredevil".
+    Every candidate is scanned — not just the first five — because TMDB's
+    recency bias can rank a newer show (e.g. "Daredevil: Born Again") above an
+    older exact match (e.g. the 2015 "Daredevil") when both appear.
+
+    Args:
+        show_dir: Show directory name that was searched for.
+        candidates: Non-empty TMDB search results.
+
+    Returns:
+        ``(best, exact)`` where ``exact`` is True when ``best`` matched the
+        directory name after normalization.
+    """
+    show_dir_norm = _normalize_title(show_dir)
+    for candidate in candidates:
+        if _normalize_title(candidate.get("name", "")) == show_dir_norm:
+            return candidate, True
+    return candidates[0], False
 
 
 def _agrees_with_show(name: str, show: Show) -> bool:
@@ -181,6 +211,15 @@ class PathImportResult:
     episodes_already_tracked: int = 0
     show_results: list[ShowImportResult] = field(default_factory=list)
     mode: str = "full"
+
+
+class _EntryOutcome(Enum):
+    """What happened to one entry during :meth:`PathImportOrchestrator._track_entry`."""
+
+    TRACKED = auto()
+    ALREADY_TRACKED_HERE = auto()
+    TRACKED_PREVIOUSLY = auto()
+    UNMATCHED = auto()
 
 
 # ---------------------------------------------------------------------------
@@ -559,34 +598,94 @@ class PathImportOrchestrator:
         Returns:
             :class:`ShowImportResult` for this show/entries group.
         """
-        show_result = ShowImportResult(show_dir=label, action=action)
-
         if show is None:
-            if self.mode == "episodes_only":
-                await self._emit(
-                    "warn",
-                    f"Show '{label}' not found in database (episodes-only mode) — "
-                    f"{len(entries)} file(s) unmatched",
-                )
-            else:
-                await self._emit(
-                    "warn",
-                    f"No TMDB match found for '{label}' — {len(entries)} file(s) unmatched",
-                )
-            logger.warning("Could not resolve show for %r", label)
-            show_result.episodes_unmatched = len(entries)
-            show_result.unmatched_paths = [e.raw_path for e in entries]
-            return show_result
+            return await self._unresolved_result(label, action, entries)
 
+        show_result = ShowImportResult(show_dir=label, action=action)
         show_result.tmdb_id = show.tmdb_id
         show_result.tmdb_title = show.title
 
-        # Persist the show's root directory path if not already set. Computed
-        # from content_type/sys_name rather than entries[0].show_root — that
-        # root reflects the raw (host-side) path typed into the import file,
-        # not the container-side path every downstream filesystem consumer
-        # (scan_show_directory, RouteOrchestrator) actually expects.
-        if set_local_path and not self.dry_run and show.local_path is None and entries:
+        await self._ensure_local_path(
+            show, set_local_path=set_local_path, has_entries=bool(entries)
+        )
+
+        if self.mode == "shows_only":
+            await self._finish_shows_only(show, action)
+            return show_result
+
+        # In dry-run mode, a newly "created" show has no database id and no
+        # synced episodes yet, so match_entry_to_episode would query
+        # show_id=NULL and return nothing.  Estimate from the parsed entries
+        # instead.
+        if self.dry_run and show.id is None:
+            self._estimate_dry_run(entries, show_result)
+            return show_result
+
+        # Match each file entry to an Episode row. Tracks which episode IDs
+        # this loop has already claimed so a second file resolving to the
+        # same episode (e.g. a season/episode numbering mismatch collision)
+        # is never silently invisible in either the tracked or unmatched
+        # counters -- see episodes_already_tracked.
+        claimed = set() if matched_episode_ids is None else matched_episode_ids
+        for entry in entries:
+            outcome = await self._track_entry(show, label, entry, claimed)
+            self._tally(show_result, outcome, entry)
+
+        await self._emit_summary(show, show_result)
+
+        if not self.dry_run:
+            await self.session.commit()
+        return show_result
+
+    async def _unresolved_result(
+        self, label: str, action: str, entries: list[ParsedPathEntry]
+    ) -> ShowImportResult:
+        """Report every entry as unmatched because no show could be resolved.
+
+        Args:
+            label: Display name for the result.
+            action: Resolution action (``"not_found"``).
+            entries: Entries that could not be attached to any show.
+
+        Returns:
+            A :class:`ShowImportResult` with all entries counted unmatched.
+        """
+        if self.mode == "episodes_only":
+            await self._emit(
+                "warn",
+                f"Show '{label}' not found in database (episodes-only mode) — "
+                f"{len(entries)} file(s) unmatched",
+            )
+        else:
+            await self._emit(
+                "warn",
+                f"No TMDB match found for '{label}' — {len(entries)} file(s) unmatched",
+            )
+        logger.warning("Could not resolve show for %r", label)
+        show_result = ShowImportResult(show_dir=label, action=action)
+        show_result.episodes_unmatched = len(entries)
+        show_result.unmatched_paths = [e.raw_path for e in entries]
+        return show_result
+
+    async def _ensure_local_path(
+        self, show: Show, *, set_local_path: bool, has_entries: bool
+    ) -> None:
+        """Persist the show's root directory path, or warn when it can't be derived.
+
+        Args:
+            show: The resolved show.
+            set_local_path: False for a split-off secondary group (see
+                :meth:`_process_show_entries`).
+            has_entries: Whether there are entries to import; an empty group
+                never sets a path.
+        """
+        if self.dry_run or show.local_path is not None:
+            return
+        if set_local_path and has_entries:
+            # Computed from content_type/sys_name rather than entries[0].show_root
+            # — that root reflects the raw (host-side) path typed into the import
+            # file, not the container-side path every downstream filesystem
+            # consumer (scan_show_directory, RouteOrchestrator) actually expects.
             dir_name = show.sys_name or sanitize_sys_name(show.title)
             show.local_path = resolve_show_local_path(
                 content_type=show.content_type,
@@ -597,7 +696,7 @@ class PathImportOrchestrator:
                 local_movie_path=self.local_movie_path,
             )
             logger.debug("Set local_path=%r for show id=%d", show.local_path, show.id)
-        elif not set_local_path and not self.dry_run and show.local_path is None:
+        elif not set_local_path:
             await self._emit(
                 "warn",
                 f"'{show.title}' was split off from a mismatched directory — "
@@ -612,145 +711,206 @@ class PathImportOrchestrator:
                 show.title,
             )
 
-        if self.mode == "shows_only":
-            # Show resolution (including creation/sync/aliasing, already done
-            # by _resolve_show before this method was called) is the whole
-            # point of this mode — skip episode matching entirely. Must come
-            # before the dry-run-estimate block below: for an *existing* show
-            # under dry_run, show.id is not None, so without this early
-            # return execution would otherwise fall through into the real
-            # matching loop and populate non-zero counters.
-            await self._emit(
-                "info",
-                f"Show ready: '{show.title}' ({action}) — episode matching skipped "
-                "(shows-only mode)",
-            )
-            if not self.dry_run:
-                await self.session.commit()
-            return show_result
+    async def _finish_shows_only(self, show: Show, action: str) -> None:
+        """Close out a show in ``shows_only`` mode without matching episodes.
 
-        # In dry-run mode, a newly "created" show has no database id and no
-        # synced episodes yet, so match_entry_to_episode would query
-        # show_id=NULL and return nothing.  Estimate from the parsed entries
-        # instead.
-        if self.dry_run and show.id is None:
-            for entry in entries:
-                if entry.episode is not None:
-                    show_result.episodes_tracked += 1
-                else:
-                    show_result.episodes_unmatched += 1
-                    show_result.unmatched_paths.append(entry.raw_path)
-            return show_result
+        Show resolution (including creation/sync/aliasing, already done by
+        :meth:`_resolve_show` before this runs) is the whole point of this
+        mode. The caller must exit here before its dry-run-estimate block: for
+        an *existing* show under dry_run, ``show.id`` is not None, so without
+        this early exit execution would fall through into the real matching
+        loop and populate non-zero counters.
 
-        # Match each file entry to an Episode row. Tracks which episode IDs
-        # this loop has already claimed so a second file resolving to the
-        # same episode (e.g. a season/episode numbering mismatch collision)
-        # is never silently invisible in either the tracked or unmatched
-        # counters -- see episodes_already_tracked.
-        if matched_episode_ids is None:
-            matched_episode_ids = set()
+        Args:
+            show: The resolved show.
+            action: Resolution action, shown in the event.
+        """
+        await self._emit(
+            "info",
+            f"Show ready: '{show.title}' ({action}) — episode matching skipped (shows-only mode)",
+        )
+        if not self.dry_run:
+            await self.session.commit()
+
+    @staticmethod
+    def _estimate_dry_run(entries: list[ParsedPathEntry], show_result: ShowImportResult) -> None:
+        """Estimate counts for a dry-run "created" show from the parsed entries alone.
+
+        Args:
+            entries: Entries that would be matched against the new show.
+            show_result: Result to update in place.
+        """
         for entry in entries:
-            ep, resolved_season, resolved_episode = await match_entry_to_episode(
-                self.session,
-                self.llm,
-                show.id,
-                show.title,
-                entry,
-                show.episode_group_map,
-                on_event=self.on_event,
-            )
-            if ep is not None and ep.id in matched_episode_ids:
-                filename = basename_any(entry.raw_path)
-                show_result.episodes_already_tracked += 1
-                show_result.already_tracked_paths.append(entry.raw_path)
-                await self._emit(
-                    "warn",
-                    f"'{filename}' resolved to the same episode "
-                    f"(S{ep.season_number:02d}E{ep.episode_number:02d}) as another file "
-                    "in this import — check for a season/episode numbering mismatch",
-                    {
-                        "path": entry.raw_path,
-                        "episode_id": ep.id,
-                        "season": ep.season_number,
-                        "episode": ep.episode_number,
-                    },
-                )
-                continue
-            if ep is not None:
-                matched_episode_ids.add(ep.id)
-                newly_tracked = not ep.file_tracked
-                if not self.dry_run:
-                    # Only overwrite tracking metadata on first track; preserve
-                    # match/download metadata from later non-import tracking.
-                    if newly_tracked:
-                        mark_episode_tracked(ep, entry.raw_path, "import")
-                        await create_synthetic_import_file(
-                            self.session,
-                            show.id,
-                            ep.id,
-                            entry.raw_path,
-                            parsed_season=ep.season_number,
-                            parsed_episode=ep.episode_number,
-                        )
-                    else:
-                        ep.file_tracked = True
-                if newly_tracked:
-                    show_result.episodes_tracked += 1
+            if entry.episode is not None:
+                show_result.episodes_tracked += 1
             else:
-                filename = basename_any(entry.raw_path)
-                # resolved_season/resolved_episode reflect any LLM adjustment made
-                # inside match_entry_to_episode — entry.season/entry.episode would
-                # only ever show the pre-LLM regex output, hiding whether an LLM
-                # fallback was even attempted or what it returned.
-                s_label = f"S{resolved_season:02d}" if resolved_season is not None else "S?"
-                e_label = f"E{resolved_episode:02d}" if resolved_episode is not None else "E?"
                 show_result.episodes_unmatched += 1
                 show_result.unmatched_paths.append(entry.raw_path)
-                await self._emit(
-                    "warn",
-                    f"No match: {filename} ({s_label}{e_label})",
-                    {
-                        "path": entry.raw_path,
-                        "season": resolved_season,
-                        "episode": resolved_episode,
-                    },
-                )
-                logger.debug(
-                    "No episode match: show=%r label=%r season=%s episode=%s abs=%s path=%r",
-                    show.title,
-                    label,
-                    resolved_season,
-                    resolved_episode,
-                    entry.is_absolute,
-                    entry.raw_path,
-                )
 
-        if show_result.episodes_unmatched or show_result.episodes_already_tracked:
-            parts = []
-            if show_result.episodes_unmatched:
-                parts.append(f"{show_result.episodes_unmatched} unmatched")
-            if show_result.episodes_already_tracked:
-                parts.append(
-                    f"{show_result.episodes_already_tracked} resolved to a duplicate episode"
+    @staticmethod
+    def _tally(
+        show_result: ShowImportResult, outcome: _EntryOutcome, entry: ParsedPathEntry
+    ) -> None:
+        """Fold one entry's outcome into the show's counters and path lists.
+
+        Args:
+            show_result: Result to update in place.
+            outcome: What :meth:`_track_entry` did with the entry.
+            entry: The entry the outcome belongs to.
+        """
+        match outcome:
+            case _EntryOutcome.TRACKED:
+                show_result.episodes_tracked += 1
+            case _EntryOutcome.ALREADY_TRACKED_HERE:
+                show_result.episodes_already_tracked += 1
+                show_result.already_tracked_paths.append(entry.raw_path)
+            case _EntryOutcome.UNMATCHED:
+                show_result.episodes_unmatched += 1
+                show_result.unmatched_paths.append(entry.raw_path)
+            case _EntryOutcome.TRACKED_PREVIOUSLY:
+                # Tracked before this import: counted nowhere, by design.
+                pass
+
+    async def _track_entry(
+        self, show: Show, label: str, entry: ParsedPathEntry, claimed: set[int]
+    ) -> _EntryOutcome:
+        """Match one entry to an episode and mark it tracked.
+
+        Args:
+            show: The resolved show.
+            label: Display name of the group, used in debug logs.
+            entry: The parsed file entry.
+            claimed: Episode IDs already claimed in this import; updated here.
+
+        Returns:
+            What happened to the entry.
+        """
+        ep, resolved_season, resolved_episode = await match_entry_to_episode(
+            self.session,
+            self.llm,
+            show.id,
+            show.title,
+            entry,
+            show.episode_group_map,
+            on_event=self.on_event,
+        )
+        if ep is None:
+            await self._report_unmatched(show, label, entry, resolved_season, resolved_episode)
+            return _EntryOutcome.UNMATCHED
+        if ep.id in claimed:
+            await self._report_duplicate(entry, ep)
+            return _EntryOutcome.ALREADY_TRACKED_HERE
+
+        claimed.add(ep.id)
+        newly_tracked = not ep.file_tracked
+        if not self.dry_run:
+            # Only overwrite tracking metadata on first track; preserve
+            # match/download metadata from later non-import tracking.
+            if newly_tracked:
+                mark_episode_tracked(ep, entry.raw_path, "import")
+                await create_synthetic_import_file(
+                    self.session,
+                    show.id,
+                    ep.id,
+                    entry.raw_path,
+                    parsed_season=ep.season_number,
+                    parsed_episode=ep.episode_number,
                 )
+            else:
+                ep.file_tracked = True
+        return _EntryOutcome.TRACKED if newly_tracked else _EntryOutcome.TRACKED_PREVIOUSLY
+
+    async def _report_duplicate(self, entry: ParsedPathEntry, ep: Episode) -> None:
+        """Emit the warning for an entry that resolved to an already-claimed episode.
+
+        Args:
+            entry: The colliding entry.
+            ep: The episode another entry in this import already claimed.
+        """
+        filename = basename_any(entry.raw_path)
+        await self._emit(
+            "warn",
+            f"'{filename}' resolved to the same episode "
+            f"(S{ep.season_number:02d}E{ep.episode_number:02d}) as another file "
+            "in this import — check for a season/episode numbering mismatch",
+            {
+                "path": entry.raw_path,
+                "episode_id": ep.id,
+                "season": ep.season_number,
+                "episode": ep.episode_number,
+            },
+        )
+
+    async def _report_unmatched(
+        self,
+        show: Show,
+        label: str,
+        entry: ParsedPathEntry,
+        resolved_season: int | None,
+        resolved_episode: int | None,
+    ) -> None:
+        """Emit the "No match" event and debug log for an entry with no episode.
+
+        Args:
+            show: The resolved show.
+            label: Display name of the group.
+            entry: The unmatched entry.
+            resolved_season: Season after any LLM adjustment inside matching.
+            resolved_episode: Episode after any LLM adjustment inside matching.
+        """
+        filename = basename_any(entry.raw_path)
+        # resolved_season/resolved_episode reflect any LLM adjustment made
+        # inside match_entry_to_episode — entry.season/entry.episode would
+        # only ever show the pre-LLM regex output, hiding whether an LLM
+        # fallback was even attempted or what it returned.
+        s_label = f"S{resolved_season:02d}" if resolved_season is not None else "S?"
+        e_label = f"E{resolved_episode:02d}" if resolved_episode is not None else "E?"
+        await self._emit(
+            "warn",
+            f"No match: {filename} ({s_label}{e_label})",
+            {
+                "path": entry.raw_path,
+                "season": resolved_season,
+                "episode": resolved_episode,
+            },
+        )
+        logger.debug(
+            "No episode match: show=%r label=%r season=%s episode=%s abs=%s path=%r",
+            show.title,
+            label,
+            resolved_season,
+            resolved_episode,
+            entry.is_absolute,
+            entry.raw_path,
+        )
+
+    async def _emit_summary(self, show: Show, result: ShowImportResult) -> None:
+        """Emit the per-show outcome summary event.
+
+        Args:
+            show: The resolved show.
+            result: Result whose counters are summarized.
+        """
+        if result.episodes_unmatched or result.episodes_already_tracked:
+            parts = []
+            if result.episodes_unmatched:
+                parts.append(f"{result.episodes_unmatched} unmatched")
+            if result.episodes_already_tracked:
+                parts.append(f"{result.episodes_already_tracked} resolved to a duplicate episode")
             await self._emit(
                 "warn",
                 f"{', '.join(parts)} file(s) for '{show.title}'",
                 {
-                    "episodes_tracked": show_result.episodes_tracked,
-                    "episodes_unmatched": show_result.episodes_unmatched,
-                    "episodes_already_tracked": show_result.episodes_already_tracked,
+                    "episodes_tracked": result.episodes_tracked,
+                    "episodes_unmatched": result.episodes_unmatched,
+                    "episodes_already_tracked": result.episodes_already_tracked,
                 },
             )
         else:
             await self._emit(
                 "info",
-                f"Tracked {show_result.episodes_tracked} episode(s) for '{show.title}'",
+                f"Tracked {result.episodes_tracked} episode(s) for '{show.title}'",
             )
-
-        if not self.dry_run:
-            await self.session.commit()
-        return show_result
 
     async def _db_find_show(self, name: str) -> Show | None:
         """Look up a show in the database by title or alias.
@@ -795,57 +955,8 @@ class PathImportOrchestrator:
             logger.warning("No TMDB results for directory %r", show_dir)
             return None, "not_found"
 
-        # Normalized exact match wins; otherwise take the top relevance result.
-        # Normalization strips punctuation so "Daredevil Born Again" matches
-        # TMDB's "Daredevil: Born Again" without matching the shorter "Daredevil".
-        # Scan ALL candidates — not just the first five — because TMDB's recency
-        # bias can rank a newer show (e.g. "Daredevil: Born Again") above an older
-        # exact match (e.g. the 2015 "Daredevil") when both appear in the results.
-        show_dir_norm = _normalize_title(show_dir)
-        best = candidates[0]
-        exact_match = False
-        for c in candidates:
-            if _normalize_title(c.get("name", "")) == show_dir_norm:
-                best = c
-                exact_match = True
-                break
-
+        best = await self._select_candidate(show_dir, candidates)
         tmdb_id: int = best["id"]
-        top_names: list[str | None] = [c.get("name") for c in candidates[:5]]
-        if exact_match:
-            await self._emit(
-                "info",
-                f"TMDB matched '{best.get('name')}' (id={tmdb_id})",
-                {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "exact"},
-            )
-        else:
-            # No normalized exact match — ask the LLM to disambiguate before
-            # falling back to the top popularity result.
-            llm_pick = await llm_pick_candidate(
-                self.llm, show_dir, candidates, on_event=self.on_event
-            )
-            if llm_pick is not None:
-                best = llm_pick
-                tmdb_id = best["id"]
-                await self._emit(
-                    "info",
-                    f"LLM matched '{best.get('name')}' (id={tmdb_id}) for '{show_dir}'",
-                    {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "llm"},
-                )
-            else:
-                await self._emit(
-                    "warn",
-                    (
-                        f"No exact TMDB match for '{show_dir}' in {len(candidates)} result(s) "
-                        f"— falling back to top result '{best.get('name')}' (id={tmdb_id})"
-                    ),
-                    {
-                        "tmdb_id": tmdb_id,
-                        "candidates": len(candidates),
-                        "match": "fallback",
-                        "top_candidates": top_names,
-                    },
-                )
 
         # Fetch full show details (external_ids/episode_groups included).
         try:
@@ -897,6 +1008,58 @@ class PathImportOrchestrator:
         await self._sync_new_show_episodes(show, title, tmdb_id)
         await self._generate_new_show_aliases(show, title, tmdb_id)
         return show, "created"
+
+    async def _select_candidate(
+        self, show_dir: str, candidates: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Choose the TMDB candidate for a directory name and report how it was chosen.
+
+        A normalized exact match wins. Otherwise the LLM is asked to
+        disambiguate, and only if it declines is the top relevance result used.
+
+        Args:
+            show_dir: Show directory name that was searched for.
+            candidates: Non-empty TMDB search results.
+
+        Returns:
+            The chosen candidate.
+        """
+        best, exact_match = _pick_tmdb_candidate(show_dir, candidates)
+        tmdb_id: int = best["id"]
+        top_names: list[str | None] = [c.get("name") for c in candidates[:5]]
+        if exact_match:
+            await self._emit(
+                "info",
+                f"TMDB matched '{best.get('name')}' (id={tmdb_id})",
+                {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "exact"},
+            )
+            return best
+
+        # No normalized exact match — ask the LLM to disambiguate before
+        # falling back to the top popularity result.
+        llm_pick = await llm_pick_candidate(self.llm, show_dir, candidates, on_event=self.on_event)
+        if llm_pick is not None:
+            tmdb_id = llm_pick["id"]
+            await self._emit(
+                "info",
+                f"LLM matched '{llm_pick.get('name')}' (id={tmdb_id}) for '{show_dir}'",
+                {"tmdb_id": tmdb_id, "candidates": len(candidates), "match": "llm"},
+            )
+            return llm_pick
+        await self._emit(
+            "warn",
+            (
+                f"No exact TMDB match for '{show_dir}' in {len(candidates)} result(s) "
+                f"— falling back to top result '{best.get('name')}' (id={tmdb_id})"
+            ),
+            {
+                "tmdb_id": tmdb_id,
+                "candidates": len(candidates),
+                "match": "fallback",
+                "top_candidates": top_names,
+            },
+        )
+        return best
 
     async def _adopt_race_winner(self, winner: Show | None, title: str) -> tuple[Show | None, str]:
         """Resolve a lost concurrent show-create race.

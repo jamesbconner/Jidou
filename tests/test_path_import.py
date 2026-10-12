@@ -5392,3 +5392,52 @@ async def test_orc11_path_import_sequence_is_unchanged(name: str) -> None:
     assert "\n" + pprint.pformat(actual, width=100) == ORC11_GOLDEN[name]
     # Guard against a vacuous golden: every scenario records at least one step.
     assert ORC11_GOLDEN[name].count("\n") > 2
+
+
+# ---------------------------------------------------------------------------
+# _pick_tmdb_candidate (ORC-11)
+# ---------------------------------------------------------------------------
+
+
+def test_pick_tmdb_candidate_prefers_normalized_exact() -> None:
+    """A normalized exact title match beats a higher-ranked partial match."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Daredevil: Born Again"}, {"id": 2, "name": "Daredevil"}]
+
+    best, exact = _pick_tmdb_candidate("Daredevil", candidates)
+
+    assert best["name"] == "Daredevil"
+    assert exact is True
+
+
+def test_pick_tmdb_candidate_ignores_punctuation_when_matching() -> None:
+    """Punctuation in the TMDB title does not defeat an otherwise exact match."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Other"}, {"id": 2, "name": "Daredevil: Born Again"}]
+
+    best, exact = _pick_tmdb_candidate("daredevil born again", candidates)
+
+    assert (best["id"], exact) == (2, True)
+
+
+def test_pick_tmdb_candidate_falls_back_to_first_when_nothing_matches() -> None:
+    """With no exact match the first (top-relevance) candidate is returned, flagged inexact."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates = [{"id": 1, "name": "Alpha"}, {"id": 2, "name": "Beta"}]
+
+    best, exact = _pick_tmdb_candidate("Gamma", candidates)
+
+    assert best is candidates[0]
+    assert exact is False
+
+
+def test_pick_tmdb_candidate_tolerates_missing_name() -> None:
+    """A candidate without a name never matches and does not raise."""
+    from jidou.orchestrators.path_import_orchestrator import _pick_tmdb_candidate
+
+    candidates: list[dict[str, Any]] = [{"id": 1}, {"id": 2, "name": "Target"}]
+
+    assert _pick_tmdb_candidate("Target", candidates) == (candidates[1], True)
