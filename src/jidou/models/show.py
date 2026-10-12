@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
 
 
 class ContentType(StrEnum):
@@ -46,7 +46,11 @@ class Show(TimestampMixin, Base):
     original_language: Mapped[str | None] = mapped_column(String(10))
     cached: Mapped[bool] = mapped_column(Boolean, default=False)
     # User-assigned routing category (anime/tv/movie); None until explicitly set
-    content_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Stored as the lower-case value in VARCHAR(20) (no native enum, no CHECK), so the
+    # DDL is unchanged from the plain-string column it replaces.
+    content_type: Mapped[ContentType | None] = mapped_column(
+        str_enum(ContentType, native_enum=False, length=20), nullable=True
+    )
     # Windows-safe sanitized title for local directory names
     sys_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Alternative names used to match parsed filenames; stored as a JSON array

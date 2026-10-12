@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile
-from jidou.models.episode import Episode
+from jidou.models.episode import Episode, TrackedSource
 from jidou.models.orphan import OrphanedTrackingRecord
 
 # Sentinel distinguishing "caller passed None" from "caller omitted tracked_at".
@@ -43,7 +43,7 @@ def mark_episode_tracked(
     ep.file_tracked = True
     ep.file_tracked_at = datetime.now(UTC) if tracked_at is _UNSET else tracked_at
     ep.tracked_filename = filename
-    ep.tracked_source = source
+    ep.tracked_source = TrackedSource(source) if source is not None else None
 
 
 def clear_episode_tracking(ep: Episode) -> None:

@@ -5,14 +5,18 @@ declaring one, ``alembic check`` (and autogenerate) reports drift, so each
 declaration is pinned here without needing a live database.
 """
 
+from enum import StrEnum
+
 import pytest
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Index, Table
 from sqlalchemy.dialects import postgresql
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason, MatchedBy
-from jidou.models.episode import Episode
-from jidou.models.rss import RssSubscription
-from jidou.models.show import Show
+from jidou.models.episode import Episode, TrackedSource
+from jidou.models.orphan import OrphanedTrackingRecord
+from jidou.models.rss import RssConfigSnapshot, RssSubscription, SnapshotType
+from jidou.models.show import ContentType, Show
 from jidou.models.task import (
     ACTIVE_TASK_STATUSES,
     TERMINAL_TASK_STATUSES,
@@ -113,3 +117,37 @@ def test_task_status_sets_partition_enum() -> None:
     assert set(TaskStatus) == ACTIVE_TASK_STATUSES | TERMINAL_TASK_STATUSES
     assert not ACTIVE_TASK_STATUSES & TERMINAL_TASK_STATUSES
     assert ACTIVE_TASK_STATUSES and TERMINAL_TASK_STATUSES
+
+
+@pytest.mark.parametrize(
+    ("model", "column", "enum_cls", "length"),
+    [
+        (Show, "content_type", ContentType, 20),
+        (Episode, "tracked_source", TrackedSource, 20),
+        (OrphanedTrackingRecord, "tracked_source", TrackedSource, 20),
+        (RssConfigSnapshot, "snapshot_type", SnapshotType, 32),
+    ],
+)
+def test_vocabulary_columns_are_typed(
+    model: type, column: str, enum_cls: type[StrEnum], length: int
+) -> None:
+    """Vocabulary columns are enum-typed but still plain VARCHAR(n) with no CHECK.
+
+    Pinning ``length`` and ``native_enum`` keeps the DDL identical to the former
+    ``String(n)`` columns, so no migration is needed.
+    """
+    col_type = model.__table__.c[column].type  # type: ignore[attr-defined]
+    assert isinstance(col_type, SAEnum)
+    assert col_type.enum_class is enum_cls
+    assert col_type.length == length
+    assert col_type.native_enum is False
+    assert not col_type.create_constraint
+    # Stored values are the lower-case member values, not member names.
+    assert set(col_type.enums) == {m.value for m in enum_cls}
+
+
+def test_vocabulary_enum_values_match_production_data() -> None:
+    """Enums cover every value observed in production (precondition P1)."""
+    assert {m.value for m in ContentType} == {"anime", "tv", "movie"}
+    assert {m.value for m in TrackedSource} == {"match", "import"}
+    assert {m.value for m in SnapshotType} == {"import", "pre_publish", "post_publish"}

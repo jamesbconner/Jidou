@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from jidou.models.base import Base, TimestampMixin
+from jidou.models.base import Base, TimestampMixin, str_enum
 
 if TYPE_CHECKING:
     from jidou.models.show import Show
+
+
+class SnapshotType(StrEnum):
+    """Why an RSS config snapshot was taken."""
+
+    IMPORT = "import"
+    PRE_PUBLISH = "pre_publish"
+    POST_PUBLISH = "post_publish"
 
 
 class RssFeed(TimestampMixin, Base):
@@ -134,7 +143,10 @@ class RssConfigSnapshot(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # "import" | "pre_publish" | "post_publish"
-    snapshot_type: Mapped[str] = mapped_column(String(32))
+    # VARCHAR(32), no native enum: same DDL as the plain-string column it replaces.
+    snapshot_type: Mapped[SnapshotType] = mapped_column(
+        str_enum(SnapshotType, native_enum=False, length=32)
+    )
     raw_content: Mapped[str] = mapped_column(Text)
 
     def __repr__(self) -> str:

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
-from jidou.models.show import Show
+from jidou.models.show import ContentType, Show
 from jidou.orchestrators._events import EventSink
 from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.callbacks import OnEvent, OnProgress
@@ -323,7 +323,7 @@ class ParseOrchestrator:
                         add_alias(show, show_name)
                     # Backfill show.content_type from the parsed value if unset
                     if content_type and not show.content_type:
-                        show.content_type = content_type
+                        show.content_type = ContentType(content_type)
                     # Auto-populate show.local_path when the content type is
                     # unambiguous.  media_type="movie" is always safe; media_type="tv"
                     # is not (TMDB uses "tv" for both TV series and anime), so for
