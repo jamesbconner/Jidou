@@ -1,15 +1,18 @@
 """Celery tasks for routing MATCHED files from staging to their final paths."""
 
-import asyncio
 import logging
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator
-from jidou.services.progress import mark_task_timed_out
-from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
+from jidou.workers._harness import (
+    EventFn,
+    ProgressFn,
+    WorkflowResult,
+    run_harnessed,
+    run_task_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,7 @@ def route_files_task(  # type: ignore[no-untyped-def]
     Returns:
         The celery task ID.
     """
-    try:
-        return asyncio.run(_route_files(self.request.id, dry_run))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _route_files(self.request.id, dry_run))
 
 
 async def _route_files(

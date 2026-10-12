@@ -1,13 +1,17 @@
 """Shared harness for Celery worker background-task lifecycle boilerplate."""
 
+import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from jidou.config import settings
+from jidou.database import task_sessionmaker
 from jidou.models.task import TERMINAL_TASK_STATUSES, TaskStatus
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.progress import (
     TaskCancelledError,
     append_task_event,
@@ -19,8 +23,10 @@ from jidou.services.progress import (
 
 logger = logging.getLogger(__name__)
 
-ProgressFn = Callable[[int, int, str], Awaitable[None]]
-EventFn = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
+# The callback vocabulary lives in services/callbacks; these aliases keep the
+# worker modules' existing names pointing at the single definition.
+ProgressFn = OnProgress
+EventFn = OnEvent
 
 
 @dataclass
@@ -81,113 +87,183 @@ async def run_task_workflow(
             import/publish tasks' original behavior of raising after the
             session block closes).
     """
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
     soft_failure: str | None = None
 
-    try:
-        async with session_factory() as session:
-            task = await create_task_record(
-                session, celery_task_id, task_type, progress_total=progress_total, dry_run=dry_run
-            )
-            # Redelivered Celery messages must not rerun finished work.
-            if task.status in TERMINAL_TASK_STATUSES:
-                logger.info("Task %s already %s; skipping redelivery", celery_task_id, task.status)
-                return celery_task_id
-
-            await update_task_status(
-                session, celery_task_id, TaskStatus.RUNNING, progress_message=running_message
-            )
-
-            async def on_progress(current: int, total: int, message: str) -> None:
-                await check_task_cancelled(session, celery_task_id)
-                await update_task_status(
+    async with task_sessionmaker() as session_factory:
+        try:
+            async with session_factory() as session:
+                task = await create_task_record(
                     session,
                     celery_task_id,
-                    TaskStatus.RUNNING,
-                    progress_current=current,
-                    progress_total=total,
-                    progress_message=message,
+                    task_type,
+                    progress_total=progress_total,
+                    dry_run=dry_run,
                 )
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "progress",
-                        "data": {"current": current, "total": total, "message": message},
-                    }
+                # Redelivered Celery messages must not rerun finished work.
+                if task.status in TERMINAL_TASK_STATUSES:
+                    logger.info(
+                        "Task %s already %s; skipping redelivery", celery_task_id, task.status
+                    )
+                    return celery_task_id
+
+                await update_task_status(
+                    session, celery_task_id, TaskStatus.RUNNING, progress_message=running_message
                 )
 
-            async def on_event(level: str, msg: str, ctx: dict[str, object] | None = None) -> None:
-                # Separate session per call so the event commit does not flush
-                # pending orchestrator state early (route/sync bugfix ee1cfd5/5ef3c77).
-                async with session_factory() as event_session:
-                    await append_task_event(event_session, celery_task_id, level, msg, ctx)
+                async def on_progress(current: int, total: int, message: str) -> None:
+                    await check_task_cancelled(session, celery_task_id)
+                    await update_task_status(
+                        session,
+                        celery_task_id,
+                        TaskStatus.RUNNING,
+                        progress_current=current,
+                        progress_total=total,
+                        progress_message=message,
+                    )
+                    await emit_progress(
+                        {
+                            "celery_task_id": celery_task_id,
+                            "type": "progress",
+                            "data": {"current": current, "total": total, "message": message},
+                        }
+                    )
 
-            result = await work(session, on_progress, on_event)
+                async def on_event(
+                    level: str, msg: str, ctx: dict[str, object] | None = None
+                ) -> None:
+                    # Separate session per call so the event commit does not flush
+                    # pending orchestrator state early (route/sync bugfix ee1cfd5/5ef3c77).
+                    async with session_factory() as event_session:
+                        await append_task_event(event_session, celery_task_id, level, msg, ctx)
 
-            if result.errors:
+                result = await work(session, on_progress, on_event)
+
+                if result.errors:
+                    await update_task_status(
+                        session,
+                        celery_task_id,
+                        TaskStatus.FAILED,
+                        progress_message=result.message,
+                        result_summary=result.result_summary,
+                    )
+                    await emit_progress(
+                        {
+                            "celery_task_id": celery_task_id,
+                            "type": "error",
+                            "data": {"error": result.message},
+                        }
+                    )
+                    # Use the caller's own message (e.g. "Import failed: ...") for
+                    # the raised exception, not a re-derived "; ".join(errors) --
+                    # that would drop the prefix callers already composed.
+                    soft_failure = result.message
+                else:
+                    completed = await update_task_status(
+                        session,
+                        celery_task_id,
+                        TaskStatus.COMPLETED,
+                        progress_current=result.progress_current,
+                        progress_total=result.progress_total,
+                        progress_message=result.message,
+                        result_summary=result.result_summary,
+                    )
+                    if completed is not None and completed.status == TaskStatus.COMPLETED:
+                        await emit_progress(
+                            {
+                                "celery_task_id": celery_task_id,
+                                "type": "complete",
+                                "data": {
+                                    "summary": result.complete_summary or result.result_summary
+                                },
+                            }
+                        )
+
+        except TaskCancelledError:
+            logger.info("Task %s (%s) cancelled", celery_task_id, task_type)
+            async with session_factory() as session:
+                await update_task_status(
+                    session, celery_task_id, TaskStatus.CANCELLED, progress_message="Task cancelled"
+                )
+            await emit_progress({"celery_task_id": celery_task_id, "type": "cancelled", "data": {}})
+            return celery_task_id
+        except Exception as exc:
+            logger.exception("Task %s (%s) failed", celery_task_id, task_type)
+            error_msg = str(exc) or type(exc).__name__
+            async with session_factory() as session:
+                await append_task_event(
+                    session, celery_task_id, "error", f"Task failed: {error_msg}"
+                )
                 await update_task_status(
                     session,
                     celery_task_id,
                     TaskStatus.FAILED,
-                    progress_message=result.message,
-                    result_summary=result.result_summary,
+                    progress_message=f"Failed: {error_msg}",
                 )
-                await emit_progress(
-                    {
-                        "celery_task_id": celery_task_id,
-                        "type": "error",
-                        "data": {"error": result.message},
-                    }
-                )
-                # Use the caller's own message (e.g. "Import failed: ...") for
-                # the raised exception, not a re-derived "; ".join(errors) --
-                # that would drop the prefix callers already composed.
-                soft_failure = result.message
-            else:
-                completed = await update_task_status(
-                    session,
-                    celery_task_id,
-                    TaskStatus.COMPLETED,
-                    progress_current=result.progress_current,
-                    progress_total=result.progress_total,
-                    progress_message=result.message,
-                    result_summary=result.result_summary,
-                )
-                if completed is not None and completed.status == TaskStatus.COMPLETED:
-                    await emit_progress(
-                        {
-                            "celery_task_id": celery_task_id,
-                            "type": "complete",
-                            "data": {"summary": result.complete_summary or result.result_summary},
-                        }
-                    )
-
-    except TaskCancelledError:
-        logger.info("Task %s (%s) cancelled", celery_task_id, task_type)
-        async with session_factory() as session:
-            await update_task_status(
-                session, celery_task_id, TaskStatus.CANCELLED, progress_message="Task cancelled"
+            await emit_progress(
+                {"celery_task_id": celery_task_id, "type": "error", "data": {"error": error_msg}}
             )
-        await emit_progress({"celery_task_id": celery_task_id, "type": "cancelled", "data": {}})
-        return celery_task_id
-    except Exception as exc:
-        logger.exception("Task %s (%s) failed", celery_task_id, task_type)
-        error_msg = str(exc) or type(exc).__name__
-        async with session_factory() as session:
-            await append_task_event(session, celery_task_id, "error", f"Task failed: {error_msg}")
-            await update_task_status(
-                session, celery_task_id, TaskStatus.FAILED, progress_message=f"Failed: {error_msg}"
-            )
-        await emit_progress(
-            {"celery_task_id": celery_task_id, "type": "error", "data": {"error": error_msg}}
-        )
-        raise
-    finally:
-        await engine.dispose()
+            raise
 
     if soft_failure is not None:
         raise RuntimeError(soft_failure)
 
     return celery_task_id
+
+
+async def mark_task_timed_out(celery_task_id: str) -> None:
+    """Mark a task FAILED after a Celery soft time limit fires.
+
+    Called from the synchronous task wrapper (outside the main async coroutine)
+    so it manages its own engine and session lifecycle.
+
+    Args:
+        celery_task_id: The Celery task identifier.
+    """
+    # Engine create/dispose sit outside the try so their failures propagate, as
+    # they did when this function managed the engine itself.
+    async with task_sessionmaker() as session_factory:
+        try:
+            async with session_factory() as session:
+                await update_task_status(
+                    session,
+                    celery_task_id,
+                    TaskStatus.FAILED,
+                    progress_message="Task exceeded soft time limit",
+                )
+                await emit_progress(
+                    {
+                        "celery_task_id": celery_task_id,
+                        "type": "error",
+                        "data": {"error": "Soft time limit exceeded"},
+                    }
+                )
+        except Exception:
+            logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
+
+
+def run_harnessed[T](celery_task_id: str, coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Run a task coroutine to completion, marking the row FAILED on a soft time limit.
+
+    Every Celery entrypoint wraps its async implementation in this helper so the
+    ``SoftTimeLimitExceeded`` handling exists in one place. A factory (not a
+    coroutine object) is taken so no coroutine is created, and left un-awaited,
+    if the caller never reaches ``asyncio.run``.
+
+    Args:
+        celery_task_id: The Celery task ID (also the BackgroundTask row's key).
+        coro_factory: Zero-argument callable returning the coroutine to run.
+
+    Returns:
+        Whatever the coroutine returned.
+
+    Raises:
+        SoftTimeLimitExceeded: After the row has been marked FAILED.
+        Exception: Anything else the coroutine raised, unchanged.
+    """
+    try:
+        return asyncio.run(coro_factory())
+    except SoftTimeLimitExceeded:
+        # The first event loop is already closed by the time the soft limit
+        # propagates here, so marking the row needs a fresh asyncio.run.
+        asyncio.run(mark_task_timed_out(celery_task_id))
+        raise

@@ -1,18 +1,21 @@
 """Celery tasks for RSS config import and publish operations."""
 
-import asyncio
 import logging
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
 from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
 from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
-from jidou.services.progress import mark_task_timed_out
 from jidou.services.sftp_service import SFTPService
-from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
+from jidou.workers._harness import (
+    EventFn,
+    ProgressFn,
+    WorkflowResult,
+    run_harnessed,
+    run_task_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +49,7 @@ def rss_import_task(  # type: ignore[no-untyped-def]
     Returns:
         The Celery task ID.
     """
-    try:
-        return asyncio.run(_rss_import(self.request.id, dry_run))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _rss_import(self.request.id, dry_run))
 
 
 async def _rss_import(celery_task_id: str, dry_run: bool) -> str:
@@ -126,11 +125,7 @@ def rss_publish_task(  # type: ignore[no-untyped-def]
     Returns:
         The Celery task ID.
     """
-    try:
-        return asyncio.run(_rss_publish(self.request.id, dry_run))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _rss_publish(self.request.id, dry_run))
 
 
 async def _rss_publish(celery_task_id: str, dry_run: bool) -> str:

@@ -5,9 +5,8 @@ import logging
 
 from celery import shared_task
 from sqlalchemy import func, insert
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from jidou.config import settings
+from jidou.database import task_sessionmaker
 from jidou.models.show import Show
 from jidou.services.tmdb import TMDBService
 
@@ -38,17 +37,12 @@ async def _fetch_trending() -> int:
     FastAPI process's module-level engine and safe to call inside
     asyncio.run() without stale-pool errors.
     """
-    # Build a task-local engine so the connection pool is tied to the
-    # event loop created by asyncio.run() in the caller.
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
     # Create a task-local TMDBService so its internal asyncio.Lock
     # instances (cache, rate_limiter) are bound to this event loop
     # instead of whatever loop was active at module import time.
     local_tmdb = TMDBService()
 
-    try:
+    async with task_sessionmaker() as session_factory:
         result = await local_tmdb.get_trending(media_type="tv", time_window="day")
         trending_items = result.get("results", [])
 
@@ -98,5 +92,3 @@ async def _fetch_trending() -> int:
             await session.commit()
 
         return upserted
-    finally:
-        await engine.dispose()

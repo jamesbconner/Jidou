@@ -1,12 +1,18 @@
-"""Tests for jidou.workers._harness.run_task_workflow."""
+"""Tests for the jidou.workers._harness entrypoint and lifecycle helpers."""
 
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from celery.exceptions import SoftTimeLimitExceeded
 
 from jidou.models.task import TaskStatus
-from jidou.workers._harness import WorkflowResult, run_task_workflow
+from jidou.workers._harness import (
+    WorkflowResult,
+    mark_task_timed_out,
+    run_harnessed,
+    run_task_workflow,
+)
 
 
 def _worker_session_mocks() -> tuple:
@@ -38,8 +44,8 @@ async def test_skips_redelivery_for_terminal_task() -> None:
     work = AsyncMock()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -64,8 +70,8 @@ async def test_happy_path_completes_and_emits_result_summary_when_no_complete_su
     work = AsyncMock(return_value=_success_result())
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -102,8 +108,8 @@ async def test_happy_path_uses_complete_summary_override_for_ws_payload() -> Non
     )
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -131,8 +137,8 @@ async def test_complete_not_emitted_when_concurrently_cancelled() -> None:
     work = AsyncMock(return_value=_success_result())
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -176,8 +182,8 @@ async def test_on_progress_checks_cancellation_updates_status_and_emits() -> Non
         return _success_result()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -213,8 +219,8 @@ async def test_on_event_uses_a_separate_session_per_call() -> None:
         return _success_result()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -249,8 +255,8 @@ async def test_cancelled_error_marks_cancelled_and_emits_and_disposes() -> None:
     work = AsyncMock(side_effect=TaskCancelledError("cancelled"))
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -277,8 +283,8 @@ async def test_exception_appends_error_event_marks_failed_emits_and_reraises() -
     work = AsyncMock(side_effect=RuntimeError("disk full"))
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -318,8 +324,8 @@ async def test_soft_failure_marks_failed_no_complete_event_and_raises_after_sess
     )
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -342,3 +348,123 @@ async def test_soft_failure_marks_failed_no_complete_event_and_raises_after_sess
     assert len(error_events) == 1
     assert error_events[0].args[0]["data"]["error"] == "Import failed: bad config"
     mock_engine.dispose.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# run_harnessed
+# ---------------------------------------------------------------------------
+
+
+def test_run_harnessed_returns_value() -> None:
+    """The coroutine's result is returned and no timeout marking happens."""
+
+    async def _ok() -> str:
+        return "tid-1"
+
+    with patch("jidou.workers._harness.mark_task_timed_out", new_callable=AsyncMock) as mock_mark:
+        assert run_harnessed("tid-1", _ok) == "tid-1"
+
+    mock_mark.assert_not_called()
+
+
+def test_run_harnessed_marks_timeout_and_reraises() -> None:
+    """SoftTimeLimitExceeded marks the row timed out (awaited with the id) and propagates."""
+
+    async def _boom() -> str:
+        raise SoftTimeLimitExceeded
+
+    with (
+        patch("jidou.workers._harness.mark_task_timed_out", new_callable=AsyncMock) as mock_mark,
+        pytest.raises(SoftTimeLimitExceeded),
+    ):
+        run_harnessed("tid-2", _boom)
+
+    mock_mark.assert_awaited_once_with("tid-2")
+
+
+def test_run_harnessed_other_exceptions_do_not_mark_timeout() -> None:
+    """Non-timeout errors propagate untouched; only soft limits trigger the marking."""
+
+    async def _boom() -> str:
+        raise ValueError("nope")
+
+    with (
+        patch("jidou.workers._harness.mark_task_timed_out", new_callable=AsyncMock) as mock_mark,
+        pytest.raises(ValueError, match="nope"),
+    ):
+        run_harnessed("tid-3", _boom)
+
+    mock_mark.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# mark_task_timed_out
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_swallows_inner_exception() -> None:
+    """mark_task_timed_out must not propagate exceptions from update_task_status."""
+    mock_engine, _session, mock_factory = _worker_session_mocks()
+
+    with (
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db exploded"),
+        ),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+    ):
+        await mark_task_timed_out("task-err")  # must not raise
+
+    mock_engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_calls_update_and_emit() -> None:
+    """mark_task_timed_out must set FAILED status and publish a progress event."""
+    mock_engine, _session, mock_factory = _worker_session_mocks()
+
+    with (
+        patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+    ):
+        await mark_task_timed_out("task-123")
+
+    mock_update.assert_called_once()
+    assert mock_update.call_args.args[2] == TaskStatus.FAILED
+
+    mock_emit.assert_called_once()
+    emitted = mock_emit.call_args.args[0]
+    assert emitted["type"] == "error"
+    assert emitted["celery_task_id"] == "task-123"
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_propagates_engine_creation_failure() -> None:
+    """Engine lifecycle errors are not swallowed; only the DB-write work is guarded."""
+    with (
+        patch("jidou.database.create_async_engine", side_effect=OSError("no engine")),
+        pytest.raises(OSError, match="no engine"),
+    ):
+        await mark_task_timed_out("task-eng")
+
+
+@pytest.mark.asyncio
+async def test_mark_task_timed_out_message_and_ws_error_text() -> None:
+    """The persisted progress_message and the WS error text are part of the contract."""
+    mock_engine, _session, mock_factory = _worker_session_mocks()
+
+    with (
+        patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
+    ):
+        await mark_task_timed_out("task-msg")
+
+    assert mock_update.call_args.kwargs["progress_message"] == "Task exceeded soft time limit"
+    assert mock_emit.call_args.args[0]["data"] == {"error": "Soft time limit exceeded"}

@@ -1,6 +1,5 @@
 """Celery task for restoring a Jidou database backup."""
 
-import asyncio
 import contextlib
 import json
 import logging
@@ -8,7 +7,6 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +14,14 @@ from jidou.models.episode import Episode
 from jidou.models.show import Show
 from jidou.models.task import TaskStatus
 from jidou.models.watchlist import WatchlistEntry, WatchlistStatus
-from jidou.services.progress import check_task_cancelled, mark_task_timed_out, update_task_status
-from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
+from jidou.services.progress import check_task_cancelled, update_task_status
+from jidou.workers._harness import (
+    EventFn,
+    ProgressFn,
+    WorkflowResult,
+    run_harnessed,
+    run_task_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +139,7 @@ def db_import_task(  # type: ignore[no-untyped-def]
     Returns:
         The Celery task ID.
     """
-    try:
-        return asyncio.run(_db_import(self.request.id, file_content))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _db_import(self.request.id, file_content))
 
 
 async def _db_import(celery_task_id: str, file_content: str) -> str:
