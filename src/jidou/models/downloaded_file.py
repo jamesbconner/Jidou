@@ -119,10 +119,10 @@ class DownloadedFile(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int | None] = mapped_column(
-        ForeignKey("shows.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("shows.id", ondelete="SET NULL"), index=True
     )
     episode_id: Mapped[int | None] = mapped_column(
-        ForeignKey("episodes.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("episodes.id", ondelete="SET NULL"), index=True
     )
     original_filename: Mapped[str] = mapped_column(String(500))
     remote_path: Mapped[str] = mapped_column(String(1000), unique=True)
@@ -149,22 +149,20 @@ class DownloadedFile(TimestampMixin, Base):
     )
     matched_by: Mapped[MatchedBy | None] = mapped_column(
         str_enum(MatchedBy),
-        nullable=True,
     )
     # Set at discovery time for noscan-path files (before status even reaches
     # DOWNLOADED) so DownloadOrchestrator knows to route to IGNORED instead;
     # set directly to MANUAL by the manual-ignore API action.
     ignored_reason: Mapped[IgnoredReason | None] = mapped_column(
         str_enum(IgnoredReason),
-        nullable=True,
     )
     error_message: Mapped[str | None] = mapped_column(Text)
     # Parsed metadata populated by the parse orchestrator
-    parsed_show_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    parsed_season: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    parsed_episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    parsed_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    parsed_content_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    parsed_show_name: Mapped[str | None] = mapped_column(String(500))
+    parsed_season: Mapped[int | None] = mapped_column(Integer)
+    parsed_episode: Mapped[int | None] = mapped_column(Integer)
+    parsed_confidence: Mapped[float | None] = mapped_column(Float)
+    parsed_content_type: Mapped[str | None] = mapped_column(String(20))
 
     # Relationships — use selectinload() in async queries; lazy="noload" prevents
     # accidental synchronous lazy-load (MissingGreenlet) if not explicitly loaded.

@@ -49,18 +49,18 @@ class Episode(TimestampMixin, Base):
     overview: Mapped[str | None] = mapped_column(Text)
     air_date: Mapped[date | None] = mapped_column(Date, index=True)
     runtime: Mapped[int | None] = mapped_column(Integer)
-    absolute_episode_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    episode_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    still_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    absolute_episode_number: Mapped[int | None] = mapped_column(Integer)
+    episode_type: Mapped[str | None] = mapped_column(String(50))
+    still_path: Mapped[str | None] = mapped_column(String(500))
     file_tracked: Mapped[bool] = mapped_column(Boolean, default=False)
-    file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    file_tracked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tracked_filename: Mapped[str | None] = mapped_column(String(500))
     # VARCHAR(20), no native enum: same DDL as the plain-string column it replaces.
     tracked_source: Mapped[TrackedSource | None] = mapped_column(
-        str_enum(TrackedSource, native_enum=False, length=20), nullable=True
+        str_enum(TrackedSource, native_enum=False, length=20)
     )
     watched: Mapped[bool] = mapped_column(Boolean, default=False)
-    watched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    watched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     def __repr__(self) -> str:
         """Return a concise representation of the Episode."""

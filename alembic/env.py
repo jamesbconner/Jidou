@@ -9,10 +9,8 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 
+import jidou.models  # noqa: F401 - registers every mapper on Base.metadata
 from jidou.models import Base
-from jidou.models.show import Show  # noqa: F401
-from jidou.models.task import BackgroundTask  # noqa: F401
-from jidou.models.watchlist import WatchlistEntry  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

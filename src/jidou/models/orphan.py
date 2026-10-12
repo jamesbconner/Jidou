@@ -27,7 +27,7 @@ class OrphanedTrackingRecord(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), index=True)
-    tracked_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tracked_filename: Mapped[str | None] = mapped_column(String(500))
     tracked_source: Mapped[TrackedSource] = mapped_column(
         str_enum(TrackedSource, native_enum=False, length=20)
     )
@@ -35,7 +35,6 @@ class OrphanedTrackingRecord(TimestampMixin, Base):
     old_episode_number: Mapped[int] = mapped_column(Integer)
     downloaded_file_id: Mapped[int | None] = mapped_column(
         ForeignKey("downloaded_files.id", ondelete="SET NULL"),
-        nullable=True,
         index=True,
     )
 
