@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from jidou.services.redis_conn import TASK_PROGRESS_CHANNEL, redis_session
+from jidou.services.redis_conn import TASK_PROGRESS_CHANNEL, redis_session, redis_try_lock
 
 
 def test_task_progress_channel_name_is_stable() -> None:
@@ -43,4 +43,46 @@ async def test_redis_session_closes_on_exception() -> None:
     ):
         async with redis_session("redis://x/0"):
             raise RuntimeError("boom")
+    client.aclose.assert_awaited_once()
+
+
+def _lock_client(*, acquired: bool) -> AsyncMock:
+    """Build a mock Redis client whose SET NX reports *acquired*."""
+    client = AsyncMock()
+    client.set = AsyncMock(return_value=True if acquired else None)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_redis_try_lock_acquired_sets_and_releases() -> None:
+    """An acquired lock is SET NX EX, yielded True, then deleted and closed."""
+    client = _lock_client(acquired=True)
+    with patch("redis.asyncio.from_url", return_value=client):
+        async with redis_try_lock("redis://x/0", "k", 30) as acquired:
+            assert acquired is True
+            client.delete.assert_not_awaited()
+    client.set.assert_awaited_once_with("k", "1", nx=True, ex=30)
+    client.delete.assert_awaited_once_with("k")
+    client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_redis_try_lock_not_acquired_does_not_delete() -> None:
+    """A loser yields False and must not delete the holder's lock; it still closes."""
+    client = _lock_client(acquired=False)
+    with patch("redis.asyncio.from_url", return_value=client):
+        async with redis_try_lock("redis://x/0", "k", 30) as acquired:
+            assert acquired is False
+    client.delete.assert_not_awaited()
+    client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_redis_try_lock_releases_on_error() -> None:
+    """An exception in the body still releases the lock, closes, and propagates."""
+    client = _lock_client(acquired=True)
+    with patch("redis.asyncio.from_url", return_value=client), pytest.raises(RuntimeError):
+        async with redis_try_lock("redis://x/0", "k", 30):
+            raise RuntimeError("boom")
+    client.delete.assert_awaited_once_with("k")
     client.aclose.assert_awaited_once()

@@ -3,6 +3,25 @@
 from pathlib import PurePosixPath
 
 
+def library_root(content_type: str | None, *, tv: str, anime: str, movie: str) -> str:
+    """Pick the library root for a content type from the three configured roots.
+
+    Args:
+        content_type: ``"movie"``, ``"anime"``, or anything else (including None).
+        tv: Root used for TV and for any unrecognised or missing content type.
+        anime: Root used for anime.
+        movie: Root used for movies.
+
+    Returns:
+        The matching root, unchanged.
+    """
+    if content_type == "movie":
+        return movie
+    if content_type == "anime":
+        return anime
+    return tv
+
+
 def resolve_show_local_path(
     *,
     content_type: str | None,
@@ -41,12 +60,9 @@ def resolve_show_local_path(
         Absolute container-side path string.
     """
     ct = content_type or media_type or "tv"
+    base = library_root(ct, tv=local_tv_path, anime=local_anime_path, movie=local_movie_path)
     if ct == "movie":
         # No sys_name subdirectory — see docstring above.
-        return str(PurePosixPath(local_movie_path))
-    elif ct == "anime":
-        base = local_anime_path
-    else:
-        base = local_tv_path
+        return str(PurePosixPath(base))
     # PurePosixPath ensures forward slashes — these are always Linux container paths.
     return str(PurePosixPath(base) / sys_name)

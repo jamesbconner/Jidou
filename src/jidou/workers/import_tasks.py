@@ -10,6 +10,7 @@ from jidou.models.task import TaskStatus
 from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
 from jidou.services.llm_service import create_llm_service
 from jidou.services.path_parser import parse_file
+from jidou.services.path_resolution import library_root
 from jidou.services.progress import append_task_event, update_task_status
 from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
@@ -20,6 +21,7 @@ from jidou.workers._harness import (
     run_task_workflow,
     summarize,
 )
+from jidou.workers.celery_app import LONG_TASK_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +40,15 @@ def _host_root_for_content_type(content_type: str) -> str:
     Returns:
         The configured host path string for that content type.
     """
-    if content_type == "movie":
-        return settings.local_movie_host_path
-    if content_type == "anime":
-        return settings.local_anime_host_path
-    return settings.local_tv_host_path
+    return library_root(
+        content_type,
+        tv=settings.local_tv_host_path,
+        anime=settings.local_anime_host_path,
+        movie=settings.local_movie_host_path,
+    )
 
 
-# Overrides the app-wide 50min/60min limits (celery_app.py) for this task
-# specifically. A bulk path-list import can span hundreds of previously-unseen
-# shows, each requiring several sequential TMDB calls (search, details,
-# external IDs, episode groups, per-season episode sync, alias generation) —
-# all serialized behind TMDB_RATE_LIMIT_PER_SECOND (default: 1 call/2s per
-# CLAUDE.md's rate-limiting policy). A few hundred new shows can legitimately
-# take multiple hours, well past the global default meant for quick,
-# single-phase tasks (route/match/scan individually). sync_all_task gets the
-# same extended override for a different reason — see sync_tasks.py.
-@shared_task(bind=True, time_limit=25200, soft_time_limit=21600)  # type: ignore[untyped-decorator]
+@shared_task(bind=True, **LONG_TASK_LIMITS)  # type: ignore[untyped-decorator]
 def path_import_task(  # type: ignore[no-untyped-def]
     self,
     file_content: str,
