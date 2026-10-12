@@ -16,6 +16,7 @@ from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
+from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
 from jidou.schemas.calendar_schema import CalendarEpisode, CalendarSyncResult
 from jidou.schemas.discover_schema import DiscoverResult
 from jidou.schemas.episode_schema import EpisodeList
@@ -42,7 +43,6 @@ from jidou.services.settings_service import (
     get_similar_titles_enabled,
     get_similar_titles_include_external,
 )
-from jidou.services.show_creation import get_or_create_show_from_tmdb
 from jidou.services.show_search import MIN_QUERY_LENGTH, search_local_shows
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
@@ -506,7 +506,8 @@ async def create_show(
 
     If the show already exists it is returned unchanged. Otherwise the show is
     created with full TMDB metadata, its episodes are synced and aliases are
-    generated; see :func:`jidou.services.show_creation.get_or_create_show_from_tmdb`
+    generated; see
+    :func:`jidou.orchestrators.show_creation_orchestrator.get_or_create_show_from_tmdb`
     for the best-effort semantics of those steps.
 
     Args:

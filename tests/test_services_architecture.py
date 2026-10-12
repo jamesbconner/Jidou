@@ -11,17 +11,11 @@ from pathlib import Path
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "src" / "jidou" / "services"
 
-# Measured maximum is 10 (``show_creation.get_or_create_show_from_tmdb``); refactors lower this,
-# never raise it.
-_SERVICES_MAX_COMPLEXITY = 10
+# Measured maximum is 9 (e.g. ``rss_stub.ensure_rss_stub``); refactors lower this, never raise it.
+_SERVICES_MAX_COMPLEXITY = 9
 
-# Shrinks to empty: Task 10 removes the remaining two.
-_KNOWN_UPWARD_IMPORTS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("show_creation", "jidou.orchestrators.tmdb_orchestrator"),
-        ("show_creation", "jidou.orchestrators.alias_orchestrator"),
-    }
-)
+# Now empty: kept as an explicit allowlist so any new upward import fails loudly.
+_KNOWN_UPWARD_IMPORTS: frozenset[tuple[str, str]] = frozenset()
 
 _UPPER_LAYERS = ("jidou.api", "jidou.orchestrators")
 

@@ -21,11 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
+from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.llm_service import LLMService
 from jidou.services.rss_config import fill_missing_yarss2_defaults
-from jidou.services.show_creation import get_or_create_show_from_tmdb
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)

@@ -9199,7 +9199,7 @@
         ]
       },
       "post": {
-        "description": "Add a show to the database (upsert by TMDB ID).\n\nIf the show already exists it is returned unchanged. Otherwise the show is\ncreated with full TMDB metadata, its episodes are synced and aliases are\ngenerated; see :func:`jidou.services.show_creation.get_or_create_show_from_tmdb`\nfor the best-effort semantics of those steps.\n\nArgs:\n    payload: Show data from a TMDB search/trending result.\n    db_session: DB session (injected).\n    tmdb: TMDB service (injected).\n    llm: LLM service (injected).\n\nReturns:\n    The created or existing :class:`Show` record.",
+        "description": "Add a show to the database (upsert by TMDB ID).\n\nIf the show already exists it is returned unchanged. Otherwise the show is\ncreated with full TMDB metadata, its episodes are synced and aliases are\ngenerated; see\n:func:`jidou.orchestrators.show_creation_orchestrator.get_or_create_show_from_tmdb`\nfor the best-effort semantics of those steps.\n\nArgs:\n    payload: Show data from a TMDB search/trending result.\n    db_session: DB session (injected).\n    tmdb: TMDB service (injected).\n    llm: LLM service (injected).\n\nReturns:\n    The created or existing :class:`Show` record.",
         "operationId": "create_show_api_shows_post",
         "parameters": [
           {

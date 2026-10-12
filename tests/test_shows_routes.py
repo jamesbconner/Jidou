@@ -618,7 +618,9 @@ def test_create_show_race_return_still_backfills_episode_group_map() -> None:
     app.dependency_overrides[get_session] = _race_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        with patch(
+            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.ensure_episode_group_map = AsyncMock()
             mock_orch_cls.return_value = mock_orch
@@ -2665,7 +2667,9 @@ def test_create_show_syncs_episodes_for_new_show() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        with patch(
+            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock()
             mock_orch_cls.return_value = mock_orch
@@ -2709,7 +2713,9 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        with patch(
+            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock(side_effect=RuntimeError("TMDB down"))
             mock_orch_cls.return_value = mock_orch
@@ -2775,9 +2781,11 @@ def test_create_show_commits_after_sync_before_alias_generation() -> None:
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
         with (
-            patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls,
             patch(
-                "jidou.orchestrators.alias_orchestrator.generate_aliases",
+                "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+            ) as mock_orch_cls,
+            patch(
+                "jidou.orchestrators.show_creation_orchestrator.generate_aliases",
                 new_callable=AsyncMock,
                 side_effect=_generate_aliases,
             ),
@@ -2827,7 +2835,9 @@ def test_create_show_skips_episode_sync_for_movies() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        with patch(
+            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock()
             mock_orch_cls.return_value = mock_orch
@@ -2873,7 +2883,9 @@ def test_create_show_db_error_during_sync_propagates() -> None:
     app.dependency_overrides[get_session] = _new_session
     app.dependency_overrides[get_tmdb] = _fake_tmdb
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch_cls:
+        with patch(
+            "jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator"
+        ) as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.sync_show_episodes = AsyncMock(
                 side_effect=OperationalError("conn lost", None, None)

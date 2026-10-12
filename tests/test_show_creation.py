@@ -6,12 +6,9 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from jidou.models.show import Show
+from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
 from jidou.schemas.show_schema import ShowCreate
-from jidou.services.show_creation import (
-    auto_local_path,
-    get_or_create_show_from_tmdb,
-    infer_content_type,
-)
+from jidou.services.show_creation import auto_local_path, infer_content_type
 
 TMDB_FIELDS = {"tmdb_id": 1396, "title": "Brand New Show", "media_type": "tv"}
 
@@ -37,13 +34,17 @@ def _session(*existing_lookups: Show | None) -> AsyncMock:
 def externals():
     """Patch the TMDB/alias collaborators at their source modules."""
     with (
-        patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as orch_cls,
+        patch("jidou.orchestrators.show_creation_orchestrator.TMDBOrchestrator") as orch_cls,
         patch(
-            "jidou.services.tmdb_mapping.fetch_show_metadata", new=AsyncMock(return_value={})
+            "jidou.orchestrators.show_creation_orchestrator.fetch_show_metadata",
+            new=AsyncMock(return_value={}),
         ) as fetch,
-        patch("jidou.services.tmdb_mapping.build_show_fields", return_value=dict(TMDB_FIELDS)),
         patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases", new=AsyncMock()
+            "jidou.orchestrators.show_creation_orchestrator.build_show_fields",
+            return_value=dict(TMDB_FIELDS),
+        ),
+        patch(
+            "jidou.orchestrators.show_creation_orchestrator.generate_aliases", new=AsyncMock()
         ) as aliases,
     ):
         orch = orch_cls.return_value
@@ -91,7 +92,7 @@ async def test_new_movie_skips_episode_sync(externals) -> None:
     session = _session(None)
 
     with patch(
-        "jidou.services.tmdb_mapping.build_show_fields",
+        "jidou.orchestrators.show_creation_orchestrator.build_show_fields",
         return_value={"tmdb_id": 603, "title": "A Movie", "media_type": "movie"},
     ):
         result = await get_or_create_show_from_tmdb(

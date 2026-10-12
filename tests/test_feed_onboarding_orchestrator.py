@@ -11,9 +11,9 @@ from jidou.orchestrators.feed_onboarding_orchestrator import (
     FeedOnboardingError,
     FeedOnboardingOrchestrator,
 )
+from jidou.orchestrators.show_creation_orchestrator import ShowCreationResult
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.schemas.show_schema import ShowCreate
-from jidou.services.show_creation import ShowCreationResult
 
 CREATE_PATH = "jidou.orchestrators.feed_onboarding_orchestrator.get_or_create_show_from_tmdb"
 
