@@ -1,0 +1,376 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`FeaturesTab characterization > all flipped > flipped 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Show Detail</h2>
+<div class="flex items-start justify-between gap-4 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Show detail banner<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Backdrop treatment at the top of each show's detail page. Saved in this browser only.</span>
+</span>
+<div role="radiogroup" aria-label="Show detail banner style" class="flex gap-1 shrink-0 flex-wrap justify-end">
+<button type="button" role="radio" aria-checked="true" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white border-[var(--color-ocean-600)]">Hero</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Full</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">None</button>
+</div>
+</div>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Similar titles<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show a "Similar Titles" carousel on each show's detail page, built from TMDB recommendations.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Include titles not in your library<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Also show similar titles you don't track yet, with an Add action. When off, only titles already in your library appear.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Number of titles to show<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">How many similar titles to fetch and display (1–40).</span>
+</span>
+<input min="1" max="40" disabled="" class="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" type="number" value="3">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Dashboard</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Show adult content<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Adult-flagged shows and episodes are always tracked; this only controls whether they appear in the dashboard's recently-added carousels.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added episodes<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Episodes" carousel on the dashboard.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added movies<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Movies" carousel on the dashboard.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Uniform episode artwork<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">In the "Recently Added Episodes" carousel, always use the show poster instead of the episode still, so every card has the same shape. Episodes without a still already fall back to the poster.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Optional Pages</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Dashboard<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the dashboard page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Calendar<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the airing calendar page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Discover<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the discover page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeaturesTab characterization > count input clamps, rounds and ignores non-numbers > count patches 1`] = `
+[
+  [
+    {
+      "similar_titles_count": 40,
+    },
+  ],
+  [
+    {
+      "similar_titles_count": 1,
+    },
+  ],
+  [
+    {
+      "similar_titles_count": 8,
+    },
+  ],
+  [
+    {
+      "similar_titles_count": 1,
+    },
+  ],
+]
+`;
+
+exports[`FeaturesTab characterization > each switch sends its own patch > switch patches 1`] = `
+[
+  [
+    {
+      "similar_titles_enabled": false,
+    },
+  ],
+  [
+    {
+      "similar_titles_include_external": false,
+    },
+  ],
+  [
+    {
+      "show_adult_content": true,
+    },
+  ],
+  [
+    {
+      "recent_episodes_enabled": false,
+    },
+  ],
+  [
+    {
+      "recent_movies_enabled": false,
+    },
+  ],
+  [
+    {
+      "recent_episodes_prefer_posters": true,
+    },
+  ],
+  [
+    {
+      "dashboard_page_enabled": false,
+    },
+  ],
+  [
+    {
+      "calendar_enabled": false,
+    },
+  ],
+  [
+    {
+      "discover_enabled": false,
+    },
+  ],
+]
+`;
+
+exports[`FeaturesTab characterization > loaded with defaults > loaded 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Show Detail</h2>
+<div class="flex items-start justify-between gap-4 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Show detail banner<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Backdrop treatment at the top of each show's detail page. Saved in this browser only.</span>
+</span>
+<div role="radiogroup" aria-label="Show detail banner style" class="flex gap-1 shrink-0 flex-wrap justify-end">
+<button type="button" role="radio" aria-checked="true" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white border-[var(--color-ocean-600)]">Hero</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Full</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">None</button>
+</div>
+</div>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Similar titles<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show a "Similar Titles" carousel on each show's detail page, built from TMDB recommendations.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Include titles not in your library<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Also show similar titles you don't track yet, with an Add action. When off, only titles already in your library appear.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Number of titles to show<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">How many similar titles to fetch and display (1–40).</span>
+</span>
+<input min="1" max="40" class="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" type="number" value="12">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Dashboard</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Show adult content<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Adult-flagged shows and episodes are always tracked; this only controls whether they appear in the dashboard's recently-added carousels.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added episodes<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Episodes" carousel on the dashboard.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added movies<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Movies" carousel on the dashboard.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Uniform episode artwork<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">In the "Recently Added Episodes" carousel, always use the show poster instead of the episode still, so every card has the same shape. Episodes without a still already fall back to the poster.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Optional Pages</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Dashboard<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the dashboard page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Calendar<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the airing calendar page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Discover<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the discover page and its nav link.</span>
+</span>
+<input role="switch" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeaturesTab characterization > mutation pending disables every control > pending 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Show Detail</h2>
+<div class="flex items-start justify-between gap-4 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Show detail banner<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Backdrop treatment at the top of each show's detail page. Saved in this browser only.</span>
+</span>
+<div role="radiogroup" aria-label="Show detail banner style" class="flex gap-1 shrink-0 flex-wrap justify-end">
+<button type="button" role="radio" aria-checked="true" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white border-[var(--color-ocean-600)]">Hero</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Full</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">None</button>
+</div>
+</div>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Similar titles<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show a "Similar Titles" carousel on each show's detail page, built from TMDB recommendations.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Include titles not in your library<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Also show similar titles you don't track yet, with an Add action. When off, only titles already in your library appear.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Number of titles to show<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">How many similar titles to fetch and display (1–40).</span>
+</span>
+<input min="1" max="40" disabled="" class="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" type="number" value="12">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Dashboard</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Show adult content<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Adult-flagged shows and episodes are always tracked; this only controls whether they appear in the dashboard's recently-added carousels.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added episodes<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Episodes" carousel on the dashboard.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added movies<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Movies" carousel on the dashboard.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Uniform episode artwork<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">In the "Recently Added Episodes" carousel, always use the show poster instead of the episode still, so every card has the same shape. Episodes without a still already fall back to the poster.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Optional Pages</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Dashboard<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the dashboard page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Calendar<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the airing calendar page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Discover<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the discover page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeaturesTab characterization > settings still loading > loading 1`] = `
+"<div>
+<div class="space-y-8">
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Show Detail</h2>
+<div class="flex items-start justify-between gap-4 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Show detail banner<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Backdrop treatment at the top of each show's detail page. Saved in this browser only.</span>
+</span>
+<div role="radiogroup" aria-label="Show detail banner style" class="flex gap-1 shrink-0 flex-wrap justify-end">
+<button type="button" role="radio" aria-checked="true" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white border-[var(--color-ocean-600)]">Hero</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Full</button>
+<button type="button" role="radio" aria-checked="false" class="rounded border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 px-3 py-1.5 text-xs border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">None</button>
+</div>
+</div>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Similar titles<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show a "Similar Titles" carousel on each show's detail page, built from TMDB recommendations.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Include titles not in your library<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Also show similar titles you don't track yet, with an Add action. When off, only titles already in your library appear.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm">
+<span class="text-gray-700 dark:text-gray-300">Number of titles to show<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">How many similar titles to fetch and display (1–40).</span>
+</span>
+<input min="1" max="40" disabled="" class="w-16 shrink-0 border rounded px-2 py-1 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" type="number" value="12">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Dashboard</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Show adult content<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Adult-flagged shows and episodes are always tracked; this only controls whether they appear in the dashboard's recently-added carousels.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added episodes<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Episodes" carousel on the dashboard.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Recently added movies<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the "Recently Added Movies" carousel on the dashboard.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Uniform episode artwork<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">In the "Recently Added Episodes" carousel, always use the show poster instead of the episode still, so every card has the same shape. Episodes without a still already fall back to the poster.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox">
+</label>
+</div>
+<div class="card p-4 space-y-3">
+<h2 class="font-semibold dark:text-gray-100">Optional Pages</h2>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Dashboard<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the dashboard page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Calendar<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the airing calendar page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+<label class="flex items-center justify-between gap-3 text-sm cursor-pointer">
+<span class="text-gray-700 dark:text-gray-300">Discover<span class="block text-xs text-gray-400 dark:text-gray-500 font-normal">Show the discover page and its nav link.</span>
+</span>
+<input role="switch" disabled="" class="h-4 w-4 shrink-0 accent-[var(--color-ocean-600)]" type="checkbox" checked="">
+</label>
+</div>
+</div>
+</div>"
+`;
