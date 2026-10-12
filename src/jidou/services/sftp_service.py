@@ -20,6 +20,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -70,6 +71,32 @@ class RemoteFile:
     size: int
     mtime: datetime | None = field(default=None)
     is_dir: bool = False
+
+
+class _EntryKind(Enum):
+    """What a directory listing should do with one SFTP entry."""
+
+    SKIP = auto()
+    DIRECTORY = auto()
+    DEFERRED_DIRECTORY = auto()
+    FILE = auto()
+    RECENT_FILE = auto()
+
+
+@dataclass(frozen=True)
+class _EntryVerdict:
+    """Classification of one SFTP directory entry.
+
+    Attributes:
+        kind: How the caller should treat the entry.
+        path: Full remote path of the entry (parent joined with its name).
+        remote_file: Ready-made record, set only for ``DIRECTORY``
+            (``is_dir=True``, ``size=0``) and ``FILE``; ``None`` otherwise.
+    """
+
+    kind: _EntryKind
+    path: str
+    remote_file: RemoteFile | None = None
 
 
 @dataclass
@@ -304,6 +331,86 @@ class SFTPService:
         except (TypeError, ValueError, OSError):
             return None
 
+    def _classify_entry(
+        self,
+        entry: Any,
+        parent: str,
+        pattern: str | None,
+        *,
+        eager_mtime: bool = False,
+        files_only: bool = False,
+    ) -> _EntryVerdict:
+        """Decide what a listing should do with one directory entry.
+
+        This is the single home of the filtering rules shared by
+        ``list_remote_files``, ``_collect_files_recursive`` and
+        ``list_remote_children``. Checks run in this order: ``.``/``..`` are
+        skipped; a directory is skipped when ``is_valid_directory`` rejects
+        it, deferred when its own mtime is inside the upload-grace window,
+        and otherwise kept; a file is skipped when *pattern* is given and does
+        not match, or when ``is_valid_media_file`` rejects it, reported as
+        recent when inside the grace window, and otherwise kept.
+
+        Args:
+            entry: asyncssh ``SFTPName`` instance.
+            parent: Remote directory the entry was read from.
+            pattern: Glob applied to file names, or ``None`` for no glob.
+            eager_mtime: Read the entry's mtime before any name check
+                (``list_remote_children`` behaviour) instead of only once an
+                entry survives them.
+            files_only: Skip every directory immediately, without validating
+                it or reading its mtime (``list_remote_files`` behaviour).
+
+        Returns:
+            The verdict, including the entry's full path and, for kept
+            directories and files, the :class:`RemoteFile` to emit.
+        """
+        name: str = entry.filename
+        entry_path = f"{parent.rstrip('/')}/{name}"
+        if name in (".", ".."):
+            return _EntryVerdict(_EntryKind.SKIP, entry_path)
+
+        # mtime is read at exactly the points the pre-classifier listings read
+        # it: lazily after the cheap name checks, except for the children
+        # listing, which always read it up front. An out-of-range mtime makes
+        # _parse_mtime raise OverflowError, so moving a read changes which
+        # entries blow up.
+        early_mtime = self._parse_mtime(entry) if eager_mtime else None
+
+        if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
+            if files_only:
+                # The flat listing never validated, logged or read the mtime
+                # of directories; bail out before any of that happens.
+                return _EntryVerdict(_EntryKind.SKIP, entry_path)
+            if not is_valid_directory(name):
+                logger.debug("Skipping excluded directory: %s", name)
+                return _EntryVerdict(_EntryKind.SKIP, entry_path)
+            mtime = early_mtime if eager_mtime else self._parse_mtime(entry)
+            recent = mtime is not None and is_recently_modified(mtime)
+            # A directory's own mtime bumps whenever a child is added or
+            # removed directly inside it. A fresh mtime here means it may
+            # still be receiving files that a readdir() now would never
+            # observe — defer the whole subtree rather than trust a possibly
+            # incomplete snapshot of it.
+            if recent:
+                logger.debug("Deferring recently modified directory: %s", entry_path)
+                return _EntryVerdict(_EntryKind.DEFERRED_DIRECTORY, entry_path)
+            directory = RemoteFile(name=name, path=entry_path, size=0, mtime=mtime, is_dir=True)
+            return _EntryVerdict(_EntryKind.DIRECTORY, entry_path, directory)
+
+        if pattern is not None and not fnmatch.fnmatch(name, pattern):
+            return _EntryVerdict(_EntryKind.SKIP, entry_path)
+        if not is_valid_media_file(name):
+            logger.debug("Filtered out %s (extension/keyword rule)", name)
+            return _EntryVerdict(_EntryKind.SKIP, entry_path)
+        mtime = early_mtime if eager_mtime else self._parse_mtime(entry)
+        if mtime is not None and is_recently_modified(mtime):
+            logger.debug("Skipping recently modified file: %s", entry_path)
+            return _EntryVerdict(_EntryKind.RECENT_FILE, entry_path)
+        size: int = getattr(entry.attrs, "size", 0) or 0
+        file = RemoteFile(name=name, path=entry_path, size=size, mtime=mtime)
+        return _EntryVerdict(_EntryKind.FILE, entry_path, file)
+
     async def list_remote_files(
         self,
         path: str | None = None,
@@ -335,29 +442,11 @@ class SFTPService:
             async with self._connection() as sftp:
                 entries = await sftp.readdir(remote_path)
                 for entry in entries:
-                    name: str = entry.filename
-                    if name in (".", ".."):
-                        continue
-                    if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
-                        continue
-                    if not fnmatch.fnmatch(name, pattern):
-                        continue
-                    if not is_valid_media_file(name):
-                        logger.debug("Filtered out %s (extension/keyword rule)", name)
-                        continue
-                    mtime = self._parse_mtime(entry)
-                    if mtime is not None and is_recently_modified(mtime):
-                        logger.debug("Skipping recently modified file: %s", name)
-                        continue
-                    size: int = getattr(entry.attrs, "size", 0) or 0
-                    files.append(
-                        RemoteFile(
-                            name=name,
-                            path=f"{remote_path.rstrip('/')}/{name}",
-                            size=size,
-                            mtime=mtime,
-                        )
-                    )
+                    verdict = self._classify_entry(entry, remote_path, pattern, files_only=True)
+                    # Directories are never part of this flat listing, whether
+                    # or not they would be walked elsewhere.
+                    if verdict.kind is _EntryKind.FILE and verdict.remote_file is not None:
+                        files.append(verdict.remote_file)
             files.sort(key=lambda f: f.name)
             return files
 
@@ -401,43 +490,29 @@ class SFTPService:
             result.io_failures += 1
             return
         for entry in entries:
-            name: str = entry.filename
-            if name in (".", ".."):
-                continue
-            entry_path = f"{path.rstrip('/')}/{name}"
+            verdict = self._classify_entry(entry, path, pattern)
+            if verdict.kind is _EntryKind.DIRECTORY:
+                await self._collect_files_recursive(sftp, verdict.path, pattern, result)
+            else:
+                self._tally_verdict(verdict, result)
 
-            if bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions)):
-                if not is_valid_directory(name):
-                    logger.debug("Skipping excluded directory: %s", name)
-                    continue
-                # A directory's own mtime bumps whenever a child is added or
-                # removed directly inside it. A fresh mtime here means this
-                # directory may still be receiving files that a readdir()
-                # partway through this walk would never observe — defer the
-                # whole subtree rather than trust a possibly-incomplete
-                # snapshot of it.
-                dir_mtime = self._parse_mtime(entry)
-                if dir_mtime is not None and is_recently_modified(dir_mtime):
-                    logger.debug("Deferring recently modified directory: %s", entry_path)
-                    result.directories_deferred += 1
-                    continue
-                await self._collect_files_recursive(sftp, entry_path, pattern, result)
-                continue
+    @staticmethod
+    def _tally_verdict(verdict: _EntryVerdict, result: RecursiveListResult) -> None:
+        """Record a non-directory verdict on *result* (files and skip counters).
 
-            if not fnmatch.fnmatch(name, pattern):
-                continue
-            if not is_valid_media_file(name):
-                logger.debug("Filtered out %s (extension/keyword rule)", name)
-                continue
-
-            mtime = self._parse_mtime(entry)
-            if mtime is not None and is_recently_modified(mtime):
-                logger.debug("Skipping recently modified file: %s", entry_path)
+        Args:
+            verdict: Classification of one entry; ``DIRECTORY`` is handled by
+                the caller because it needs to recurse.
+            result: Accumulator updated in place.
+        """
+        match verdict.kind:
+            case _EntryKind.DEFERRED_DIRECTORY:
+                result.directories_deferred += 1
+            case _EntryKind.RECENT_FILE:
                 result.recently_modified_skipped += 1
-                continue
-
-            size: int = getattr(entry.attrs, "size", 0) or 0
-            result.files.append(RemoteFile(name=name, path=entry_path, size=size, mtime=mtime))
+            case _EntryKind.FILE if verdict.remote_file is not None:
+                result.files.append(verdict.remote_file)
+            # SKIP (and DIRECTORY, handled by the caller) record nothing.
 
     async def list_remote_files_recursive(
         self,
@@ -556,34 +631,14 @@ class SFTPService:
             async with self._connection() as sftp:
                 entries = await sftp.readdir(remote_path)
                 for entry in entries:
-                    name: str = entry.filename
-                    if name in (".", ".."):
-                        continue
-                    entry_path = f"{remote_path.rstrip('/')}/{name}"
-                    is_dir = bool(entry.attrs.permissions and stat.S_ISDIR(entry.attrs.permissions))
-                    mtime = self._parse_mtime(entry)
-                    if is_dir:
-                        if not is_valid_directory(name):
-                            logger.debug("Skipping excluded directory: %s", name)
-                            continue
-                        if mtime is not None and is_recently_modified(mtime):
-                            logger.debug("Deferring recently modified directory: %s", name)
-                            continue
-                        entries_out.append(
-                            RemoteFile(name=name, path=entry_path, size=0, mtime=mtime, is_dir=True)
-                        )
-                        continue
-
-                    if not is_valid_media_file(name):
-                        logger.debug("Filtered out %s (extension/keyword rule)", name)
-                        continue
-                    if mtime is not None and is_recently_modified(mtime):
-                        logger.debug("Skipping recently modified file: %s", name)
-                        continue
-                    size: int = getattr(entry.attrs, "size", 0) or 0
-                    entries_out.append(
-                        RemoteFile(name=name, path=entry_path, size=size, mtime=mtime)
-                    )
+                    verdict = self._classify_entry(entry, remote_path, None, eager_mtime=True)
+                    # Deferred directories and recent files are left out this
+                    # round; they surface once they settle.
+                    if (
+                        verdict.kind in (_EntryKind.DIRECTORY, _EntryKind.FILE)
+                        and verdict.remote_file is not None
+                    ):
+                        entries_out.append(verdict.remote_file)
             entries_out.sort(key=lambda f: f.name)
             return entries_out
 
