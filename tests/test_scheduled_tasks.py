@@ -42,9 +42,9 @@ def _patch_db(active_count: int = 0):
         return session_factory()
 
     return (
-        patch("jidou.workers.scheduled_tasks.create_async_engine", return_value=engine),
+        patch("jidou.database.create_async_engine", return_value=engine),
         patch(
-            "jidou.workers.scheduled_tasks.async_sessionmaker",
+            "jidou.database.async_sessionmaker",
             return_value=fake_session_maker,
         ),
     )
@@ -89,9 +89,9 @@ class TestTryClaimTask:
             return session_factory()
 
         with (
-            patch("jidou.workers.scheduled_tasks.create_async_engine", return_value=engine),
+            patch("jidou.database.create_async_engine", return_value=engine),
             patch(
-                "jidou.workers.scheduled_tasks.async_sessionmaker",
+                "jidou.database.async_sessionmaker",
                 return_value=fake_session_maker,
             ),
         ):

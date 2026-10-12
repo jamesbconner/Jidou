@@ -1,7 +1,8 @@
 """Database engine and session management for async SQLAlchemy."""
 
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -43,6 +44,33 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+
+
+@asynccontextmanager
+async def task_sessionmaker() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Yield a session factory backed by a fresh engine, disposed on exit.
+
+    Each Celery task runs its own ``asyncio.run()`` loop, so the module-level
+    ``engine`` (whose pool is bound to the loop that first used it, or to none
+    at all) cannot be shared with workers: reusing it raises stale-pool /
+    wrong-loop errors. A task-local engine ties the connection pool to the
+    running loop, and disposing it in ``finally`` returns every connection
+    before the loop closes.
+
+    Yields:
+        An ``async_sessionmaker`` (``pool_pre_ping=True``, ``expire_on_commit=False``)
+        bound to the running event loop.
+
+    Example:
+        >>> async with task_sessionmaker() as session_factory:  # doctest: +SKIP
+        ...     async with session_factory() as session:
+        ...         await session.execute(text("SELECT 1"))
+    """
+    task_engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    try:
+        yield async_sessionmaker(task_engine, class_=AsyncSession, expire_on_commit=False)
+    finally:
+        await task_engine.dispose()
 
 
 async def init_db() -> None:

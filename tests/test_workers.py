@@ -184,8 +184,8 @@ async def test_route_files_wires_on_event_to_orchestrator() -> None:
         return route_result
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -233,8 +233,8 @@ async def test_sync_all_wires_on_event_to_orchestrator() -> None:
         return sync_result
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -800,8 +800,8 @@ async def test_path_import_passes_content_type_root_to_parse_file() -> None:
     mock_parse_file = MagicMock(return_value=[])
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -848,8 +848,8 @@ async def test_path_import_shows_only_mode_passes_directories_only_true() -> Non
     mock_parse_file = MagicMock(return_value=[])
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -899,8 +899,8 @@ async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> 
     mock_append_event = AsyncMock()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -967,8 +967,8 @@ async def test_fetch_trending_empty_result() -> None:
     mock_factory = MagicMock(return_value=mock_session)
 
     with (
-        patch("jidou.workers.tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.tasks.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers.tasks.TMDBService.get_trending",
             new_callable=AsyncMock,
@@ -1000,8 +1000,8 @@ async def test_fetch_trending_skips_items_without_id() -> None:
     mock_insert.return_value = mock_insert
 
     with (
-        patch("jidou.workers.tasks.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers.tasks.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers.tasks.TMDBService.get_trending",
             new_callable=AsyncMock,

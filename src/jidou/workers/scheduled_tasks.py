@@ -14,9 +14,9 @@ from typing import Any
 
 from celery import shared_task
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
+from jidou.database import task_sessionmaker
 from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask
 from jidou.services.progress import create_task_record
 
@@ -39,26 +39,19 @@ async def _try_claim_task(task_type: str, task_id: str) -> bool:
         should proceed.  ``False`` if an active task of the same type was
         already detected.
     """
-    engine = None
-    try:
-        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with session_factory() as session:
-            count: int = (
-                await session.execute(
-                    select(func.count()).where(
-                        BackgroundTask.task_type == task_type,
-                        BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
-                    )
+    async with task_sessionmaker() as session_factory, session_factory() as session:
+        count: int = (
+            await session.execute(
+                select(func.count()).where(
+                    BackgroundTask.task_type == task_type,
+                    BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
                 )
-            ).scalar_one()
-            if count > 0:
-                return False
-            await create_task_record(session, task_id, task_type, dry_run=False)
-            return True
-    finally:
-        if engine is not None:
-            await engine.dispose()
+            )
+        ).scalar_one()
+        if count > 0:
+            return False
+        await create_task_record(session, task_id, task_type, dry_run=False)
+        return True
 
 
 @shared_task  # type: ignore[untyped-decorator]
@@ -132,11 +125,8 @@ async def _delete_task_record(celery_task_id: str) -> None:
     """
     from sqlalchemy import delete
 
-    engine = None
     try:
-        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        async with session_factory() as session:
+        async with task_sessionmaker() as session_factory, session_factory() as session:
             await session.execute(
                 delete(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
             )
@@ -146,9 +136,6 @@ async def _delete_task_record(celery_task_id: str) -> None:
             "Failed to remove orphaned pending row task_id=%s; manual cleanup may be required",
             celery_task_id,
         )
-    finally:
-        if engine is not None:
-            await engine.dispose()
 
 
 async def _scheduled_sync() -> str:

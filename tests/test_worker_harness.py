@@ -44,8 +44,8 @@ async def test_skips_redelivery_for_terminal_task() -> None:
     work = AsyncMock()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -70,8 +70,8 @@ async def test_happy_path_completes_and_emits_result_summary_when_no_complete_su
     work = AsyncMock(return_value=_success_result())
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -108,8 +108,8 @@ async def test_happy_path_uses_complete_summary_override_for_ws_payload() -> Non
     )
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -137,8 +137,8 @@ async def test_complete_not_emitted_when_concurrently_cancelled() -> None:
     work = AsyncMock(return_value=_success_result())
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -182,8 +182,8 @@ async def test_on_progress_checks_cancellation_updates_status_and_emits() -> Non
         return _success_result()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -219,8 +219,8 @@ async def test_on_event_uses_a_separate_session_per_call() -> None:
         return _success_result()
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -255,8 +255,8 @@ async def test_cancelled_error_marks_cancelled_and_emits_and_disposes() -> None:
     work = AsyncMock(side_effect=TaskCancelledError("cancelled"))
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -283,8 +283,8 @@ async def test_exception_appends_error_event_marks_failed_emits_and_reraises() -
     work = AsyncMock(side_effect=RuntimeError("disk full"))
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -324,8 +324,8 @@ async def test_soft_failure_marks_failed_no_complete_event_and_raises_after_sess
     )
 
     with (
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
         patch(
             "jidou.workers._harness.create_task_record",
             new_callable=AsyncMock,
@@ -413,8 +413,8 @@ async def test_mark_task_timed_out_swallows_inner_exception() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("db exploded"),
         ),
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
     ):
         await mark_task_timed_out("task-err")  # must not raise
 
@@ -429,8 +429,8 @@ async def test_mark_task_timed_out_calls_update_and_emit() -> None:
     with (
         patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("jidou.workers._harness.create_async_engine", return_value=mock_engine),
-        patch("jidou.workers._harness.async_sessionmaker", return_value=mock_factory),
+        patch("jidou.database.create_async_engine", return_value=mock_engine),
+        patch("jidou.database.async_sessionmaker", return_value=mock_factory),
     ):
         await mark_task_timed_out("task-123")
 
