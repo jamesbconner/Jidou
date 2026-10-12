@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { useConfig } from '@/hooks/useConfig'
-import { useTmdbSuggestions, useRematchFile } from '@/hooks/useFiles'
-import { useTmdbSearch, useTmdbDetails, useLocalShowSearch, useLibraryIndex } from '@/hooks/useShows'
-import { useDebounce } from '@/hooks/useDebounce'
+import { useRematchFile } from '@/hooks/useFiles'
+import { useLibraryIndex } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { CandidateList } from '@/components/resolveFile/CandidateList'
+import { ResolveConfirm } from '@/components/resolveFile/ResolveConfirm'
+import {
+  useResolveCandidates,
+  type SearchMode,
+} from '@/components/resolveFile/useResolveCandidates'
+import { year } from '@/components/resolveFile/year'
 import { toContainerPath, toHostPath, sanitizeFolderName } from '@/utils/paths'
 import type { FileRead, TmdbSuggestion, ContentType, ShowSearchResult } from '@/types/api'
-
-type SearchMode = 'suggestions' | 'title' | 'tmdb_id'
-
-const TMDB_IMAGE_BASE = '/api/images/w185'
 
 /** A show already in the local library that this file can be assigned to. */
 interface ExistingShow {
@@ -30,88 +32,36 @@ export function ResolveFileModal({ file, onClose }: Props) {
   const [contentType, setContentType] = useState<ContentType>('anime')
   const [folderName, setFolderName] = useState('')
   const [searchQuery, setSearchQuery] = useState(file.parsed_show_name ?? '')
-  const debouncedQuery = useDebounce(searchQuery, 300)
   const [searchMode, setSearchMode] = useState<SearchMode>('suggestions')
   const [tmdbIdQuery, setTmdbIdQuery] = useState('')
   const [tmdbIdMediaType, setTmdbIdMediaType] = useState<'tv' | 'movie'>('tv')
 
   const { data: config } = useConfig()
 
-  const {
-    data: suggestions,
-    isFetching: suggestionsLoading,
-    error: suggestionsError,
-  } = useTmdbSuggestions(searchMode === 'suggestions' ? file.id : null)
-
-  const { data: searchResults, isFetching: searchLoading } = useTmdbSearch(
-    searchMode === 'title' && searchQuery.length >= 2 ? debouncedQuery : '',
-    'multi',
-  )
-
   // Title search returns many unrelated results for common-word titles (e.g.
   // "Green Green" surfaces "Green Acres", "Green Lantern", …), so a direct
   // TMDB-ID lookup is offered as a precise alternative.
   const trimmedTmdbIdQuery = tmdbIdQuery.trim()
   const parsedTmdbId = /^\d+$/.test(trimmedTmdbIdQuery) ? parseInt(trimmedTmdbIdQuery, 10) : null
-  const {
-    data: tmdbIdResult,
-    isFetching: tmdbIdLoading,
-    error: tmdbIdError,
-  } = useTmdbDetails(searchMode === 'tmdb_id' ? parsedTmdbId : null, tmdbIdMediaType)
 
-  // Local library candidates: the parsed name in suggestions mode, the typed
-  // query in refine mode. Gated on the live input (not just the debounced
-  // value) so switching modes never replays a stale query.
-  const localQuery =
-    searchMode === 'title'
-      ? searchQuery.trim().length >= 2
-        ? debouncedQuery
-        : ''
-      : searchMode === 'suggestions'
-        ? (file.parsed_show_name ?? '')
-        : ''
-  const { data: localResults = [], isFetching: localLoading } = useLocalShowSearch(localQuery, 6)
+  const {
+    candidates,
+    isLoading,
+    error: candidatesError,
+    localCandidates,
+    localLoading,
+  } = useResolveCandidates({
+    mode: searchMode,
+    fileId: file.id,
+    query: searchQuery,
+    tmdbId: parsedTmdbId,
+    tmdbMediaType: tmdbIdMediaType,
+    parsedName: file.parsed_show_name ?? '',
+  })
 
   const libraryIndex = useLibraryIndex()
 
   const rematch = useRematchFile()
-
-  // Build TMDB suggestion shape from raw TMDB search results (which use TmdbResult shape)
-  const searchAsSuggestions: TmdbSuggestion[] = (searchResults?.results ?? [])
-    .filter((r) => r.media_type === 'tv' || r.media_type === 'movie')
-    .slice(0, 6)
-    .map((r) => ({
-      tmdb_id: r.id,
-      title: r.name ?? r.title ?? null,
-      media_type: r.media_type ?? null,
-      overview: r.overview,
-      poster_path: r.poster_path,
-      first_air_date: r.first_air_date ?? r.release_date ?? null,
-      vote_average: r.vote_average,
-    }))
-
-  const tmdbIdAsSuggestions: TmdbSuggestion[] = tmdbIdResult
-    ? [
-        {
-          tmdb_id: tmdbIdResult.id,
-          title: tmdbIdResult.name ?? tmdbIdResult.title ?? null,
-          media_type: tmdbIdMediaType,
-          overview: tmdbIdResult.overview,
-          poster_path: tmdbIdResult.poster_path,
-          first_air_date: tmdbIdResult.first_air_date ?? tmdbIdResult.release_date ?? null,
-          vote_average: tmdbIdResult.vote_average,
-        },
-      ]
-    : []
-
-  const displayResults =
-    searchMode === 'title'
-      ? searchAsSuggestions
-      : searchMode === 'tmdb_id'
-        ? tmdbIdAsSuggestions
-        : (suggestions?.results ?? [])
-  const isLoading =
-    searchMode === 'title' ? searchLoading : searchMode === 'tmdb_id' ? tmdbIdLoading : suggestionsLoading
 
   // Selecting a result: snap content type (movies -> 'movie', everything else
   // defaults to 'anime'), suggest a folder name, and reset folderEdited so
@@ -123,10 +73,6 @@ export function ResolveFileModal({ file, onClose }: Props) {
     setSelectedLocal(null)
     setContentType(suggestion.media_type === 'movie' ? 'movie' : 'anime')
     setFolderName(sanitizeFolderName(suggestion.title ?? ''))
-  }
-
-  function year(date: string | null | undefined): string | null {
-    return date ? new Date(date).getFullYear().toString() : null
   }
 
   function selectLocal(show: ShowSearchResult) {
@@ -206,16 +152,16 @@ export function ResolveFileModal({ file, onClose }: Props) {
           </div>
 
           {/* Local library matches */}
-          {(localLoading || localResults.length > 0) && (
+          {(localLoading || localCandidates.length > 0) && (
             <div className="space-y-2">
               <div className="text-xs text-zinc-400">In your library</div>
-              {localLoading && localResults.length === 0 && (
+              {localLoading && localCandidates.length === 0 && (
                 <div className="text-xs text-zinc-500 py-1">Searching library…</div>
               )}
               <div className="space-y-1.5">
-                {localResults.map((s) => (
+                {localCandidates.map(({ key, local: s }) => s && (
                   <button
-                    key={s.id}
+                    key={key}
                     onClick={() => selectLocal(s)}
                     className={`w-full flex items-center gap-3 rounded border px-3 py-2 text-left transition-colors ${
                       selectedLocal?.id === s.id
@@ -315,62 +261,14 @@ export function ResolveFileModal({ file, onClose }: Props) {
           </div>
 
           {/* TMDB results grid */}
-          <div className="space-y-2">
-            {isLoading && (
-              <div className="text-xs text-zinc-500 py-2">Loading suggestions…</div>
-            )}
-            {!isLoading && searchMode === 'suggestions' && suggestionsError && (
-              <div className="text-xs text-red-400 py-2">
-                {suggestionsError instanceof Error
-                  ? suggestionsError.message
-                  : 'Failed to load suggestions'}
-              </div>
-            )}
-            {!isLoading && searchMode === 'tmdb_id' && tmdbIdError && (
-              <div className="text-xs text-red-400 py-2">
-                {tmdbIdError instanceof Error ? tmdbIdError.message : 'Failed to look up TMDB ID'}
-              </div>
-            )}
-            {!isLoading &&
-              !(searchMode === 'suggestions' && suggestionsError) &&
-              !(searchMode === 'tmdb_id' && tmdbIdError) &&
-              displayResults.length === 0 && (
-                <div className="text-xs text-zinc-500 py-2">No results found.</div>
-              )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {displayResults.map((r) => (
-                <button
-                  key={`${r.tmdb_id}-${r.media_type}`}
-                  onClick={() => selectSuggestion(r)}
-                  className={`flex flex-col rounded border text-left overflow-hidden transition-colors ${
-                    selected?.tmdb_id === r.tmdb_id && selected?.media_type === r.media_type
-                      ? 'border-[var(--color-ocean-500)] bg-[var(--color-ocean-950)]/50'
-                      : 'border-zinc-700 bg-zinc-800 hover:border-zinc-500'
-                  }`}
-                >
-                  {r.poster_path ? (
-                    <img
-                      src={`${TMDB_IMAGE_BASE}${r.poster_path}`}
-                      alt={r.title ?? ''}
-                      className="w-full aspect-[2/3] object-cover"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[2/3] bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">
-                      No image
-                    </div>
-                  )}
-                  <div className="p-2 space-y-0.5">
-                    <div className="text-xs font-medium text-zinc-200 line-clamp-2 leading-tight">
-                      {r.title}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {year(r.first_air_date)} · {r.media_type}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          <CandidateList
+            mode={searchMode}
+            candidates={candidates}
+            isLoading={isLoading}
+            error={candidatesError}
+            selected={selected}
+            onSelect={selectSuggestion}
+          />
 
           {/* Selected show details + path config */}
           {existing && (
@@ -403,56 +301,14 @@ export function ResolveFileModal({ file, onClose }: Props) {
           )}
 
           {selected && !existing && (
-            <div className="border border-zinc-700 rounded p-3 space-y-3">
-              <div className="text-xs font-medium text-zinc-300">
-                Selected: {selected.title} ({year(selected.first_air_date)})
-              </div>
-
-              {/* Content type */}
-              <div className="space-y-1">
-                <label className="text-xs text-zinc-400">Content type</label>
-                <div className="flex gap-3">
-                  {(['anime', 'tv', 'movie'] as ContentType[]).map((t) => (
-                    <label key={t} className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="content_type"
-                        value={t}
-                        checked={contentType === t}
-                        onChange={() => setContentType(t)}
-                        className="accent-[var(--color-ocean-500)]"
-                      />
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Show folder name */}
-              <div className="space-y-1">
-                <label className="text-xs text-zinc-400">Show folder name</label>
-                <input
-                  type="text"
-                  value={folderName}
-                  onChange={(e) => setFolderName(e.target.value)}
-                  placeholder="Show Name"
-                  className="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-[var(--color-ocean-500)]"
-                />
-                {config && folderName.trim() && (
-                  <div className="text-xs text-zinc-500 font-mono">
-                    {toHostPath(toContainerPath(contentType, folderName.trim(), config.media_paths), config.media_paths)}
-                  </div>
-                )}
-                {selected && !folderName.trim() && (
-                  <div className="text-xs text-amber-400">
-                    This result has no title — enter a folder name above to continue.
-                  </div>
-                )}
-                <div className="text-xs text-zinc-500">
-                  Files will be placed in Season NN/ subdirectories under this folder.
-                </div>
-              </div>
-            </div>
+            <ResolveConfirm
+              selected={selected}
+              contentType={contentType}
+              folderName={folderName}
+              mediaPaths={config?.media_paths}
+              onContentTypeChange={setContentType}
+              onFolderNameChange={setFolderName}
+            />
           )}
 
           {/* Error */}
