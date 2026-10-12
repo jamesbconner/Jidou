@@ -98,6 +98,43 @@ _SUBSCRIPTION_COLUMNS = frozenset(
 _DRY_RUN_PENDING_FEED_ID = -1
 
 
+def _column_values(sub_dict: dict[str, object]) -> dict[str, object]:
+    """Return only the recognised column fields from a remote subscription dict."""
+    return {k: sub_dict[k] for k in _SUBSCRIPTION_COLUMNS if k in sub_dict}
+
+
+def _extra_config_for(sub_dict: dict[str, object]) -> dict[str, object] | None:
+    """Return the non-column remainder of a remote subscription dict, or None if empty.
+
+    Everything that is not a recognised column (or a key we set explicitly) is
+    stashed in ``extra_config`` so it round-trips on the next publish.
+    """
+    skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id"}
+    extra_keys = set(sub_dict.keys()) - skip
+    return {k: sub_dict[k] for k in extra_keys} or None
+
+
+@dataclass
+class _LinkIndex:
+    """Lookups used to link remote subscriptions to shows and local stubs."""
+
+    show_by_lower_title: dict[str, int]
+    stubs_by_show_id: dict[int, RssSubscription]
+    stubs_by_lower_name: dict[str, RssSubscription]
+
+    def find_stub(self, name: str, show_id: int | None) -> RssSubscription | None:
+        """Return the local stub matching a remote subscription, preferring show_id."""
+        return (self.stubs_by_show_id.get(show_id) if show_id else None) or (
+            self.stubs_by_lower_name.get(name.lower())
+        )
+
+    def evict_stub(self, stub: RssSubscription) -> None:
+        """Remove *stub* from both lookups so it can only be promoted once."""
+        if stub.show_id is not None:
+            self.stubs_by_show_id.pop(stub.show_id, None)
+        self.stubs_by_lower_name.pop(stub.name.lower(), None)
+
+
 @dataclass
 class RssImportResult:
     """Summary of a completed RSS config import."""
@@ -286,140 +323,25 @@ class RssImportOrchestrator:
             list(feed_key_to_id.keys()),
         )
 
-        # Build show title lookup for auto-linking
-        shows_stmt = select(Show.id, Show.title)
-        show_rows = (await self._session.execute(shows_stmt)).all()
-        show_by_lower_title: dict[str, int] = {r.title.lower(): r.id for r in show_rows}
-
-        # Stub lookup: stubs are rows with remote_key=None created by the watchlist integration.
-        # When the remote has a subscription matching a stub (by show_id or name), we promote
-        # the stub in-place rather than creating a duplicate row.
-        stubs_by_show_id: dict[int, RssSubscription] = {
-            sub.show_id: sub
-            for sub in db_subs
-            if sub.remote_key is None and sub.show_id is not None
-        }
-        stubs_by_lower_name: dict[str, RssSubscription] = {
-            sub.name.lower(): sub for sub in db_subs if sub.remote_key is None
-        }
+        index = await self._load_link_index(db_subs)
 
         # Create new subscriptions (or promote matching stubs)
         for sub_dict in delta.to_create:
-            sub_key = str(sub_dict.get("remote_key", ""))
             name = str(sub_dict.get("name", ""))
+            show_id = _fuzzy_show_id(name, index.show_by_lower_title)
 
-            # Derive feed_id from the remote sub's feed reference (if any)
-            feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
-            show_id = _fuzzy_show_id(name, show_by_lower_title)
-
-            # Extract only recognised column fields; stash the rest in extra_config
-            col_vals = {k: sub_dict[k] for k in _SUBSCRIPTION_COLUMNS if k in sub_dict}
-            _skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "show_id"}
-            extra_keys = set(sub_dict.keys()) - _skip
-            extra = {k: sub_dict[k] for k in extra_keys} or None
-
-            # Check if a local stub exists for this remote subscription
-            stub = (stubs_by_show_id.get(show_id) if show_id else None) or stubs_by_lower_name.get(
-                name.lower()
-            )
-
+            stub = index.find_stub(name, show_id)
             if stub is not None:
-                # Promote the stub: apply remote data in-place instead of creating a new row.
-                # Evict from both lookups immediately so a second remote subscription that
-                # matches the same stub doesn't overwrite it; that second entry gets a new row.
-                if stub.show_id is not None:
-                    stubs_by_show_id.pop(stub.show_id, None)
-                stubs_by_lower_name.pop(stub.name.lower(), None)
-
-                effective_feed_id = feed_id if feed_id is not None else stub.feed_id
-                if not self._dry_run:
-                    stub.remote_key = sub_key
-                    stub.feed_id = effective_feed_id
-                    stub.enabled_in_config = True
-                    stub.extra_config = extra
-                    if show_id is not None and stub.show_id is None:
-                        stub.show_id = show_id
-                        result.shows_linked += 1
-                    for col, val in col_vals.items():
-                        setattr(stub, col, val)
-                result.stubs_promoted += 1
-                logger.debug("Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name)
-                # Only warn if the stub will still have no feed after promotion
-                if effective_feed_id is None and feed_key_to_id:
-                    await self._on_event(
-                        "warn",
-                        f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
-                        f"rssfeed_key={sub_dict.get('rssfeed_key')!r}, "
-                        f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": sub_key, "rssfeed_key": sub_dict.get("rssfeed_key")},
-                    )
+                await self._promote_stub(stub, sub_dict, show_id, index, feed_key_to_id, result)
             else:
-                # Warn when a newly created row will have no feed link
-                if feed_id is None and feed_key_to_id:
-                    await self._on_event(
-                        "warn",
-                        f"Subscription {sub_key!r} ({name!r}): could not resolve feed — "
-                        f"rssfeed_key={sub_dict.get('rssfeed_key')!r}, "
-                        f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": sub_key, "rssfeed_key": sub_dict.get("rssfeed_key")},
-                    )
-                new_sub = RssSubscription(
-                    remote_key=sub_key,
-                    feed_id=feed_id,
-                    show_id=show_id,
-                    extra_config=extra,
-                    enabled_in_config=True,
-                    **col_vals,
-                )
-                if not self._dry_run:
-                    self._session.add(new_sub)
-                result.subscriptions_created += 1
-                if show_id:
-                    result.shows_linked += 1
-                logger.debug("Created RssSubscription remote_key=%r name=%r", sub_key, name)
+                await self._create_subscription(sub_dict, show_id, feed_key_to_id, result)
 
         if not self._dry_run:
             await self._session.flush()
 
         # Update existing subscriptions
         for db_row, merged in delta.to_update:
-            if not self._dry_run:
-                for col in _SUBSCRIPTION_COLUMNS:
-                    if col in merged:
-                        setattr(db_row, col, merged[col])
-
-                new_feed_id = self._resolve_feed_id(merged, feed_key_to_id)
-                if new_feed_id is not None:
-                    db_row.feed_id = new_feed_id
-                elif feed_key_to_id and db_row.feed_id is None:
-                    await self._on_event(
-                        "warn",
-                        f"Subscription {db_row.remote_key!r} ({db_row.name!r}): "
-                        f"could not resolve feed on update — "
-                        f"rssfeed_key={merged.get('rssfeed_key')!r}, "
-                        f"available feed keys={list(feed_key_to_id.keys())}",
-                        {"remote_key": db_row.remote_key, "rssfeed_key": merged.get("rssfeed_key")},
-                    )
-
-                # Rebuild extra_config: preserve old DB value, overlay with remote
-                # non-column fields (e.g. last_update, last_match, active, etc.)
-                _extra_skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "extra_config"}
-                old_extra = merged.get("extra_config") or {}
-                if not isinstance(old_extra, dict):
-                    old_extra = {}
-                remote_extras = {k: merged[k] for k in merged if k not in _extra_skip}
-                db_row.extra_config = {**old_extra, **remote_extras} or None
-
-            # Auto-link show: read db_row.show_id but only write in live run
-            if db_row.show_id is None:
-                name = str(merged.get("name", db_row.name))
-                show_id = _fuzzy_show_id(name, show_by_lower_title)
-                if show_id:
-                    if not self._dry_run:
-                        db_row.show_id = show_id
-                    result.shows_linked += 1
-
-            result.subscriptions_updated += 1
+            await self._apply_update(db_row, merged, index, feed_key_to_id, result)
 
         if not self._dry_run:
             await self._session.flush()
@@ -432,6 +354,212 @@ class RssImportOrchestrator:
                 f"Subscription remote_key={key!r} no longer in remote config (not deleted from DB)",
                 {"remote_key": key},
             )
+
+    async def _load_link_index(self, db_subs: list[RssSubscription]) -> _LinkIndex:
+        """Build the show-title and stub lookups used to link subscriptions.
+
+        Args:
+            db_subs: Every RssSubscription row currently in the database.
+
+        Returns:
+            A :class:`_LinkIndex` over the shows table and the local stubs.
+        """
+        shows_stmt = select(Show.id, Show.title)
+        show_rows = (await self._session.execute(shows_stmt)).all()
+        show_by_lower_title: dict[str, int] = {r.title.lower(): r.id for r in show_rows}
+
+        # Stubs are rows with remote_key=None created by the watchlist integration.
+        # When the remote has a subscription matching a stub (by show_id or name), we promote
+        # the stub in-place rather than creating a duplicate row.
+        stubs_by_show_id: dict[int, RssSubscription] = {
+            sub.show_id: sub
+            for sub in db_subs
+            if sub.remote_key is None and sub.show_id is not None
+        }
+        stubs_by_lower_name: dict[str, RssSubscription] = {
+            sub.name.lower(): sub for sub in db_subs if sub.remote_key is None
+        }
+        return _LinkIndex(show_by_lower_title, stubs_by_show_id, stubs_by_lower_name)
+
+    async def _warn_unresolved_feed(
+        self,
+        remote_key: str | None,
+        name: str,
+        sub: dict[str, object],
+        feed_key_to_id: dict[str, int],
+        *,
+        on_update: bool,
+    ) -> None:
+        """Emit the "could not resolve feed" warning event.
+
+        The caller decides *whether* to warn (the conditions differ per path);
+        this only owns the wording so the three call sites cannot drift.
+
+        Args:
+            remote_key: The subscription's remote key.
+            name: The subscription's name.
+            sub: Subscription dict (remote or merged) carrying ``rssfeed_key``.
+            feed_key_to_id: remote_key → feed DB id mapping, listed in the message.
+            on_update: ``True`` selects the "could not resolve feed on update" wording.
+        """
+        reason = "could not resolve feed on update" if on_update else "could not resolve feed"
+        await self._on_event(
+            "warn",
+            f"Subscription {remote_key!r} ({name!r}): {reason} — "
+            f"rssfeed_key={sub.get('rssfeed_key')!r}, "
+            f"available feed keys={list(feed_key_to_id.keys())}",
+            {"remote_key": remote_key, "rssfeed_key": sub.get("rssfeed_key")},
+        )
+
+    async def _promote_stub(
+        self,
+        stub: RssSubscription,
+        sub_dict: dict[str, object],
+        show_id: int | None,
+        index: _LinkIndex,
+        feed_key_to_id: dict[str, int],
+        result: RssImportResult,
+    ) -> None:
+        """Apply a remote subscription onto a matching local stub in-place.
+
+        Args:
+            stub: The local stub row (``remote_key=None``) being promoted.
+            sub_dict: The remote subscription dict (includes ``remote_key``).
+            show_id: Show id fuzzy-matched from the subscription name, if any.
+            index: Lookups the stub is evicted from.
+            feed_key_to_id: remote_key → feed DB id mapping.
+            result: Mutated in-place with promotion / show-link counts.
+        """
+        sub_key = str(sub_dict.get("remote_key", ""))
+        name = str(sub_dict.get("name", ""))
+        feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
+
+        # Evict from both lookups immediately so a second remote subscription that
+        # matches the same stub doesn't overwrite it; that second entry gets a new row.
+        index.evict_stub(stub)
+
+        effective_feed_id = feed_id if feed_id is not None else stub.feed_id
+        if not self._dry_run:
+            stub.remote_key = sub_key
+            stub.feed_id = effective_feed_id
+            stub.enabled_in_config = True
+            stub.extra_config = _extra_config_for(sub_dict)
+            if show_id is not None and stub.show_id is None:
+                stub.show_id = show_id
+                result.shows_linked += 1
+            for col, val in _column_values(sub_dict).items():
+                setattr(stub, col, val)
+        result.stubs_promoted += 1
+        logger.debug("Promoted stub id=%d to remote_key=%r name=%r", stub.id, sub_key, name)
+        # Only warn if the stub will still have no feed after promotion
+        if effective_feed_id is None and feed_key_to_id:
+            await self._warn_unresolved_feed(
+                sub_key, name, sub_dict, feed_key_to_id, on_update=False
+            )
+
+    async def _create_subscription(
+        self,
+        sub_dict: dict[str, object],
+        show_id: int | None,
+        feed_key_to_id: dict[str, int],
+        result: RssImportResult,
+    ) -> None:
+        """Create a new RssSubscription row for a remote subscription with no stub.
+
+        Args:
+            sub_dict: The remote subscription dict (includes ``remote_key``).
+            show_id: Show id fuzzy-matched from the subscription name, if any.
+            feed_key_to_id: remote_key → feed DB id mapping.
+            result: Mutated in-place with creation / show-link counts.
+        """
+        sub_key = str(sub_dict.get("remote_key", ""))
+        name = str(sub_dict.get("name", ""))
+        feed_id = self._resolve_feed_id(sub_dict, feed_key_to_id)
+
+        # Warn when a newly created row will have no feed link
+        if feed_id is None and feed_key_to_id:
+            await self._warn_unresolved_feed(
+                sub_key, name, sub_dict, feed_key_to_id, on_update=False
+            )
+        new_sub = RssSubscription(
+            remote_key=sub_key,
+            feed_id=feed_id,
+            show_id=show_id,
+            extra_config=_extra_config_for(sub_dict),
+            enabled_in_config=True,
+            **_column_values(sub_dict),
+        )
+        if not self._dry_run:
+            self._session.add(new_sub)
+        result.subscriptions_created += 1
+        if show_id:
+            result.shows_linked += 1
+        logger.debug("Created RssSubscription remote_key=%r name=%r", sub_key, name)
+
+    async def _apply_update(
+        self,
+        db_row: RssSubscription,
+        merged: dict[str, object],
+        index: _LinkIndex,
+        feed_key_to_id: dict[str, int],
+        result: RssImportResult,
+    ) -> None:
+        """Apply the merged remote/DB values to an existing subscription row.
+
+        Args:
+            db_row: The existing subscription row.
+            merged: Remote dict overlaid with Jidou-owned DB values.
+            index: Show lookup used to auto-link a still-unlinked row.
+            feed_key_to_id: remote_key → feed DB id mapping.
+            result: Mutated in-place with update / show-link counts.
+        """
+        if not self._dry_run:
+            await self._write_update(db_row, merged, feed_key_to_id)
+
+        # Auto-link show: read db_row.show_id but only write in live run
+        if db_row.show_id is None:
+            name = str(merged.get("name", db_row.name))
+            show_id = _fuzzy_show_id(name, index.show_by_lower_title)
+            if show_id:
+                if not self._dry_run:
+                    db_row.show_id = show_id
+                result.shows_linked += 1
+
+        result.subscriptions_updated += 1
+
+    async def _write_update(
+        self,
+        db_row: RssSubscription,
+        merged: dict[str, object],
+        feed_key_to_id: dict[str, int],
+    ) -> None:
+        """Write columns, feed link and rebuilt ``extra_config`` onto *db_row* (live run only).
+
+        Args:
+            db_row: The existing subscription row.
+            merged: Remote dict overlaid with Jidou-owned DB values.
+            feed_key_to_id: remote_key → feed DB id mapping.
+        """
+        for col in _SUBSCRIPTION_COLUMNS:
+            if col in merged:
+                setattr(db_row, col, merged[col])
+
+        new_feed_id = self._resolve_feed_id(merged, feed_key_to_id)
+        if new_feed_id is not None:
+            db_row.feed_id = new_feed_id
+        elif feed_key_to_id and db_row.feed_id is None:
+            await self._warn_unresolved_feed(
+                db_row.remote_key, db_row.name, merged, feed_key_to_id, on_update=True
+            )
+
+        # Rebuild extra_config: preserve old DB value, overlay with remote
+        # non-column fields (e.g. last_update, last_match, active, etc.)
+        _extra_skip = _SUBSCRIPTION_COLUMNS | {"remote_key", "feed_id", "extra_config"}
+        old_extra = merged.get("extra_config") or {}
+        if not isinstance(old_extra, dict):
+            old_extra = {}
+        remote_extras = {k: merged[k] for k in merged if k not in _extra_skip}
+        db_row.extra_config = {**old_extra, **remote_extras} or None
 
     @staticmethod
     def _resolve_feed_id(
