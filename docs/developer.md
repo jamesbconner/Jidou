@@ -8,7 +8,7 @@ Tooling, conventions, and workflows for contributing to Jidou.
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) — dependency management and virtual environments
-- Node.js 24+ and npm — frontend (`npm ci` needs Node 24 or newer; `frontend/package.json` declares `engines.node >=24`)
+- Node.js 24 and the npm it ships with — frontend work (`.nvmrc` pins the version; see [Node version](#node-version))
 - Docker + Docker Compose — local infrastructure (Postgres, Redis)
 - [pre-commit](https://pre-commit.com/) — git hook automation
 
@@ -23,8 +23,9 @@ cd Jidou
 # Install Python dependencies including dev extras
 uv sync --extra dev
 
-# Install frontend dependencies
-cd frontend && npm install --legacy-peer-deps && cd ..
+# Install frontend dependencies (Node 24: `nvm use` reads .nvmrc)
+nvm use
+cd frontend && npm ci && cd ..
 
 # Wire up git hooks
 pre-commit install
@@ -90,6 +91,84 @@ All checks run in CI on every push. A PR must be green before merging.
 # Run everything at once (same as CI)
 uv run python make.py check
 ```
+
+---
+
+## Guardrails
+
+Besides lint, types and tests, a few checks keep the structure from drifting
+back. They all run in CI. The layering rules they protect are described in
+[Architecture — Layering guards](architecture.md#layering-guards).
+
+### Complexity ratchets
+
+Each layer has a maximum McCabe (cyclomatic) complexity, checked by a test
+that runs `ruff --select C901` over that layer's directory (ESLint's
+`complexity` rule for the frontend). The numbers are ratchets: they only go
+down. When a change pushes a function over its limit, split the function;
+never raise the number. When a refactor lowers the real maximum, lower the
+constant to match.
+
+| Layer | File | Constant | Value |
+|-------|------|----------|-------|
+| API | `tests/test_api_contract.py` | `_API_MAX_COMPLEXITY` | 10 |
+| Services | `tests/test_services_architecture.py` | `_SERVICES_MAX_COMPLEXITY` | 9 |
+| Orchestrators | `tests/test_orchestrators/test_architecture.py` | `_ORCH_MAX_COMPLEXITY` | 9 |
+| Workers | `tests/test_workers_architecture.py` | `_WORKERS_MAX_COMPLEXITY` | 8 |
+| Frontend | `frontend/eslint.config.js` | `complexity` | 25 |
+
+Each value is the tightest one that passes today: lowering any of them by one
+fails its guard.
+
+### `alembic check`
+
+The `integration` job in `.github/workflows/ci.yml` migrates a fresh Postgres
+to head and runs `alembic check`, which fails if the SQLAlchemy models and the
+migrations disagree. Any model change therefore needs a migration in the same
+PR (see [Adding a new Alembic migration](#adding-a-new-alembic-migration)).
+To run it locally against a migrated database:
+
+```bash
+uv run alembic upgrade head
+uv run alembic check   # expect "No new upgrade operations detected."
+```
+
+`tests/test_models_schema.py` pins hand-written indexes and enum types on the
+models, so most drift is also caught without a database.
+
+### OpenAPI snapshot
+
+`tests/test_api_contract.py` compares the app's OpenAPI document with
+`tests/fixtures/openapi_snapshot.json`, so an accidental API change fails the
+suite. After an intentional change, regenerate the snapshot and commit it with
+the change:
+
+```bash
+JIDOU_UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_api_contract.py
+```
+
+Then regenerate the frontend types as well (next section); CI checks both.
+
+### Frontend type regeneration
+
+`frontend/src/types/api-generated.ts` must match the backend's current
+OpenAPI document. The `frontend` CI job regenerates it with
+`make.py export-openapi` and the pinned `openapi-typescript@7.13.0` and fails
+on any diff. See [TypeScript type generation](#typescript-type-generation) for
+the commands.
+
+### Request bodies reject unknown fields
+
+Every JSON request-body schema subclasses `RequestModel` from
+`src/jidou/schemas/_base.py`, which sets `extra="forbid"`: an unknown or
+misspelled field is a 422 `extra_forbidden` error instead of being silently
+dropped, and the OpenAPI schema gets `additionalProperties: false`. New
+request bodies (and request-only models nested inside them) must use it.
+Response models must not, because a stored record with an extra key would then
+fail with a 500. `tests/test_request_body_extra_forbidden.py` discovers every JSON request body
+from the OpenAPI document and requires an exact match with its `_MINIMAL_BODIES`
+table, so a new request body fails that test until you add a minimal valid
+example for it there.
 
 ---
 
@@ -189,17 +268,25 @@ extracted from `LinkFileModal`, `RematchModal` and `ResolveFileModal`.
 ### Complexity budget
 
 ESLint's `complexity` rule is a ratchet, currently `25`, and it may only be
-lowered. `RematchModal` and `ResolveFileModal` sit at the limit; every other
-function is at or below it. Test files are exempt. The ratchet came down from
-51 when FE-7 split `ShowDetail`, `Shows`, `FeaturesTab`, `ResolveFileModal`,
-`AddShowFromFeedPane`, `Files`, `RSS`, `LinkFileModal`, `RematchModal`,
-`ServiceRow`, `ScanLocalFilesModal` and `FeedFormModal`. When you touch a
-function near the limit, extract a helper or subcomponent rather than raising
-the number.
+lowered (see [Guardrails](#guardrails)). `RematchModal` and `ResolveFileModal`
+sit at the limit; every other function is at or below it. Test files are
+exempt. The ratchet came down from 51 when FE-7 split `ShowDetail`, `Shows`,
+`FeaturesTab`, `ResolveFileModal`, `AddShowFromFeedPane`, `Files`, `RSS`,
+`LinkFileModal`, `RematchModal`, `ServiceRow`, `ScanLocalFilesModal` and
+`FeedFormModal`. When you touch a function near the limit, extract a helper or
+subcomponent rather than raising the number.
 
 ### Node version
 
-The frontend needs Node 24 or newer for `npm ci` (`engines.node >=24`).
+Frontend work needs Node 24. `.nvmrc` at the repo root pins the exact
+version, so run `nvm use` (or your version manager's equivalent) before any
+`npm` command. CI uses Node 24 as well.
+
+`npm ci` fails on older Node versions: the npm bundled with Node 22 (npm 10)
+reports `package.json` and `package-lock.json` as out of sync and refuses to
+install. Do not "fix" that by running `npm install` on an older Node; it
+rewrites the lockfile. The `engines.node >=24` field in `frontend/package.json`
+only produces a warning (`engine-strict` is deliberately not set).
 
 ## Testing
 
@@ -217,7 +304,7 @@ uv run pytest tests/test_shows.py::test_add_show -v
 cd frontend && npm run test
 ```
 
-Coverage target is **85%**. New behaviour requires new tests; bug fixes require regression tests.
+CI enforces **70%** coverage (`fail_under` in `pyproject.toml`); aim higher for new code. New behaviour requires new tests; bug fixes require regression tests.
 
 ### Test conventions
 
@@ -231,10 +318,11 @@ Coverage target is **85%**. New behaviour requires new tests; bug fixes require 
 ## Adding a new API endpoint
 
 1. Add the route handler to the appropriate `src/jidou/api/routes/*.py` file.
-2. Add a Pydantic request/response schema in `src/jidou/schemas/`.
+2. Add a Pydantic request/response schema in `src/jidou/schemas/`. Request bodies subclass `RequestModel` and get an entry in `_MINIMAL_BODIES` in `tests/test_request_body_extra_forbidden.py` (see [Guardrails](#request-bodies-reject-unknown-fields)).
 3. Register the router in `src/jidou/main.py` if it's a new file.
 4. Write tests in `tests/`.
-5. Regenerate the TypeScript types (see [TypeScript type generation](#typescript-type-generation)); CI fails if `frontend/src/types/api-generated.ts` is stale.
+5. Regenerate the OpenAPI snapshot (see [OpenAPI snapshot](#openapi-snapshot)).
+6. Regenerate the TypeScript types (see [TypeScript type generation](#typescript-type-generation)); CI fails if `frontend/src/types/api-generated.ts` is stale.
 
 ## Adding a new Alembic migration
 

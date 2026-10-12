@@ -65,9 +65,12 @@ uv run celery -A jidou.workers.celery_app worker --loglevel=info
 
 ### Frontend
 
+Frontend work needs **Node 24**. `.nvmrc` at the repo root pins the exact version, so run `nvm use` first. `npm ci` fails on older Node versions (the npm that ships with Node 22 rejects the lockfile as out of sync); switch Node rather than running `npm install`, which would rewrite `package-lock.json`.
+
 ```bash
+nvm use              # reads .nvmrc (Node 24)
 cd frontend
-npm install --legacy-peer-deps
+npm ci
 npm run dev          # dev server at http://localhost:5173
 ```
 
