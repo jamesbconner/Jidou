@@ -1534,3 +1534,298 @@ def test_publish_endpoint_503_when_broker_unavailable() -> None:
     assert resp.status_code == 503
     assert "broker" in resp.json()["detail"].lower()
     session.commit.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Characterization: Deluge pause/restart sequencing in run() (pins behaviour
+# before the pause logic moves into a context manager)
+# ---------------------------------------------------------------------------
+
+_STOP = "systemctl stop deluged"
+_START = "systemctl start deluged"
+
+
+def _deluge_harness(
+    *,
+    dry_run: bool = False,
+    stop: bool = True,
+    upload_side_effect: object = None,
+    run_command_side_effect: object = None,
+    stop_delay: float = 10.0,
+    restart_delay: float = 2.0,
+) -> tuple[object, MagicMock, MagicMock, list[str], list[tuple[str, str, object]]]:
+    """Build an orchestrator plus a single ordered call log shared by sftp/sleep/events."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    log: list[str] = []
+    events: list[tuple[str, str, object]] = []
+    session = _make_session()
+    sftp = MagicMock()
+
+    async def _upload(data: bytes, path: str) -> None:
+        log.append(f"upload:{path}")
+        if upload_side_effect is not None:
+            effect = upload_side_effect
+            if isinstance(effect, BaseException) or (
+                isinstance(effect, type) and issubclass(effect, BaseException)
+            ):
+                raise effect  # type: ignore[misc]
+
+    async def _run_command(cmd: str) -> None:
+        log.append(f"run:{cmd}")
+        if run_command_side_effect is not None:
+            effect = run_command_side_effect(cmd)  # type: ignore[operator]
+            if effect is not None:
+                raise effect
+
+    sftp.upload_bytes = AsyncMock(side_effect=_upload)
+    sftp.run_command = AsyncMock(side_effect=_run_command)
+
+    async def _on_event(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg, ctx))
+        log.append(f"event:{msg}")
+
+    feed = _make_feed()
+    sub = _make_sub(feed=feed)
+    session.execute = AsyncMock(side_effect=_std_execute_sides([feed], ["0"], [sub]))
+
+    orc = RssPublishOrchestrator(
+        session,
+        sftp,
+        "/remote/yarss2.conf",
+        dry_run=dry_run,
+        on_event=_on_event,
+        deluge_stop_command=_STOP if stop else None,
+        deluge_restart_command=_START if stop else None,
+        deluge_stop_delay_seconds=stop_delay,
+        deluge_restart_delay_seconds=restart_delay,
+    )
+    return orc, session, sftp, log, events
+
+
+async def _run_with_mocked_import(orc: object, log: list[str]) -> object:
+    async def _sleep(seconds: float) -> None:
+        log.append(f"sleep:{seconds:g}")
+
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as cls,
+        patch("asyncio.sleep", side_effect=_sleep),
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        cls.return_value = mock_orc
+        return await orc.run()  # type: ignore[attr-defined]
+
+
+def _strip_backup_ts(log: list[str]) -> list[str]:
+    """Replace the timestamped backup path with a stable token."""
+    import re
+
+    return [re.sub(r"_backup_\d{8}_\d{6}", "_backup_TS", entry) for entry in log]
+
+
+@pytest.mark.asyncio
+async def test_publish_full_deluge_sequence_is_exact() -> None:
+    """Stop -> delay -> backup -> upload -> snapshot -> restart delay -> restart, in order."""
+    orc, session, _sftp, log, events = _deluge_harness()
+
+    result = await _run_with_mocked_import(orc, log)
+
+    stripped = _strip_backup_ts(log)
+    published = stripped.pop(8)
+    assert published.startswith("event:Published config to /remote/yarss2.conf — 1 feeds, ")
+    assert stripped == [
+        "event:Running pre-publish import reconciliation",
+        "event:Stopping remote Deluge service",
+        f"run:{_STOP}",
+        "event:Waiting 10s for Deluge to fully stop",
+        "sleep:10",
+        "upload:/remote/yarss2_backup_TS.conf",
+        "event:Backed up current config to /remote/yarss2_backup_TS.conf",
+        "upload:/remote/yarss2.conf",
+        "event:Waiting 2s before restarting Deluge",
+        "sleep:2",
+        "event:Restarting remote Deluge service",
+        f"run:{_START}",
+    ]
+    assert result.errors == []  # type: ignore[attr-defined]
+    assert result.dry_run is False  # type: ignore[attr-defined]
+    assert result.backup_path is not None  # type: ignore[attr-defined]
+    assert result.subscriptions_published == 1  # type: ignore[attr-defined]
+    assert [e[0] for e in events] == ["info"] * len(events)
+    session.add.assert_called_once()
+    assert session.add.call_args.args[0].snapshot_type == "post_publish"
+
+
+@pytest.mark.asyncio
+async def test_publish_dry_run_deluge_events_are_exact() -> None:
+    orc, session, sftp, log, _events = _deluge_harness(dry_run=True)
+
+    result = await _run_with_mocked_import(orc, log)
+
+    assert _strip_backup_ts(log)[:2] == [
+        "event:Running pre-publish import reconciliation",
+        "event:[DRY RUN] Would stop remote Deluge service",
+    ]
+    assert _strip_backup_ts(log)[2] == (
+        "event:[DRY RUN] Would back up current config to /remote/yarss2_backup_TS.conf"
+    )
+    assert log[3].startswith("event:[DRY RUN] Would publish config to /remote/yarss2.conf — ")
+    assert log[4] == "event:[DRY RUN] Would restart remote Deluge service"
+    assert len(log) == 5
+    sftp.upload_bytes.assert_not_called()
+    sftp.run_command.assert_not_called()
+    session.add.assert_not_called()
+    assert result.errors == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_publish_without_deluge_commands_never_runs_remote_commands() -> None:
+    orc, _session, sftp, log, _events = _deluge_harness(stop=False)
+
+    result = await _run_with_mocked_import(orc, log)
+
+    sftp.run_command.assert_not_called()
+    assert not any(entry.startswith("sleep:") for entry in log)
+    assert len([e for e in log if e.startswith("upload:")]) == 2
+    assert result.errors == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_publish_stop_failure_exact_events_errors_and_result() -> None:
+    """Stop failure: error recorded + emitted, nothing uploaded, restart still attempted."""
+
+    def _fail_stop(cmd: str) -> BaseException | None:
+        return RuntimeError("Remote command exited 1") if cmd == _STOP else None
+
+    orc, _session, sftp, log, events = _deluge_harness(run_command_side_effect=_fail_stop)
+
+    result = await _run_with_mocked_import(orc, log)
+
+    msg = "Failed to stop remote Deluge service; aborting publish: Remote command exited 1"
+    assert result.errors == [msg]  # type: ignore[attr-defined]
+    assert result.backup_path is None  # type: ignore[attr-defined]
+    assert result.feeds_published == 0  # type: ignore[attr-defined]
+    assert ("error", msg, None) in events
+    assert log == [
+        "event:Running pre-publish import reconciliation",
+        "event:Stopping remote Deluge service",
+        f"run:{_STOP}",
+        f"event:{msg}",
+        "event:Waiting 2s before restarting Deluge",
+        "sleep:2",
+        "event:Restarting remote Deluge service",
+        f"run:{_START}",
+    ]
+    sftp.upload_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_restarts_deluge_when_backup_upload_raises() -> None:
+    """The backup upload raising still triggers the restart, and the error propagates."""
+    orc, session, sftp, log, _events = _deluge_harness(upload_side_effect=RuntimeError("no space"))
+
+    with pytest.raises(RuntimeError, match="no space"):
+        await _run_with_mocked_import(orc, log)
+
+    # Only the backup upload was attempted -- the real upload never ran.
+    uploads = [e for e in log if e.startswith("upload:")]
+    assert len(uploads) == 1
+    assert "_backup_" in uploads[0]
+    assert log[-4:] == [
+        "event:Waiting 2s before restarting Deluge",
+        "sleep:2",
+        "event:Restarting remote Deluge service",
+        f"run:{_START}",
+    ]
+    assert log[-1] == f"run:{_START}"
+    sftp.run_command.assert_any_call(_START)
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_restart_failure_is_recorded_when_main_upload_raised() -> None:
+    """If the upload raised AND the restart fails, the exception still wins and restart ran."""
+
+    def _fail_start(cmd: str) -> BaseException | None:
+        return RuntimeError("ssh dropped") if cmd == _START else None
+
+    orc, _session, sftp, log, events = _deluge_harness(
+        upload_side_effect=RuntimeError("no space"), run_command_side_effect=_fail_start
+    )
+
+    with pytest.raises(RuntimeError, match="no space"):
+        await _run_with_mocked_import(orc, log)
+
+    assert ("error", "Failed to restart remote Deluge service: ssh dropped", None) in events
+    assert sftp.run_command.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_delay_events_when_delays_are_zero() -> None:
+    orc, _session, _sftp, log, _events = _deluge_harness(stop_delay=0, restart_delay=0)
+
+    await _run_with_mocked_import(orc, log)
+
+    assert not any(e.startswith("sleep:") for e in log)
+    assert not any("Waiting" in e for e in log)
+    assert log[-2:] == ["event:Restarting remote Deluge service", f"run:{_START}"]
+
+
+@pytest.mark.asyncio
+async def test_publish_restarts_deluge_when_compose_raises() -> None:
+    """A failure while composing (after backup) still restarts Deluge and propagates."""
+    orc, session, _sftp, log, _events = _deluge_harness()
+    session.execute = AsyncMock(side_effect=RuntimeError("db gone"))
+
+    with pytest.raises(RuntimeError, match="db gone"):
+        await _run_with_mocked_import(orc, log)
+
+    assert len([e for e in log if e.startswith("upload:")]) == 1  # backup only
+    assert log[-1] == f"run:{_START}"
+
+
+@pytest.mark.asyncio
+async def test_publish_event_failure_during_stop_still_restarts() -> None:
+    """on_event errors propagate from inside the paused region; restart still runs."""
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+    sftp.run_command = AsyncMock()
+
+    async def _on_event(level: str, msg: str, ctx: object = None) -> None:
+        if msg == "Stopping remote Deluge service":
+            raise RuntimeError("sink down")
+
+    orc = RssPublishOrchestrator(
+        session,
+        sftp,
+        "/remote/yarss2.conf",
+        on_event=_on_event,
+        deluge_stop_command=_STOP,
+        deluge_restart_command=_START,
+    )
+    with (
+        patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as cls,
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
+        mock_orc = MagicMock()
+        mock_orc.run = AsyncMock(return_value=_import_result_ok())
+        cls.return_value = mock_orc
+        with pytest.raises(RuntimeError, match="sink down"):
+            await orc.run()
+
+    sftp.run_command.assert_awaited_once_with(_START)  # stop never ran, restart did
+    sftp.upload_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_publish_run_without_sftp_raises_value_error() -> None:
+    from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
+
+    orc = RssPublishOrchestrator(_make_session(), None, "/remote/yarss2.conf")
+
+    with pytest.raises(ValueError, match="requires an sftp service"):
+        await orc.run()

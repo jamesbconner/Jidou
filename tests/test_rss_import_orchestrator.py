@@ -973,3 +973,618 @@ def test_import_endpoint_503_when_broker_unavailable() -> None:
         session.commit.assert_called_once()
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Characterization: subscription upsert paths (pins behaviour before the
+# _upsert_subscriptions split -- every path, count, event and DB-call order)
+# ---------------------------------------------------------------------------
+
+EventLog = list[tuple[str, str, object]]
+
+
+def _recorder(events: EventLog):  # type: ignore[no-untyped-def]
+    """Return an on_event callback appending (level, msg, ctx) to *events*."""
+
+    async def _record(level: str, msg: str, ctx: object = None) -> None:
+        events.append((level, msg, ctx))
+
+    return _record
+
+
+def _recording_orc(
+    session: MagicMock, events: EventLog, *, dry_run: bool = False
+) -> RssImportOrchestrator:
+    """Build an orchestrator whose on_event appends (level, msg, ctx) to *events*."""
+    return RssImportOrchestrator(
+        session=session,
+        sftp=_make_sftp(),
+        remote_path="/remote/yarss2.conf",
+        dry_run=dry_run,
+        on_event=_recorder(events),
+    )
+
+
+async def _boom(level: str, msg: str, ctx: object = None) -> None:
+    raise RuntimeError("sink down")
+
+
+def _stub_row(*, id: int = 7, name: str = "Daredevil", show_id=None, feed_id=None):  # type: ignore[no-untyped-def]
+    from jidou.models.rss import RssSubscription
+
+    return RssSubscription(
+        id=id,
+        remote_key=None,
+        name=name,
+        show_id=show_id,
+        feed_id=feed_id,
+        enabled_in_config=False,
+        regex_include_ignorecase=True,
+        regex_exclude_ignorecase=True,
+    )
+
+
+def _keyed_row(*, remote_key="0", name="Severance", feed_id=None, show_id=None, extra=None):  # type: ignore[no-untyped-def]
+    from jidou.models.rss import RssSubscription
+
+    return RssSubscription(
+        id=int(remote_key) + 100,
+        remote_key=remote_key,
+        name=name,
+        show_id=show_id,
+        feed_id=feed_id,
+        enabled_in_config=True,
+        regex_include=None,
+        regex_exclude=None,
+        regex_include_ignorecase=True,
+        regex_exclude_ignorecase=True,
+        extra_config=extra,
+    )
+
+
+def _shows_result(*rows: tuple[int, str]) -> MagicMock:
+    r = MagicMock()
+    shows = []
+    for sid, title in rows:
+        row = MagicMock()
+        row.id = sid
+        row.title = title
+        shows.append(row)
+    r.all.return_value = shows
+    return r
+
+
+def _upsert_session(db_subs: list, shows: MagicMock | None = None) -> MagicMock:
+    session = _make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_result(scalars_all=db_subs), shows or _shows_result()]
+    )
+    return session
+
+
+@pytest.mark.asyncio
+async def test_upsert_stub_promotion_links_show_and_copies_remote_columns() -> None:
+    """Promoting a stub with no show_id links the fuzzy-matched show and applies remote data."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil", show_id=None, feed_id=None)
+    session = _upsert_session([stub], _shows_result((42, "Daredevil")))
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {
+            "5": {
+                "name": "Daredevil",
+                "active": False,
+                "regex_include": ".*720p.*",
+                "rssfeed_key": "f1",
+                "custom_flag": 3,
+            }
+        },
+        {"f1": 11},
+        result,
+    )
+
+    assert (result.stubs_promoted, result.shows_linked, result.subscriptions_created) == (1, 1, 0)
+    assert stub.remote_key == "5"
+    assert stub.feed_id == 11
+    assert stub.show_id == 42
+    assert stub.enabled_in_config is True
+    assert stub.regex_include == ".*720p.*"
+    assert stub.active is False
+    assert stub.extra_config == {"rssfeed_key": "f1", "custom_flag": 3}
+    assert events == []
+    session.add.assert_not_called()
+    assert session.flush.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_upsert_stub_promotion_keeps_existing_show_and_feed() -> None:
+    """A stub already linked to a show/feed keeps them; shows_linked is not bumped."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil", show_id=42, feed_id=9)
+    session = _upsert_session([stub], _shows_result((42, "Daredevil")))
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"5": {"name": "Daredevil"}}, {"f1": 11}, result)
+
+    assert result.stubs_promoted == 1
+    assert result.shows_linked == 0
+    assert stub.feed_id == 9  # remote had no rssfeed_key -> stub's feed kept
+    assert stub.show_id == 42
+    assert events == []  # effective feed id present -> no warning
+
+
+@pytest.mark.asyncio
+async def test_upsert_stub_promotion_warns_when_feed_still_unresolved() -> None:
+    """A promoted stub that ends up with no feed warns with the exact create wording."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil")
+    session = _upsert_session([stub])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"5": {"name": "Daredevil", "rssfeed_key": "zz"}}, {"f1": 11}, result
+    )
+
+    assert events == [
+        (
+            "warn",
+            "Subscription '5' ('Daredevil'): could not resolve feed — "
+            "rssfeed_key='zz', available feed keys=['f1']",
+            {"remote_key": "5", "rssfeed_key": "zz"},
+        )
+    ]
+    assert result.stubs_promoted == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_no_feed_warning_when_no_feeds_known() -> None:
+    """With an empty feed map the unresolved-feed warning is suppressed (stub and new row)."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil")
+    session = _upsert_session([stub])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"5": {"name": "Daredevil", "rssfeed_key": "zz"}, "6": {"name": "Other"}}, {}, result
+    )
+
+    assert events == []
+    assert (result.stubs_promoted, result.subscriptions_created) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_upsert_new_row_warns_unresolved_feed_and_sets_columns() -> None:
+    """A brand-new row with an unknown feed key warns, is added, and carries extras."""
+    from jidou.models.rss import RssSubscription
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _upsert_session([], _shows_result((3, "Severance")))
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"8": {"name": "Severance", "rssfeed_key": "nope", "regex_include": "x", "extra": 1}},
+        {"f1": 11},
+        result,
+    )
+
+    assert events == [
+        (
+            "warn",
+            "Subscription '8' ('Severance'): could not resolve feed — "
+            "rssfeed_key='nope', available feed keys=['f1']",
+            {"remote_key": "8", "rssfeed_key": "nope"},
+        )
+    ]
+    session.add.assert_called_once()
+    new_sub = session.add.call_args.args[0]
+    assert isinstance(new_sub, RssSubscription)
+    assert new_sub.remote_key == "8"
+    assert new_sub.feed_id is None
+    assert new_sub.show_id == 3
+    assert new_sub.enabled_in_config is True
+    assert new_sub.regex_include == "x"
+    assert new_sub.extra_config == {"rssfeed_key": "nope", "extra": 1}
+    assert (result.subscriptions_created, result.shows_linked) == (1, 1)
+    assert session.flush.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_upsert_new_row_resolved_feed_does_not_warn() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _upsert_session([])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"8": {"name": "X", "rssfeed_key": "f1"}}, {"f1": 11}, result)
+
+    assert events == []
+    assert session.add.call_args.args[0].feed_id == 11
+    assert result.shows_linked == 0
+
+
+@pytest.mark.asyncio
+async def test_upsert_dry_run_create_and_stub_warn_but_do_not_write() -> None:
+    """Dry run still warns and counts, but adds/mutates/flushes nothing."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil")
+    session = _upsert_session([stub], _shows_result((3, "Severance")))
+    events: EventLog = []
+    orc = _recording_orc(session, events, dry_run=True)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {
+            "5": {"name": "Daredevil", "rssfeed_key": "zz"},
+            "6": {"name": "Severance", "rssfeed_key": "zz"},
+        },
+        {"f1": 11},
+        result,
+    )
+
+    assert [e[1].split(":")[0] for e in events] == [
+        "Subscription '5' ('Daredevil')",
+        "Subscription '6' ('Severance')",
+    ]
+    assert (result.stubs_promoted, result.subscriptions_created, result.shows_linked) == (1, 1, 1)
+    assert stub.remote_key is None
+    assert stub.enabled_in_config is False
+    session.add.assert_not_called()
+    session.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_resolves_feed_and_rebuilds_extra_config() -> None:
+    """Live update: feed id from rssfeed_key, extras merged over old extra_config."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(extra={"old": 1, "last_update": "a"})
+    session = _upsert_session([row])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"0": {"name": "Severance", "active": False, "rssfeed_key": "f1", "last_update": "b"}},
+        {"f1": 11},
+        result,
+    )
+
+    assert row.feed_id == 11
+    assert row.active is False
+    assert row.extra_config == {"old": 1, "last_update": "b", "rssfeed_key": "f1"}
+    assert result.subscriptions_updated == 1
+    assert events == []
+    assert session.flush.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_warns_with_on_update_wording_when_row_has_no_feed() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(feed_id=None)
+    session = _upsert_session([row])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"0": {"name": "Severance", "rssfeed_key": "zz"}}, {"f1": 1}, result
+    )
+
+    assert events == [
+        (
+            "warn",
+            "Subscription '0' ('Severance'): could not resolve feed on update — "
+            "rssfeed_key='zz', available feed keys=['f1']",
+            {"remote_key": "0", "rssfeed_key": "zz"},
+        )
+    ]
+    assert row.feed_id is None
+    assert result.subscriptions_updated == 1
+
+
+@pytest.mark.parametrize(
+    ("feed_id", "feed_map"),
+    [(5, {"f1": 1}), (None, {})],
+    ids=["row-keeps-existing-feed", "no-feeds-known"],
+)
+@pytest.mark.asyncio
+async def test_upsert_update_unresolved_feed_is_silent(
+    feed_id: int | None, feed_map: dict[str, int]
+) -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(feed_id=feed_id)
+    session = _upsert_session([row])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"0": {"name": "Severance", "rssfeed_key": "zz"}}, feed_map, result
+    )
+
+    assert events == []
+    assert row.feed_id == feed_id
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_non_dict_old_extra_config_is_replaced() -> None:
+    """A non-dict extra_config on the merged row is treated as empty, not merged."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(extra=["junk"])
+    session = _upsert_session([row])
+    orc = _recording_orc(session, [])
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"0": {"name": "Severance", "last_update": "b"}}, {}, result)
+
+    assert row.extra_config == {"last_update": "b"}
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_empty_extras_becomes_none() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(extra={})
+    session = _upsert_session([row])
+    orc = _recording_orc(session, [])
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"0": {"name": "Severance"}}, {}, result)
+
+    assert row.extra_config is None
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.asyncio
+async def test_upsert_update_auto_links_show_live_but_only_counts_in_dry_run(
+    dry_run: bool,
+) -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(show_id=None)
+    session = _upsert_session([row], _shows_result((3, "Severance")))
+    orc = _recording_orc(session, [], dry_run=dry_run)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"0": {"name": "Severance"}}, {}, result)
+
+    assert result.shows_linked == 1
+    assert result.subscriptions_updated == 1
+    assert row.show_id == (None if dry_run else 3)
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_dry_run_writes_nothing_and_does_not_warn() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(feed_id=None, extra={"k": 1})
+    session = _upsert_session([row])
+    events: EventLog = []
+    orc = _recording_orc(session, events, dry_run=True)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {"0": {"name": "Severance", "active": False, "rssfeed_key": "zz"}}, {"f1": 1}, result
+    )
+
+    assert events == []
+    assert row.feed_id is None
+    assert row.extra_config == {"k": 1}
+    assert result.subscriptions_updated == 1
+    session.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upsert_update_no_show_match_leaves_unlinked() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(show_id=None)
+    session = _upsert_session([row], _shows_result((3, "Zzzzzz Unrelated")))
+    orc = _recording_orc(session, [])
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({"0": {"name": "Severance"}}, {}, result)
+
+    assert row.show_id is None
+    assert result.shows_linked == 0
+
+
+@pytest.mark.asyncio
+async def test_upsert_mixed_pass_pins_event_order_flushes_and_counts() -> None:
+    """create + stub + update + remote-delete in one pass: exact events, counts, flush count."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil")
+    upd = _keyed_row(remote_key="0", name="Severance", feed_id=None)
+    gone = _keyed_row(remote_key="99", name="Gone")
+    session = _upsert_session([stub, upd, gone])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions(
+        {
+            "0": {"name": "Severance", "rssfeed_key": "zz"},
+            "1": {"name": "Daredevil", "rssfeed_key": "zz"},
+            "2": {"name": "Brand New", "rssfeed_key": "zz"},
+        },
+        {"f1": 1},
+        result,
+    )
+
+    assert [(e[0], e[1].split(":")[0]) for e in events] == [
+        ("warn", "Subscription '1' ('Daredevil')"),
+        ("warn", "Subscription '2' ('Brand New')"),
+        ("warn", "Subscription '0' ('Severance')"),
+        ("warn", "Subscription remote_key='99' no longer in remote config (not deleted from DB)"),
+    ]
+    assert events[-1][2] == {"remote_key": "99"}
+    assert (
+        result.stubs_promoted,
+        result.subscriptions_created,
+        result.subscriptions_updated,
+        result.subscriptions_remote_deleted,
+    ) == (1, 1, 1, 1)
+    assert session.flush.await_count == 2
+    session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_upsert_empty_everything_flushes_twice_and_emits_nothing() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _upsert_session([])
+    events: EventLog = []
+    orc = _recording_orc(session, events)
+    result = RssImportResult()
+
+    await orc._upsert_subscriptions({}, {}, result)
+
+    assert events == []
+    assert session.flush.await_count == 2
+    session.add.assert_not_called()
+    assert result == RssImportResult()
+
+
+@pytest.mark.asyncio
+async def test_upsert_event_failure_on_new_row_warning_propagates_before_count() -> None:
+    """on_event errors propagate; a new row's warning fires before add/count."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _upsert_session([])
+    orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
+    result = RssImportResult()
+
+    with pytest.raises(RuntimeError, match="sink down"):
+        await orc._upsert_subscriptions(
+            {"1": {"name": "X", "rssfeed_key": "zz"}}, {"f1": 1}, result
+        )
+
+    assert result.subscriptions_created == 0
+    session.add.assert_not_called()
+    session.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upsert_event_failure_on_stub_warning_propagates_after_count() -> None:
+    """A stub's warning fires AFTER it was mutated and counted (count stays 1)."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    stub = _stub_row(name="Daredevil")
+    session = _upsert_session([stub])
+    orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
+    result = RssImportResult()
+
+    with pytest.raises(RuntimeError, match="sink down"):
+        await orc._upsert_subscriptions(
+            {"5": {"name": "Daredevil", "rssfeed_key": "zz"}}, {"f1": 1}, result
+        )
+
+    assert result.stubs_promoted == 1
+    assert stub.remote_key == "5"
+    session.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_upsert_event_failure_on_update_warning_leaves_row_partially_updated() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    row = _keyed_row(feed_id=None, extra={"old": 1})
+    session = _upsert_session([row])
+    orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
+    result = RssImportResult()
+
+    with pytest.raises(RuntimeError, match="sink down"):
+        await orc._upsert_subscriptions(
+            {"0": {"name": "Severance", "active": False, "rssfeed_key": "zz"}}, {"f1": 1}, result
+        )
+
+    assert result.subscriptions_updated == 0
+    assert row.active is False  # columns were applied before the warning
+    assert row.extra_config == {"old": 1}  # extra_config rebuild comes after the warning
+    assert session.flush.await_count == 1  # only the post-create flush ran
+
+
+@pytest.mark.asyncio
+async def test_upsert_event_failure_on_remote_deleted_counts_first() -> None:
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    session = _upsert_session([_keyed_row(remote_key="99")])
+    orc = RssImportOrchestrator(session, _make_sftp(), "/r", on_event=_boom)
+    result = RssImportResult()
+
+    with pytest.raises(RuntimeError, match="sink down"):
+        await orc._upsert_subscriptions({}, {}, result)
+
+    assert result.subscriptions_remote_deleted == 1
+
+
+@pytest.mark.asyncio
+async def test_run_with_empty_body_sections_completes_with_zero_counts() -> None:
+    """A parseable config with no feeds/subscriptions imports cleanly (live: snapshot only)."""
+    raw = json.dumps(_HEADER, separators=(",", ":")) + json.dumps({}, separators=(",", ":"))
+    session = _make_session()
+    session.execute = AsyncMock(side_effect=[_exec_result(scalars_all=[]), _shows_result()])
+    events: EventLog = []
+    added: list[object] = []
+
+    def _add(obj: object) -> None:
+        obj.id = 5  # type: ignore[attr-defined]
+        added.append(obj)
+
+    session.add.side_effect = _add
+    orc = RssImportOrchestrator(
+        session, _make_sftp(raw.encode()), "/remote/yarss2.conf", on_event=_recorder(events)
+    )
+
+    result = await orc.run()
+
+    assert result.errors == []
+    assert result.snapshot_id == 5
+    assert (result.feeds_created, result.subscriptions_created) == (0, 0)
+    assert added[0].snapshot_type == "import"  # type: ignore[attr-defined]
+    assert [e[1] for e in events] == [
+        "Downloading RSS config from /remote/yarss2.conf",
+        f"Stored config snapshot id=5 ({len(raw)} bytes)",
+        "Import complete — feeds: +0/~0, subscriptions: +0/~0, stubs promoted: 0, "
+        "remote-deleted: 0, shows linked: 0",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_malformed_config_reports_error_and_writes_nothing() -> None:
+    session = _make_session()
+    events: EventLog = []
+    orc = RssImportOrchestrator(
+        session, _make_sftp(b"not json at all"), "/remote/yarss2.conf", on_event=_recorder(events)
+    )
+
+    result = await orc.run()
+
+    assert len(result.errors) == 1
+    assert result.errors[0].startswith("Failed to parse RSS config: ")
+    assert result.raw_content == "not json at all"
+    assert events[-1] == ("error", result.errors[0], None)
+    session.add.assert_not_called()
+    session.execute.assert_not_called()
