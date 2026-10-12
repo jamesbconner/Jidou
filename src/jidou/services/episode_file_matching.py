@@ -86,6 +86,33 @@ async def _resolve_via_group_remap(
     return remapped_ep, real_season, real_episode
 
 
+async def _resolve_with_season(
+    session: AsyncSession,
+    show_id: int,
+    episode_group_map: dict[str, object] | None,
+    season: int,
+    episode: int,
+) -> tuple[Episode, int, int] | None:
+    """Resolve a declared season/episode directly, then (season > 1) via episode groups.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        show_id: Database ID of the parent show.
+        episode_group_map: The show's stored episode-group map, or None.
+        season: Declared season.
+        episode: Declared episode number.
+
+    Returns:
+        ``(episode_row, season, episode_number)`` on a hit, else None.
+    """
+    ep = await resolve_episode(session, show_id, season, episode)
+    if ep is not None:
+        return ep, season, episode
+    if season > 1:
+        return await _resolve_via_group_remap(session, show_id, episode_group_map, season, episode)
+    return None
+
+
 async def match_entry_to_episode(
     session: AsyncSession,
     llm: LLMService | None,
@@ -168,15 +195,11 @@ async def match_entry_to_episode(
     absolute_guess = entry.absolute_candidate if entry.absolute_candidate is not None else episode
 
     if season is not None:
-        ep = await resolve_episode(session, show_id, season, episode)
-        if ep is not None:
-            return ep, season, episode
-        if season > 1:
-            remapped_hit = await _resolve_via_group_remap(
-                session, show_id, episode_group_map, season, episode
-            )
-            if remapped_hit is not None:
-                return remapped_hit
+        season_hit = await _resolve_with_season(
+            session, show_id, episode_group_map, season, episode
+        )
+        if season_hit is not None:
+            return season_hit
         # Season 1 directory (or a season>1 miss the remap could not rescue): the
         # episode number may still be a continuous absolute count (e.g. a show
         # with all 148 episodes in Season 01), or the season/episode pair may
