@@ -71,14 +71,6 @@ export type EpisodeList = Omit<components['schemas']['EpisodeList'], 'tracked_so
   tracked_source: 'match' | 'import' | null
 }
 
-export interface EpisodeRead extends EpisodeList {
-  tmdb_id: number
-  runtime: number | null
-  still_path: string | null
-  created_at: string
-  updated_at: string
-}
-
 export type EpisodeGroupSummary = components['schemas']['EpisodeGroupSummary']
 
 export type EpisodeGroupApplyResponse = components['schemas']['EpisodeGroupApplyResponse']
@@ -90,18 +82,6 @@ export type ShowBrief = components['schemas']['FileShowBrief']
 export type EpisodeBrief = components['schemas']['EpisodeBrief']
 
 export type FileStatus = components['schemas']['FileStatus']
-
-export interface FileList {
-  id: number
-  original_filename: string
-  remote_path: string
-  file_size: number
-  status: FileStatus
-  show_id: number | null
-  episode_id: number | null
-  parsed_show_name: string | null
-  created_at: string
-}
 
 // show_id/episode_id/show/episode are forced non-optional here: the
 // backend fields are Optional-with-default, which pydantic always
@@ -117,7 +97,7 @@ export type FileRead = Omit<
   episode: EpisodeBrief | null
 }
 
-export type ContentType = 'tv' | 'anime' | 'movie'
+export type ContentType = components['schemas']['ContentType']
 
 export type FileMatchRequest = Omit<
   components['schemas']['FileMatchRequest'],
@@ -165,8 +145,6 @@ export type TaskTrigger = Omit<components['schemas']['TaskTrigger'], 'task_type'
 // ─── WebSocket messages ───────────────────────────────────────────────────
 // Not part of the REST OpenAPI spec — these describe WebSocket frame
 // payloads, so there is no backend schema to alias.
-
-export type WsMessageType = 'progress' | 'file_update' | 'complete' | 'error' | 'cancelled' | 'event'
 
 export interface TaskEvent {
   ts: string
@@ -525,29 +503,6 @@ export type DiscoverResult = Omit<
 > & {
   media_type: 'tv' | 'movie'
   seeded_from: string[]
-}
-
-// ─── Path Import ──────────────────────────────────────────────────────────────
-// Celery task result payloads, not a live HTTP response_model — no backend
-// schema to alias.
-
-export interface ShowImportResult {
-  show_dir: string
-  tmdb_id: number | null
-  tmdb_title: string | null
-  action: 'created' | 'found' | 'not_found'
-  episodes_tracked: number
-  episodes_unmatched: number
-}
-
-export interface PathImportResult {
-  shows_processed: number
-  shows_created: number
-  shows_found: number
-  shows_not_found: number
-  episodes_tracked: number
-  episodes_unmatched: number
-  show_results: ShowImportResult[]
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────
