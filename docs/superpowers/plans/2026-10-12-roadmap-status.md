@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (Wave 4 released as 0.4.7).
+Last updated: 2026-10-12 (Wave 5 released as 0.4.8; the program is complete).
 
 ---
 
@@ -30,9 +30,11 @@ Last updated: 2026-10-12 (Wave 4 released as 0.4.7).
   merged; see §3 and §3D.
 - **Wave 4 is released** (0.4.7, `chore/release-wave-4`). All six items
   merged; see §3 and §3E.
-- **Next step:** Wave 5 (DF-1 … DF-20, then XL-3), lanes per roadmap
-  §4A and §5A. At most 4 sub-agents at once. Starts after the owner's
-  go-ahead.
+- **Wave 5 is released** (0.4.8, `chore/release-wave-5`). All 20 DF
+  items and XL-3 merged; see §3 and §3F.
+- **The program is complete.** All 77 items are released. What is left
+  is the follow-ups in §3A–§3F and the roadmap's §9 backlog, each a
+  separate PR outside the program.
 - **Current ratchets:** API 10, services 9, orchestrators 9, workers 8,
   ESLint 25.
 - **Execution method (decided):** parallel sub-agents.
@@ -85,7 +87,7 @@ item is its open or merged PR on GitHub.
 | 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | released (0.4.5) |
 | 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | released (0.4.6) |
 | 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | released (0.4.7) |
-| 5 | DF-1 … DF-20, then XL-3 | todo |
+| 5 | DF-1 … DF-20, then XL-3 | released (0.4.8) |
 
 Per-item rows (item → PR) are added by the release PR of each wave.
 
@@ -149,6 +151,27 @@ Per-item rows (item → PR) are added by the release PR of each wave.
 | SCH-5 | jamesbconner/Jidou#716 | released | approved B4: bad rematch `media_type` 502 → 422; types regenerated |
 | FE-7 | jamesbconner/Jidou#717 | released | ratchet 51 → 25; new characterization tests pass unchanged on the old code |
 | FE-8 | jamesbconner/Jidou#718 | released | dead types and two redundant overrides removed; "Frontend structure" docs |
+| DF-5 | jamesbconner/Jidou#720 | released | `.iso`, `.av1`, `.ogm` accepted by the path parser |
+| DF-1 | jamesbconner/Jidou#721 | released | `trigger_task` 503 `detail` → "Task broker unavailable" (shared constant) |
+| DF-16 | jamesbconner/Jidou#722 | released | frozen `ShowSeed`; `ContentTypeInputs` protocol |
+| DF-14 | jamesbconner/Jidou#723 | released | unset SFTP username now `None` (was `''`), same as the workers |
+| DF-2 | jamesbconner/Jidou#724 | released | clear runs **after** nulling the link (the brief's order would never clear); PG 16 verified |
+| DF-7 | jamesbconner/Jidou#725 | released | 14 test functions (17 ids) changed; path-import success-event rollback removed |
+| DF-15 | jamesbconner/Jidou#726 | released | harness `run_task_workflow` 7 → 8 (= ratchet); coordinator fix for DF-7's 3-arg stub |
+| DF-6 | jamesbconner/Jidou#727 | released | two owner rulings on dash markers (§3F); review fixes I1 (`The 4400 - 05`) and I2 (`DD5.1x264`) |
+| DF-8 | jamesbconner/Jidou#728 | released | `show_lookup.find_show_by_tmdb_id`; PG 16 race verified |
+| DF-17 | jamesbconner/Jidou#729 | released | serializer echoes the stored dict; lenient read for wrong-typed stored values (review I1) |
+| DF-3 | jamesbconner/Jidou#730 | released | HTTP stays 200; UI badge "Degraded"; snapshot description-only change |
+| DF-9 | jamesbconner/Jidou#731 | released | punctuation variants now saved as alias matches (intended) |
+| DF-19 | jamesbconner/Jidou#732 | released | `make.py export-openapi`; CI drift step green on Actions |
+| DF-4 | jamesbconner/Jidou#733 | released | 11 null → populated responses on 5 routes; 0 raise-loads across worker/API flows on PG 16 |
+| DF-11 | jamesbconner/Jidou#734 | released | |
+| DF-12 | jamesbconner/Jidou#735 | released | `fuzzy_match.unambiguous_title_match` |
+| DF-10 | jamesbconner/Jidou#736 | released | 18,036-case differential; only the 216 declared path-import diffs |
+| DF-18 | jamesbconner/Jidou#737 | released | `ShowIndexEntry` also carries `local_path`; 3k shows: 602 KB / 45 ms vs 3.78 MB / 314 ms |
+| DF-13 | jamesbconner/Jidou#738 | released | migration `e5f6a7b8c9d0`; up/down/up on PG 16; flag maintained by parse only (§3F) |
+| DF-20 | jamesbconner/Jidou#739 | released | 28 request bodies + nested; `RegexHintSampleRequest`; multipart excluded (R2) |
+| XL-3 | jamesbconner/Jidou#740 | released | docs and fresh-clone verification; final ratchets confirmed at their tightest values (orchestrators 9, not §8's 10); Node 24 / `npm ci` and `alembic check` on fresh PG 16 verified |
 
 ### 3A. Decisions and deferred findings from Wave 0
 
@@ -348,6 +371,82 @@ Per-item rows (item → PR) are added by the release PR of each wave.
     bundle; consider a runtime config instead.
   - **`prettier --check`** fails on `frontend/src/types/api.ts` on
     `main`; the frontend is not prettier-clean.
+
+### 3F. Decisions and deferred findings from Wave 5
+
+- **Approved changes:** every DF item, as described in roadmap §5A
+  (also in `CHANGELOG.md` 0.4.8).
+- **Owner rulings:**
+  - **DF-6 dash markers and years.** The dash markers (`- N`,
+    `N - Title`, and the leading or pre-dash forms) skip release years,
+    so `Show - 2024` is not episode 2024. The word markers
+    (`Episode`/`Ep`) and the `SxxE`/`NxN` markers have no exclusion.
+  - **DF-6 dash markers and resolutions** (second ruling). The dash
+    markers skip only the 4-digit resolutions 1080, 2160 and 4320. The
+    3-digit tokens 480, 576 and 720 still parse as episodes, as on
+    `main` before the wave.
+- **Coordinator rulings:**
+  - **Lanes and batching.** Batch 1 was DF-1, DF-5, DF-7 and DF-16 (one
+    per lane, at most 4 at once). DF-14 took the next free slot. Branch
+    names were chosen by the coordinator (`fix/`, `feat/`, `refactor/`,
+    `ci/` + `df-N-slug`), because the roadmap names none.
+  - **Early dispatches** on disjoint files: DF-2 before DF-1 merged;
+    DF-19 before DF-17 and DF-18 (it touches only `make.py` and
+    `ci.yml`); DF-11 and DF-12 alongside DF-10; DF-13 and DF-20 in
+    parallel with DF-18. For the generated snapshot and types, whichever
+    PR merged second merged `main` and regenerated. Every regeneration
+    was a no-op.
+  - **DF-2 order.** The brief's literal order (clear, then null the link)
+    could never clear, so the clear runs after nulling the link.
+  - **DF-6 remaining edge.** The synthetic `<name> 0720_720` case (68
+    records in the differential; on `main` the 720 came from the
+    resolution) is accepted as a known edge.
+  - **DF-7 scope.** Event writes made directly by workers (for example
+    `workers/import_tasks.py:114`) are outside DF-7's orchestrator
+    scope.
+  - **DF-15 CI fix.** DF-7's new harness test had a 3-argument `work`
+    stub; the coordinator merged `main` and added the `set_total`
+    parameter (626dd74).
+- **Follow-ups (separate PRs, not yet filed)**, in addition to §3C's,
+  §3D's and §3E's:
+  - **DF-13 stale duplicate badge (first follow-up).** Only parse sets
+    or clears `duplicate_of_file_id`. Fix Eps, `PATCH /files`, manual
+    match and routing leave a stale badge, and the UI cannot clear it.
+  - **DF-13 minors:** wrap the duplicate lookup in `no_autoflush`; the
+    PostgreSQL tests skip in CI without `JIDOU_TEST_PG_URL`; the badge
+    shows "#id" but the Files table shows no ids.
+  - **`PATCH /api/files/{id}`** with a non-existent `show_id` returns 500
+    (pre-existing; found in the DF-2 review). A vacuous assert sits at
+    `tests/test_file_relink.py:147`.
+  - **Subscription PATCH** hitting a second stub's `IntegrityError`
+    returns 500 (pre-existing).
+  - **`workers/import_tasks.py:114`** calls `append_task_event` inside
+    the work session; a failed event write there is not covered by DF-7.
+  - **DF-16 minors:** the guard checks names only (M1); the feed test
+    does not assert the `ShowSeed` type (M2).
+  - **DF-7 minors:** the sync swallow tests check a message prefix only,
+    and the RSS assertions are looser; path import passes the raw
+    `on_event` to services.
+  - **DF-10 minors:** no `caplog` test for the new path-import warning;
+    leftover `_helper` scaffolding; a stale name at
+    `tests/test_workers.py:774`.
+  - **DF-4 minors:** the `populate_existing` docstring wording; the fake
+    session's unused-results assert.
+  - **DF-18 minors:** `local_path?` is optional in `RematchPanes` and
+    `ResolveSections`; the queue badge needs two requests; one extra
+    index request on some pages.
+  - **DF-20 minors:** the request-model guard checks only one level of
+    nesting (m2); the `RequestModel` docstring appears in the OpenAPI
+    descriptions (m3).
+  - **DF-17:** `RecentShowItem` (also listed in §3E).
+  - **XL-3 leftovers:** stale complexity comments in
+    `tests/test_workers_architecture.py` ("max is 9"; the constant is 8)
+    and `tests/test_services_architecture.py` (wrong example function);
+    the `EventSink` docstring in `orchestrators/_events.py` still says
+    orchestrators differ on `swallow_errors` (after DF-7 all swallow);
+    `frontend/Dockerfile` still runs `npm ci --legacy-peer-deps`.
+  - **Roadmap §8** lists the orchestrator ratchet end value as 10; the
+    real final value is 9.
 
 ## 4. Process conventions (beyond roadmap §1)
 
