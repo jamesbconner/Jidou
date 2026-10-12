@@ -3,17 +3,15 @@
 import logging
 from collections.abc import Sequence
 
-from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssSubscription
+from jidou.services.fuzzy_match import unambiguous_best_match
 from jidou.services.rss_config import fill_missing_yarss2_defaults
 
 logger = logging.getLogger(__name__)
-
-_FUZZY_THRESHOLD = 85
 
 
 def pick_unlinked_subscription(
@@ -35,22 +33,12 @@ def pick_unlinked_subscription(
         fuzzy score is shared by more than one subscription.
     """
     title_lower = show_title.lower()
-    best_match: RssSubscription | None = None
-    best_score: float = 0
-    ambiguous = False
+    # An exact name match wins even when it comes after a higher-scoring fuzzy one.
     for sub in subs:
         if sub.name.lower() == title_lower:
             return sub
-        score = fuzz.token_set_ratio(title_lower, sub.name.lower())
-        if score < _FUZZY_THRESHOLD:
-            continue
-        if score > best_score:
-            best_score = score
-            best_match = sub
-            ambiguous = False
-        elif score == best_score:
-            ambiguous = True
-    return None if ambiguous else best_match
+    index = unambiguous_best_match(show_title, [sub.name for sub in subs])
+    return None if index is None else subs[index]
 
 
 async def ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) -> RssSubscription:

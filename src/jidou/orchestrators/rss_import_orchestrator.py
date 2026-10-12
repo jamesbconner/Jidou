@@ -13,7 +13,6 @@ Run sequence:
 import logging
 from dataclasses import dataclass, field
 
-from rapidfuzz import fuzz, process
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,12 +20,11 @@ from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
 from jidou.orchestrators._events import log_only_event
 from jidou.services.callbacks import OnEvent
+from jidou.services.fuzzy_match import unambiguous_best_match
 from jidou.services.rss_config import compute_subscription_deltas, parse_rss_config
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
-
-_FUZZY_THRESHOLD = 85
 
 
 def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None:
@@ -42,32 +40,12 @@ def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None
     exact = show_by_lower_title.get(name.lower())
     if exact is not None:
         return exact
-    # Fetch top-2 so we can detect a tie at the same score (ambiguous link).
-    results = process.extract(
-        name.lower(),
-        list(show_by_lower_title.keys()),
-        scorer=fuzz.token_set_ratio,
-        score_cutoff=_FUZZY_THRESHOLD,
-        limit=2,
-    )
-    if not results:
+    titles = list(show_by_lower_title.keys())
+    index = unambiguous_best_match(name, titles)
+    if index is None:
         return None
-    if len(results) > 1 and results[0][1] == results[1][1]:
-        logger.debug(
-            "_fuzzy_show_id: ambiguous fuzzy match for %r — %d candidates at score %d; skipping",
-            name,
-            len(results),
-            results[0][1],
-        )
-        return None
-    matched_lower_title, _score, _ = results[0]
-    logger.debug(
-        "_fuzzy_show_id: fuzzy-matched %r → %r (score=%d)",
-        name,
-        matched_lower_title,
-        _score,
-    )
-    return show_by_lower_title[matched_lower_title]
+    logger.debug("_fuzzy_show_id: fuzzy-matched %r -> %r", name, titles[index])
+    return show_by_lower_title[titles[index]]
 
 
 # Fields carried from the parsed remote dict directly into a new DB row.
