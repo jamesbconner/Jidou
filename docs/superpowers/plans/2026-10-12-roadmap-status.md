@@ -12,7 +12,7 @@ process conventions and the environment gotchas.
 - **Specs (the analysis behind each plan):**
   `docs/superpowers/specs/2026-10-11-*-simplification-design.md`
 
-Last updated: 2026-10-12 (Wave 2 released as 0.4.5).
+Last updated: 2026-10-12 (Wave 3 released as 0.4.6).
 
 ---
 
@@ -26,10 +26,12 @@ Last updated: 2026-10-12 (Wave 2 released as 0.4.5).
   merged; see §3 and §3B.
 - **Wave 2 is released** (0.4.5, `chore/release-wave-2`). All 24 items
   merged; see §3 and §3C.
-- **Next step:** Wave 3 (API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7,
-  ORC-8, XL-2, ORC-11, WRK-5, SCH-4), lanes per roadmap §4A. At most 4
+- **Wave 3 is released** (0.4.6, `chore/release-wave-3`). All 11 items
+  merged; see §3 and §3D.
+- **Next step:** Wave 4 (ORC-12, WRK-6, MDL-6, FE-7 → FE-8, SCH-5), lanes
+  per roadmap §4A. FE-8 runs after SCH-5's type regeneration. At most 4
   sub-agents at once. Starts after the owner's go-ahead.
-- **Current ratchets:** API 10, services 10, orchestrators 21, workers 9,
+- **Current ratchets:** API 10, services 9, orchestrators 9, workers 8,
   ESLint 51.
 - **Execution method (decided):** parallel sub-agents.
   - The main session acts as **coordinator**. It dispatches one
@@ -79,7 +81,7 @@ item is its open or merged PR on GitHub.
 | 0 | API-1, MDL-1, SVC-1, ORC-1, WRK-1, FE-1 | released (0.4.3) |
 | 1 | MDL-2, ORC-2, WRK-2, SVC-2, SVC-3, API-2, API-3, SCH-1, FE-2 | released (0.4.4) |
 | 2 | API-4, XL-1, API-5, API-6, API-7, SVC-4, SVC-5, SVC-6, MDL-3 (P1 passed), MDL-4, MDL-5, WRK-3, WRK-4, ORC-4, ORC-5, ORC-6, ORC-9, ORC-10, SCH-2, SCH-3, FE-3, FE-4, FE-5, FE-6 | released (0.4.5) |
-| 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | todo |
+| 3 | API-8, SVC-7, SVC-8, SVC-9, ORC-3, ORC-7, ORC-8, XL-2, ORC-11, WRK-5, SCH-4 | released (0.4.6) |
 | 4 | ORC-12, WRK-6, MDL-6, FE-7, FE-8, SCH-5 | todo |
 | 5 | DF-1 … DF-20, then XL-3 | todo |
 
@@ -127,6 +129,17 @@ Per-item rows (item → PR) are added by the release PR of each wave.
 | ORC-10 | jamesbconner/Jidou#696 | released | ratchet 24 → 21; 35 old/new PG 16 scenarios identical |
 | SCH-3 | jamesbconner/Jidou#697 | released | component renames; `api-generated.ts` also picked up two stale doc-only hunks |
 | FE-6 | jamesbconner/Jidou#698 | released | ratchet 76 → 51 |
+| WRK-5 | jamesbconner/Jidou#700 | released | ratchet 9 → 8; claim check via `task_dispatch.get_active_task` (same filter) |
+| API-8 | jamesbconner/Jidou#701 | released | 67 moved defs AST-identical; OpenAPI equal; `/rss` preview registers before download/diff (routing identical) |
+| ORC-7 | jamesbconner/Jidou#702 | released | `run` 17 → 2; 72-case old/new matrix identical |
+| SCH-4 | jamesbconner/Jidou#703 | released | contract change: 6 response fields → enum `$ref`s; types regenerated |
+| SVC-9 | jamesbconner/Jidou#704 | released | D1 (`get_episode_details` removed); `test_connection` dead branch deferred (§3D) |
+| SVC-7 | jamesbconner/Jidou#705 | released | ratchet 10 → 9; POST `/api/shows` description text changed |
+| SVC-8 | jamesbconner/Jidou#706 | released | 110k differential cases, 0 mismatches |
+| ORC-3 | jamesbconner/Jidou#707 | released | 27 PG 16 old/new scenarios identical; one stale patch target fixed in review |
+| ORC-8 | jamesbconner/Jidou#708 | released | one error handler; manual match gets the injected TMDB service |
+| ORC-11 | jamesbconner/Jidou#709 | released | ratchet 21 → 9; 35 PG 16 old/new scenarios identical |
+| XL-2 | jamesbconner/Jidou#710 | released | domain errors moved to `jidou/errors.py` (ruling, §3D) |
 
 ### 3A. Decisions and deferred findings from Wave 0
 
@@ -228,6 +241,47 @@ Per-item rows (item → PR) are added by the release PR of each wave.
   - **Minor test gaps** listed in each item's review: for example, the
     ORC-10 snapshot-flush-before-upload ordering, and a route-level test
     for the API-4 503 path.
+
+### 3D. Decisions and deferred findings from Wave 3
+
+- **Approved changes** (also in `CHANGELOG.md` 0.4.6):
+  - **SCH-4:** contract change only. Six response fields use enum
+    `$ref`s and lose their auto-generated `title`. JSON values are
+    unchanged.
+  - **ORC-8 / XL-2:** one handler maps the domain errors to HTTP
+    statuses. Status codes, bodies and `detail` strings are unchanged.
+  - **ORC-8:** manual match uses the injected, shared `TMDBService`.
+    Concurrent identical requests are now combined into one call.
+- **Coordinator rulings:**
+  - **XL-2 errors module.** Services may not import orchestrators, and
+    that allowlist is empty. So the domain errors moved from
+    `orchestrators/errors.py` to an import-free `src/jidou/errors.py`.
+  - **SVC-7 description.** The POST `/api/shows` docstring names the
+    function's real module, so its OpenAPI description changed. Under
+    R7, `api-generated.ts` is not regenerated outside SCH items, so
+    that JSDoc line is stale until SCH-5 regenerates the types.
+  - **SVC-9 dead branch.** Removing the unreachable `else` in
+    `LLMService.test_connection` (planned in §3B) is outside SVC-9's
+    tasks. It is deferred to the Wave 4 cleanups (ORC-12/WRK-6) or a
+    follow-up.
+  - **Lane order.** API-8 ran alongside ORC-7, WRK-5 and SCH-4, which
+    touch no route modules. SVC-9 started before SVC-7/SVC-8, and
+    SVC-7/SVC-8 ran concurrently, because their files are disjoint.
+- **Follow-ups (separate PRs, not yet filed)**, in addition to §3C's:
+  - **A third after-rollback crash in path import.** When a newly
+    created show's episode sync hits a DB error, the import aborts with
+    `MissingGreenlet` on a real async session. It behaves the same
+    before and after ORC-11. Fix it together with
+    `_sync_episodes_if_needed`.
+  - **The ORC-8 handler's 500 fallback logs nothing.** It handles any
+    unmapped `OrchestratorError` subclass, and no such error reaches it
+    today. Add a log line when the next subclass is added.
+  - **Minor test gaps** are listed in each Wave 3 review. Examples:
+    - SVC-8's weak log assertion;
+    - SVC-7's stale test docstrings;
+    - ORC-7's misnamed gap-fill test;
+    - SCH-4's serialization guard checks only the first member of two
+      of the enums.
 
 ## 4. Process conventions (beyond roadmap §1)
 

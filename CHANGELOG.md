@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-10-12
+
+Wave 3 of the simplification roadmap splits the two largest route modules, moves show creation into the orchestrator layer, and gives orchestrators shared building blocks and one HTTP error handler. As in earlier waves, every item first added characterization tests that passed on the unchanged code. The orchestrator items were also compared old against new on a real PostgreSQL 16 database. The few observable changes are listed below; everything else is unchanged.
+
+### Changed (behaviour and contract)
+- **Response vocabularies are typed enums** (#703, contract change). These fields now use the existing enums:
+  - `FileRead.matched_by` and `FileRead.ignored_reason`
+  - the dashboard's two `content_type` fields
+  - `OrphanRead.tracked_source`
+  - `RssConfigDiff.snapshot_type`
+
+  OpenAPI gains `$ref` components (`MatchedBy`, `IgnoredReason`, `TrackedSource`, `SnapshotType`), and `api-generated.ts` was regenerated. JSON values are unchanged.
+- **HTTP errors from orchestrators come from one handler** (#708, #710). The domain errors (`NotFoundError`, `InvalidRequestError`, `UpstreamError`, `ServiceUnavailableError`) now live in an import-free `jidou/errors.py`, and `main.py` maps them to status codes. Regex suggestion uses them too, so its 422 and 503 responses no longer need a route-level re-raise. Status codes, bodies and `detail` strings are unchanged.
+- **Manual match uses the shared TMDB service** (#708) instead of creating its own. Results are unchanged; identical concurrent requests are now combined into one call.
+- **Minor text changes:**
+  - The description of `POST /api/shows` in OpenAPI now names the function's new module (#705).
+  - The duplicate-`tmdb_id` race now logs the shared "already exists" DEBUG line.
+
+### Changed (refactors, no behaviour change)
+- **API** (#701). The shows and RSS route modules are split by sub-resource:
+  - `tmdb_proxy`, `shows`, `show_episodes`, `show_local_files`
+  - `rss_feeds`, `rss_subscriptions`, `rss_publish`, `_rss_common`
+
+  Paths, operationIds and the OpenAPI spec are identical, and 42,210 sample requests are routed exactly as before.
+- **Services** (#704, #705, #706):
+  - TMDB media-type validation lives in one helper, and the dead `get_episode_details` is removed (decision D1).
+  - Small helpers are shared in `progress`, `settings_service` and `show_lookup`.
+  - Show creation moves to `orchestrators/show_creation_orchestrator.py`, which empties the services upward-import allowlist.
+  - New shared helpers: a YaRSS2 filter (`compile_pattern` / `CompiledFilter`), an `rss_stub` picker, synthetic-import helpers and `basename_any`.
+- **Orchestrators** (#702, #707, #709):
+  - Sync runs as explicit phases, and `link_file_to_episode` is a shared helper.
+  - Show-provisioning primitives in `_show_provisioning.py` are shared by show creation, manual match and path import.
+  - Path import is decomposed into smaller steps.
+- **Workers** (#700). Scheduled tasks are table-driven, the harness gains `_finish`, and unused loggers and default arguments are removed. The trending task is kept (#655).
+- **Complexity ratchets lowered:**
+
+  | Layer | Before | After |
+  |---|---|---|
+  | services | 10 | 9 |
+  | orchestrators | 21 | 9 |
+  | workers | 9 | 8 |
+
+  API stays at 10 and ESLint at 51.
+
 ## [0.4.5] — 2026-10-12
 
 Wave 2 of the simplification roadmap splits each layer's largest functions and components into smaller, tested pieces. Every item first added characterization tests that passed on the unchanged code. The orchestrator and worker items were also compared old-vs-new against a real PostgreSQL 16 database. The few behaviour changes are listed below; everything else is unchanged.
