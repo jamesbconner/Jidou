@@ -74,7 +74,10 @@ def externals():
         patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as orch_cls,
         patch(f"{_ORCH}.fetch_show_metadata", new=AsyncMock(return_value={"name": "x"})) as fetch,
         patch("jidou.orchestrators._show_provisioning.generate_aliases", new=AsyncMock()),
-        patch(f"{_ORCH}.auto_local_path", side_effect=lambda ct, sn: f"/auto/{ct}/{sn}") as auto,
+        patch(
+            f"{_ORCH}.auto_local_path_for",
+            side_effect=lambda show, **roots: f"/auto/{show.content_type}/{show.sys_name}",
+        ) as auto,
     ):
         orch_cls.return_value.sync_show_episodes = AsyncMock()
         yield {"fetch": fetch, "auto": auto}
@@ -119,7 +122,9 @@ async def test_fallback_with_defaults_derives_and_keeps_none_fields(externals) -
     assert show.content_type == "tv"
     assert show.sys_name == "Plain Show!"
     assert show.local_path == "/auto/tv/Plain Show!"
-    externals["auto"].assert_called_once_with("tv", "Plain Show!")
+    externals["auto"].assert_called_once()
+    seen = externals["auto"].call_args.args[0]
+    assert (seen.content_type, seen.sys_name) == ("tv", "Plain Show!")
 
 
 async def test_fallback_infers_anime_from_genre_ids_and_derives_path(externals) -> None:

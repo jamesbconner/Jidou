@@ -805,7 +805,7 @@ async def test_resolve_local_path_movie():
 
 
 async def test_resolve_local_path_falls_back_to_media_type():
-    """show.content_type=None falls back to show.media_type."""
+    """show.content_type=None with a non-movie media_type yields no path (DF-10 / D16)."""
     session = _make_session()
     orch = ParseOrchestrator(
         session,
@@ -820,7 +820,7 @@ async def test_resolve_local_path_falls_back_to_media_type():
     show.media_type = "anime"
 
     path = orch._resolve_local_path(show)
-    assert path == "/media/anime/Naruto"
+    assert path is None
 
 
 async def test_resolve_local_path_show_content_type_wins_over_parsed():

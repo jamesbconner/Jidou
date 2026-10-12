@@ -1,12 +1,11 @@
 """Pure helpers for creating a library show from TMDB data.
 
-Content-type inference and default local-path computation. The create-or-get
+Content-type inference. The default local path comes from
+:func:`jidou.services.path_resolution.auto_local_path_for`; the create-or-get
 workflow itself lives in ``jidou.orchestrators.show_creation_orchestrator``.
 """
 
 from typing import Protocol
-
-from jidou.services.path_resolution import resolve_show_local_path
 
 
 class ContentTypeInputs(Protocol):
@@ -61,25 +60,3 @@ def infer_content_type(payload: ContentTypeInputs) -> str:
     if is_animated and is_japanese:
         return "anime"
     return "tv"
-
-
-def auto_local_path(content_type: str, sys_name: str) -> str:
-    """Compute the default local path for a new show from configured media roots.
-
-    Args:
-        content_type: One of ``"anime"``, ``"movie"``, or ``"tv"``.
-        sys_name: Filesystem-safe show directory name.
-
-    Returns:
-        Absolute container-side path string.
-    """
-    from jidou.config import settings
-
-    return resolve_show_local_path(
-        content_type=content_type,
-        media_type=None,
-        sys_name=sys_name,
-        local_tv_path=settings.local_tv_path,
-        local_anime_path=settings.local_anime_path,
-        local_movie_path=settings.local_movie_path,
-    )

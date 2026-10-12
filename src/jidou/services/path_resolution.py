@@ -1,6 +1,26 @@
 """Resolve a show's default local (container-side) path from its content type."""
 
 from pathlib import PurePosixPath
+from typing import Protocol
+
+from jidou.services.sys_name import sanitize_sys_name
+
+
+class AutoPathShow(Protocol):
+    """The show fields :func:`auto_local_path_for` reads.
+
+    Structural so the ``Show`` model (and test doubles) satisfy it without this
+    service importing the model.
+    """
+
+    @property
+    def content_type(self) -> str | None: ...
+    @property
+    def media_type(self) -> str | None: ...
+    @property
+    def sys_name(self) -> str | None: ...
+    @property
+    def title(self) -> str: ...
 
 
 def library_root(content_type: str | None, *, tv: str, anime: str, movie: str) -> str:
@@ -66,3 +86,50 @@ def resolve_show_local_path(
         return str(PurePosixPath(base))
     # PurePosixPath ensures forward slashes — these are always Linux container paths.
     return str(PurePosixPath(base) / sys_name)
+
+
+def auto_local_path_for(show: AutoPathShow, *, tv: str, anime: str, movie: str) -> str | None:
+    """Return the ``local_path`` a show should get automatically, or None.
+
+    The one auto-population rule shared by parse, path import and show
+    creation. A path is only derived when the show's library is unambiguous:
+    its own ``content_type`` is set, or TMDB says it is a movie. TMDB uses
+    ``media_type="tv"`` for both TV and anime, so guessing a root from it would
+    put an anime series under the TV library; such a show gets no path until
+    its ``content_type`` is set.
+
+    Callers decide *whether* to apply the result (e.g. never overwriting an
+    existing ``local_path``); this only decides *what* it would be.
+
+    Args:
+        show: The show to place; reads ``content_type``, ``media_type``,
+            ``sys_name`` and ``title``.
+        tv: Container-side root for live-action TV.
+        anime: Container-side root for anime.
+        movie: Container-side root for movies.
+
+    Returns:
+        The container-side path, or None when the library is ambiguous.
+
+    Examples:
+        >>> from types import SimpleNamespace
+        >>> roots = {"tv": "/tv", "anime": "/anime", "movie": "/movies"}
+        >>> anime = SimpleNamespace(content_type="anime", media_type="tv", sys_name="X", title="X")
+        >>> auto_local_path_for(anime, **roots)
+        '/anime/X'
+        >>> unknown = SimpleNamespace(content_type=None, media_type="tv", sys_name="X", title="X")
+        >>> auto_local_path_for(unknown, **roots) is None
+        True
+    """
+    if not show.content_type and show.media_type != "movie":
+        return None
+    # sys_name is pre-sanitized; fall back to the title with invalid chars replaced.
+    dir_name = show.sys_name or sanitize_sys_name(show.title)
+    return resolve_show_local_path(
+        content_type=show.content_type,
+        media_type=show.media_type,
+        sys_name=dir_name,
+        local_tv_path=tv,
+        local_anime_path=anime,
+        local_movie_path=movie,
+    )

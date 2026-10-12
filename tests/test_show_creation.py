@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from jidou.models.show import Show
 from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.schemas.show_schema import ShowCreate
-from jidou.services.show_creation import auto_local_path, infer_content_type
+from jidou.services.show_creation import infer_content_type
 
 TMDB_FIELDS = {"tmdb_id": 1396, "title": "Brand New Show", "media_type": "tv"}
 
@@ -180,12 +180,3 @@ async def test_alias_generation_failure_does_not_undo_creation(externals) -> Non
 )
 def test_infer_content_type(payload: ShowCreate, expected: str) -> None:
     assert infer_content_type(payload) == expected
-
-
-def test_auto_local_path_uses_the_configured_root_for_the_content_type() -> None:
-    with patch("jidou.config.settings") as s:
-        s.local_tv_path = "/media/tv"
-        s.local_anime_path = "/media/anime"
-        s.local_movie_path = "/media/movies"
-
-        assert auto_local_path("anime", "Some_Show").startswith("/media/anime")
