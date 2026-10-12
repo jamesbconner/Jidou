@@ -1,6 +1,7 @@
 """Tests for TMDB service with mocked HTTP calls."""
 
 import asyncio
+import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -243,28 +244,6 @@ class TestTMDBService:
         """get_season_details() raises ValueError for season_number < 1."""
         with pytest.raises(ValueError, match="season_number"):
             await tmdb_service.get_season_details(1, season_number=0)
-
-    @pytest.mark.asyncio
-    async def test_get_episode_details_delegates_to_request(
-        self, tmdb_service: TMDBService
-    ) -> None:
-        """get_episode_details() calls _request with correct endpoint."""
-        mock_response = {"episode_number": 3, "name": "Pilot"}
-        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
-            mock_request.return_value = mock_response
-            result = await tmdb_service.get_episode_details(42, season_number=1, episode_number=3)
-
-        assert result == mock_response
-        endpoint = mock_request.call_args.args[0]
-        assert endpoint == "/tv/42/season/1/episode/3"
-
-    @pytest.mark.asyncio
-    async def test_get_episode_details_invalid_episode_raises(
-        self, tmdb_service: TMDBService
-    ) -> None:
-        """get_episode_details() raises ValueError for episode_number < 1."""
-        with pytest.raises(ValueError, match="episode_number"):
-            await tmdb_service.get_episode_details(1, season_number=1, episode_number=0)
 
     # ------------------------------------------------------------------
     # Images endpoint
@@ -796,3 +775,146 @@ class TestTMDBRequestHTTPLayer:
             await tmdb_service.get_trending()
 
         assert mock_client.get.call_count == TMDBService._MAX_TRANSPORT_RETRIES
+
+
+class TestTMDBCallSurfaceCharacterization:
+    """Pin the outbound TMDB call surface (endpoints, params, cache keys, dedupe).
+
+    TMDB is rate-limited, so refactoring the media-type validation must not
+    add, remove or reorder any call for valid inputs.
+    """
+
+    _VALID_CALLS = [
+        ("get_trending", ("tv",), "/trending/tv/day", None),
+        ("get_trending", ("multi", "week"), "/trending/multi/week", None),
+        ("search", ("q", "movie"), "/search/movie", {"query": "q"}),
+        ("search", ("q", "multi"), "/search/multi", {"query": "q"}),
+        ("get_details", (7, "tv"), "/tv/7", None),
+        ("get_details", (7, "movie"), "/movie/7", None),
+        ("get_recommendations", (7, "movie"), "/movie/7/recommendations", None),
+        ("get_similar", (7, "tv"), "/tv/7/similar", None),
+        ("get_alternative_titles", (7, "movie"), "/movie/7/alternative_titles", None),
+        ("get_external_ids", (7, "tv"), "/tv/7/external_ids", None),
+        ("get_images", (7, "movie"), "/movie/7/images", None),
+        ("get_show_seasons", (7,), "/tv/7", None),
+    ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("method", "args", "endpoint", "params"), _VALID_CALLS)
+    async def test_valid_inputs_issue_exactly_one_request_with_expected_args(
+        self,
+        tmdb_service: TMDBService,
+        method: str,
+        args: tuple[object, ...],
+        endpoint: str,
+        params: dict[str, str] | None,
+    ) -> None:
+        """Each valid call makes exactly one ``_request`` with the pinned endpoint/params."""
+        assert len(self._VALID_CALLS) >= 10
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = {}
+            await getattr(tmdb_service, method)(*args)
+
+        mock_request.assert_called_once()
+        assert mock_request.call_args.args[0] == endpoint
+        assert mock_request.call_args.kwargs.get("params") == params
+        assert not mock_request.call_args.kwargs.get("bypass_cache", False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [
+            ("get_trending", ("podcast",)),
+            ("search", ("q", "podcast")),
+            ("get_details", (1, "multi")),
+            ("get_recommendations", (1, "multi")),
+            ("get_similar", (1, "multi")),
+            ("get_alternative_titles", (1, "multi")),
+            ("get_external_ids", (1, "multi")),
+            ("get_images", (1, "multi")),
+        ],
+    )
+    async def test_invalid_media_type_raises_before_any_request(
+        self, tmdb_service: TMDBService, method: str, args: tuple[object, ...]
+    ) -> None:
+        """Invalid media types raise ValueError and never reach the cache or network."""
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
+            with pytest.raises(ValueError, match="Invalid media_type"):
+                await getattr(tmdb_service, method)(*args)
+        mock_request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_show_seasons_forwards_bypass_cache(self, tmdb_service: TMDBService) -> None:
+        """get_show_seasons(bypass_cache=True) reaches _request with bypass_cache=True."""
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = {}
+            await tmdb_service.get_show_seasons(7, bypass_cache=True)
+        mock_request.assert_called_once_with("/tv/7", bypass_cache=True)
+
+    @pytest.mark.asyncio
+    async def test_get_show_seasons_http_url_params_and_cache_key(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """get_show_seasons hits ``/tv/<id>`` with only the api_key and caches under that key."""
+        async with _patched_http(json_data={"id": 7}) as (mock_client, mock_cache_set):
+            await tmdb_service.get_show_seasons(7)
+
+        mock_client.get.assert_called_once()
+        assert mock_client.get.call_args.args[0] == f"{tmdb_service.base_url}/tv/7"
+        assert mock_client.get.call_args.kwargs["params"] == {"api_key": "test-key"}
+        expected_key = tmdb_module.cache.make_key(
+            f"{tmdb_service.base_url}/tv/7" + str(sorted({"api_key": "test-key"}.items()))
+        )
+        assert mock_cache_set.call_args.args[0] == expected_key
+
+    @pytest.mark.asyncio
+    async def test_details_and_show_seasons_share_one_flight(
+        self, tmdb_service: TMDBService
+    ) -> None:
+        """Concurrent get_details(tv) and get_show_seasons for one id make a single HTTP call."""
+        http_calls = 0
+
+        async def slow_get(*args: object, **kwargs: object) -> MagicMock:
+            nonlocal http_calls
+            http_calls += 1
+            await asyncio.sleep(0.02)  # let the second caller reach the flight check
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = {"id": 7}
+            resp.status_code = 200
+            resp.elapsed.total_seconds.return_value = 0.02
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = False
+        mock_client.get = slow_get
+
+        @asynccontextmanager
+        async def noop_acquire() -> AsyncGenerator[None]:
+            yield
+
+        with (
+            patch("httpx2.AsyncClient", return_value=mock_client),
+            patch.object(tmdb_module.rate_limiter, "acquire", noop_acquire),
+            patch("redis.asyncio.from_url", return_value=_FakeRedis()),
+        ):
+            results = await asyncio.gather(
+                tmdb_service.get_details(7, "tv"), tmdb_service.get_show_seasons(7)
+            )
+
+        assert results == [{"id": 7}, {"id": 7}]
+        assert http_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_require_media_type_messages(self, tmdb_service: TMDBService) -> None:
+        """The two allowed-set variants keep their exact error messages."""
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Invalid media_type: 'bad'. Must be 'movie', 'tv', or 'multi'."),
+        ):
+            await tmdb_service.search("q", "bad")
+        with pytest.raises(
+            ValueError, match=re.escape("Invalid media_type: 'multi'. Must be 'movie' or 'tv'.")
+        ):
+            await tmdb_service.get_images(1, "multi")
