@@ -827,9 +827,10 @@ exports[`ShowDetail characterization: tv show > rich tv page DOM and mount reque
   "GET /api/shows/1/episodes",
   "GET /api/rss/subscriptions?show_id=1",
   "GET /api/rss/feeds",
-  "GET /api/watchlist?limit=10000",
+  "GET /api/watchlist?show_id=1",
   "GET /api/settings",
-  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/shows/index",
+  "GET /api/watchlist?limit=10000",
   "GET /api/shows/1/similar",
 ]
 `;

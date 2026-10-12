@@ -43,6 +43,7 @@ export default function ShowDetail() {
     config,
     rssSubs,
     rssFeeds,
+    watchlistEntry,
     watchlistEntries,
     isMovie,
     isLoading,
@@ -112,7 +113,6 @@ export default function ShowDetail() {
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
-  const watchlistEntry = watchlistEntries.find((e) => e.show_id === showId) ?? null
 
   // Async completions close their own modal only; if the user has since moved
   // to a different modal, that one must stay open (as with the old per-modal flags).
