@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_feed_fetch_service, get_llm_service, get_tmdb
+from jidou.api.lookups import get_or_404, get_show_or_404, one_or_404
 from jidou.config import settings
 from jidou.database import get_session
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
@@ -133,10 +134,7 @@ async def update_feed(
     Raises:
         HTTPException: 404 if the feed is not found.
     """
-    stmt = select(RssFeed).where(RssFeed.id == feed_id)
-    feed = (await db_session.execute(stmt)).scalar_one_or_none()
-    if feed is None:
-        raise HTTPException(status_code=404, detail="RSS feed not found")
+    feed = await _get_feed_or_404(db_session, feed_id)
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(feed, field, value)
@@ -166,10 +164,13 @@ async def delete_feed(
         HTTPException: 400 if subscriptions reference the feed.
     """
     # Lock the feed row first so no subscription can attach between the guard check and delete
-    stmt = select(RssFeed).where(RssFeed.id == feed_id).with_for_update()
-    feed = (await db_session.execute(stmt)).scalar_one_or_none()
-    if feed is None:
-        raise HTTPException(status_code=404, detail="RSS feed not found")
+    feed = await get_or_404(
+        db_session,
+        RssFeed,
+        RssFeed.id == feed_id,
+        detail="RSS feed not found",
+        for_update=True,
+    )
 
     sub_count_stmt = select(RssSubscription).where(RssSubscription.feed_id == feed_id).limit(1)
     has_subs = (await db_session.execute(sub_count_stmt)).scalar_one_or_none() is not None
@@ -210,11 +211,7 @@ async def browse_feed_entries(
         HTTPException: 404 if the feed is not found; 502 if the feed cannot be
             fetched or is not a feed; 504 if the fetch timed out.
     """
-    feed = (
-        await db_session.execute(select(RssFeed).where(RssFeed.id == feed_id))
-    ).scalar_one_or_none()
-    if feed is None:
-        raise HTTPException(status_code=404, detail="RSS feed not found")
+    feed = await _get_feed_or_404(db_session, feed_id)
 
     try:
         result = await fetcher.fetch_entries(feed.url, bypass_cache=refresh)
@@ -284,12 +281,7 @@ async def browse_feed_entries(
 
 async def _get_feed_or_404(db_session: AsyncSession, feed_id: int) -> RssFeed:
     """Load a feed or raise 404."""
-    feed = (
-        await db_session.execute(select(RssFeed).where(RssFeed.id == feed_id))
-    ).scalar_one_or_none()
-    if feed is None:
-        raise HTTPException(status_code=404, detail="RSS feed not found")
-    return feed
+    return await get_or_404(db_session, RssFeed, RssFeed.id == feed_id, detail="RSS feed not found")
 
 
 async def _feed_group_or_http_error(
@@ -544,18 +536,10 @@ async def create_subscription(
         HTTPException: 404 if the referenced feed or show does not exist.
     """
     if payload.feed_id is not None:
-        feed_exists = (
-            await db_session.execute(select(RssFeed).where(RssFeed.id == payload.feed_id))
-        ).scalar_one_or_none()
-        if feed_exists is None:
-            raise HTTPException(status_code=404, detail="RSS feed not found")
+        await _get_feed_or_404(db_session, payload.feed_id)
 
     if payload.show_id is not None:
-        show_exists = (
-            await db_session.execute(select(Show).where(Show.id == payload.show_id))
-        ).scalar_one_or_none()
-        if show_exists is None:
-            raise HTTPException(status_code=404, detail="Show not found")
+        await get_show_or_404(db_session, payload.show_id)
 
     new_sub = RssSubscription(**payload.model_dump())
     new_sub.extra_config = fill_missing_yarss2_defaults(new_sub.extra_config)
@@ -688,10 +672,11 @@ async def get_subscription(
     Raises:
         HTTPException: 404 if the subscription is not found.
     """
-    stmt = _sub_stmt().where(RssSubscription.id == sub_id)
-    sub = (await db_session.execute(stmt)).scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=404, detail="RSS subscription not found")
+    sub = await one_or_404(
+        db_session,
+        _sub_stmt().where(RssSubscription.id == sub_id),
+        detail="RSS subscription not found",
+    )
     return sub
 
 
@@ -717,24 +702,17 @@ async def update_subscription(
         HTTPException: 404 if the subscription is not found.
         HTTPException: 404 if the referenced feed does not exist.
     """
-    stmt = _sub_stmt().where(RssSubscription.id == sub_id)
-    sub = (await db_session.execute(stmt)).scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=404, detail="RSS subscription not found")
+    sub = await one_or_404(
+        db_session,
+        _sub_stmt().where(RssSubscription.id == sub_id),
+        detail="RSS subscription not found",
+    )
 
     if "feed_id" in payload.model_fields_set and payload.feed_id is not None:
-        feed_exists = (
-            await db_session.execute(select(RssFeed).where(RssFeed.id == payload.feed_id))
-        ).scalar_one_or_none()
-        if feed_exists is None:
-            raise HTTPException(status_code=404, detail="RSS feed not found")
+        await _get_feed_or_404(db_session, payload.feed_id)
 
     if "show_id" in payload.model_fields_set and payload.show_id is not None:
-        show_exists = (
-            await db_session.execute(select(Show).where(Show.id == payload.show_id))
-        ).scalar_one_or_none()
-        if show_exists is None:
-            raise HTTPException(status_code=404, detail="Show not found")
+        await get_show_or_404(db_session, payload.show_id)
 
     for field in payload.model_fields_set:
         setattr(sub, field, getattr(payload, field))
@@ -767,10 +745,13 @@ async def delete_subscription(
         HTTPException: 400 if the subscription is enabled in the remote config.
     """
     # Lock the row so a concurrent PATCH can't flip enabled_in_config after this check
-    stmt = select(RssSubscription).where(RssSubscription.id == sub_id).with_for_update()
-    sub = (await db_session.execute(stmt)).scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=404, detail="RSS subscription not found")
+    sub = await get_or_404(
+        db_session,
+        RssSubscription,
+        RssSubscription.id == sub_id,
+        detail="RSS subscription not found",
+        for_update=True,
+    )
 
     if sub.enabled_in_config:
         raise HTTPException(
@@ -817,20 +798,17 @@ async def suggest_regex(
         HTTPException: 422 if the LLM provider is not configured.
         HTTPException: 503 if the LLM call fails.
     """
-    stmt = _sub_stmt().where(RssSubscription.id == sub_id)
-    sub = (await db_session.execute(stmt)).scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=404, detail="RSS subscription not found")
+    sub = await one_or_404(
+        db_session,
+        _sub_stmt().where(RssSubscription.id == sub_id),
+        detail="RSS subscription not found",
+    )
 
     feed = sub.feed
     if body is not None and "feed_id" in body.model_fields_set:
         feed = None
         if body.feed_id is not None:
-            feed = (
-                await db_session.execute(select(RssFeed).where(RssFeed.id == body.feed_id))
-            ).scalar_one_or_none()
-            if feed is None:
-                raise HTTPException(status_code=404, detail="RSS feed not found")
+            feed = await _get_feed_or_404(db_session, body.feed_id)
 
     show_title = sub.show.title if sub.show else None
     try:
@@ -881,11 +859,9 @@ async def download_config(
         HTTPException: 500 if the latest snapshot cannot be parsed.
     """
     snapshot_stmt = select(RssConfigSnapshot).order_by(RssConfigSnapshot.created_at.desc()).limit(1)
-    snapshot = (await db_session.execute(snapshot_stmt)).scalar_one_or_none()
-    if snapshot is None:
-        raise HTTPException(
-            status_code=404, detail="No config snapshot found — run an import first"
-        )
+    snapshot = await one_or_404(
+        db_session, snapshot_stmt, detail="No config snapshot found — run an import first"
+    )
 
     try:
         header, old_body = parse_rss_config(snapshot.raw_content)
@@ -931,11 +907,9 @@ async def diff_config(
         HTTPException: 500 if the latest snapshot cannot be parsed.
     """
     snapshot_stmt = select(RssConfigSnapshot).order_by(RssConfigSnapshot.created_at.desc()).limit(1)
-    snapshot = (await db_session.execute(snapshot_stmt)).scalar_one_or_none()
-    if snapshot is None:
-        raise HTTPException(
-            status_code=404, detail="No config snapshot found — run an import first"
-        )
+    snapshot = await one_or_404(
+        db_session, snapshot_stmt, detail="No config snapshot found — run an import first"
+    )
 
     try:
         header, old_body = parse_rss_config(snapshot.raw_content)
@@ -986,9 +960,7 @@ async def preview_subscription(
         .where(RssSubscription.id == sub_id)
         .options(selectinload(RssSubscription.feed))
     )
-    sub = (await db_session.execute(stmt)).scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=404, detail="RSS subscription not found")
+    sub = await one_or_404(db_session, stmt, detail="RSS subscription not found")
 
     return RssPublishOrchestrator.build_sub_dict(sub, sub.remote_key or "unassigned")
 
