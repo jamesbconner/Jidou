@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+from jidou.services.llm_json import json_schema_format, parse_llm_json, sanitize_for_prompt
 
 if TYPE_CHECKING:
     from jidou.models.show import Show
@@ -20,24 +20,9 @@ _ALIAS_SYSTEM: str = _PROMPT_FILE.read_text(encoding="utf-8")
 
 # Structured output schema (OpenAI response_format shape).  Wrapping the array
 # in an object is required — the spec does not allow a bare array root.
-_ALIAS_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "show_aliases",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "aliases": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                }
-            },
-            "required": ["aliases"],
-            "additionalProperties": False,
-        },
-    },
-}
+_ALIAS_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "show_aliases", {"aliases": {"type": "array", "items": {"type": "string"}}}
+)
 
 # TMDB country codes whose alternative titles are included verbatim on the
 # no-LLM path.  JP covers Japanese originals; US/GB cover English titles;

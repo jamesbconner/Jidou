@@ -86,3 +86,20 @@ def test_no_private_names_imported_across_orchestrators() -> None:
                 continue  # private helper modules may be imported freely
             found.update((path.stem, a.name) for a in node.names if a.name.startswith("_"))
     assert found == _KNOWN_PRIVATE_IMPORTS
+
+
+def test_orchestrators_have_no_function_level_imports() -> None:
+    """Orchestrators import at module top; there is no cycle left to dodge lazily."""
+    files = _orchestrator_files()
+    assert len(files) >= 10  # guard against the glob silently matching nothing
+    found: set[tuple[str, int]] = set()
+    for path in files:
+        for func in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            found.update(
+                (path.stem, node.lineno)
+                for node in ast.walk(func)
+                if isinstance(node, ast.Import | ast.ImportFrom)
+            )
+    assert found == set()

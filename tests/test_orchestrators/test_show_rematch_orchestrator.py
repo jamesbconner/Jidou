@@ -632,7 +632,9 @@ async def test_sync_new_episodes_raises_502_on_failure() -> None:
 
     orch = ShowRematchOrchestrator(session, tmdb)
 
-    with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_tmdb_orch_cls:
+    with patch(
+        "jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator"
+    ) as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=RuntimeError("TMDB down")
         )
