@@ -48,7 +48,6 @@ from jidou.services.feed_entry_grouping import FeedEntryGroup, group_entries
 from jidou.services.feed_fetch import FeedFetchError, FeedFetchService
 from jidou.services.feed_subscription_match import SubscriptionMatcher, SubscriptionRule
 from jidou.services.llm_service import LLMService
-from jidou.services.progress import TaskDispatchError
 from jidou.services.rss_config import (
     diff_rss_config,
     fill_missing_yarss2_defaults,
@@ -61,7 +60,7 @@ from jidou.services.rss_regex_suggestor import (
     RssRegexSuggestor,
 )
 from jidou.services.show_lookup import find_show_by_name
-from jidou.services.task_dispatch import CeleryTaskRef, enqueue_celery_task
+from jidou.services.task_dispatch import CeleryTaskRef, TaskDispatchError, enqueue_celery_task
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)

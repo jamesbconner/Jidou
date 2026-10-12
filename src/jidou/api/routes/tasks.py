@@ -7,8 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask, TaskStatus
 from jidou.schemas.task_schema import TaskList, TaskRead, TaskTrigger
-from jidou.services.progress import TaskDispatchError
-from jidou.services.task_dispatch import UnknownTaskTypeError, dispatch_registered_task
+from jidou.services.task_dispatch import (
+    TaskDispatchError,
+    UnknownTaskTypeError,
+    dispatch_registered_task,
+)
 from jidou.workers.celery_app import celery_app
 
 router = APIRouter(tags=["tasks"])

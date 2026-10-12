@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.database import get_session
 from jidou.models.task import BackgroundTask
 from jidou.schemas.task_schema import TaskRead
-from jidou.services.progress import TaskDispatchError
-from jidou.services.task_dispatch import CeleryTaskRef, enqueue_celery_task
+from jidou.services.task_dispatch import CeleryTaskRef, TaskDispatchError, enqueue_celery_task
 
 router = APIRouter(prefix="/import", tags=["import"])
 
