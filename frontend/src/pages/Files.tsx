@@ -1,179 +1,9 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { Link } from 'react-router'
-import { useFiles, useAssignFileShow, useAssignFileEpisode } from '@/hooks/useFiles'
-import { useShowEpisodes } from '@/hooks/useShows'
-import { FileStatusBadge } from '@/components/FileStatusBadge'
-import { Pagination } from '@/components/Pagination'
-import { ResolveFileModal } from '@/components/ResolveFileModal'
-import { RematchModal } from '@/components/RematchModal'
-import { FixEpisodeModal } from '@/components/FixEpisodeModal'
-import { Card } from '@/components/ui/Card'
+import { useState, useRef, useEffect } from 'react'
+import { useFiles } from '@/hooks/useFiles'
+import { FilesModals, FilesSummary, FilesTable } from '@/pages/files/FilesTable'
+import { FilesToolbar } from '@/pages/files/FilesToolbar'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
-import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
-import { buildSeasonMap } from '@/utils/episodeUtils'
-
-const STATUS_OPTIONS: (FileStatus | '')[] = [
-  '',
-  'pending',
-  'discovered',
-  'downloading',
-  'downloaded',
-  'unmatched',
-  'matched',
-  'routing',
-  'routed',
-  'error',
-  'seeded',
-  'missing',
-]
-
-function InlineShowId({ fileId, showId }: { fileId: number; showId: number | null }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(showId?.toString() ?? '')
-  const cancelRef = useRef(false)
-  const patch = useAssignFileShow(fileId)
-
-  function commit() {
-    if (cancelRef.current) { cancelRef.current = false; return }
-    setEditing(false)
-    if (value === '') {
-      if (showId !== null) patch.mutate(null)
-      return
-    }
-    const parsed = parseInt(value, 10)
-    if (isNaN(parsed) || parsed <= 0) {
-      setValue(showId?.toString() ?? '')
-      return
-    }
-    if (parsed !== showId) patch.mutate(parsed)
-  }
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => { cancelRef.current = false; setValue(showId?.toString() ?? ''); setEditing(true) }}
-        className="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left"
-        title="Click to assign show"
-      >
-        {showId ?? '—'}
-      </button>
-    )
-  }
-
-  return (
-    <input
-      type="number"
-      autoFocus
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') { cancelRef.current = true; setValue(showId?.toString() ?? ''); setEditing(false) }
-      }}
-      className="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-    />
-  )
-}
-
-function pad2(n: number) { return String(n).padStart(2, '0') }
-
-function InlineEpisodePicker({
-  fileId,
-  showId,
-  episodeId,
-  episode,
-}: {
-  fileId: number
-  showId: number
-  episodeId: number | null
-  episode: EpisodeBrief | null
-}) {
-  const [editing, setEditing] = useState(false)
-  const [selectValue, setSelectValue] = useState(episodeId?.toString() ?? '')
-  const [error, setError] = useState<string | null>(null)
-  const { data: episodes = [] } = useShowEpisodes(showId)
-
-  const patch = useAssignFileEpisode(fileId, {
-    onSuccess: () => {
-      setEditing(false)
-      setError(null)
-    },
-    onError: (err) => {
-      setSelectValue(episodeId?.toString() ?? '')
-      const msg = err instanceof Error ? err.message : 'Failed to update episode'
-      setError(msg)
-    },
-  })
-
-  const seasonMap = useMemo(() => buildSeasonMap(episodes), [episodes])
-  const seasons = useMemo(() => Array.from(seasonMap.keys()).sort((a, b) => a - b), [seasonMap])
-
-  const label = episode
-    ? `S${pad2(episode.season_number)}E${pad2(episode.episode_number)} · ${episode.name}`
-    : '—'
-
-  if (!editing) {
-    return (
-      <div className="mt-0.5">
-        <button
-          onClick={() => { setSelectValue(episodeId?.toString() ?? ''); setError(null); setEditing(true) }}
-          disabled={patch.isPending}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Click to assign episode"
-        >
-          {label}
-        </button>
-        {error && <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">{error}</p>}
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-0.5">
-      <select
-        autoFocus
-        value={selectValue}
-        onChange={(e) => {
-          const val = e.target.value
-          setSelectValue(val)
-          patch.mutate(val === '' ? null : Number(val))
-        }}
-        onBlur={() => setEditing(false)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        disabled={patch.isPending}
-        className="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs dark:bg-gray-800 dark:text-gray-100"
-      >
-        <option value="">— clear —</option>
-        {seasons.map((sn) => (
-          <optgroup key={sn} label={`Season ${sn}`}>
-            {(seasonMap.get(sn) ?? [])
-              .sort((a, b) => a.episode_number - b.episode_number)
-              .map((ep) => (
-                <option key={ep.id} value={ep.id}>
-                  {`S${pad2(ep.season_number)}E${pad2(ep.episode_number)} — ${ep.name}`}
-                  {ep.file_tracked && ep.id !== episodeId ? ' (taken)' : ''}
-                </option>
-              ))}
-          </optgroup>
-        ))}
-      </select>
-      {error && <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">{error}</p>}
-    </div>
-  )
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
-}
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
-const MAX_RECORDS_OPTIONS = [50, 100, 200, 500, 1000]
+import type { FileRead, FileStatus } from '@/types/api'
 
 interface FilesFilterState {
   status: FileStatus | ''
@@ -187,6 +17,15 @@ const DEFAULT_FILES_FILTERS: FilesFilterState = {
   pageSize: 50,
   maxRecords: null,
   showIgnored: false,
+}
+
+/**
+ * Rows to fetch for one page. Caps the fetched page at maxRecords total across
+ * all pages combined — the last page under the cap is truncated rather than
+ * showing a full pageSize.
+ */
+function pageLimit(pageSize: number, maxRecords: number | null, offset: number): number {
+  return maxRecords !== null ? Math.max(0, Math.min(pageSize, maxRecords - offset)) : pageSize
 }
 
 export default function Files() {
@@ -224,29 +63,18 @@ export default function Files() {
   const [prevFilterKey, setPrevFilterKey] = useState(
     [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const,
   )
+  const filterKey = [statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored] as const
   let effectivePage = page
-  if (
-    prevFilterKey[0] !== statusFilter ||
-    prevFilterKey[1] !== debouncedSearch ||
-    prevFilterKey[2] !== pageSize ||
-    prevFilterKey[3] !== maxRecords ||
-    prevFilterKey[4] !== showIgnored
-  ) {
-    setPrevFilterKey([statusFilter, debouncedSearch, pageSize, maxRecords, showIgnored])
+  if (filterKey.some((value, i) => value !== prevFilterKey[i])) {
+    setPrevFilterKey(filterKey)
     setPage(0)
     effectivePage = 0
   }
 
   const offset = effectivePage * pageSize
-  // Cap the fetched page at maxRecords total across all pages combined — the
-  // last page under the cap is truncated rather than showing a full pageSize.
-  const effectiveLimit = maxRecords !== null
-    ? Math.max(0, Math.min(pageSize, maxRecords - offset))
-    : pageSize
-
   const filesQuery = useFiles({
     status: statusFilter || undefined,
-    limit: effectiveLimit,
+    limit: pageLimit(pageSize, maxRecords, offset),
     offset,
     search: debouncedSearch || undefined,
     showIgnored,
@@ -266,205 +94,46 @@ export default function Files() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search filenames…"
-          className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as FileStatus | '')}
-          className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s || 'All statuses'}</option>
-          ))}
-        </select>
-        <div>
-          <label htmlFor="files-page-size" className="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
-          <select
-            id="files-page-size"
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-          >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="files-max-records" className="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
-          <select
-            id="files-max-records"
-            value={maxRecords === null ? 'all' : String(maxRecords)}
-            onChange={(e) => setMaxRecords(e.target.value === 'all' ? null : Number(e.target.value))}
-            className="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
-          >
-            {MAX_RECORDS_OPTIONS.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-            <option value="all">All</option>
-          </select>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={showIgnored}
-          aria-label={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
-          title={showIgnored ? 'Hide ignored files' : 'Show ignored files'}
-          onClick={() => setShowIgnored(!showIgnored)}
-          className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
-        >
-          <span
-            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-              showIgnored ? 'bg-[var(--color-ocean-600)]' : 'bg-gray-300 dark:bg-gray-700'
-            }`}
-          >
-            <span
-              className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-                showIgnored ? 'translate-x-3.5' : 'translate-x-0.5'
-              }`}
-            />
-          </span>
-          Show ignored
-        </button>
-      </div>
+      <FilesToolbar
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusChange={setStatusFilter}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        maxRecords={maxRecords}
+        onMaxRecordsChange={setMaxRecords}
+        showIgnored={showIgnored}
+        onShowIgnoredChange={setShowIgnored}
+      />
 
       {isLoading ? (
         <p className="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
       ) : files.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400 text-sm">No files found.</p>
       ) : (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
-              <tr>
-                <th className="px-4 py-2 text-left">Filename</th>
-                <th className="px-4 py-2 text-left">Size</th>
-                <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-left">Downloaded</th>
-                <th className="px-4 py-2 text-left">Show</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {files.map((f) => (
-                <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-2 font-mono text-xs max-w-xs">
-                    <div className="truncate dark:text-gray-200" title={f.original_filename}>{f.original_filename}</div>
-                    {f.parsed_show_name && f.status === 'unmatched' && (
-                      <div className="text-zinc-400 truncate text-xs mt-0.5">
-                        Parsed: {f.parsed_show_name}
-                      </div>
-                    )}
-                    {f.error_message && (
-                      <div className="text-red-500 dark:text-red-400 truncate mt-0.5" title={f.error_message}>
-                        {f.error_message}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{formatBytes(f.file_size)}</td>
-                  <td className="px-4 py-2">
-                    <FileStatusBadge status={f.status} />
-                  </td>
-                  <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {new Date(f.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2">
-                    {f.show ? (
-                      <div className="space-y-0.5">
-                        <Link
-                          to={`/shows/${f.show.id}`}
-                          className="text-sm font-medium text-[var(--color-ocean-400)] hover:underline"
-                        >
-                          {f.show.title}
-                        </Link>
-                        {(f.status === 'unmatched' || f.status === 'error') ? (
-                          <InlineEpisodePicker
-                            fileId={f.id}
-                            showId={f.show.id}
-                            episodeId={f.episode_id}
-                            episode={f.episode}
-                          />
-                        ) : f.episode && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {`S${pad2(f.episode.season_number)}E${pad2(f.episode.episode_number)} · ${f.episode.name}`}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <InlineShowId fileId={f.id} showId={f.show_id} />
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap space-x-3">
-                    {f.status === 'unmatched' && f.show_id == null && (
-                      <button
-                        onClick={() => setResolveFile(f)}
-                        className="text-xs text-[var(--color-ocean-600)] hover:underline"
-                      >
-                        Resolve
-                      </button>
-                    )}
-                    {f.show_id != null &&
-                      !['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
-                        <button
-                          onClick={() => setRematchFile(f)}
-                          className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
-                        >
-                          Fix Show
-                        </button>
-                      )}
-                    {f.show_id != null && ['matched', 'routed'].includes(f.status) && (
-                      <button
-                        onClick={() => setFixEpsFile(f)}
-                        className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline"
-                      >
-                        Fix Eps
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <FilesTable files={files} onResolve={setResolveFile} onRematch={setRematchFile} onFixEps={setFixEpsFile} />
       )}
 
       {!isLoading && total > 0 && (
-        <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-          <span>
-            {maxRecords !== null && total > maxRecords
-              ? `${maxRecords} of ${total} file${total !== 1 ? 's' : ''}`
-              : `${total} file${total !== 1 ? 's' : ''}`}
-            {(debouncedSearch || statusFilter) ? ' matching filters' : ''}
-          </span>
-          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-        </div>
+        <FilesSummary
+          total={total}
+          maxRecords={maxRecords}
+          filtered={Boolean(debouncedSearch || statusFilter)}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       )}
 
-      {resolveFile && (
-        <ResolveFileModal
-          file={resolveFile}
-          onClose={() => setResolveFile(null)}
-        />
-      )}
-      {rematchFile && (
-        <RematchModal
-          file={rematchFile}
-          onClose={() => setRematchFile(null)}
-        />
-      )}
-      {fixEpsFile && (
-        <FixEpisodeModal
-          file={fixEpsFile}
-          onClose={() => setFixEpsFile(null)}
-        />
-      )}
+      <FilesModals
+        resolveFile={resolveFile}
+        rematchFile={rematchFile}
+        fixEpsFile={fixEpsFile}
+        onCloseResolve={() => setResolveFile(null)}
+        onCloseRematch={() => setRematchFile(null)}
+        onCloseFixEps={() => setFixEpsFile(null)}
+      />
     </div>
   )
 }

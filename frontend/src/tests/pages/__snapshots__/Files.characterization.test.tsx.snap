@@ -1,0 +1,2450 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Files characterization > inline episode picker lists seasons, marks taken, assigns and clears > mutations 1`] = `
+[
+  "PATCH /api/files/2",
+]
+`;
+
+exports[`Files characterization > inline episode picker lists seasons, marks taken, assigns and clears > picker open 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-zinc-400 truncate text-xs mt-0.5">Parsed: Parsed Name</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">512 B</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] hover:underline">Resolve</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-red-500 dark:text-red-400 truncate mt-0.5" title="boom happened">boom happened</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">2.0 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]">error</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<select class="border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-xs dark:bg-gray-800 dark:text-gray-100">
+<option value="">— clear —</option>
+<optgroup label="Season 1">
+<option value="51">S01E01 — First</option>
+<option value="50">S01E02 — Second</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="60">S02E01 — Opener</option>
+</optgroup>
+</select>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">5.0 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)]">routed</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="text-xs text-gray-500 dark:text-gray-400">S01E02 · Second</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">3.00 GB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">downloading</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">1.5 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">9</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">—</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>7 files</span>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > inline show id editor: assign, clear, reject, escape > after 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-zinc-400 truncate text-xs mt-0.5">Parsed: Parsed Name</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">512 B</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] hover:underline">Resolve</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-red-500 dark:text-red-400 truncate mt-0.5" title="boom happened">boom happened</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">2.0 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]">error</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">S01E02 · Second</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">5.0 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)]">routed</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="text-xs text-gray-500 dark:text-gray-400">S01E02 · Second</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">3.00 GB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">downloading</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">1.5 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">9</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">—</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>7 files</span>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > inline show id editor: assign, clear, reject, escape > editing 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-zinc-400 truncate text-xs mt-0.5">Parsed: Parsed Name</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">512 B</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<input class="border rounded px-1 py-0.5 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="number" value="">
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] hover:underline">Resolve</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-red-500 dark:text-red-400 truncate mt-0.5" title="boom happened">boom happened</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">2.0 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]">error</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">S01E02 · Second</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">5.0 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)]">routed</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="text-xs text-gray-500 dark:text-gray-400">S01E02 · Second</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">3.00 GB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">downloading</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">1.5 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">9</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">—</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>7 files</span>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > inline show id editor: assign, clear, reject, escape > mutations 1`] = `
+[
+  "PATCH /api/files/1",
+]
+`;
+
+exports[`Files characterization > loading, empty and filtered-empty states > empty 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<p class="text-gray-500 dark:text-gray-400 text-sm">No files found.</p>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > loading, empty and filtered-empty states > loading 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<p class="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > mixed rows DOM and mount requests > dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-zinc-400 truncate text-xs mt-0.5">Parsed: Parsed Name</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">512 B</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] hover:underline">Resolve</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-red-500 dark:text-red-400 truncate mt-0.5" title="boom happened">boom happened</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">2.0 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]">error</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">S01E02 · Second</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">5.0 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)]">routed</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="text-xs text-gray-500 dark:text-gray-400">S01E02 · Second</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">3.00 GB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">downloading</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">1.5 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">9</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">—</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>7 files</span>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > mixed rows DOM and mount requests > requests 1`] = `
+[
+  "GET /api/files?limit=50&offset=0",
+  "GET /api/shows/5/episodes",
+]
+`;
+
+exports[`Files characterization > pagination, page reset on filter change and last-page truncation under the cap > dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f1.mkv">f1.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f2.mkv">f2.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f3.mkv">f3.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f4.mkv">f4.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f5.mkv">f5.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f6.mkv">f6.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f7.mkv">f7.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f8.mkv">f8.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f9.mkv">f9.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f10.mkv">f10.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f11.mkv">f11.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f12.mkv">f12.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f13.mkv">f13.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f14.mkv">f14.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f15.mkv">f15.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f16.mkv">f16.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f17.mkv">f17.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f18.mkv">f18.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f19.mkv">f19.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f20.mkv">f20.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>50 of 120 files matching filters</span>
+<div class="flex items-center gap-2 text-sm">
+<button disabled="" class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="First page">«</button>
+<button disabled="" class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Previous page">‹</button>
+<span class="flex items-center gap-1 text-gray-600 dark:text-gray-300">Page<input min="1" max="3" aria-label="Go to page" class="w-14 border rounded px-1 py-0.5 text-center dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500" type="number" value="1">of 3</span>
+<button class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Next page">›</button>
+<button class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Last page">»</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > pagination, page reset on filter change and last-page truncation under the cap > requests 1`] = `
+[
+  "GET /api/files?limit=50&offset=0",
+  "GET /api/files?limit=20&offset=0",
+  "GET /api/files?limit=20&offset=20",
+  "GET /api/files?limit=20&offset=0",
+  "GET /api/files?limit=20&offset=20",
+  "GET /api/files?limit=10&offset=40",
+  "GET /api/files?status=error&limit=20&offset=0",
+]
+`;
+
+exports[`Files characterization > row actions open their modals > resolve modal 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-zinc-400 truncate text-xs mt-0.5">Parsed: Parsed Name</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">512 B</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] hover:underline">Resolve</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+<div class="text-red-500 dark:text-red-400 truncate mt-0.5" title="boom happened">boom happened</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">2.0 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ember-100)] text-[var(--color-ember-700)] dark:bg-[var(--color-ember-950)]/40 dark:text-[var(--color-ember-300)]">error</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">S01E02 · Second</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">5.0 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)]">routed</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="text-xs text-gray-500 dark:text-gray-400">S01E02 · Second</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">3.00 GB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">downloading</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">1.5 MB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">9</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Eps</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300">unmatched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<div class="space-y-0.5">
+<a class="text-sm font-medium text-[var(--color-ocean-400)] hover:underline" href="/shows/5" data-discover="true">Example Show</a>
+<div class="mt-0.5">
+<button class="text-xs text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left disabled:opacity-50 disabled:cursor-not-allowed" title="Click to assign episode">—</button>
+</div>
+</div>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+<button class="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline">Fix Show</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="show.s01e01.mkv">show.s01e01.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-[var(--color-seafoam-100)] text-[var(--color-seafoam-700)] dark:bg-[var(--color-seafoam-950)]/40 dark:text-[var(--color-seafoam-300)]">matched</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>7 files</span>
+</div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="resolve-file-title">
+<div class="w-full max-w-2xl panel-dark overflow-hidden flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between">
+<h2 id="resolve-file-title" class="text-sm font-semibold text-zinc-100">Resolve unmatched file</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+<div class="bg-zinc-800 rounded p-3 space-y-1">
+<div class="text-xs text-zinc-400">Filename</div>
+<div class="font-mono text-xs text-zinc-200 truncate">show.s01e01.mkv</div>
+<div class="text-xs text-zinc-400 mt-1">Parsed as</div>
+<div class="text-xs text-zinc-300">Parsed Name</div>
+</div>
+<div class="space-y-2">
+<div class="text-xs text-zinc-400">In your library</div>
+<div class="text-xs text-zinc-500 py-1">Searching library…</div>
+<div class="space-y-1.5">
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-2">
+<label class="text-xs text-zinc-400">Search TMDB</label>
+<button class="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]">refine search</button>
+<button class="text-xs text-[var(--color-ocean-400)] hover:text-[var(--color-ocean-300)]">search by TMDB ID</button>
+</div>
+</div>
+<div class="space-y-2">
+<div class="text-xs text-zinc-500 py-2">Loading suggestions…</div>
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50">Reset for auto re-match</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Cancel</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Confirm match</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > show-ignored switch and persisted filters > dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="true" aria-label="Hide ignored files" title="Hide ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-[var(--color-ocean-600)]">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-3.5">
+</span>
+</span>Show ignored</button>
+</div>
+<p class="text-gray-400 dark:text-gray-500 text-sm">Loading…</p>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > show-ignored switch and persisted filters > stored 1`] = `
+{
+  "maxRecords": null,
+  "pageSize": 50,
+  "showIgnored": true,
+  "status": "",
+}
+`;
+
+exports[`Files characterization > summary line reflects filters and the max-records cap > capped dom 1`] = `
+"<div>
+<div class="space-y-4">
+<div class="flex items-center gap-3 flex-wrap">
+<h1 class="text-2xl font-bold mr-auto dark:text-gray-100">Files</h1>
+<input placeholder="Search filenames…" class="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100" type="search" value="abc">
+<select class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="">All statuses</option>
+<option value="pending">pending</option>
+<option value="discovered">discovered</option>
+<option value="downloading">downloading</option>
+<option value="downloaded">downloaded</option>
+<option value="unmatched">unmatched</option>
+<option value="matched">matched</option>
+<option value="routing">routing</option>
+<option value="routed">routed</option>
+<option value="error">error</option>
+<option value="seeded">seeded</option>
+<option value="missing">missing</option>
+</select>
+<div>
+<label for="files-page-size" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Per page</label>
+<select id="files-page-size" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="10">10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+<option value="100">100</option>
+</select>
+</div>
+<div>
+<label for="files-max-records" class="text-xs text-gray-500 dark:text-gray-400 mr-2">Max records</label>
+<select id="files-max-records" class="border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100">
+<option value="50">50</option>
+<option value="100">100</option>
+<option value="200">200</option>
+<option value="500">500</option>
+<option value="1000">1000</option>
+<option value="all">All</option>
+</select>
+</div>
+<button type="button" role="switch" aria-checked="false" aria-label="Show ignored files" title="Show ignored files" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+<span class="relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors bg-gray-300 dark:bg-gray-700">
+<span class="inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform translate-x-0.5">
+</span>
+</span>Show ignored</button>
+</div>
+<div class="card overflow-hidden">
+<table class="w-full text-sm">
+<thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs uppercase">
+<tr>
+<th class="px-4 py-2 text-left">Filename</th>
+<th class="px-4 py-2 text-left">Size</th>
+<th class="px-4 py-2 text-left">Status</th>
+<th class="px-4 py-2 text-left">Downloaded</th>
+<th class="px-4 py-2 text-left">Show</th>
+<th class="px-4 py-2">
+</th>
+</tr>
+</thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f1.mkv">f1.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f2.mkv">f2.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f3.mkv">f3.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f4.mkv">f4.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f5.mkv">f5.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f6.mkv">f6.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f7.mkv">f7.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f8.mkv">f8.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f9.mkv">f9.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f10.mkv">f10.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f11.mkv">f11.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f12.mkv">f12.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f13.mkv">f13.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f14.mkv">f14.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f15.mkv">f15.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f16.mkv">f16.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f17.mkv">f17.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f18.mkv">f18.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f19.mkv">f19.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f20.mkv">f20.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f21.mkv">f21.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f22.mkv">f22.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f23.mkv">f23.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f24.mkv">f24.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f25.mkv">f25.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f26.mkv">f26.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f27.mkv">f27.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f28.mkv">f28.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f29.mkv">f29.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f30.mkv">f30.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f31.mkv">f31.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f32.mkv">f32.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f33.mkv">f33.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f34.mkv">f34.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f35.mkv">f35.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f36.mkv">f36.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f37.mkv">f37.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f38.mkv">f38.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f39.mkv">f39.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f40.mkv">f40.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f41.mkv">f41.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f42.mkv">f42.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f43.mkv">f43.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f44.mkv">f44.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f45.mkv">f45.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f46.mkv">f46.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f47.mkv">f47.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f48.mkv">f48.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f49.mkv">f49.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800">
+<td class="px-4 py-2 font-mono text-xs max-w-xs">
+<div class="truncate dark:text-gray-200" title="f50.mkv">f50.mkv</div>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400">976.6 KB</td>
+<td class="px-4 py-2">
+<span class="px-2 py-0.5 rounded-full text-xs font-medium capitalize bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">discovered</span>
+</td>
+<td class="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">DATE</td>
+<td class="px-4 py-2">
+<button class="text-gray-500 dark:text-gray-400 hover:text-[var(--color-ocean-600)] dark:hover:text-[var(--color-ocean-400)] hover:underline text-left" title="Click to assign show">—</button>
+</td>
+<td class="px-4 py-2 text-right whitespace-nowrap space-x-3">
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+<span>100 of 120 files matching filters</span>
+<div class="flex items-center gap-2 text-sm">
+<button disabled="" class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="First page">«</button>
+<button disabled="" class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Previous page">‹</button>
+<span class="flex items-center gap-1 text-gray-600 dark:text-gray-300">Page<input min="1" max="2" aria-label="Go to page" class="w-14 border rounded px-1 py-0.5 text-center dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500" type="number" value="1">of 2</span>
+<button class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Next page">›</button>
+<button class="px-2 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800" title="Last page">»</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`Files characterization > summary line reflects filters and the max-records cap > requests 1`] = `
+[
+  "GET /api/files?limit=50&offset=0",
+  "GET /api/files?search=abc&limit=50&offset=0",
+]
+`;
