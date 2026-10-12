@@ -4,6 +4,7 @@ import ast
 import inspect
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, get_args
 
 import pytest
@@ -11,6 +12,9 @@ from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
 
 from jidou import workers as workers_pkg
+from jidou.models.downloaded_file import FileStatus
+from jidou.models.episode import TrackedSource
+from jidou.models.rss import SnapshotType
 from jidou.models.task import TaskStatus
 from jidou.schemas import rss_schema
 from jidou.schemas._base import ORMModel
@@ -18,6 +22,7 @@ from jidou.schemas.rss_schema import (
     FeedAddShowRequest,
     FeedRegexTestRequest,
     RegexHintSample,
+    RssConfigDiff,
     RssFeedCreate,
     RssFeedUpdate,
     RssSubscriptionCreate,
@@ -344,3 +349,88 @@ def test_file_and_watchlist_responses_serialize_with_unchanged_json() -> None:
         "updated_at": "2026-01-02T03:04:05Z",
         "next_up": None,
     }
+
+
+def test_file_read_enum_fields_accept_none() -> None:
+    """``matched_by`` / ``ignored_reason`` stay optional after being typed as enums."""
+    from jidou.schemas.file_schema import FileRead
+
+    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    file_row = SimpleNamespace(
+        id=1,
+        show_id=None,
+        episode_id=None,
+        original_filename="a.mkv",
+        remote_path="/a.mkv",
+        local_path=None,
+        file_size=1,
+        hash_sha256=None,
+        status=FileStatus.DOWNLOADED,
+        matched_by=None,
+        ignored_reason=None,
+        error_message=None,
+        parsed_show_name=None,
+        parsed_season=None,
+        parsed_episode=None,
+        parsed_confidence=None,
+        parsed_content_type=None,
+        created_at=ts,
+        updated_at=ts,
+        show=None,
+        episode=None,
+    )
+    dumped = FileRead.model_validate(file_row).model_dump(mode="json")
+    assert dumped["matched_by"] is None
+    assert dumped["ignored_reason"] is None
+
+
+def test_response_enum_fields_serialize_as_values() -> None:
+    """Each enum-typed response field dumps to its plain string value (JSON unchanged)."""
+    from jidou.schemas.dashboard_schema import DashboardShowSummary, RecentShowItem
+    from jidou.schemas.file_schema import FileRead
+    from jidou.schemas.orphan_schema import OrphanRead
+
+    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    file_dump = FileRead(
+        id=1,
+        original_filename="a",
+        remote_path="/a",
+        file_size=1,
+        status=FileStatus.DOWNLOADED,
+        matched_by="llm",
+        ignored_reason="noscan_path",
+        created_at=ts,
+        updated_at=ts,
+    ).model_dump(mode="json")
+    assert file_dump["matched_by"] == "llm"
+    assert file_dump["ignored_reason"] == "noscan_path"
+
+    recent = RecentShowItem(
+        id=1, tmdb_id=2, title="t", media_type="tv", content_type="anime", created_at=ts
+    )
+    assert recent.model_dump(mode="json")["content_type"] == "anime"
+    summary = DashboardShowSummary(id=1, title="t", media_type="tv", content_type="movie")
+    assert summary.model_dump(mode="json")["content_type"] == "movie"
+
+    orphan = OrphanRead(
+        id=1,
+        show_id=1,
+        show_title="s",
+        tracked_filename=None,
+        tracked_source=next(iter(TrackedSource)).value,
+        old_season_number=1,
+        old_episode_number=1,
+        downloaded_file_id=None,
+        created_at=ts,
+    )
+    assert orphan.model_dump(mode="json")["tracked_source"] == next(iter(TrackedSource)).value
+
+    snapshot_value = next(iter(SnapshotType)).value
+    diff = RssConfigDiff(
+        snapshot_id=1,
+        snapshot_type=snapshot_value,
+        snapshot_created_at=ts,
+        has_changes=False,
+        diff=[],
+    )
+    assert diff.model_dump(mode="json")["snapshot_type"] == snapshot_value

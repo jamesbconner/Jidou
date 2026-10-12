@@ -439,13 +439,12 @@
           "content_type": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ContentType"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Content Type"
+            ]
           },
           "genres": {
             "anyOf": [
@@ -1528,13 +1527,12 @@
           "ignored_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/IgnoredReason"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Ignored Reason"
+            ]
           },
           "local_path": {
             "anyOf": [
@@ -1550,13 +1548,12 @@
           "matched_by": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/MatchedBy"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Matched By"
+            ]
           },
           "original_filename": {
             "title": "Original Filename",
@@ -1714,6 +1711,15 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IgnoredReason": {
+        "description": "Why a file was excluded from parse/match/route.\n\nSet at discovery time (``NOSCAN_PATH``) or via manual operator action\n(``MANUAL``); read by the download orchestrator to route the file\nstraight to ``FileStatus.IGNORED`` instead of ``DOWNLOADED``.",
+        "enum": [
+          "noscan_path",
+          "manual"
+        ],
+        "title": "IgnoredReason",
+        "type": "string"
+      },
       "LinkFileRequest": {
         "description": "Payload for manually linking an on-disk file path to an episode.\n\n``replace`` mirrors ``LinkMovieFileRequest``: when the target episode is\nalready tracked, pass ``replace=True`` to unlink whatever currently\ntracks it (see ``_detach_episode_tracking``) and link *path* in its\nplace, instead of getting a 422.",
         "properties": {
@@ -1751,6 +1757,16 @@
         ],
         "title": "LinkMovieFileRequest",
         "type": "object"
+      },
+      "MatchedBy": {
+        "description": "How the file was matched to a show/episode.",
+        "enum": [
+          "llm",
+          "heuristic",
+          "manual"
+        ],
+        "title": "MatchedBy",
+        "type": "string"
       },
       "OrphanRead": {
         "description": "Orphaned tracking record returned by ``GET /orphans``.",
@@ -1816,8 +1832,7 @@
             "title": "Tracked Filename Display"
           },
           "tracked_source": {
-            "title": "Tracked Source",
-            "type": "string"
+            "$ref": "#/components/schemas/TrackedSource"
           }
         },
         "required": [
@@ -2013,13 +2028,12 @@
           "content_type": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ContentType"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Content Type"
+            ]
           },
           "created_at": {
             "format": "date-time",
@@ -2266,8 +2280,7 @@
             "type": "integer"
           },
           "snapshot_type": {
-            "title": "Snapshot Type",
-            "type": "string"
+            "$ref": "#/components/schemas/SnapshotType"
           }
         },
         "required": [
@@ -4869,6 +4882,16 @@
         "title": "ShowSearchResult",
         "type": "object"
       },
+      "SnapshotType": {
+        "description": "Why an RSS config snapshot was taken.",
+        "enum": [
+          "import",
+          "pre_publish",
+          "post_publish"
+        ],
+        "title": "SnapshotType",
+        "type": "string"
+      },
       "StatsResponse": {
         "description": "Response model for ``GET /api/admin/stats``.\n\nAll counts default to zero so the dashboard renders safely even when\nthe database is empty or a query returns ``None``.",
         "properties": {
@@ -5180,6 +5203,15 @@
         ],
         "title": "TaskTrigger",
         "type": "object"
+      },
+      "TrackedSource": {
+        "description": "How a tracked file got attached to an episode.",
+        "enum": [
+          "match",
+          "import"
+        ],
+        "title": "TrackedSource",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {

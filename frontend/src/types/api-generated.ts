@@ -3455,8 +3455,7 @@ export interface components {
             id: number;
             /** Title */
             title: string;
-            /** Content Type */
-            content_type?: string | null;
+            content_type?: components["schemas"]["ContentType"] | null;
             /** Media Type */
             media_type: string;
             /** Poster Path */
@@ -3913,10 +3912,8 @@ export interface components {
             /** Hash Sha256 */
             hash_sha256?: string | null;
             status: components["schemas"]["FileStatus"];
-            /** Matched By */
-            matched_by?: string | null;
-            /** Ignored Reason */
-            ignored_reason?: string | null;
+            matched_by?: components["schemas"]["MatchedBy"] | null;
+            ignored_reason?: components["schemas"]["IgnoredReason"] | null;
             /** Error Message */
             error_message?: string | null;
             /** Parsed Show Name */
@@ -4005,6 +4002,16 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * IgnoredReason
+         * @description Why a file was excluded from parse/match/route.
+         *
+         *     Set at discovery time (``NOSCAN_PATH``) or via manual operator action
+         *     (``MANUAL``); read by the download orchestrator to route the file
+         *     straight to ``FileStatus.IGNORED`` instead of ``DOWNLOADED``.
+         * @enum {string}
+         */
+        IgnoredReason: "noscan_path" | "manual";
+        /**
          * LinkFileRequest
          * @description Payload for manually linking an on-disk file path to an episode.
          *
@@ -4038,6 +4045,12 @@ export interface components {
             replace: boolean;
         };
         /**
+         * MatchedBy
+         * @description How the file was matched to a show/episode.
+         * @enum {string}
+         */
+        MatchedBy: "llm" | "heuristic" | "manual";
+        /**
          * OrphanRead
          * @description Orphaned tracking record returned by ``GET /orphans``.
          */
@@ -4050,8 +4063,7 @@ export interface components {
             show_title: string;
             /** Tracked Filename */
             tracked_filename: string | null;
-            /** Tracked Source */
-            tracked_source: string;
+            tracked_source: components["schemas"]["TrackedSource"];
             /** Old Season Number */
             old_season_number: number;
             /** Old Episode Number */
@@ -4143,8 +4155,7 @@ export interface components {
             title: string;
             /** Media Type */
             media_type: string;
-            /** Content Type */
-            content_type?: string | null;
+            content_type?: components["schemas"]["ContentType"] | null;
             /** Poster Path */
             poster_path?: string | null;
             /** Backdrop Path */
@@ -4245,8 +4256,7 @@ export interface components {
         RssConfigDiff: {
             /** Snapshot Id */
             snapshot_id: number;
-            /** Snapshot Type */
-            snapshot_type: string;
+            snapshot_type: components["schemas"]["SnapshotType"];
             /**
              * Snapshot Created At
              * Format: date-time
@@ -5086,6 +5096,12 @@ export interface components {
             matched_on: "title" | "alias" | "sys_name" | "path";
         };
         /**
+         * SnapshotType
+         * @description Why an RSS config snapshot was taken.
+         * @enum {string}
+         */
+        SnapshotType: "import" | "pre_publish" | "post_publish";
+        /**
          * StatsResponse
          * @description Response model for ``GET /api/admin/stats``.
          *
@@ -5285,6 +5301,12 @@ export interface components {
              */
             dry_run: boolean;
         };
+        /**
+         * TrackedSource
+         * @description How a tracked file got attached to an episode.
+         * @enum {string}
+         */
+        TrackedSource: "match" | "import";
         /** ValidationError */
         ValidationError: {
             /** Location */
