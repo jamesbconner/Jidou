@@ -1,0 +1,594 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ScanLocalFilesModal characterization > empty and failed scans > empty 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<p class="text-sm text-zinc-500">No new media files found under this show's local path.</p>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Confirm All Matched (0)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > per-row failure shows its message and the badge; others still link in bulk > after bulk 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">a-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">failed</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+<p class="text-[11px] text-red-400">link boom /m/a-matched.mkv</p>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">b-conflict.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E02</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-900/40 text-amber-400">conflict</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">c-unmatched.mkv</p>
+<p class="text-[11px] text-zinc-500">S?E?</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-zinc-700 text-zinc-400">unmatched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">d-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E03</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-green-900/40 text-green-400">linked</span>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Confirm All Matched (1)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > per-row failure shows its message and the badge; others still link in bulk > bodies in order 1`] = `
+[
+  {
+    "path": "/m/a-matched.mkv",
+  },
+  {
+    "path": "/m/d-matched.mkv",
+  },
+]
+`;
+
+exports[`ScanLocalFilesModal characterization > rescan reseeds untouched rows but keeps a manually chosen episode > after rescan 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">a-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">c-unmatched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Confirm All Matched (2)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > scan failure message > failed 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="text-xs text-red-400 bg-red-950/30 border border-red-800/40 rounded px-3 py-2">scan boom</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Confirm All Matched (0)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > scanning, mixed results, and request order > requests 1`] = `
+[
+  "GET /api/shows/1/episodes",
+  "POST /api/shows/1/scan-local-files",
+]
+`;
+
+exports[`ScanLocalFilesModal characterization > scanning, mixed results, and request order > results 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">a-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">b-conflict.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E02</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-900/40 text-amber-400">conflict</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">c-unmatched.mkv</p>
+<p class="text-[11px] text-zinc-500">S?E?</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-zinc-700 text-zinc-400">unmatched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">d-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E03</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Confirm All Matched (2)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > scanning, mixed results, and request order > scanning 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]" disabled="">Confirm All Matched (0)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > selecting a taken episode switches to replace; selecting none disables Link > replace selected 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">a-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">b-conflict.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E02</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-900/40 text-amber-400">conflict</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">c-unmatched.mkv</p>
+<p class="text-[11px] text-zinc-500">S?E?</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-zinc-700 text-zinc-400">unmatched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-amber-700 hover:bg-amber-600">Link (replace)</button>
+</div>
+<p class="text-[11px] text-amber-500">This episode is already tracked — "Link (replace)" unlinks its current file first, or pick a different episode instead.</p>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">d-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E03</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Confirm All Matched (2)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > single link, replace link flag, and linked state > after link 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="scan-local-files-title">
+<div class="w-full max-w-3xl panel-dark flex flex-col max-h-[90vh]">
+<div class="px-5 py-4 border-b border-zinc-700 flex items-center justify-between shrink-0">
+<h2 id="scan-local-files-title" class="text-sm font-semibold text-zinc-100">Scan local files</h2>
+<button aria-label="Close dialog" class="text-zinc-400 hover:text-zinc-200 text-lg leading-none">✕</button>
+</div>
+<div class="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">a-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E01</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">b-conflict.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E02</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-900/40 text-amber-400">conflict</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button disabled="" class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">c-unmatched.mkv</p>
+<p class="text-[11px] text-zinc-500">S?E?</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-green-900/40 text-green-400">linked</span>
+</div>
+</div>
+<div class="bg-zinc-800 rounded p-3 space-y-2 border border-zinc-700">
+<div class="flex items-center justify-between gap-3">
+<div class="min-w-0">
+<p class="font-mono text-xs text-zinc-200 truncate">d-matched.mkv</p>
+<p class="text-[11px] text-zinc-500">S01E03</p>
+</div>
+<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded font-medium bg-[var(--color-ocean-900)]/40 text-[var(--color-ocean-400)]">matched</span>
+</div>
+<div class="flex items-center gap-2">
+<select class="flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-[var(--color-ocean-500)] disabled:opacity-50">
+<option value="">— select episode —</option>
+<optgroup label="Season 1">
+<option value="10">S01E01 — One</option>
+<option value="11">S01E02 — Two (taken)</option>
+<option value="12">S01E03 — Three</option>
+</optgroup>
+<optgroup label="Season 2">
+<option value="20">S02E01 — S2 One</option>
+</optgroup>
+</select>
+<button class="shrink-0 px-2.5 py-1 text-xs rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--color-ocean-600)] hover:bg-[var(--color-ocean-500)]">Link</button>
+</div>
+</div>
+</div>
+<div class="px-5 py-3 border-t border-zinc-700 flex items-center justify-between shrink-0">
+<button class="text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-40">Rescan</button>
+<div class="flex gap-2">
+<button class="btn px-3 py-1.5 text-xs border border-zinc-600 text-zinc-300 hover:bg-zinc-700">Close</button>
+<button class="btn px-3 py-1.5 text-xs bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-500)]">Confirm All Matched (2)</button>
+</div>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`ScanLocalFilesModal characterization > single link, replace link flag, and linked state > bodies 1`] = `
+[
+  {
+    "path": "/m/c-unmatched.mkv",
+    "replace": true,
+  },
+]
+`;
