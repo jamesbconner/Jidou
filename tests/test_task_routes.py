@@ -124,7 +124,7 @@ async def test_trigger_task_download_no_show_id_accepted() -> None:
     try:
         with (
             patch(
-                "jidou.services.progress.create_task_record",
+                "jidou.services.task_dispatch.create_task_record",
                 new_callable=AsyncMock,
                 return_value=mock_task,
             ),
@@ -166,7 +166,9 @@ async def test_trigger_task_creates_row_before_dispatch() -> None:
 
     # Deferred imports inside trigger_task must be patched at their source modules.
     with (
-        patch("jidou.services.progress.create_task_record", side_effect=mock_create_task_record),
+        patch(
+            "jidou.services.task_dispatch.create_task_record", side_effect=mock_create_task_record
+        ),
         patch("jidou.workers.scan_tasks.scan_remote_task", mock_celery_task),
     ):
         client = TestClient(app)
@@ -198,7 +200,7 @@ def test_trigger_task_route_reuses_active_task_instead_of_duplicating() -> None:
 
     with (
         patch(
-            "jidou.services.progress.get_active_task",
+            "jidou.services.task_dispatch.get_active_task",
             new_callable=AsyncMock,
             return_value=active_task,
         ),
@@ -219,12 +221,12 @@ def test_trigger_task_route_dispatches_when_no_active_task() -> None:
 
     with (
         patch(
-            "jidou.services.progress.get_active_task",
+            "jidou.services.task_dispatch.get_active_task",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "jidou.services.progress.create_task_record",
+            "jidou.services.task_dispatch.create_task_record",
             new_callable=AsyncMock,
             return_value=mock_task,
         ),
@@ -389,7 +391,7 @@ def test_trigger_task_sync_dispatches() -> None:
     mock_sync.apply_async.side_effect = lambda *a, **kw: dispatched.append("dispatch")
 
     with (
-        patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+        patch("jidou.services.task_dispatch.create_task_record", side_effect=fake_create),
         patch("jidou.workers.sync_tasks.sync_all_task", mock_sync),
     ):
         client = TestClient(app)
@@ -411,7 +413,7 @@ def test_trigger_task_backfill_show_metadata_dispatches() -> None:
     mock_backfill.apply_async.side_effect = lambda *a, **kw: dispatched.append("dispatch")
 
     with (
-        patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+        patch("jidou.services.task_dispatch.create_task_record", side_effect=fake_create),
         patch("jidou.workers.backfill_tasks.backfill_show_metadata_task", mock_backfill),
     ):
         client = TestClient(app)
@@ -441,7 +443,7 @@ async def test_trigger_task_match_no_show_id_accepted() -> None:
     try:
         with (
             patch(
-                "jidou.services.progress.create_task_record",
+                "jidou.services.task_dispatch.create_task_record",
                 new_callable=AsyncMock,
                 return_value=mock_task,
             ),
@@ -481,8 +483,8 @@ def test_trigger_task_broker_failure_marks_task_failed() -> None:
     app.dependency_overrides[get_session] = _session_override(mock_task)
     try:
         with (
-            patch("jidou.services.progress.create_task_record", side_effect=fake_create),
-            patch("jidou.services.progress.update_task_status", side_effect=fake_update),
+            patch("jidou.services.task_dispatch.create_task_record", side_effect=fake_create),
+            patch("jidou.services.task_dispatch.update_task_status", side_effect=fake_update),
             patch("jidou.workers.scan_tasks.scan_remote_task", mock_scan),
         ):
             client = TestClient(app)
@@ -515,9 +517,9 @@ def test_trigger_task_dispatches_the_matching_worker(task_type: str, target: str
 
     mock_celery = MagicMock()
     with (
-        patch("jidou.services.progress.create_task_record", side_effect=fake_create),
+        patch("jidou.services.task_dispatch.create_task_record", side_effect=fake_create),
         patch(
-            "jidou.services.progress.get_active_task",
+            "jidou.services.task_dispatch.get_active_task",
             new_callable=AsyncMock,
             return_value=None,
         ),

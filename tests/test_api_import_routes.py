@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from jidou.api.routes.import_routes import _decode_upload
 from jidou.main import app
 from jidou.models.task import BackgroundTask, TaskStatus
-from jidou.services.progress import TaskDispatchError
+from jidou.services.task_dispatch import TaskDispatchError
 
 
 def _fake_enqueue(task: MagicMock) -> AsyncMock:
@@ -140,7 +140,7 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
@@ -194,7 +194,7 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
@@ -252,7 +252,7 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
@@ -308,7 +308,7 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
@@ -354,7 +354,7 @@ class TestImportText:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.import_tasks.path_import_task") as mock_task,
@@ -442,7 +442,7 @@ class TestImportDatabase:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.db_import_tasks.db_import_task") as mock_task,
@@ -483,7 +483,7 @@ class TestImportDatabase:
         try:
             with (
                 patch(
-                    "jidou.services.progress.enqueue_task",
+                    "jidou.services.task_dispatch.enqueue_task",
                     _fake_enqueue(task),
                 ),
                 patch("jidou.workers.db_import_tasks.db_import_task") as mock_task,

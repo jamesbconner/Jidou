@@ -81,7 +81,7 @@ async def _dispatch_scheduled(task_type: str, celery_task: Any, task_id: str) ->
     """Claim a pending slot then dispatch the Celery task.
 
     Deletes the pre-created pending row if ``apply_async`` fails, rather than
-    marking it FAILED like ``services.progress.enqueue_task`` does for the
+    marking it FAILED like ``services.task_dispatch.enqueue_task`` does for the
     HTTP-triggered routes. This is a deliberate exception: a beat-triggered
     dispatch has no request/response cycle and no caller waiting to inspect
     the task ID, so a FAILED row here would only be dead cron-failure clutter

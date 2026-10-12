@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jidou.services.progress import TaskDispatchError
+from jidou.services.task_dispatch import TaskDispatchError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1488,7 +1488,7 @@ def test_publish_endpoint_202_when_path_configured() -> None:
 
     with (
         patch("jidou.api.routes.rss.settings") as mock_settings,
-        patch("jidou.services.progress.enqueue_task", _fake_enqueue(task)),
+        patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
         patch("jidou.workers.rss_tasks.rss_publish_task") as mock_task,
         TestClient(app) as client,
     ):
@@ -1522,7 +1522,7 @@ def test_publish_endpoint_503_when_broker_unavailable() -> None:
 
     with (
         patch("jidou.api.routes.rss.settings") as mock_settings,
-        patch("jidou.services.progress.enqueue_task", _fake_enqueue(task)),
+        patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
         patch("jidou.workers.rss_tasks.rss_publish_task") as mock_task,
         TestClient(app) as client,
     ):

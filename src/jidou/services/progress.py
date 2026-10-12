@@ -2,7 +2,6 @@
 
 import json
 import logging
-from collections.abc import Callable
 from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
@@ -12,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
 from jidou.models.task import (
-    ACTIVE_TASK_STATUSES,
     TERMINAL_TASK_STATUSES,
     BackgroundTask,
     TaskStatus,
@@ -250,89 +248,3 @@ async def create_task_record(
     await session.commit()
     await session.refresh(task)
     return task
-
-
-class TaskDispatchError(Exception):
-    """Raised when enqueue_task's dispatch() callable fails to reach the broker.
-
-    Deliberately distinct from whatever ``create_task_record`` might raise
-    (a DB error), so callers can translate only a genuine broker failure to a
-    503 without also catching and mislabeling database errors that way.
-    """
-
-
-async def get_active_task(session: AsyncSession, task_type: str) -> BackgroundTask | None:
-    """Return the currently PENDING/RUNNING BackgroundTask of this type, if any.
-
-    Used to avoid dispatching a duplicate concurrent run of a task type whose
-    orchestrator selects an overlapping pool of DB rows upfront without
-    per-row claiming. ``RouteOrchestrator.run()`` is the motivating case: it
-    selects all MATCHED/ROUTING files in one batch, then commits each file's
-    status transition individually inside the loop -- so two overlapping
-    ``route`` dispatches (e.g. RematchModal firing one per fix, in quick
-    succession) can each see the same still-MATCHED file in their initial
-    SELECT and both route it, producing duplicate copies at the destination.
-
-    Args:
-        session: Active database session.
-        task_type: Type label (e.g. ``"route"``).
-
-    Returns:
-        The active BackgroundTask row, or None if no task of this type is
-        currently active.
-    """
-    stmt = (
-        select(BackgroundTask)
-        .where(
-            BackgroundTask.task_type == task_type, BackgroundTask.status.in_(ACTIVE_TASK_STATUSES)
-        )
-        .order_by(BackgroundTask.created_at.desc())
-        .limit(1)
-    )
-    return (await session.execute(stmt)).scalar_one_or_none()
-
-
-async def enqueue_task(
-    session: AsyncSession,
-    celery_task_id: str,
-    task_type: str,
-    dispatch: Callable[[], object],
-    *,
-    dry_run: bool = False,
-) -> BackgroundTask:
-    """Create a BackgroundTask row and dispatch it to Celery.
-
-    Pre-generating the task ID and creating the row before dispatch means the
-    DB row exists even if the worker starts before this call returns. If the
-    broker is unreachable, the row is marked FAILED with a consistent message
-    so it does not stay PENDING with no Celery job to ever advance it, and a
-    ``TaskDispatchError`` is raised for the caller to translate into its own
-    HTTP response. A failure in ``create_task_record`` itself is not caught
-    here and propagates as-is — it is a database problem, not a broker one.
-
-    Args:
-        session: Active database session.
-        celery_task_id: Pre-generated Celery task ID.
-        task_type: Type label (e.g. ``"download"``, ``"rss_import"``).
-        dispatch: Zero-arg callable that performs the ``apply_async`` call.
-        dry_run: Whether this is a dry-run.
-
-    Returns:
-        The created BackgroundTask row.
-
-    Raises:
-        TaskDispatchError: If *dispatch* raised, after marking the row FAILED.
-    """
-    new_task = await create_task_record(session, celery_task_id, task_type, dry_run=dry_run)
-    try:
-        dispatch()
-    except Exception as exc:
-        logger.exception("Broker dispatch failed for task %s", celery_task_id)
-        await update_task_status(
-            session,
-            celery_task_id,
-            TaskStatus.FAILED,
-            progress_message=f"Failed to enqueue task: {exc}",
-        )
-        raise TaskDispatchError(str(exc)) from exc
-    return new_task
