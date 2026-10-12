@@ -66,6 +66,7 @@ uv run python make.py seed          # insert sample show data
 # Frontend
 uv run python make.py build-frontend    # npm run build
 uv run python make.py generate-types   # regenerate TS types from OpenAPI (API must be running)
+uv run python make.py export-openapi <file>  # write the OpenAPI spec to <file> (no server needed)
 
 # Health
 uv run python make.py health        # GET /api/admin/health
@@ -233,7 +234,7 @@ Coverage target is **85%**. New behaviour requires new tests; bug fixes require 
 2. Add a Pydantic request/response schema in `src/jidou/schemas/`.
 3. Register the router in `src/jidou/main.py` if it's a new file.
 4. Write tests in `tests/`.
-5. Run `uv run python make.py generate-types` to update the TypeScript types (API must be running).
+5. Regenerate the TypeScript types (see [TypeScript type generation](#typescript-type-generation)); CI fails if `frontend/src/types/api-generated.ts` is stale.
 
 ## Adding a new Alembic migration
 
@@ -260,6 +261,17 @@ uv run python make.py generate-types
 ```
 
 `frontend/src/types/api.ts` is hand-maintained on top of it (see the comment at the top of that file) — most types are thin aliases (`export type X = components['schemas']['X']`) or `Omit<>`+override narrowings for fields the backend types more loosely than the frontend needs (e.g. a bare `string` where the frontend wants a literal union, or a generic dict where it wants a specific shape). A handful of types have no backend schema to alias at all — TMDB proxy endpoints return raw `dict[str, Any]`, WebSocket payloads aren't part of the REST OpenAPI spec — and stay fully hand-written.
+
+### CI drift check
+
+The `frontend` job in `.github/workflows/ci.yml` fails when the committed `api-generated.ts` differs from what the backend's current OpenAPI spec generates. It runs `make.py export-openapi` (which writes `app.openapi()` to a file without starting a server), generates types with the pinned `openapi-typescript@7.13.0`, and diffs the result against the committed file. To regenerate without a running API, exactly as CI does, from the repo root:
+
+```bash
+uv run python make.py export-openapi /tmp/openapi.json
+cd frontend && npx openapi-typescript@7.13.0 /tmp/openapi.json -o src/types/api-generated.ts
+```
+
+Use that pinned version: a different `openapi-typescript` version can format the output differently and trip the check.
 
 After running `generate-types`, diff `api-generated.ts` against `api.ts`'s `Omit<>` overrides for anything you changed on the backend — a renamed or newly-loosened field shows up as a type error in `api.ts`, not a silent runtime drift.
 
