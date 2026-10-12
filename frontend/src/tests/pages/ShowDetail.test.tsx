@@ -283,3 +283,99 @@ describe('ShowDetail — Queue position select (watchlisted show)', () => {
     })
   })
 })
+
+function makeEpisode(overrides: Record<string, unknown>) {
+  return {
+    id: 1,
+    show_id: 1,
+    season_number: 1,
+    episode_number: 1,
+    name: 'Pilot',
+    overview: null,
+    air_date: null,
+    file_tracked: false,
+    tracked_source: null,
+    watched: false,
+    backing_files: [],
+    ...overrides,
+  }
+}
+
+describe('ShowDetail — modal state machine', () => {
+  test('opening a second modal replaces the first', async () => {
+    mockShowDetail(baseShow())
+    const base = vi.mocked(fetch).getMockImplementation()!
+    // Episode A is untracked ("Match File"); episode B is an imported, tracked
+    // episode with no backing file ("Fix Eps" -> Assign Import, no begin-rematch call).
+    const episodes = [
+      makeEpisode({ id: 11, episode_number: 1, name: 'Episode A' }),
+      makeEpisode({
+        id: 12,
+        episode_number: 2,
+        name: 'Episode B',
+        file_tracked: true,
+        tracked_source: 'import',
+      }),
+    ]
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/shows/1/episodes')) return mockResponse(episodes)
+      return base(input, init)
+    })
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Match File' }))
+    expect(await screen.findByText(/Match file — S01E01/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await waitFor(() => {
+      expect(screen.queryByText(/Match file — S01E01/)).not.toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fix Eps' }))
+    expect(await screen.findByText(/Assign imported file — S01E02/)).toBeInTheDocument()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.queryByText(/Match file — S01E01/)).not.toBeInTheDocument()
+  })
+
+  test('fires the page-level queries in the original order on mount', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+    await screen.findByRole('button', { name: 'Change Images' })
+
+    const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
+    const firstIndex = (needle: string) => urls.findIndex((u) => u.includes(needle))
+    const order = [
+      firstIndex('/shows/1'),
+      firstIndex('/config'),
+      firstIndex('/shows/1/episodes'),
+      firstIndex('/rss/subscriptions'),
+      firstIndex('/rss/feeds'),
+      firstIndex('/watchlist'),
+    ]
+    expect(order.every((i) => i >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  test('a failed content-type save keeps the modal open with the error, and closing clears it', async () => {
+    mockShowDetail(baseShow())
+    const base = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (init?.method === 'PATCH') return mockResponse({ detail: 'nope' }, 500)
+      return base(input, init)
+    })
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Set Type' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('nope')).toBeInTheDocument()
+    expect(screen.getByText('Set Content Type')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(screen.queryByText('Set Content Type')).not.toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Set Type' }))
+    expect(await screen.findByText('Set Content Type')).toBeInTheDocument()
+    expect(screen.queryByText('nope')).not.toBeInTheDocument()
+  })
+})
