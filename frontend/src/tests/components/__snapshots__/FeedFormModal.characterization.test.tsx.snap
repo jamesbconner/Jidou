@@ -1,0 +1,597 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`FeedFormModal characterization > add, edit and remove samples; add button disappears at three > after remove 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="N">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="H">
+</div>
+<button type="button" aria-label="Remove sample 1" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+</div>
+<button type="button" aria-label="Remove sample 2" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="x264">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > add, edit and remove samples; add button disappears at three > three samples 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+</div>
+<button type="button" aria-label="Remove sample 1" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="N">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="H">
+</div>
+<button type="button" aria-label="Remove sample 2" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+</div>
+<button type="button" aria-label="Remove sample 3" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="x264">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > create DOM > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">New Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox" checked="">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button disabled="" class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Create</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > create sends trimmed fields, null for blanks, and closes > calls 1`] = `
+[
+  {
+    "body": {
+      "active": true,
+      "default_download_location": null,
+      "default_move_completed": null,
+      "name": "Name",
+      "regex_exclude_hint": "ex",
+      "regex_include_samples": [
+        {
+          "hint": "H",
+          "sample_name": "S",
+        },
+      ],
+      "remote_key": null,
+      "url": "https://x.example",
+    },
+    "method": "POST",
+    "url": "/api/rss/feeds",
+  },
+]
+`;
+
+exports[`FeedFormModal characterization > create with a blank exclude hint sends null > calls 1`] = `
+[
+  {
+    "body": {
+      "active": true,
+      "default_download_location": null,
+      "default_move_completed": null,
+      "name": "N",
+      "regex_exclude_hint": null,
+      "regex_include_samples": null,
+      "remote_key": null,
+      "url": "u",
+    },
+    "method": "POST",
+    "url": "/api/rss/feeds",
+  },
+]
+`;
+
+exports[`FeedFormModal characterization > create with no exclude needed sends an empty-string hint; empty samples send null > calls 1`] = `
+[
+  {
+    "body": {
+      "active": true,
+      "default_download_location": null,
+      "default_move_completed": null,
+      "name": "N",
+      "regex_exclude_hint": "",
+      "regex_include_samples": null,
+      "remote_key": null,
+      "url": "u",
+    },
+    "method": "POST",
+    "url": "/api/rss/feeds",
+  },
+]
+`;
+
+exports[`FeedFormModal characterization > edit DOM where a blank exclude hint means "no exclude needed" > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input disabled="" placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox" checked="">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox" checked="">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > edit DOM with samples and an exclude hint > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="A.S01E01">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="^A.*">
+</div>
+<button type="button" aria-label="Remove sample 1" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="B">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="b">
+</div>
+<button type="button" aria-label="Remove sample 2" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="x264">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > edit patches the feed; toggling active and dropping blank-hint samples > calls 1`] = `
+[
+  {
+    "body": {
+      "active": true,
+      "default_download_location": "/dl",
+      "default_move_completed": "/done",
+      "name": "Feed",
+      "regex_exclude_hint": "x264",
+      "regex_include_samples": [
+        {
+          "hint": "^A.*",
+          "sample_name": "A.S01E01",
+        },
+      ],
+      "remote_key": "2",
+      "url": "https://example.com/feed",
+    },
+    "method": "PATCH",
+    "url": "/api/rss/feeds/4",
+  },
+]
+`;
+
+exports[`FeedFormModal characterization > null exclude hint leaves the checkbox off > dom 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="A.S01E01">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="^A.*">
+</div>
+<button type="button" aria-label="Remove sample 1" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="B">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="b">
+</div>
+<button type="button" aria-label="Remove sample 2" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50">Save</button>
+</div>
+</div>
+</div>
+</div>"
+`;
+
+exports[`FeedFormModal characterization > pending state shows Saving… > pending 1`] = `
+"<div>
+<div class="overlay" role="dialog" aria-modal="true">
+<div class="w-full max-w-lg panel-light flex flex-col max-h-[90vh]">
+<div class="flex items-center justify-between p-5 border-b">
+<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Edit Feed</h2>
+<button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">✕</button>
+</div>
+<div class="overflow-y-auto p-5 space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Name *</label>
+<input placeholder="e.g. ShowRSS" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="Feed">
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Remote Key</label>
+<input placeholder="e.g. 1" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="2">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">YaRSS2 feed key (e.g. 1, 2). Leave blank for manually-only feeds.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">URL *</label>
+<input placeholder="https://…" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="https://example.com/feed">
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Download Location</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/dl">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Default Move Completed</label>
+<input placeholder="" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="/done">
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used by subscriptions that don't override it.</p>
+</div>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Include Samples</label>
+<div class="space-y-2">
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="A.S01E01">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="^A.*">
+</div>
+<button type="button" aria-label="Remove sample 1" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<div class="flex items-start gap-2">
+<div class="flex-1 space-y-1">
+<input placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="B">
+<input placeholder="Hint, e.g. ^Some.Show.*s\\d{2}e\\d{2}.*1080p.*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]" value="b">
+</div>
+<button type="button" aria-label="Remove sample 2" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1">✕</button>
+</div>
+<button type="button" class="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">+ Add sample</button>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters).</p>
+</div>
+<div>
+<label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Regex Exclude</label>
+<input placeholder="e.g. .*(720p|iNTERNAL|spanish|french|german).*" class="w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)] disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:text-gray-400" value="x264">
+<label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-1.5 cursor-pointer">
+<input class="rounded" type="checkbox">This feed's releases typically don't need an exclude filter</label>
+<p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Used as-is as the suggested regex_exclude for this feed's subscriptions.</p>
+</div>
+<label class="flex items-center gap-2 text-sm cursor-pointer" title="Inactive feeds are excluded from the published YaRSS2 config.">
+<input class="rounded" type="checkbox">Active (included in published config)</label>
+</div>
+<div class="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+<button class="btn px-4 py-2 text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">Cancel</button>
+<button class="px-4 py-1.5 text-sm rounded bg-[var(--color-ocean-600)] text-white hover:bg-[var(--color-ocean-700)] dark:hover:bg-[var(--color-ocean-500)] disabled:opacity-50" disabled="">Saving…</button>
+</div>
+</div>
+</div>
+</div>"
+`;

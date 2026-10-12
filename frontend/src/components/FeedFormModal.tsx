@@ -17,12 +17,16 @@ interface FeedDraft {
   active: boolean
 }
 
-export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onClose: () => void }) {
-  const create = useCreateRssFeed()
-  const patch = usePatchRssFeed()
-  const isEdit = feed !== null
+type Sample = FeedDraft['regex_include_samples'][number]
 
-  const [draft, setDraft] = useState<FeedDraft>({
+const MAX_SAMPLES = 3
+
+const SAMPLE_INPUT_CLASS =
+  'w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]'
+
+/** Initial form values: the feed being edited, or blanks for a new feed. */
+function draftFromFeed(feed: RssFeedRead | null): FeedDraft {
+  return {
     name: feed?.name ?? '',
     url: feed?.url ?? '',
     remote_key: feed?.remote_key ?? '',
@@ -33,49 +37,99 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
     regex_exclude_hint: feed?.regex_exclude_hint ?? '',
     no_exclude_needed: feed?.regex_exclude_hint === '',
     active: feed?.active ?? true,
-  })
+  }
+}
+
+/** Trimmed request body shared by create and update; blanks become null. */
+function buildFeedBody(draft: FeedDraft): RssFeedCreate {
+  // regex_exclude_hint distinguishes "" (feed explicitly needs no exclude
+  // filter) from null (no guidance set) -- see suggest-regex prompt logic.
+  const samples = draft.regex_include_samples
+    .map((s) => ({ sample_name: s.sample_name.trim(), hint: s.hint.trim() }))
+    .filter((s) => s.hint)
+  const regexExcludeHint = draft.no_exclude_needed ? '' : draft.regex_exclude_hint.trim() || null
+  return {
+    name: draft.name.trim(),
+    url: draft.url.trim(),
+    remote_key: draft.remote_key.trim() || null,
+    default_download_location: draft.default_download_location.trim() || null,
+    default_move_completed: draft.default_move_completed.trim() || null,
+    regex_include_samples: samples.length ? samples : null,
+    regex_exclude_hint: regexExcludeHint,
+    active: draft.active,
+  }
+}
+
+/** Editable list of up to three (sample name, regex hint) rows. */
+function SamplesEditor({
+  samples,
+  onChange,
+  onRemove,
+  onAdd,
+}: {
+  samples: Sample[]
+  onChange: (index: number, patch: Partial<Sample>) => void
+  onRemove: (index: number) => void
+  onAdd: () => void
+}) {
+  return (
+    <div className="space-y-2">
+      {samples.map((s, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <div className="flex-1 space-y-1">
+            <input
+              value={s.sample_name}
+              onChange={(e) => onChange(i, { sample_name: e.target.value })}
+              placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv"
+              className={SAMPLE_INPUT_CLASS}
+            />
+            <input
+              value={s.hint}
+              onChange={(e) => onChange(i, { hint: e.target.value })}
+              placeholder="Hint, e.g. ^Some.Show.*s\d{2}e\d{2}.*1080p.*"
+              className={SAMPLE_INPUT_CLASS}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(i)}
+            aria-label={`Remove sample ${i + 1}`}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {samples.length < MAX_SAMPLES && (
+        <button type="button" onClick={onAdd} className="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">
+          + Add sample
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onClose: () => void }) {
+  const create = useCreateRssFeed()
+  const patch = usePatchRssFeed()
+  const isEdit = feed !== null
+
+  const [draft, setDraft] = useState<FeedDraft>(() => draftFromFeed(feed))
 
   const set = <K extends keyof FeedDraft>(key: K, value: FeedDraft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
 
   const handleSave = () => {
     if (!draft.name.trim() || !draft.url.trim()) return
-    // regex_exclude_hint distinguishes "" (feed explicitly needs no exclude
-    // filter) from null (no guidance set) -- see suggest-regex prompt logic.
-    const samples = draft.regex_include_samples
-      .map((s) => ({ sample_name: s.sample_name.trim(), hint: s.hint.trim() }))
-      .filter((s) => s.hint)
-    const regexExcludeHint = draft.no_exclude_needed ? '' : draft.regex_exclude_hint.trim() || null
+    const body = buildFeedBody(draft)
     if (isEdit) {
-      const update: RssFeedUpdate = {
-        name: draft.name.trim(),
-        url: draft.url.trim(),
-        remote_key: draft.remote_key.trim() || null,
-        default_download_location: draft.default_download_location.trim() || null,
-        default_move_completed: draft.default_move_completed.trim() || null,
-        regex_include_samples: samples.length ? samples : null,
-        regex_exclude_hint: regexExcludeHint,
-        active: draft.active,
-      }
-      patch.mutate({ id: feed.id, update }, { onSuccess: onClose })
+      patch.mutate({ id: feed.id, update: body as RssFeedUpdate }, { onSuccess: onClose })
     } else {
-      const body: RssFeedCreate = {
-        name: draft.name.trim(),
-        url: draft.url.trim(),
-        remote_key: draft.remote_key.trim() || null,
-        default_download_location: draft.default_download_location.trim() || null,
-        default_move_completed: draft.default_move_completed.trim() || null,
-        regex_include_samples: samples.length ? samples : null,
-        regex_exclude_hint: regexExcludeHint,
-        active: draft.active,
-      }
       create.mutate(body, { onSuccess: onClose })
     }
   }
 
-  const sampleInputClass =
-    'w-full border rounded px-2 py-1.5 text-sm dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-[var(--color-ocean-400)]'
-  const setSample = (i: number, patch: Partial<{ sample_name: string; hint: string }>) =>
+  const setSample = (i: number, patch: Partial<Sample>) =>
     setDraft((d) => ({
       ...d,
       regex_include_samples: d.regex_include_samples.map((s, j) => (j === i ? { ...s, ...patch } : s)),
@@ -117,39 +171,12 @@ export function FeedFormModal({ feed, onClose }: { feed: RssFeedRead | null; onC
             label="Regex Include Samples"
             note="Up to 3. Paste a real release title from this feed, then the regex_include that correctly matches it. Shown to the LLM suggester as worked examples (token order matters)."
           >
-            <div className="space-y-2">
-              {draft.regex_include_samples.map((s, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <div className="flex-1 space-y-1">
-                    <input
-                      value={s.sample_name}
-                      onChange={(e) => setSample(i, { sample_name: e.target.value })}
-                      placeholder="Sample name, e.g. Some.Show.S01E02.1080p.WEB-DL.mkv"
-                      className={sampleInputClass}
-                    />
-                    <input
-                      value={s.hint}
-                      onChange={(e) => setSample(i, { hint: e.target.value })}
-                      placeholder="Hint, e.g. ^Some.Show.*s\d{2}e\d{2}.*1080p.*"
-                      className={sampleInputClass}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeSample(i)}
-                    aria-label={`Remove sample ${i + 1}`}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none mt-1"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              {draft.regex_include_samples.length < 3 && (
-                <button type="button" onClick={addSample} className="text-xs text-[var(--color-ocean-500)] dark:text-[var(--color-ocean-400)] hover:underline">
-                  + Add sample
-                </button>
-              )}
-            </div>
+            <SamplesEditor
+              samples={draft.regex_include_samples}
+              onChange={setSample}
+              onRemove={removeSample}
+              onAdd={addSample}
+            />
           </Field>
           <Field
             label="Regex Exclude"
