@@ -71,3 +71,16 @@ class TestVerifyApiKey:
         monkeypatch.setattr("jidou.api.dependencies.settings.jidou_api_key", "")
         res = await client.get("/guarded")
         assert res.status_code == 200
+
+
+def test_get_tmdb_returns_one_shared_instance() -> None:
+    """get_tmdb is provided by api.dependencies and returns the same object every call."""
+    import asyncio
+
+    from jidou.api.dependencies import get_tmdb
+    from jidou.services.tmdb import TMDBService
+
+    first = asyncio.run(get_tmdb())
+    second = asyncio.run(get_tmdb())
+    assert isinstance(first, TMDBService)
+    assert first is second

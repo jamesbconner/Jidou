@@ -448,7 +448,7 @@ def test_list_shows_accepts_episodes_added_desc_sort() -> None:
 
 def test_create_show_returns_201_on_new() -> None:
     """POST /api/shows with a new TMDB ID must return 201."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(tmdb_id=999)
@@ -492,7 +492,7 @@ def test_create_show_stores_adult_flag() -> None:
     other TMDB-sourced field) rather than the search-card payload, so the
     mocked details response — not the request body — is what carries it.
     """
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -595,7 +595,7 @@ def test_create_show_race_return_still_backfills_episode_group_map() -> None:
     """
     from sqlalchemy.exc import IntegrityError
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(tmdb_id=201)
@@ -671,7 +671,7 @@ def test_get_show_returns_404_when_not_found() -> None:
 
 def test_list_show_posters_filters_to_english_and_textless() -> None:
     """Only iso_639_1 None/"en" posters are returned, most-voted first."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -718,7 +718,7 @@ def test_list_show_posters_filters_to_english_and_textless() -> None:
 
 def test_list_show_posters_returns_404_when_show_not_found() -> None:
     """GET /api/shows/{id}/images/posters returns 404 for an unknown show."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     app.dependency_overrides[get_session] = _session_override(single=None)
@@ -732,7 +732,7 @@ def test_list_show_posters_returns_404_when_show_not_found() -> None:
 
 def test_list_show_posters_empty_when_no_matches() -> None:
     """No English/textless posters available returns an empty list, not an error."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -758,7 +758,7 @@ def test_list_show_posters_empty_when_no_matches() -> None:
 
 def test_list_show_backdrops_filters_to_english_and_textless() -> None:
     """Only iso_639_1 None/"en" backdrops are returned, most-voted first."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -805,7 +805,7 @@ def test_list_show_backdrops_filters_to_english_and_textless() -> None:
 
 def test_list_show_backdrops_returns_404_when_show_not_found() -> None:
     """GET /api/shows/{id}/images/backdrops returns 404 for an unknown show."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     app.dependency_overrides[get_session] = _session_override(single=None)
@@ -819,7 +819,7 @@ def test_list_show_backdrops_returns_404_when_show_not_found() -> None:
 
 def test_list_show_backdrops_empty_when_no_matches() -> None:
     """No English/textless backdrops available returns an empty list, not an error."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1358,7 +1358,7 @@ def test_bulk_clear_episodes_watched_clears_every_episode() -> None:
 
 def test_get_trending_proxies_tmdb() -> None:
     """GET /api/shows/tmdb/trending returns TMDB response."""
-    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+    with patch("jidou.api.dependencies._tmdb") as mock_tmdb:
         mock_tmdb.get_trending = AsyncMock(return_value={"results": []})
         response = TestClient(app).get("/api/shows/tmdb/trending?media_type=tv&time_window=day")
     assert response.status_code == 200
@@ -1367,7 +1367,7 @@ def test_get_trending_proxies_tmdb() -> None:
 
 def test_tmdb_search_proxies_tmdb() -> None:
     """GET /api/shows/tmdb/search returns TMDB search results."""
-    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+    with patch("jidou.api.dependencies._tmdb") as mock_tmdb:
         mock_tmdb.search = AsyncMock(return_value={"results": [{"title": "Stuff"}]})
         response = TestClient(app).get("/api/shows/tmdb/search?query=stuff")
     assert response.status_code == 200
@@ -1376,7 +1376,7 @@ def test_tmdb_search_proxies_tmdb() -> None:
 
 def test_tmdb_literal_routes_not_captured_by_tmdb_id_route() -> None:
     """/tmdb/search and /tmdb/trending must not be routed to /tmdb/{tmdb_id}."""
-    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+    with patch("jidou.api.dependencies._tmdb") as mock_tmdb:
         mock_tmdb.search = AsyncMock(return_value={"results": []})
         mock_tmdb.get_trending = AsyncMock(return_value={"results": []})
         mock_tmdb.get_details = AsyncMock(return_value={})
@@ -1447,7 +1447,7 @@ def test_get_tmdb_details_proxies_tmdb_service() -> None:
     first storing the show in the database.
     """
     detail_payload = {"id": 12345, "name": "Some Show", "overview": "Great show."}
-    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+    with patch("jidou.api.dependencies._tmdb") as mock_tmdb:
         mock_tmdb.get_details = AsyncMock(return_value=detail_payload)
         response = TestClient(app).get("/api/shows/tmdb/12345?media_type=tv")
     assert response.status_code == 200
@@ -1466,7 +1466,7 @@ def test_get_tmdb_details_returns_404_for_unknown_id() -> None:
 
     request = httpx.Request("GET", "https://api.themoviedb.org/3/tv/999999999")
     not_found = httpx.Response(404, request=request, json={"status_message": "not found"})
-    with patch("jidou.api.routes.shows._tmdb") as mock_tmdb:
+    with patch("jidou.api.dependencies._tmdb") as mock_tmdb:
         mock_tmdb.get_details = AsyncMock(
             side_effect=httpx.HTTPStatusError("404", request=request, response=not_found)
         )
@@ -1625,7 +1625,7 @@ def _rematch_session(
 
 def test_rematch_show_returns_200_on_success() -> None:
     """POST /{id}/rematch replaces metadata and syncs episodes; returns 200."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1648,7 +1648,7 @@ def test_rematch_show_returns_200_on_success() -> None:
 
 def test_rematch_show_uses_payload_media_type() -> None:
     """POST /{id}/rematch passes media_type from the payload to get_details."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1667,7 +1667,7 @@ def test_rematch_show_uses_payload_media_type() -> None:
 
 def test_rematch_show_movie_applies_movie_fields() -> None:
     """POST /{id}/rematch for a movie uses data['title'] and data['release_date']."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1733,7 +1733,7 @@ def test_rematch_show_returns_409_on_tmdb_id_conflict() -> None:
 
 def test_rematch_show_returns_502_when_tmdb_fetch_fails() -> None:
     """POST /{id}/rematch returns 502 when TMDB details cannot be fetched."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1751,7 +1751,7 @@ def test_rematch_show_returns_502_when_tmdb_fetch_fails() -> None:
 
 def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
     """POST /{id}/rematch returns 502 when episode sync raises; transaction rolls back."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1774,7 +1774,7 @@ def test_rematch_show_returns_502_when_episode_sync_fails() -> None:
 
 def test_rematch_show_migrates_tracking_to_new_episodes() -> None:
     """Tracking state is restored on new episodes that share the same S/E key."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1819,7 +1819,7 @@ def test_rematch_show_migrates_tracking_to_new_episodes() -> None:
 
 def test_rematch_show_relinks_orphaned_downloaded_files() -> None:
     """DownloadedFiles with episode_id=NULL are re-linked to the matching new episode."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.models.downloaded_file import DownloadedFile
 
@@ -1859,7 +1859,7 @@ def test_rematch_show_relinks_orphaned_downloaded_files() -> None:
 def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) -> None:
     """A warning is logged when a tracked episode has no matching S/E in the new entry."""
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1907,7 +1907,7 @@ def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) ->
 
 def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
     """When preserve_tracking=False, no snapshot or migration queries are issued."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1932,7 +1932,7 @@ def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
 
 def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
     """preserve_tracking=False still issues the orphan dedup delete so the DQ tab is cleared."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -1965,7 +1965,7 @@ def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
 
 def test_rematch_show_movie_skips_tracking_phases() -> None:
     """Movie rematch skips Phase 1/2/3 entirely — no tracked-episode queries."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100, media_type="movie")
@@ -2000,7 +2000,7 @@ def test_rematch_show_movie_skips_tracking_phases() -> None:
 
 def test_rematch_show_movie_purges_orphan_rows() -> None:
     """Movie rematch still purges stale orphan rows even though it has no episodes."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100, media_type="movie")
@@ -2047,7 +2047,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_import() -> None:
     """An import-sourced tracked episode with no matching new S/E is persisted as an orphan."""
     from unittest.mock import patch as _patch
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.models.orphan import OrphanedTrackingRecord
 
@@ -2114,7 +2114,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_downloaded_file() -> Non
     """A downloaded file that cannot be re-linked to a new episode is persisted as an orphan."""
     from unittest.mock import patch as _patch
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.models.downloaded_file import DownloadedFile
     from jidou.models.orphan import OrphanedTrackingRecord
@@ -2185,7 +2185,7 @@ def test_rematch_phase3_orphan_uses_local_path_when_set() -> None:
     """Phase 3 stores local_path in tracked_filename when the file has a local path."""
     from unittest.mock import patch as _patch
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.models.downloaded_file import DownloadedFile
     from jidou.models.orphan import OrphanedTrackingRecord
@@ -2252,7 +2252,7 @@ def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> No
     """
     from unittest.mock import patch as _patch
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.models.orphan import OrphanedTrackingRecord
 
@@ -2325,7 +2325,7 @@ def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> No
 
 def test_sync_episodes_returns_updated_episode_list() -> None:
     """POST /{id}/sync-episodes returns the refreshed episode list."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1)
@@ -2358,7 +2358,7 @@ def test_sync_episodes_bypasses_tmdb_cache() -> None:
     """POST /{id}/sync-episodes forces a live TMDB fetch (regression: a stale
     cached season response hid a newly populated season until Redis was
     flushed by hand)."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1)
@@ -2404,7 +2404,7 @@ def test_sync_episodes_returns_404_when_show_not_found() -> None:
 
 def test_list_episode_groups_returns_summaries_with_active_flag() -> None:
     """GET .../episode-groups flags the show's active_episode_group_id."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     show = _make_show(id=1, tmdb_id=100)
@@ -2473,7 +2473,7 @@ def test_list_episode_groups_returns_422_for_movie() -> None:
 
 def test_apply_episode_group_returns_updated_episodes_and_counts() -> None:
     """POST .../episode-groups/{id}/apply returns the new episode list plus diff counts."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.orchestrators.tmdb_orchestrator import EpisodeGroupApplyResult
 
@@ -2595,7 +2595,7 @@ def test_infer_content_type(
 
 def test_create_show_infers_anime_content_type() -> None:
     """POST /api/shows without content_type infers 'anime' for Japanese animation."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2640,7 +2640,7 @@ def test_create_show_syncs_episodes_for_new_show() -> None:
     """POST /api/shows calls TMDBOrchestrator.sync_show_episodes for a newly created show."""
     from datetime import UTC, datetime
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2684,7 +2684,7 @@ def test_create_show_episode_sync_failure_does_not_abort_creation() -> None:
     """POST /api/shows returns 201 even when episode sync raises an exception."""
     from datetime import UTC, datetime
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2737,7 +2737,7 @@ def test_create_show_commits_after_sync_before_alias_generation() -> None:
     """
     from datetime import UTC, datetime
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     call_order: list[str] = []
@@ -2802,7 +2802,7 @@ def test_create_show_skips_episode_sync_for_movies() -> None:
     """POST /api/shows with media_type=movie must not call sync_show_episodes."""
     from datetime import UTC, datetime
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2848,7 +2848,7 @@ def test_create_show_db_error_during_sync_propagates() -> None:
 
     from sqlalchemy.exc import OperationalError
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2891,7 +2891,7 @@ def test_create_show_db_error_during_sync_propagates() -> None:
 
 def test_create_show_respects_explicit_content_type() -> None:
     """POST /api/shows with an explicit content_type does not overwrite it."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -2941,7 +2941,7 @@ def test_create_show_backfills_full_tmdb_metadata_from_search_card() -> None:
     directly from that payload used to leave genres/external_ids/etc.
     permanently null. The route must now fetch full details and use them.
     """
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -3003,7 +3003,7 @@ def test_create_show_falls_back_to_search_card_on_tmdb_fetch_failure() -> None:
     not block show creation, falling back to the sparse search-card payload
     (title, media_type, etc.) instead of aborting with an error.
     """
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
 
     async def _new_session() -> AsyncMock:
@@ -4083,7 +4083,7 @@ def _make_seed_entry(
 
 def test_discover_cache_hit_skips_tmdb_calls() -> None:
     """A warm cache short-circuits before any recommendations/trending calls."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4118,7 +4118,7 @@ def test_discover_cache_hit_skips_tmdb_calls() -> None:
 
 def test_discover_falls_back_to_trending_when_watchlist_empty() -> None:
     """With no watching/completed shows, the feed is trending-only with empty seeded_from."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4161,7 +4161,7 @@ def test_discover_falls_back_to_trending_when_watchlist_empty() -> None:
 
 def test_discover_seeds_from_watchlist_and_excludes_library() -> None:
     """Recommendations are pulled per seed show; results already in the library are dropped."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4209,7 +4209,7 @@ def test_discover_seeds_from_watchlist_and_excludes_library() -> None:
 
 def test_discover_accumulates_seeded_from_across_seeds() -> None:
     """The same recommendation from two seed shows appears once with both titles."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4249,7 +4249,7 @@ def test_discover_accumulates_seeded_from_across_seeds() -> None:
 
 def test_discover_respects_limit() -> None:
     """The response never exceeds the requested limit."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4289,7 +4289,7 @@ def test_discover_falls_back_to_trending_when_recommendations_fail() -> None:
     """If every seed show's recommendations call fails, trending still fills the feed."""
     import httpx2 as httpx
 
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4333,7 +4333,7 @@ def test_discover_falls_back_to_trending_when_recommendations_fail() -> None:
 
 def test_discover_sorts_by_seeded_count_then_rating() -> None:
     """Results are ranked by how many seed shows recommended them, then rating."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4424,7 +4424,7 @@ def _similar_session(
 
 def test_similar_merges_recommendations_and_similar_dedups_and_drops_self() -> None:
     """Recommendations come first, /similar fills in, the show itself and dupes drop."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4462,7 +4462,7 @@ def test_similar_merges_recommendations_and_similar_dedups_and_drops_self() -> N
 
 def test_similar_returns_empty_and_skips_tmdb_when_disabled() -> None:
     """With similar_titles_enabled=False the endpoint short-circuits to []."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.settings_service import SIMILAR_TITLES_ENABLED
 
@@ -4485,7 +4485,7 @@ def test_similar_returns_empty_and_skips_tmdb_when_disabled() -> None:
 
 def test_similar_excludes_titles_not_in_library_when_configured() -> None:
     """similar_titles_include_external=False keeps only library members."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
     from jidou.services.settings_service import SIMILAR_TITLES_INCLUDE_EXTERNAL
@@ -4517,7 +4517,7 @@ def test_similar_excludes_titles_not_in_library_when_configured() -> None:
 
 def test_similar_caps_results_to_configured_count() -> None:
     """The merged list is truncated to similar_titles_count."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
     from jidou.services.settings_service import SIMILAR_TITLES_COUNT
@@ -4547,7 +4547,7 @@ def test_similar_caps_results_to_configured_count() -> None:
 
 def test_similar_cache_hit_skips_tmdb() -> None:
     """A warm assembled-list cache entry is returned without hitting TMDB."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4570,7 +4570,7 @@ def test_similar_cache_hit_skips_tmdb() -> None:
 
 def test_similar_cache_key_includes_tmdb_id() -> None:
     """The cache key carries the show's tmdb_id so a rematch can't serve stale titles."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 
@@ -4597,7 +4597,7 @@ def test_similar_cache_key_includes_tmdb_id() -> None:
 
 def test_similar_does_not_cache_empty_result_from_tmdb_failure() -> None:
     """When both TMDB calls fail the endpoint returns [] but does not poison the cache."""
-    from jidou.api.routes.shows import get_tmdb
+    from jidou.api.dependencies import get_tmdb
     from jidou.database import get_session
     from jidou.services.cache import cache
 

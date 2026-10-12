@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from jidou.api.routes.shows import get_tmdb
+from jidou.api.dependencies import get_tmdb
 from jidou.database import get_session
 from jidou.main import app
 from jidou.orchestrators.tmdb_orchestrator import TMDBSyncResult
