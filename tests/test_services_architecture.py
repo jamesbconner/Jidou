@@ -11,8 +11,8 @@ from pathlib import Path
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "src" / "jidou" / "services"
 
-# Measured maximum is 16 (``_parse_episode``); later refactors lower this, never raise it.
-_SERVICES_MAX_COMPLEXITY = 16
+# Measured maximum is 12 (``pubsub_subscriber._listen``); refactors lower this, never raise it.
+_SERVICES_MAX_COMPLEXITY = 12
 
 # Shrinks to empty: Task 9 removes the first entry, Task 10 the other two.
 _KNOWN_UPWARD_IMPORTS: frozenset[tuple[str, str]] = frozenset(
