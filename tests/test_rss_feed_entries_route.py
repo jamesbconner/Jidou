@@ -96,7 +96,7 @@ def test_entries_groups_annotates_library_and_existing_subscription(
     async def _find(_session_, name: str, **_kw):
         return show if name == "Show Name" else None
 
-    with patch("jidou.api.routes.rss.find_show_by_name", new=_find):
+    with patch("jidou.api.routes.rss_feeds.find_show_by_name", new=_find):
         r = TestClient(app).get("/api/rss/feeds/7/entries")
 
     assert r.status_code == 200
@@ -122,7 +122,9 @@ def test_entries_in_library_without_subscription(fetcher: MagicMock) -> None:
     )
     app.dependency_overrides[get_session] = _session(_feed(), sub_rows=[])
 
-    with patch("jidou.api.routes.rss.find_show_by_name", new=AsyncMock(return_value=_show(42))):
+    with patch(
+        "jidou.api.routes.rss_feeds.find_show_by_name", new=AsyncMock(return_value=_show(42))
+    ):
         r = TestClient(app).get("/api/rss/feeds/7/entries")
 
     group = r.json()["groups"][0]
@@ -182,7 +184,7 @@ def test_entries_slash_titled_show_is_looked_up_by_its_exact_name(fetcher: Magic
         looked_up.append(name)
         return _show(11, "Fate/stay night")
 
-    with patch("jidou.api.routes.rss.find_show_by_name", new=_find):
+    with patch("jidou.api.routes.rss_feeds.find_show_by_name", new=_find):
         r = TestClient(app).get("/api/rss/feeds/7/entries")
 
     assert looked_up == ["Fate/stay night"]
@@ -210,7 +212,7 @@ def test_entries_tracker_titled_group_is_subscribed_via_regex_without_library_li
         _feed(), sub_rows=[_sub_row(55, show_id=None, include=r"^Example.Show.*1080p")]
     )
 
-    with patch("jidou.api.routes.rss.find_show_by_name", new=AsyncMock(return_value=None)):
+    with patch("jidou.api.routes.rss_feeds.find_show_by_name", new=AsyncMock(return_value=None)):
         r = TestClient(app).get("/api/rss/feeds/7/entries")
 
     by_name = {g["parsed_name"]: g for g in r.json()["groups"]}

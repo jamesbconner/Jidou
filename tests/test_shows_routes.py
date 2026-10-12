@@ -4882,7 +4882,7 @@ def test_scan_show_local_files_skips_already_imported_paths(tmp_path: Path) -> N
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(side_effect=AssertionError("should not be reached")),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -4924,7 +4924,7 @@ def test_scan_show_local_files_returns_matched_status_for_untracked_episode(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(return_value=(ep, 1, 1)),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -4971,7 +4971,7 @@ def test_scan_show_local_files_returns_conflict_status_for_tracked_episode(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(return_value=(ep, 1, 1)),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5010,7 +5010,7 @@ def test_scan_show_local_files_returns_unmatched_status_when_no_episode_found(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(return_value=(None, None, None)),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5054,7 +5054,7 @@ def test_scan_show_local_files_marks_second_duplicate_match_as_conflict(tmp_path
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(return_value=(ep, 1, 1)),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5102,7 +5102,7 @@ def test_scan_show_local_files_skips_already_imported_path_across_styles(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(side_effect=AssertionError("should not be reached")),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5154,7 +5154,7 @@ def test_scan_show_local_files_skips_already_imported_path_with_literal_percent(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(side_effect=AssertionError("should not be reached")),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5201,7 +5201,7 @@ def test_scan_show_local_files_filename_is_human_readable_display_form(
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.match_entry_to_episode",
+            "jidou.api.routes.show_local_files.match_entry_to_episode",
             AsyncMock(return_value=(ep, 1, 1)),
         ):
             response = TestClient(app).post("/api/shows/1/scan-local-files")
@@ -5239,7 +5239,7 @@ def test_scan_show_local_files_runs_directory_walk_off_the_event_loop(tmp_path: 
     app.dependency_overrides[get_llm_service] = lambda: AsyncMock()
     try:
         with patch(
-            "jidou.api.routes.shows.asyncio.to_thread", AsyncMock(return_value=[])
+            "jidou.api.routes.show_local_files.asyncio.to_thread", AsyncMock(return_value=[])
         ) as mock_to_thread:
             response = TestClient(app).post("/api/shows/1/scan-local-files")
         assert response.status_code == 200

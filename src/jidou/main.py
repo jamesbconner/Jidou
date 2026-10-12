@@ -20,9 +20,14 @@ from jidou.api.routes import (
     images,
     import_routes,
     orphans,
-    rss,
+    rss_feeds,
+    rss_publish,
+    rss_subscriptions,
+    show_episodes,
+    show_local_files,
     shows,
     tasks,
+    tmdb_proxy,
     watchlist,
 )
 from jidou.api.routes import (
@@ -107,7 +112,10 @@ def create_app() -> FastAPI:
     # and TMDB poster/backdrop images aren't sensitive data.
     app.include_router(health.router, prefix="/api")
     app.include_router(images.router, prefix="/api")
+    app.include_router(tmdb_proxy.router, prefix="/api", dependencies=_auth)
     app.include_router(shows.router, prefix="/api", dependencies=_auth)
+    app.include_router(show_episodes.router, prefix="/api", dependencies=_auth)
+    app.include_router(show_local_files.router, prefix="/api", dependencies=_auth)
     app.include_router(files.router, prefix="/api", dependencies=_auth)
     app.include_router(orphans.router, prefix="/api", dependencies=_auth)
     app.include_router(tasks.router, prefix="/api", dependencies=_auth)
@@ -116,7 +124,9 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api", dependencies=_auth)
     app.include_router(dashboard.router, prefix="/api", dependencies=_auth)
     app.include_router(watchlist.router, prefix="/api", dependencies=_auth)
-    app.include_router(rss.router, prefix="/api", dependencies=_auth)
+    app.include_router(rss_feeds.router, prefix="/api", dependencies=_auth)
+    app.include_router(rss_subscriptions.router, prefix="/api", dependencies=_auth)
+    app.include_router(rss_publish.router, prefix="/api", dependencies=_auth)
     app.include_router(import_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(export_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(ws_router)
