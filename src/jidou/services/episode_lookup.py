@@ -1,9 +1,32 @@
 """Resolve a parsed season/episode number to an Episode row."""
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
+
+
+async def _first_episode(
+    session: AsyncSession, show_id: int, *criteria: ColumnElement[bool]
+) -> Episode | None:
+    """Return the lowest-id Episode of *show_id* matching *criteria*, or None.
+
+    Every episode lookup goes through here so the ``ORDER BY id LIMIT 1`` that
+    makes duplicate rows degrade deterministically (see :func:`resolve_episode`)
+    cannot be forgotten on one branch.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        show_id: Database ID of the parent show.
+        *criteria: Extra WHERE conditions, ANDed with the show filter.
+
+    Returns:
+        The first matching Episode by id, or None.
+    """
+    stmt = (
+        select(Episode).where(Episode.show_id == show_id, *criteria).order_by(Episode.id).limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def resolve_episode(
@@ -58,39 +81,14 @@ async def resolve_episode(
         return None
 
     if season is not None:
-        stmt = (
-            select(Episode)
-            .where(
-                Episode.show_id == show_id,
-                Episode.season_number == season,
-                Episode.episode_number == episode,
-            )
-            .order_by(Episode.id)
-            .limit(1)
+        return await _first_episode(
+            session, show_id, Episode.season_number == season, Episode.episode_number == episode
         )
-        return (await session.execute(stmt)).scalar_one_or_none()
 
-    stmt = (
-        select(Episode)
-        .where(
-            Episode.show_id == show_id,
-            Episode.absolute_episode_number == episode,
-        )
-        .order_by(Episode.id)
-        .limit(1)
-    )
-    ep = (await session.execute(stmt)).scalar_one_or_none()
+    ep = await _first_episode(session, show_id, Episode.absolute_episode_number == episode)
     if ep is not None:
         return ep
 
-    stmt = (
-        select(Episode)
-        .where(
-            Episode.show_id == show_id,
-            Episode.season_number == 1,
-            Episode.episode_number == episode,
-        )
-        .order_by(Episode.id)
-        .limit(1)
+    return await _first_episode(
+        session, show_id, Episode.season_number == 1, Episode.episode_number == episode
     )
-    return (await session.execute(stmt)).scalar_one_or_none()

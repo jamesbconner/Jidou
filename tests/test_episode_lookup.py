@@ -151,3 +151,22 @@ async def test_resolve_episode_season_1_fallback_query_is_limited_and_ordered() 
 
     assert len(captured) == 2
     _assert_limited_and_ordered_by_id(captured[1])
+
+
+async def test_first_episode_always_scopes_to_show_and_is_ordered_and_limited() -> None:
+    """The shared helper adds the show filter, id ordering and LIMIT 1 itself."""
+    from jidou.models.episode import Episode
+    from jidou.services.episode_lookup import _first_episode
+
+    captured, capture = _capture_stmt()
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=capture)
+
+    result = await _first_episode(session, 7, Episode.season_number == 3)
+
+    assert result is None
+    assert len(captured) == 1
+    _assert_limited_and_ordered_by_id(captured[0])
+    compiled = str(captured[0].compile(compile_kwargs={"literal_binds": True}))  # type: ignore[attr-defined]
+    assert "episodes.show_id = 7" in compiled
+    assert "episodes.season_number = 3" in compiled

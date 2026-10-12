@@ -1,6 +1,17 @@
 """Tests for jidou.services.llm_json."""
 
-from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+import pytest
+
+from jidou.services.filename_parser import _PARSE_RESPONSE_FORMAT
+from jidou.services.llm_json import (
+    NULLABLE_INT,
+    NULLABLE_STRING,
+    json_schema_format,
+    optional_int,
+    parse_llm_json,
+    sanitize_for_prompt,
+)
+from jidou.services.rss_regex_suggestor import REGEX_RESPONSE_FORMAT
 
 
 def test_parse_llm_json_plain_dict() -> None:
@@ -118,3 +129,118 @@ def test_sanitize_for_prompt_respects_custom_max_len() -> None:
 def test_sanitize_for_prompt_leaves_clean_text_unchanged() -> None:
     """Ordinary text with no unsafe characters passes through unchanged."""
     assert sanitize_for_prompt("Attack on Titan") == "Attack on Titan"
+
+
+# ---------------------------------------------------------------------------
+# json_schema_format / optional_int
+# ---------------------------------------------------------------------------
+
+
+def test_json_schema_format_builds_strict_object_schema() -> None:
+    """The wrapper marks every property required and forbids extras."""
+    props: dict[str, object] = {"a": {"type": "string"}, "b": NULLABLE_INT}
+
+    assert json_schema_format("thing", props) == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "thing",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": props,
+                "required": ["a", "b"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def test_nullable_constants_match_the_literal_schema_fragments() -> None:
+    assert NULLABLE_INT == {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+    assert NULLABLE_STRING == {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+
+# Literal copies of the dicts that existed before json_schema_format did, so a
+# change to the helper cannot silently alter what providers are sent.
+_FILENAME_PARSE_PROPERTIES: dict[str, object] = {
+    "show_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    "crc32": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "content_type": {
+        "anyOf": [
+            {"type": "string", "enum": ["anime", "tv", "movie"]},
+            {"type": "null"},
+        ]
+    },
+    "confidence": {"type": "number"},
+    "reasoning": {"type": "string"},
+}
+
+_FILENAME_PARSE_LITERAL: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "filename_parse",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": _FILENAME_PARSE_PROPERTIES,
+            "required": [
+                "show_name",
+                "season",
+                "episode",
+                "crc32",
+                "content_type",
+                "confidence",
+                "reasoning",
+            ],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_RSS_REGEX_PROPERTIES: dict[str, object] = {
+    "regex_include": {"type": "string"},
+    "regex_exclude": {"type": "string"},
+}
+
+_RSS_REGEX_LITERAL: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "rss_regex",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": _RSS_REGEX_PROPERTIES,
+            "required": ["regex_include", "regex_exclude"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def test_json_schema_format_matches_existing_filename_schema() -> None:
+    assert json_schema_format("filename_parse", _FILENAME_PARSE_PROPERTIES) == (
+        _FILENAME_PARSE_LITERAL
+    )
+    assert _PARSE_RESPONSE_FORMAT == _FILENAME_PARSE_LITERAL
+
+
+def test_json_schema_format_matches_existing_rss_regex_schema() -> None:
+    assert json_schema_format("rss_regex", _RSS_REGEX_PROPERTIES) == _RSS_REGEX_LITERAL
+    assert REGEX_RESPONSE_FORMAT == _RSS_REGEX_LITERAL
+
+
+@pytest.mark.parametrize(("value", "expected"), [(None, None), ("3", 3), (4, 4)])
+def test_optional_int(value: object, expected: int | None) -> None:
+    assert optional_int(value) == expected
+
+
+def test_optional_int_propagates_value_error() -> None:
+    with pytest.raises(ValueError):
+        optional_int("x")
+
+
+def test_optional_int_propagates_type_error() -> None:
+    with pytest.raises(TypeError):
+        optional_int([1])

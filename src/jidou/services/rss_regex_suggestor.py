@@ -13,8 +13,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from jidou.models.rss import RssFeed
-from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+from jidou.services.llm_json import json_schema_format, sanitize_for_prompt
 from jidou.services.llm_service import LLMResponse, LLMService
+from jidou.services.llm_structured import request_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -26,22 +27,10 @@ REGEX_MAX_TOKENS: int = 1024
 MAX_PROMPT_TITLES: int = 10
 _MAX_PROMPT_TITLE_LENGTH: int = 200
 
-REGEX_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "rss_regex",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "regex_include": {"type": "string"},
-                "regex_exclude": {"type": "string"},
-            },
-            "required": ["regex_include", "regex_exclude"],
-            "additionalProperties": False,
-        },
-    },
-}
+REGEX_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "rss_regex",
+    {"regex_include": {"type": "string"}, "regex_exclude": {"type": "string"}},
+)
 
 # The system prompt is assembled from three parts so that generic preferences
 # never compete with what a feed actually publishes:
@@ -381,16 +370,24 @@ class RssRegexSuggestor:
             RegexSuggestionError: 503 on provider failure, truncation,
                 unparseable JSON, or an uncompilable regex.
         """
-        response = await self._llm.complete(
+        result = await request_json_object(
+            self._llm,
             prompt=prompt,
             system=system_prompt,
             max_tokens=REGEX_MAX_TOKENS,
             response_format=REGEX_RESPONSE_FORMAT,
             bypass_cache=bypass_cache,
         )
-        if response is None:
+        if result.error is not None:
+            # This service has never caught provider exceptions; the route layer
+            # decides how to surface them.
+            raise result.error
+        if result.response is None:
             raise RegexSuggestionError(503, "LLM provider call failed.")
 
+        # Checked before the parse failures: a truncated reply is usually
+        # invalid JSON too, and "truncated" is the actionable diagnosis.
+        response = result.response
         if response.finish_reason == "length":
             logger.warning(
                 "LLM regex suggestion truncated at %d tokens for %s",
@@ -404,8 +401,8 @@ class RssRegexSuggestor:
                 "Try a model with a larger context window.",
             )
 
-        parsed = parse_llm_json(response.content)
-        if not isinstance(parsed, dict):
+        parsed = result.data
+        if parsed is None:
             logger.warning("LLM returned unparseable regex JSON for %s", log_ref)
             raise RegexSuggestionError(503, "LLM returned an unparseable response.")
 

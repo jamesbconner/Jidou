@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import httpx2 as httpx
 from cachetools import TTLCache
 
+from jidou.services.llm_json import json_schema_format
 from jidou.services.single_flight import ElectedSingleFlight
 
 if TYPE_CHECKING:
@@ -164,19 +165,7 @@ class LLMService:
 
         # Structured output suppresses reasoning on models that require both
         # /no_think and a schema constraint to skip chain-of-thought.
-        _ping_format: dict[str, Any] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ping",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {"result": {"type": "string"}},
-                    "required": ["result"],
-                    "additionalProperties": False,
-                },
-            },
-        }
+        _ping_format = json_schema_format("ping", {"result": {"type": "string"}})
 
         start = time.monotonic()
         if self._provider in _OPENAI_COMPATIBLE:
@@ -195,9 +184,10 @@ class LLMService:
                 max_tokens=5,
             )
         else:
-            # Kept (unlike the dispatch in _call_provider): an existing test pins this
-            # RuntimeError for an unrecognised provider, and test_connection must not
-            # silently ping the OpenAI endpoint with one.
+            # Like _call_provider, refuse an unrecognised provider rather than ping the
+            # OpenAI endpoint with it; here it surfaces as a RuntimeError (pinned by an
+            # existing test) because test_connection reports errors instead of
+            # degrading to None.
             raise RuntimeError(f"Unsupported LLM provider: {self._provider!r}")
 
         return time.monotonic() - start, self._model

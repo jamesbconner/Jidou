@@ -304,3 +304,62 @@ async def test_duplicate_retry_uses_the_same_system_prompt() -> None:
     first, second = llm.complete.await_args_list
     assert first.kwargs["system"] == second.kwargs["system"]
     assert "1080p" not in second.kwargs["system"]
+
+
+async def test_provider_exception_propagates_unchanged() -> None:
+    """The suggestor never caught provider exceptions; the original error reaches the route."""
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("provider exploded"))
+
+    with pytest.raises(RuntimeError, match="provider exploded"):
+        await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
+
+
+async def test_truncation_is_reported_before_json_parse_failure() -> None:
+    """finish_reason == 'length' wins even when the truncated content is not valid JSON."""
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(
+        return_value=LLMResponse(
+            content='{"regex_inc',
+            model="m",
+            provider=LLMProvider.OPENAI,
+            finish_reason="length",
+            completion_tokens=1024,
+        )
+    )
+
+    with pytest.raises(RegexSuggestionError, match="truncated") as exc_info:
+        await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
+
+    assert exc_info.value.status_code == 503
+
+
+async def test_request_arguments_are_pinned() -> None:
+    """max_tokens, bypass_cache and schema name sent to the LLM do not change."""
+    llm = _llm(JSON_OK)
+
+    await RssRegexSuggestor(llm).suggest(label="X", label_is_show=True, feed=None, log_ref="r")
+
+    kwargs = llm.complete.await_args.kwargs
+    assert kwargs["max_tokens"] == 1024
+    assert kwargs["bypass_cache"] is False
+    assert kwargs["response_format"]["json_schema"]["name"] == "rss_regex"
+
+
+async def test_unparseable_response_logs_are_pinned(caplog: pytest.LogCaptureFixture) -> None:
+    """Non-object JSON and a missing key each log their documented warning."""
+    for content, expected in [
+        ("not json", "LLM returned unparseable regex JSON for r"),
+        ('{"regex_include": "x"}', "LLM returned unparseable regex JSON for r: 'regex_exclude'"),
+    ]:
+        caplog.clear()
+        with (
+            caplog.at_level("WARNING", logger="jidou.services.rss_regex_suggestor"),
+            pytest.raises(RegexSuggestionError),
+        ):
+            await RssRegexSuggestor(_llm(content)).suggest(
+                label="X", label_is_show=True, feed=None, log_ref="r"
+            )
+        assert [r.getMessage() for r in caplog.records] == [expected]

@@ -22,8 +22,15 @@ import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+from jidou.services.llm_json import (
+    NULLABLE_INT,
+    NULLABLE_STRING,
+    json_schema_format,
+    optional_int,
+    sanitize_for_prompt,
+)
 from jidou.services.llm_service import LLMService
+from jidou.services.llm_structured import JsonCallFailure, request_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -84,40 +91,23 @@ _HEURISTIC_PATTERNS: list[re.Pattern[str]] = [
 # JSON schema for structured LLM output (OpenAI response_format shape).
 # Passed to OpenAI-compatible providers; Anthropic ignores it and relies on
 # the system prompt text instead.
-_PARSE_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "filename_parse",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "show_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "crc32": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                "content_type": {
-                    "anyOf": [
-                        {"type": "string", "enum": ["anime", "tv", "movie"]},
-                        {"type": "null"},
-                    ]
-                },
-                "confidence": {"type": "number"},
-                "reasoning": {"type": "string"},
-            },
-            "required": [
-                "show_name",
-                "season",
-                "episode",
-                "crc32",
-                "content_type",
-                "confidence",
-                "reasoning",
-            ],
-            "additionalProperties": False,
+_PARSE_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "filename_parse",
+    {
+        "show_name": NULLABLE_STRING,
+        "season": NULLABLE_INT,
+        "episode": NULLABLE_INT,
+        "crc32": NULLABLE_STRING,
+        "content_type": {
+            "anyOf": [
+                {"type": "string", "enum": ["anime", "tv", "movie"]},
+                {"type": "null"},
+            ]
         },
+        "confidence": {"type": "number"},
+        "reasoning": {"type": "string"},
     },
-}
+)
 
 
 @dataclass
@@ -342,32 +332,36 @@ async def parse_filename(
     if regex_hint is not None:
         hint_line = f"\nRegex anchor detected: season={regex_hint[0]} episode={regex_hint[1]}"
 
-    response = await llm.complete(
+    result = await request_json_object(
+        llm,
         prompt=f"Given this filename: {sanitize_for_prompt(filename)}{hint_line}",
         system=_PARSE_SYSTEM,
         response_format=_PARSE_RESPONSE_FORMAT,
     )
-    if response is None:
+    if result.error is not None:
+        # Unlike the other structured callers, parse_filename has never swallowed
+        # provider exceptions; callers rely on them propagating.
+        raise result.error
+    if result.failure is JsonCallFailure.NO_RESPONSE:
         logger.warning("LLM returned no response for %r; falling back to heuristic", filename)
         return _heuristic_parse(filename)
 
-    parsed = parse_llm_json(response.content)
-    if not isinstance(parsed, dict):
+    parsed = result.data
+    if parsed is None:
+        # Invalid JSON and a non-object root share one fallback and one message.
         logger.warning(
             "LLM returned non-object JSON for %r: %r; falling back to heuristic",
             filename,
-            response.content,
+            result.content,
         )
         return _heuristic_parse(filename)
 
     if reasoning := parsed.get("reasoning"):
         logger.debug("LLM reasoning for %r: %s", filename, reasoning)
 
-    raw_season = parsed.get("season")
-    raw_episode = parsed.get("episode")
     try:
-        season = int(raw_season) if raw_season is not None else None
-        episode = int(raw_episode) if raw_episode is not None else None
+        season = optional_int(parsed.get("season"))
+        episode = optional_int(parsed.get("episode"))
         confidence = float(parsed.get("confidence") or 0.0)
     except (TypeError, ValueError):
         logger.warning("LLM returned non-numeric S/E/confidence for %r: %r", filename, parsed)

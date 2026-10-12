@@ -76,3 +76,57 @@ def parse_llm_json(content: str) -> dict[str, Any] | list[Any] | None:
         return parsed
     logger.debug("LLM response parsed to a non-object/array JSON scalar: %r", parsed)
     return None
+
+
+# Reusable JSON-schema fragments for the nullable fields most structured
+# prompts ask for. Shared constants (never mutated) so each call site states
+# its field types in one word instead of repeating the anyOf literal.
+NULLABLE_INT: dict[str, object] = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+NULLABLE_STRING: dict[str, object] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+
+def json_schema_format(name: str, properties: dict[str, object]) -> dict[str, object]:
+    """Build an OpenAI-style strict ``response_format`` for a flat JSON object.
+
+    Every property is marked required (strict mode demands it) and extra keys
+    are forbidden, so a nullable field is expressed with :data:`NULLABLE_INT`
+    / :data:`NULLABLE_STRING` rather than by omitting it from ``required``.
+    Anthropic ignores ``response_format``; the system prompt carries the
+    contract there.
+
+    Args:
+        name: Schema name sent to the provider (e.g. ``"episode_match"``).
+        properties: JSON-schema property definitions, in output order.
+
+    Returns:
+        The ``response_format`` dict to pass to ``LLMService.complete``.
+    """
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name,
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties),
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def optional_int(value: object) -> int | None:
+    """Coerce an LLM-supplied value to ``int``, passing ``None`` through.
+
+    Args:
+        value: A raw JSON value (``None``, an int, a numeric string, ...).
+
+    Returns:
+        ``None`` if *value* is ``None``, otherwise ``int(value)``.
+
+    Raises:
+        TypeError: If *value* has no integer conversion (e.g. a list).
+        ValueError: If *value* is a string that is not an integer literal.
+    """
+    return None if value is None else int(value)  # type: ignore[call-overload]
