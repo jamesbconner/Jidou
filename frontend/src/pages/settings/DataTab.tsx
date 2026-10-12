@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useImportText, useExportDatabase, useImportDatabase } from '@/hooks/useData'
-import { useTriggerWithDryRun } from '@/hooks/useSettingsActions'
+import type { useTriggerWithDryRun } from '@/hooks/useSettingsActions'
 import type { TaskRead } from '@/types/api'
 import { LiveImportTask } from './LiveImportTask'
 
@@ -216,11 +216,14 @@ function DatabaseImportSection() {
     </Card>
   )
 }
-/** Import/export and maintenance triggers (the Settings "Data" tab). */
-export function DataTab() {
-  const seed = useTriggerWithDryRun('seed')
-  const backfill = useTriggerWithDryRun('backfill_show_metadata')
+/** Trigger mutations are owned by Settings so error text survives tab switches. */
+export interface DataTabProps {
+  seed: ReturnType<typeof useTriggerWithDryRun>
+  backfill: ReturnType<typeof useTriggerWithDryRun>
+}
 
+/** Import/export and maintenance triggers (the Settings "Data" tab). */
+export function DataTab({ seed, backfill }: DataTabProps) {
   return (
     <div className="space-y-6">
       <TextImportSection />

@@ -1,5 +1,9 @@
 import { useState } from 'react'
+import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
+import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
+import { useBannerStyle } from '@/hooks/useBannerStyle'
 import { useConfig } from '@/hooks/useConfig'
+import { useConnectionTest, useTriggerWithDryRun } from '@/hooks/useSettingsActions'
 import { DataTab } from './settings/DataTab'
 import { FeaturesTab } from './settings/FeaturesTab'
 import { GeneralTab } from './settings/GeneralTab'
@@ -18,6 +22,25 @@ const TABS: { id: Tab; label: string }[] = [
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('general')
   const { data: config } = useConfig()
+
+  // Every stateful hook lives here, not in the tabs: a tab unmounts when the
+  // user switches away, which would drop test results, flush messages and error
+  // text and delay GET /admin/cache until the Services tab opens.
+  const tests = {
+    tmdb: useConnectionTest('tmdb'),
+    sftp: useConnectionTest('sftp'),
+    redis: useConnectionTest('redis'),
+    llm: useConnectionTest('llm'),
+  }
+  const cache = useAdminCache()
+  const flushCache = useFlushCache()
+  const health = useAdminHealth()
+  const { data: appSettings } = useAppSettings()
+  const updateAppSettings = useUpdateAppSettings()
+  // Browser-local UI preference (not backed by /api/settings).
+  const [bannerStyle, setBannerStyle] = useBannerStyle()
+  const seed = useTriggerWithDryRun('seed')
+  const backfill = useTriggerWithDryRun('backfill_show_metadata')
 
   const tabCls = (t: Tab) =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -40,9 +63,18 @@ export default function Settings() {
       </div>
 
       {tab === 'general' && config && <GeneralTab config={config} />}
-      {tab === 'features' && <FeaturesTab />}
-      {tab === 'services' && <ServicesTab config={config} />}
-      {tab === 'data' && <DataTab />}
+      {tab === 'features' && (
+        <FeaturesTab
+          appSettings={appSettings}
+          updateAppSettings={updateAppSettings}
+          bannerStyle={bannerStyle}
+          setBannerStyle={setBannerStyle}
+        />
+      )}
+      {tab === 'services' && (
+        <ServicesTab config={config} cache={cache} flushCache={flushCache} health={health} tests={tests} />
+      )}
+      {tab === 'data' && <DataTab seed={seed} backfill={backfill} />}
     </div>
   )
 }

@@ -1,17 +1,17 @@
 import { Card } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
-import { useBannerStyle } from '@/hooks/useBannerStyle'
+import type { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
 import type { BannerStyle } from '@/hooks/useBannerStyle'
 
-/** Feature toggles (the Settings "Features" tab): app settings plus the browser-local banner style. */
-export function FeaturesTab() {
-  const { data: appSettings } = useAppSettings()
-  const updateAppSettings = useUpdateAppSettings()
+export interface FeaturesTabProps {
+  appSettings: ReturnType<typeof useAppSettings>['data']
+  updateAppSettings: ReturnType<typeof useUpdateAppSettings>
+  bannerStyle: BannerStyle
+  setBannerStyle: (style: BannerStyle) => void
+}
 
-  // Browser-local UI preference (not backed by /api/settings).
-  const [bannerStyle, setBannerStyle] = useBannerStyle()
-
+/** Feature toggles (the Settings "Features" tab); hook state is owned by Settings. */
+export function FeaturesTab({ appSettings, updateAppSettings, bannerStyle, setBannerStyle }: FeaturesTabProps) {
   return (
     <div className="space-y-8">
       {/* Show Detail — everything that changes how an individual show's detail page looks/behaves */}

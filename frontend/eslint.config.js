@@ -42,7 +42,8 @@ export default [
       // false positives on TS-only constructs that tsc already catches.
       'no-undef': 'off',
       // Complexity ratchet (frontend simplification plan, Task 1): pinned at
-      // the measured maximum (now ShowDetail = 77, after FE-3 split Settings). It may only ever be lowered.
+      // the measured maximum (ShowDetail = 77 after the FE-3 Settings split).
+      // It may only ever be lowered.
       complexity: ['error', 77],
     },
   },

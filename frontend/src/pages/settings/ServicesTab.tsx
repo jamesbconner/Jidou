@@ -1,19 +1,23 @@
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
-import { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
-import { useConnectionTest } from '@/hooks/useSettingsActions'
+import type { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
+import type { ConnectionService, useConnectionTest } from '@/hooks/useSettingsActions'
 import type { AppConfig, ConnectionTestResult, ServiceHealth } from '@/types/api'
 
-/** Service health, on-demand connection tests, TMDB cache and schedules (the Settings "Services" tab). */
-export function ServicesTab({ config }: { config: AppConfig | undefined }) {
-  const testTmdb = useConnectionTest('tmdb')
-  const testSftp = useConnectionTest('sftp')
-  const testRedis = useConnectionTest('redis')
-  const testLlm = useConnectionTest('llm')
+/** Hook results owned by Settings so their state survives tab switches (as it did before the split). */
+export interface ServicesTabProps {
+  config: AppConfig | undefined
+  cache: ReturnType<typeof useAdminCache>
+  flushCache: ReturnType<typeof useFlushCache>
+  health: ReturnType<typeof useAdminHealth>
+  tests: Record<ConnectionService, ReturnType<typeof useConnectionTest>>
+}
 
-  const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = useAdminCache()
-  const flushCache = useFlushCache()
-  const { data: health, refetch: refetchHealth, isFetching: healthFetching } = useAdminHealth()
+/** Service health, on-demand connection tests, TMDB cache and schedules (the Settings "Services" tab). */
+export function ServicesTab({ config, cache, flushCache, health: healthQuery, tests }: ServicesTabProps) {
+  const { tmdb: testTmdb, sftp: testSftp, redis: testRedis, llm: testLlm } = tests
+  const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = cache
+  const { data: health, refetch: refetchHealth, isFetching: healthFetching } = healthQuery
 
   const showLlm = Boolean(config?.llm_provider && config.llm_provider.toLowerCase() !== 'none')
 

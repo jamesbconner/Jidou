@@ -56,11 +56,13 @@ describe('useTriggerWithDryRun', () => {
   }
 
   test.each([
-    ['dryRun', true],
-    ['live', false],
-  ] as const)('%s trigger sends dry_run=%s and navigates to the task', async (which, dry) => {
+    ['seed', 'dryRun', true],
+    ['seed', 'live', false],
+    ['backfill_show_metadata', 'dryRun', true],
+    ['backfill_show_metadata', 'live', false],
+  ] as const)('%s %s trigger sends dry_run=%s and navigates to the task', async (taskType, which, dry) => {
     vi.mocked(fetch).mockResolvedValue(mockResponse({ id: 42, status: 'pending' }))
-    const { result } = renderHook(() => useHarness('backfill_show_metadata'), {
+    const { result } = renderHook(() => useHarness(taskType), {
       wrapper: makeWrapper(),
     })
 
@@ -72,15 +74,18 @@ describe('useTriggerWithDryRun', () => {
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     expect(url as string).toContain('/api/tasks/trigger')
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
-      task_type: 'backfill_show_metadata',
+      task_type: taskType,
       dry_run: dry,
     })
   })
 
-  test('the two mutations are independent', () => {
-    const { result } = renderHook(() => useTriggerWithDryRun('seed'), { wrapper: makeWrapper() })
-    expect(result.current.dryRun).not.toBe(result.current.live)
-    expect(result.current.dryRun.isPending).toBe(false)
-    expect(result.current.live.isPending).toBe(false)
+  test('firing one mutation leaves the other idle', async () => {
+    vi.mocked(fetch).mockResolvedValue(mockResponse({ id: 1, status: 'pending' }))
+    const { result } = renderHook(() => useHarness('seed'), { wrapper: makeWrapper() })
+
+    act(() => result.current.actions.dryRun.mutate())
+    await waitFor(() => expect(result.current.actions.dryRun.isSuccess).toBe(true))
+    expect(result.current.actions.live.isPending).toBe(false)
+    expect(result.current.actions.live.data).toBeUndefined()
   })
 })
