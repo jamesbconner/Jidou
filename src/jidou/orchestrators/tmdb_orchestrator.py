@@ -5,9 +5,9 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, cast
+from typing import Any, Final, cast
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile
@@ -20,6 +20,7 @@ from jidou.services.episode_group_mapping import (
     flatten_for_absolute_numbering,
     to_storage_map,
 )
+from jidou.services.episode_lookup import count_show_episodes
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
@@ -105,6 +106,70 @@ def _parse_air_date(raw_date: str | None) -> date | None:
     with contextlib.suppress(ValueError):
         return date.fromisoformat(raw_date)
     return None
+
+
+# Episode columns copied verbatim from a TMDB episode object on both create and
+# update. ``name`` (different create/update fallback) and ``air_date`` (needs
+# parsing) are handled explicitly in the helpers below.
+_EPISODE_DETAIL_FIELDS: Final = ("overview", "runtime", "episode_type", "still_path")
+
+
+def _new_episode(
+    show_id: int, data: dict[str, Any], season: int, number: int, *, with_absolute: bool
+) -> Episode:
+    """Build an unsaved Episode from a TMDB episode object.
+
+    Args:
+        show_id: Database ID of the parent show.
+        data: TMDB episode object; ``id`` is required.
+        season: Season number to store (native or episode-group numbering).
+        number: Episode number to store (native or episode-group numbering).
+        with_absolute: Also copy ``absolute_episode_number`` from *data*. True
+            on the episode-group paths, whose flattened payload carries it.
+
+    Returns:
+        A new, not-yet-added Episode.
+    """
+    episode = Episode(
+        show_id=show_id,
+        tmdb_id=data["id"],
+        season_number=season,
+        episode_number=number,
+        name=data.get("name", ""),
+        air_date=_parse_air_date(data.get("air_date")),
+    )
+    for field in _EPISODE_DETAIL_FIELDS:
+        setattr(episode, field, data.get(field))
+    if with_absolute:
+        episode.absolute_episode_number = data.get("absolute_episode_number")
+    return episode
+
+
+def _refresh_episode(
+    ep: Episode,
+    data: dict[str, Any],
+    *,
+    renumber: tuple[int, int] | None,
+    with_absolute: bool,
+) -> None:
+    """Overwrite an existing Episode's metadata from a TMDB episode object.
+
+    Args:
+        ep: Episode row to update in place.
+        data: TMDB episode object.
+        renumber: ``(season_number, episode_number)`` to store, or None to keep
+            the row's numbering. Set only on the episode-group path, where the
+            group's own numbering is authoritative.
+        with_absolute: Also overwrite ``absolute_episode_number`` from *data*.
+    """
+    if renumber is not None:
+        ep.season_number, ep.episode_number = renumber
+    ep.name = data.get("name", ep.name)
+    ep.air_date = _parse_air_date(data.get("air_date"))
+    for field in _EPISODE_DETAIL_FIELDS:
+        setattr(ep, field, data.get(field))
+    if with_absolute:
+        ep.absolute_episode_number = data.get("absolute_episode_number")
 
 
 def _update_last_air_date(show: Show, episodes: Iterable[Episode]) -> None:
@@ -207,40 +272,26 @@ class TMDBOrchestrator:
                 show.tmdb_id, season_num, bypass_cache=bypass_cache
             )
 
-            for ep_data in season_data.get("episodes", []):
-                tmdb_ep_id: int | None = ep_data.get("id")
-                if not tmdb_ep_id:
-                    continue
+            season_episodes = [e for e in season_data.get("episodes", []) if e.get("id")]
+            by_tmdb_id = await self._episodes_by_tmdb_id([e["id"] for e in season_episodes])
 
-                stmt = select(Episode).where(Episode.tmdb_id == tmdb_ep_id)
-                existing = (await self.session.execute(stmt)).scalar_one_or_none()
-
-                air_date = _parse_air_date(ep_data.get("air_date"))
+            for ep_data in season_episodes:
+                tmdb_ep_id: int = ep_data["id"]
+                existing = by_tmdb_id.get(tmdb_ep_id)
                 episode_num = ep_data.get("episode_number", 0)
 
                 if existing is not None:
-                    existing.name = ep_data.get("name", existing.name)
-                    existing.overview = ep_data.get("overview")
-                    existing.air_date = air_date
-                    existing.runtime = ep_data.get("runtime")
-                    existing.episode_type = ep_data.get("episode_type")
-                    existing.still_path = ep_data.get("still_path")
+                    _refresh_episode(existing, ep_data, renumber=None, with_absolute=False)
                     episodes_by_key[(season_num, episode_num)] = existing
                     episodes_skipped += 1
                 else:
-                    new_ep = Episode(
-                        show_id=show.id,
-                        tmdb_id=tmdb_ep_id,
-                        season_number=season_num,
-                        episode_number=episode_num,
-                        name=ep_data.get("name", ""),
-                        overview=ep_data.get("overview"),
-                        air_date=air_date,
-                        runtime=ep_data.get("runtime"),
-                        episode_type=ep_data.get("episode_type"),
-                        still_path=ep_data.get("still_path"),
+                    new_ep = _new_episode(
+                        show.id, ep_data, season_num, episode_num, with_absolute=False
                     )
                     self.session.add(new_ep)
+                    # Visible to a repeated id later in this batch, as autoflush
+                    # made it for the old per-episode lookup.
+                    by_tmdb_id[tmdb_ep_id] = new_ep
                     episodes_by_key[(season_num, episode_num)] = new_ep
                     episodes_upserted += 1
 
@@ -263,6 +314,25 @@ class TMDBOrchestrator:
             episodes_upserted=episodes_upserted,
             episodes_skipped=episodes_skipped,
         )
+
+    async def _episodes_by_tmdb_id(self, tmdb_ids: list[int]) -> dict[int, Episode]:
+        """Load the existing Episode rows for a batch of TMDB episode ids in one query.
+
+        Replaces one SELECT per episode with one ``IN`` query per season / group
+        batch. ``Episode.tmdb_id`` is unique, so each id maps to at most one row.
+
+        Args:
+            tmdb_ids: TMDB episode ids from one season or episode-group payload.
+
+        Returns:
+            Existing rows keyed by ``tmdb_id``; empty (and no query issued) when
+            *tmdb_ids* is empty.
+        """
+        if not tmdb_ids:
+            return {}
+        stmt = select(Episode).where(Episode.tmdb_id.in_(list(dict.fromkeys(tmdb_ids))))
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return {row.tmdb_id: row for row in rows}
 
     async def _refresh_active_group_episodes(
         self, show: Show, bypass_cache: bool = False
@@ -301,42 +371,21 @@ class TMDBOrchestrator:
         episodes_upserted = 0
         episodes_skipped = 0
         touched: list[Episode] = []
-        for ep_data in flattened:
-            tmdb_ep_id: int | None = ep_data.get("id")
-            if not tmdb_ep_id:
-                continue
-
-            stmt = select(Episode).where(Episode.tmdb_id == tmdb_ep_id)
-            existing = (await self.session.execute(stmt)).scalar_one_or_none()
-            air_date = _parse_air_date(ep_data.get("air_date"))
+        group_episodes = [e for e in flattened if e.get("id")]
+        by_tmdb_id = await self._episodes_by_tmdb_id([e["id"] for e in group_episodes])
+        for ep_data in group_episodes:
+            tmdb_ep_id: int = ep_data["id"]
+            numbering = (ep_data["season_number"], ep_data["episode_number"])
+            existing = by_tmdb_id.get(tmdb_ep_id)
 
             if existing is not None:
-                existing.season_number = ep_data["season_number"]
-                existing.episode_number = ep_data["episode_number"]
-                existing.name = ep_data.get("name", existing.name)
-                existing.overview = ep_data.get("overview")
-                existing.air_date = air_date
-                existing.runtime = ep_data.get("runtime")
-                existing.episode_type = ep_data.get("episode_type")
-                existing.still_path = ep_data.get("still_path")
-                existing.absolute_episode_number = ep_data.get("absolute_episode_number")
+                _refresh_episode(existing, ep_data, renumber=numbering, with_absolute=True)
                 touched.append(existing)
                 episodes_skipped += 1
             else:
-                new_ep = Episode(
-                    show_id=show.id,
-                    tmdb_id=tmdb_ep_id,
-                    season_number=ep_data["season_number"],
-                    episode_number=ep_data["episode_number"],
-                    name=ep_data.get("name", ""),
-                    overview=ep_data.get("overview"),
-                    air_date=air_date,
-                    runtime=ep_data.get("runtime"),
-                    episode_type=ep_data.get("episode_type"),
-                    still_path=ep_data.get("still_path"),
-                    absolute_episode_number=ep_data.get("absolute_episode_number"),
-                )
+                new_ep = _new_episode(show.id, ep_data, *numbering, with_absolute=True)
                 self.session.add(new_ep)
+                by_tmdb_id[tmdb_ep_id] = new_ep
                 touched.append(new_ep)
                 episodes_upserted += 1
 
@@ -391,12 +440,7 @@ class TMDBOrchestrator:
         flattened = _flatten_episode_group(detail)
 
         orphaned_file_count, orphaned_watched_count = await self._orphan_tracked_episodes(show.id)
-        episodes_removed = (
-            await self.session.scalar(
-                select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
-            )
-            or 0
-        )
+        episodes_removed = await count_show_episodes(self.session, show.id)
         await self.session.execute(
             Episode.__table__.delete().where(Episode.show_id == show.id)  # type: ignore[attr-defined]
         )
@@ -404,18 +448,12 @@ class TMDBOrchestrator:
 
         new_episodes: list[Episode] = []
         for ep_data in flattened:
-            new_ep = Episode(
-                show_id=show.id,
-                tmdb_id=ep_data["id"],
-                season_number=ep_data["season_number"],
-                episode_number=ep_data["episode_number"],
-                name=ep_data.get("name", ""),
-                overview=ep_data.get("overview"),
-                air_date=_parse_air_date(ep_data.get("air_date")),
-                runtime=ep_data.get("runtime"),
-                episode_type=ep_data.get("episode_type"),
-                still_path=ep_data.get("still_path"),
-                absolute_episode_number=ep_data.get("absolute_episode_number"),
+            new_ep = _new_episode(
+                show.id,
+                ep_data,
+                ep_data["season_number"],
+                ep_data["episode_number"],
+                with_absolute=True,
             )
             self.session.add(new_ep)
             new_episodes.append(new_ep)
@@ -553,10 +591,7 @@ class TMDBOrchestrator:
         if show.episode_group_map is not None:
             return
 
-        ep_count = await self.session.scalar(
-            select(func.count()).select_from(Episode).where(Episode.show_id == show.id)
-        )
-        if not ep_count:
+        if not await count_show_episodes(self.session, show.id):
             return
 
         try:

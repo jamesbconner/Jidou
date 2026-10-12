@@ -170,3 +170,29 @@ async def test_first_episode_always_scopes_to_show_and_is_ordered_and_limited() 
     compiled = str(captured[0].compile(compile_kwargs={"literal_binds": True}))  # type: ignore[attr-defined]
     assert "episodes.show_id = 7" in compiled
     assert "episodes.season_number = 3" in compiled
+
+
+async def test_count_show_episodes_returns_scalar_and_scopes_to_show() -> None:
+    """The count is one ``count(*)`` query filtered on the show id (indexed column)."""
+    from jidou.services.episode_lookup import count_show_episodes
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=12)
+
+    assert await count_show_episodes(session, 7) == 12
+
+    session.scalar.assert_awaited_once()
+    stmt = session.scalar.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "count(*)" in compiled
+    assert "episodes.show_id = 7" in compiled
+
+
+async def test_count_show_episodes_none_is_zero() -> None:
+    """A NULL scalar (no result row) is reported as zero episodes."""
+    from jidou.services.episode_lookup import count_show_episodes
+
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)
+
+    assert await count_show_episodes(session, 1) == 0

@@ -11,6 +11,38 @@ from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator, _flatten_epi
 from tests._fake_orchestrator_session import FakeNested
 
 
+class _ExistingEpisodeProxy:
+    """Per-id stand-in for one shared ``existing`` double.
+
+    Lookups are batched by TMDB id and keyed on ``tmdb_id``, so a single shared
+    mock cannot be "the" row for several ids. Each proxy carries its own
+    ``tmdb_id`` and forwards every other read/write to the shared double, so a
+    test can keep asserting on the one object it created.
+    """
+
+    def __init__(self, target, tmdb_id):
+        object.__setattr__(self, "_target", target)
+        object.__setattr__(self, "tmdb_id", tmdb_id)
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._target, name, value)
+
+
+def _episode_lookup_result(stmt, existing_episode):
+    """Result double for an Episode-by-tmdb_id lookup (batched IN query)."""
+    result = MagicMock()
+    rows = []
+    if existing_episode is not None:
+        (value,) = stmt.compile().params.values()
+        ids = value if isinstance(value, (list, tuple, set)) else [value]
+        rows = [_ExistingEpisodeProxy(existing_episode, tmdb_id) for tmdb_id in ids]
+    result.scalars.return_value.all.return_value = rows
+    return result
+
+
 def _make_session(existing_episode=None):
     """Build a mock session where execute returns no existing episodes by default."""
     session = MagicMock()
@@ -20,9 +52,9 @@ def _make_session(existing_episode=None):
     session.begin_nested = MagicMock(return_value=FakeNested())
     session.add = MagicMock()
 
-    ep_result = MagicMock()
-    ep_result.scalar_one_or_none.return_value = existing_episode
-    session.execute = AsyncMock(return_value=ep_result)
+    session.execute = AsyncMock(
+        side_effect=lambda stmt: _episode_lookup_result(stmt, existing_episode)
+    )
     return session
 
 
@@ -38,10 +70,15 @@ def _make_session_with_shows(shows, existing_episode=None):
     show_result = MagicMock()
     show_result.scalars.return_value.all.return_value = shows
 
-    ep_result = MagicMock()
-    ep_result.scalar_one_or_none.return_value = existing_episode
+    calls = {"n": 0}
 
-    session.execute = AsyncMock(side_effect=[show_result] + [ep_result] * 20)
+    def _execute(stmt):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return show_result
+        return _episode_lookup_result(stmt, existing_episode)
+
+    session.execute = AsyncMock(side_effect=_execute)
     return session
 
 
@@ -589,6 +626,20 @@ class TestEnsureEpisodeGroupMap:
         await orch.ensure_episode_group_map(show)
 
         assert show.episode_group_map == {}
+
+    async def test_noops_when_show_has_no_episodes(self):
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=0)
+        show = _make_show()
+        show.active_episode_group_id = None
+        show.episode_group_map = None
+        tmdb = AsyncMock()
+
+        await TMDBOrchestrator(session, tmdb).ensure_episode_group_map(show)
+
+        session.scalar.assert_awaited_once()
+        session.execute.assert_not_called()
+        assert show.episode_group_map is None
 
 
 async def test_sync_all_shows_excludes_movies_from_the_query():
@@ -1217,3 +1268,372 @@ class TestSyncShowEpisodesWithActiveGroup:
         with pytest.raises(ValueError, match="active_episode_group_id"):
             await orch._refresh_active_group_episodes(show)
         tmdb.get_episode_group.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Characterization of the episode upsert (ORC-9): pins which rows are created
+# or updated, which fields change, and the counts -- on every path, including
+# mid-item failures -- so the lookup batching and shared field mapping cannot
+# change them.
+# ---------------------------------------------------------------------------
+
+
+def _bound_tmdb_ids(stmt) -> list[int]:
+    """Extract the tmdb_id value(s) a lookup statement filters on (== or IN)."""
+    (value,) = stmt.compile().params.values()
+    return list(value) if isinstance(value, (list, tuple, set)) else [value]
+
+
+class _StatefulEpisodeSession:
+    """Session double that behaves like autoflush: rows added are visible to later lookups.
+
+    Works for both per-episode ``scalar_one_or_none`` lookups and batched
+    ``scalars().all()`` lookups, so the same test pins old and new code.
+    """
+
+    def __init__(self, existing: list[Episode] | None = None) -> None:
+        self.rows: list[Episode] = list(existing or [])
+        self.added: list[Episode] = []
+        self.lookups = 0
+        self.fail_lookup_number: int | None = None
+        self.fail_on_tmdb_id: int | None = None
+        self.flush = AsyncMock()
+        self.commit = AsyncMock()
+        self.rollback = AsyncMock()
+
+    def add(self, row: Episode) -> None:
+        self.added.append(row)
+        self.rows.append(row)
+
+    async def execute(self, stmt):
+        self.lookups += 1
+        if self.fail_lookup_number == self.lookups:
+            raise RuntimeError("lookup failed")
+        wanted = set(_bound_tmdb_ids(stmt))
+        if self.fail_on_tmdb_id in wanted:
+            raise RuntimeError("lookup failed")
+        found = [r for r in self.rows if r.tmdb_id in wanted]
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = found[0] if found else None
+        result.scalars.return_value.all.return_value = found
+        return result
+
+
+def _real_show(**overrides):
+    show = _make_show()
+    show.episode_groups = []  # "checked, none": no episode_groups summary fetch
+    show.episode_group_map = None
+    show.media_type = "tv"
+    for key, value in overrides.items():
+        setattr(show, key, value)
+    return show
+
+
+def _existing_episode(tmdb_id: int, **fields) -> Episode:
+    values = {
+        "show_id": 1,
+        "tmdb_id": tmdb_id,
+        "season_number": 9,
+        "episode_number": 9,
+        "name": "Old Name",
+        "overview": "old overview",
+        "runtime": 1,
+        "episode_type": "old",
+        "still_path": "/old.jpg",
+        "absolute_episode_number": 77,
+    }
+    values.update(fields)
+    return Episode(**values)
+
+
+class TestUpsertCharacterization:
+    async def test_native_sync_mixed_existing_and_new_updates_fields_not_numbering(self):
+        existing = _existing_episode(101)
+        session = _StatefulEpisodeSession([existing])
+        tmdb = _make_tmdb(
+            episodes=[
+                {
+                    "id": 101,
+                    "episode_number": 1,
+                    "name": "New Name",
+                    "overview": "o",
+                    "air_date": "2020-01-02",
+                    "runtime": 24,
+                    "episode_type": "standard",
+                    "still_path": "/s.jpg",
+                },
+                {"id": 0, "episode_number": 5, "name": "falsy id is skipped"},
+                {"episode_number": 6, "name": "missing id is skipped"},
+                {"id": 102, "episode_number": 2},
+            ]
+        )
+        result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(_real_show())
+
+        assert (result.episodes_upserted, result.episodes_skipped) == (1, 1)
+        # Native path never renumbers an existing row; absolute number is
+        # recomputed from the (empty) group breakdown.
+        assert (existing.season_number, existing.episode_number) == (9, 9)
+        assert existing.name == "New Name"
+        assert existing.overview == "o"
+        assert existing.air_date == date(2020, 1, 2)
+        assert existing.runtime == 24
+        assert existing.episode_type == "standard"
+        assert existing.still_path == "/s.jpg"
+        assert existing.absolute_episode_number is None
+        (created,) = session.added
+        assert created.tmdb_id == 102
+        assert created.show_id == 1
+        assert (created.season_number, created.episode_number) == (1, 2)
+        assert created.name == ""  # create-side fallback when TMDB omits the name
+        assert created.overview is None
+        assert created.air_date is None
+        assert created.absolute_episode_number is None
+        session.flush.assert_awaited_once()
+        session.commit.assert_not_called()
+
+    async def test_native_sync_existing_name_kept_when_payload_omits_name(self):
+        existing = _existing_episode(101)
+        session = _StatefulEpisodeSession([existing])
+        tmdb = _make_tmdb(episodes=[{"id": 101, "episode_number": 1, "air_date": "not-a-date"}])
+        await TMDBOrchestrator(session, tmdb).sync_show_episodes(_real_show())
+
+        assert existing.name == "Old Name"
+        assert existing.air_date is None  # malformed date tolerated
+        assert existing.overview is None  # other detail fields are overwritten with None
+        assert existing.runtime is None
+        assert existing.episode_type is None
+        assert existing.still_path is None
+
+    async def test_duplicate_tmdb_id_in_batch_updates_single_row(self):
+        session = _StatefulEpisodeSession()
+        tmdb = _make_tmdb(
+            episodes=[
+                {"id": 7, "episode_number": 1, "name": "First", "overview": "a"},
+                {"id": 7, "episode_number": 2, "name": "Second", "overview": "b"},
+            ]
+        )
+        result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(_real_show())
+
+        assert len(session.added) == 1
+        assert result.episodes_upserted == 1
+        assert result.episodes_skipped == 1
+        # The repeat updates the row just created (as autoflush did), but a
+        # native-path update never renumbers it.
+        assert session.added[0].name == "Second"
+        assert session.added[0].overview == "b"
+        assert session.added[0].episode_number == 1
+
+    async def test_upsert_issues_one_lookup_query_per_season(self):
+        session = _StatefulEpisodeSession()
+        tmdb = _make_tmdb(seasons=[{"season_number": 1}, {"season_number": 2}])
+        tmdb.get_season_details = AsyncMock(
+            side_effect=[
+                {"episodes": [{"id": i, "episode_number": i} for i in (1, 2, 3)]},
+                {"episodes": [{"id": i, "episode_number": i - 3} for i in (4, 5, 6)]},
+            ]
+        )
+        await TMDBOrchestrator(session, tmdb).sync_show_episodes(_real_show())
+
+        assert len(session.added) == 6
+        assert session.lookups == 2
+
+    async def test_native_sync_season_fetch_failure_keeps_earlier_adds_and_never_flushes(self):
+        session = _StatefulEpisodeSession()
+        tmdb = _make_tmdb(seasons=[{"season_number": 1}, {"season_number": 2}])
+        tmdb.get_season_details = AsyncMock(
+            side_effect=[
+                {"episodes": [{"id": 1, "episode_number": 1}, {"id": 2, "episode_number": 2}]},
+                RuntimeError("TMDB down"),
+            ]
+        )
+        show = _real_show()
+        with pytest.raises(RuntimeError, match="TMDB down"):
+            await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+        assert len(session.added) == 2
+        session.flush.assert_not_awaited()
+        assert show.cached is False  # set only after every season succeeded
+
+    async def test_native_sync_lookup_failure_in_second_season_propagates(self):
+        session = _StatefulEpisodeSession()
+        session.fail_on_tmdb_id = 3  # first id of season 2, however lookups are batched
+        tmdb = _make_tmdb(seasons=[{"season_number": 1}, {"season_number": 2}])
+        tmdb.get_season_details = AsyncMock(
+            side_effect=[
+                {"episodes": [{"id": 1, "episode_number": 1}, {"id": 2, "episode_number": 2}]},
+                {"episodes": [{"id": 3, "episode_number": 1}, {"id": 4, "episode_number": 2}]},
+            ]
+        )
+        show = _real_show()
+        with pytest.raises(RuntimeError, match="lookup failed"):
+            await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+        session.flush.assert_not_awaited()
+        assert show.cached is False
+
+    async def test_native_sync_with_only_idless_episodes_leaves_cached_untouched(self):
+        session = _StatefulEpisodeSession()
+        tmdb = _make_tmdb(episodes=[{"id": 0, "episode_number": 1}])
+        show = _real_show()
+        result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+        assert (result.episodes_upserted, result.episodes_skipped) == (0, 0)
+        assert show.cached is False
+        assert session.added == []
+
+    async def test_refresh_active_group_mixed_renumbers_existing_and_creates_new(self):
+        existing = _existing_episode(501)
+        session = _StatefulEpisodeSession([existing])
+        show = _real_show(active_episode_group_id="us-broadcast-id")
+        tmdb = _make_tmdb()
+        tmdb.get_episode_group = AsyncMock(return_value=_US_BROADCAST_GROUP_DETAIL)
+
+        result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+        assert (result.episodes_upserted, result.episodes_skipped) == (1, 1)
+        assert (existing.season_number, existing.episode_number) == (1, 1)
+        assert existing.absolute_episode_number == 1
+        assert existing.name == "Combined Ep 1"
+        assert existing.overview == "o1"
+        assert existing.air_date == date(2026, 1, 1)
+        assert existing.runtime == 44
+        assert existing.episode_type is None
+        assert existing.still_path is None
+        (created,) = session.added
+        assert created.tmdb_id == 502
+        assert (created.season_number, created.episode_number) == (
+            1,
+            2,
+        )  # renumbered by position, not native number
+        assert created.absolute_episode_number == 2
+        assert created.name == "Combined Ep 2"
+        assert created.show_id == 1
+        assert show.cached is True
+        assert show.active_episode_group_name == "US Broadcast Order"
+        tmdb.get_show_seasons.assert_not_called()
+
+    async def test_refresh_active_group_duplicate_id_updates_row_just_created(self):
+        detail = {
+            "name": "G",
+            "groups": [
+                {
+                    "order": 1,
+                    "episodes": [
+                        {"id": 8, "season_number": 1, "order": 0, "name": "A", "overview": "a"},
+                        {"id": 8, "season_number": 1, "order": 1, "name": "B", "overview": "b"},
+                    ],
+                }
+            ],
+        }
+        session = _StatefulEpisodeSession()
+        show = _real_show(active_episode_group_id="g")
+        tmdb = _make_tmdb()
+        tmdb.get_episode_group = AsyncMock(return_value=detail)
+
+        result = await TMDBOrchestrator(session, tmdb)._refresh_active_group_episodes(show)
+
+        assert len(session.added) == 1
+        assert (result.episodes_upserted, result.episodes_skipped) == (1, 1)
+        row = session.added[0]
+        # Group refresh renumbers on update, so the repeat's numbering wins.
+        assert (row.season_number, row.episode_number, row.absolute_episode_number) == (1, 2, 2)
+        assert (row.name, row.overview) == ("B", "b")
+
+    async def test_refresh_active_group_skips_falsy_ids_and_name_fallbacks(self):
+        existing = _existing_episode(601)
+        detail = {
+            "name": None,
+            "groups": [
+                {
+                    "order": 1,
+                    "episodes": [
+                        {"id": 0, "season_number": 1, "order": 0},
+                        {"id": 601, "season_number": 1, "order": 1},
+                        {"id": 602, "season_number": 1, "order": 2},
+                    ],
+                }
+            ],
+        }
+        session = _StatefulEpisodeSession([existing])
+        show = _real_show(active_episode_group_id="g")
+        tmdb = _make_tmdb()
+        tmdb.get_episode_group = AsyncMock(return_value=detail)
+
+        result = await TMDBOrchestrator(session, tmdb)._refresh_active_group_episodes(show)
+
+        assert (result.episodes_upserted, result.episodes_skipped) == (1, 1)
+        assert existing.name == "Old Name"
+        assert session.added[0].name == ""
+        assert show.active_episode_group_name is None
+
+    async def test_refresh_active_group_lookup_failure_propagates_before_flush(self):
+        session = _StatefulEpisodeSession()
+        session.fail_lookup_number = 1
+        show = _real_show(active_episode_group_id="us-broadcast-id")
+        tmdb = _make_tmdb()
+        tmdb.get_episode_group = AsyncMock(return_value=_US_BROADCAST_GROUP_DETAIL)
+
+        with pytest.raises(RuntimeError, match="lookup failed"):
+            await TMDBOrchestrator(session, tmdb)._refresh_active_group_episodes(show)
+
+        session.flush.assert_not_awaited()
+        assert session.added == []
+        assert show.cached is False
+
+    async def test_apply_episode_group_creates_every_field_without_lookups(self):
+        session = _make_apply_session(episodes_removed_count=3)
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=_US_BROADCAST_GROUP_DETAIL)
+        show = _real_show()
+
+        result = await TMDBOrchestrator(session, tmdb).apply_episode_group(show, "g")
+
+        assert (result.episodes_added, result.episodes_removed) == (2, 3)
+        added = [c.args[0] for c in session.add.call_args_list]
+        assert [
+            (
+                e.tmdb_id,
+                e.season_number,
+                e.episode_number,
+                e.absolute_episode_number,
+                e.name,
+                e.overview,
+                e.air_date,
+                e.runtime,
+                e.episode_type,
+                e.still_path,
+                e.show_id,
+            )
+            for e in added
+        ] == [
+            (501, 1, 1, 1, "Combined Ep 1", "o1", date(2026, 1, 1), 44, None, None, 1),
+            (502, 1, 2, 2, "Combined Ep 2", "o2", date(2026, 1, 8), 44, None, None, 1),
+        ]
+        assert show.episode_group_map is None
+        # tracked-episode select + delete only: apply never looks episodes up by id
+        assert session.execute.await_count == 2
+
+    async def test_apply_episode_group_missing_id_raises_after_delete_and_partial_adds(self):
+        detail = {
+            "name": "G",
+            "groups": [
+                {
+                    "order": 1,
+                    "episodes": [
+                        {"id": 1, "season_number": 1, "order": 0},
+                        {"season_number": 1, "order": 1},
+                    ],
+                }
+            ],
+        }
+        session = _make_apply_session()
+        tmdb = AsyncMock()
+        tmdb.get_episode_group = AsyncMock(return_value=detail)
+        show = _real_show()
+
+        with pytest.raises(KeyError):
+            await TMDBOrchestrator(session, tmdb).apply_episode_group(show, "g")
+
+        assert session.execute.await_count == 2  # tracked select + delete already issued
+        assert session.add.call_count == 1
+        assert session.flush.await_count == 1  # the post-delete flush only

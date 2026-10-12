@@ -1,6 +1,6 @@
 """Resolve a parsed season/episode number to an Episode row."""
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
@@ -92,3 +92,22 @@ async def resolve_episode(
     return await _first_episode(
         session, show_id, Episode.season_number == 1, Episode.episode_number == episode
     )
+
+
+async def count_show_episodes(session: AsyncSession, show_id: int) -> int:
+    """Count the Episode rows belonging to *show_id*.
+
+    Filters on ``show_id`` alone, the leading column of the episode indexes,
+    so the count stays index-friendly.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        show_id: Database ID of the parent show.
+
+    Returns:
+        The number of episodes; ``0`` when the scalar comes back ``None``.
+    """
+    count = await session.scalar(
+        select(func.count()).select_from(Episode).where(Episode.show_id == show_id)
+    )
+    return count or 0
