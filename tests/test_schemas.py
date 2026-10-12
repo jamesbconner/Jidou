@@ -12,7 +12,7 @@ from pydantic.fields import FieldInfo
 
 from jidou import workers as workers_pkg
 from jidou.models.task import TaskStatus
-from jidou.schemas import episode_schema, rss_schema, show_schema, task_schema
+from jidou.schemas import rss_schema
 from jidou.schemas._base import ORMModel
 from jidou.schemas.rss_schema import (
     FeedAddShowRequest,
@@ -223,18 +223,27 @@ def test_orm_models_validate_from_attributes() -> None:
 
 
 def test_no_schema_redeclares_from_attributes() -> None:
-    """from_attributes lives only on ORMModel; schemas inherit it instead of repeating it."""
-    models = [
-        cls
-        for module in (rss_schema, episode_schema, show_schema, task_schema)
-        for _, cls in inspect.getmembers(module, inspect.isclass)
-        if issubclass(cls, BaseModel) and cls.__module__ == module.__name__
-    ]
-    assert len(models) >= 15
+    """from_attributes lives only on ORMModel; schemas inherit it instead of repeating it.
+
+    Scans the source of every schema module, so a new or reverted class that sets
+    ``from_attributes`` itself (via ``ConfigDict(...)`` or a config dict) is caught
+    even when its merged config would look identical at runtime.
+    """
     assert ORMModel.model_config.get("from_attributes") is True
-    for cls in models:
-        if issubclass(cls, ORMModel):
-            assert cls.model_config == ORMModel.model_config, cls.__name__
+    schema_dir = Path(rss_schema.__file__).parent
+    modules = sorted(
+        p for p in schema_dir.glob("*.py") if p.name not in {"_base.py", "__init__.py"}
+    )
+    # Guard against a vacuous pass if the glob ever stops finding the schema modules.
+    assert len(modules) >= 10
+    offenders: list[str] = []
+    for path in modules:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            is_kwarg = isinstance(node, ast.keyword) and node.arg == "from_attributes"
+            is_dict_key = isinstance(node, ast.Constant) and node.value == "from_attributes"
+            if is_kwarg or is_dict_key:
+                offenders.append(f"{path.name}:{getattr(node, 'lineno', '?')}")
+    assert offenders == []
 
 
 def test_task_type_literal_matches_worker_types() -> None:
