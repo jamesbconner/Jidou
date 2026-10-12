@@ -12,7 +12,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import ContentType, Show
 from jidou.orchestrators._events import EventSink
-from jidou.services.alias_handling import add_alias, sanitize_alias
+from jidou.services.alias_handling import add_alias, names_agree
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
@@ -56,28 +56,6 @@ _FAILED_AFTER: dict[ParseOutcome | None, ParseOutcome] = {
     ParseOutcome.MATCHED: ParseOutcome.MATCHED_THEN_FAILED,
     ParseOutcome.UNMATCHED: ParseOutcome.UNMATCHED_THEN_FAILED,
 }
-
-
-def _is_exact_alias_match(show: Show, name: str) -> bool:
-    """Return True if *name* already exactly names *show* (title or alias).
-
-    Guards ``add_alias`` calls after a fuzzy ``_find_show`` lookup: a
-    substring hit (e.g. "Daredevil" matching "Daredevil: Born Again") must
-    never get added as a permanent alias, since that would misfile every
-    future parse of the shorter name onto the longer show.
-
-    Args:
-        show: The show ``_find_show`` returned.
-        name: The parsed name that was searched for.
-
-    Returns:
-        True if *name* matches ``show.title`` or is already in
-        ``show.aliases`` (case-insensitive), False otherwise.
-    """
-    normalised = sanitize_alias(name)
-    if normalised == sanitize_alias(show.title):
-        return True
-    return show.aliases is not None and normalised in show.aliases
 
 
 class ParseOrchestrator:
@@ -298,7 +276,7 @@ class ParseOrchestrator:
         # when show_name is already known to name this show exactly.
         # A fuzzy substring hit from _find_show must never be
         # permanently written as an alias.
-        if show_name and _is_exact_alias_match(show, show_name):
+        if show_name and names_agree(show_name, show):
             add_alias(show, show_name)
         self._backfill_content_type(file, show, content_type)
         self._ensure_show_local_path(show)

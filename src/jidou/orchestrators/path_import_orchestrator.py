@@ -19,7 +19,6 @@ title so future lookups (parse orchestrator, manual search) hit the GIN index.
 """
 
 import logging
-import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
@@ -35,6 +34,7 @@ from jidou.orchestrators._show_provisioning import (
     sync_episodes_best_effort,
 )
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.alias_handling import names_agree, normalize_name
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_lookup import count_show_episodes
@@ -52,10 +52,6 @@ from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
 logger = logging.getLogger(__name__)
-
-# Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
-# comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
-_PUNCT = re.compile(r"[^\w\s]")
 
 
 def _directory_alias_fields(
@@ -82,21 +78,6 @@ def _directory_alias_fields(
     return [dir_alias], {"user": [dir_alias]}
 
 
-def _normalize_title(s: str) -> str:
-    """Lowercase and strip punctuation for loose title comparison.
-
-    Allows directory names like "Daredevil Born Again" to match TMDB titles
-    like "Daredevil: Born Again" without false-positives from shorter prefixes.
-
-    Args:
-        s: Title string to normalize.
-
-    Returns:
-        Normalized string with punctuation removed and whitespace collapsed.
-    """
-    return re.sub(r"\s+", " ", _PUNCT.sub(" ", s).lower()).strip()
-
-
 def _pick_tmdb_candidate(
     show_dir: str, candidates: list[dict[str, Any]]
 ) -> tuple[dict[str, Any], bool]:
@@ -117,32 +98,11 @@ def _pick_tmdb_candidate(
         ``(best, exact)`` where ``exact`` is True when ``best`` matched the
         directory name after normalization.
     """
-    show_dir_norm = _normalize_title(show_dir)
+    show_dir_norm = normalize_name(show_dir)
     for candidate in candidates:
-        if _normalize_title(candidate.get("name", "")) == show_dir_norm:
+        if normalize_name(candidate.get("name", "")) == show_dir_norm:
             return candidate, True
     return candidates[0], False
-
-
-def _agrees_with_show(name: str, show: Show) -> bool:
-    """Return True when *name* refers to the same show as *show*.
-
-    Reuses the same normalized-title/alias matching semantics as
-    ``_db_find_show``, so a filename-extracted show name is treated as
-    agreeing whenever it would have independently resolved to the same show.
-
-    Args:
-        name: Extracted show name to check (e.g. from ``parse_filename``).
-        show: The already-resolved show to check agreement against.
-
-    Returns:
-        True if *name* normalizes to the same title as *show*, or is one of
-        its known aliases.
-    """
-    if _normalize_title(name) == _normalize_title(show.title):
-        return True
-    normalised = name.strip().lower()
-    return bool(show.aliases and normalised in show.aliases)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +333,7 @@ class PathImportOrchestrator:
         "filename" would just be its own directory name, so the comparison
         would only be against a differently-normalized copy of itself (e.g.
         the LLM's title-cleanup pass merging "Iron Blooded" into
-        "Ironblooded", which then disagrees with ``_agrees_with_show``'s
+        "Ironblooded", which then disagrees with ``names_agree``'s
         punctuation-stripped "Iron Blooded") rather than any real signal.
 
         Args:
@@ -411,7 +371,7 @@ class PathImportOrchestrator:
                 # directory, so running it through parse_filename() only
                 # compares that name against itself via two different
                 # normalizers (this one's LLM-based title cleanup vs.
-                # _agrees_with_show's punctuation stripping), which can
+                # names_agree's punctuation stripping), which can
                 # legitimately diverge (e.g. "Iron Blooded" -> "Ironblooded")
                 # and produce a false-positive split.
                 matched.append(entry)
@@ -431,11 +391,11 @@ class PathImportOrchestrator:
             if (
                 not parsed.llm_ok
                 or parsed.show_name is None
-                or _agrees_with_show(parsed.show_name, primary_show)
+                or names_agree(parsed.show_name, primary_show)
             ):
                 matched.append(entry)
             else:
-                norm = _normalize_title(parsed.show_name)
+                norm = normalize_name(parsed.show_name)
                 mismatched.setdefault(norm, []).append(entry)
                 mismatched_display.setdefault(norm, parsed.show_name)
 
