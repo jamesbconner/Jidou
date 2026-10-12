@@ -2955,11 +2955,9 @@ async def test_tmdb_create_show_supplemental_calls_failure_does_not_block_creati
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
-        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+        with patch("jidou.orchestrators._show_provisioning.generate_aliases", AsyncMock()):
             show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created"
@@ -2989,11 +2987,9 @@ async def test_tmdb_create_show_stores_adult_flag() -> None:
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
-        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+        with patch("jidou.orchestrators._show_provisioning.generate_aliases", AsyncMock()):
             show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created"
@@ -3095,13 +3091,11 @@ async def test_tmdb_create_show_episode_sync_failure_still_returns_created() -> 
 
     orch = PathImportOrchestrator(session, tmdb, on_event=capture_event)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=RuntimeError("sync failed")
         )
-        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+        with patch("jidou.orchestrators._show_provisioning.generate_aliases", AsyncMock()):
             show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created"
@@ -3132,12 +3126,10 @@ async def test_tmdb_create_show_alias_generation_failure_logged_not_raised() -> 
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         with patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            "jidou.orchestrators._show_provisioning.generate_aliases",
             AsyncMock(side_effect=RuntimeError("alias generation blew up")),
         ):
             show, action = await orch._tmdb_create_show("SomeShow")
@@ -3174,14 +3166,12 @@ async def test_tmdb_create_show_commits_before_episode_sync() -> None:
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=lambda _show: calls.append("sync_episodes")
         )
         with patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            "jidou.orchestrators._show_provisioning.generate_aliases",
             AsyncMock(side_effect=lambda *a, **kw: calls.append("generate_aliases")),
         ):
             show, action = await orch._tmdb_create_show("SomeShow")
@@ -3219,13 +3209,11 @@ async def test_tmdb_create_show_episode_sync_failure_rolls_back() -> None:
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=RuntimeError("sync failed")
         )
-        with patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()):
+        with patch("jidou.orchestrators._show_provisioning.generate_aliases", AsyncMock()):
             show, action = await orch._tmdb_create_show("SomeShow")
 
     assert action == "created"
@@ -3254,12 +3242,10 @@ async def test_tmdb_create_show_alias_generation_failure_rolls_back() -> None:
 
     orch = PathImportOrchestrator(session, tmdb)
 
-    with patch(
-        "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-    ) as mock_tmdb_orch_cls:
+    with patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock()
         with patch(
-            "jidou.orchestrators.alias_orchestrator.generate_aliases",
+            "jidou.orchestrators._show_provisioning.generate_aliases",
             AsyncMock(side_effect=RuntimeError("alias generation blew up")),
         ):
             show, action = await orch._tmdb_create_show("SomeShow")
@@ -4126,10 +4112,8 @@ async def _run_create_show(
 
     with (
         patch.object(orch, "_db_find_show", AsyncMock(return_value=None)),
-        patch(
-            "jidou.orchestrators.path_import_orchestrator.TMDBOrchestrator"
-        ) as mock_tmdb_orch_cls,
-        patch("jidou.orchestrators.alias_orchestrator.generate_aliases", AsyncMock()),
+        patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_tmdb_orch_cls,
+        patch("jidou.orchestrators._show_provisioning.generate_aliases", AsyncMock()),
     ):
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(side_effect=sync_error)
         _, action = await orch._tmdb_create_show("Daredevil")

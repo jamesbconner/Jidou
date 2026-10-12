@@ -22,11 +22,15 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
 from jidou.orchestrators._events import EventSink
+from jidou.orchestrators._show_provisioning import (
+    generate_aliases_best_effort,
+    insert_show_or_existing,
+    sync_episodes_best_effort,
+)
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_file_matching import match_entry_to_episode
@@ -49,6 +53,30 @@ logger = logging.getLogger(__name__)
 # Strips punctuation (colons, hyphens, apostrophes, etc.) for loose title
 # comparison so "Daredevil Born Again" matches TMDB's "Daredevil: Born Again".
 _PUNCT = re.compile(r"[^\w\s]")
+
+
+def _directory_alias_fields(
+    show_dir: str, title: str
+) -> tuple[list[str] | None, dict[str, list[str]] | None]:
+    """Build the ``aliases`` / ``aliases_sources`` columns for a directory-created show.
+
+    The directory name is stored as a user alias when it differs from the
+    English title.  Written into both columns from the start so
+    ``generate_aliases`` (called after creation) preserves it via
+    ``aliases_sources["user"]`` rather than relying on the migration guard for
+    a null ``aliases_sources``.
+
+    Args:
+        show_dir: Show directory name the import started from.
+        title: The title TMDB resolved the show to.
+
+    Returns:
+        ``(aliases, aliases_sources)``, both ``None`` when the names match.
+    """
+    if show_dir.lower() == title.lower():
+        return None, None
+    dir_alias = show_dir.lower()
+    return [dir_alias], {"user": [dir_alias]}
 
 
 def _normalize_title(s: str) -> str:
@@ -829,22 +857,13 @@ class PathImportOrchestrator:
 
         title: str = data.get("name") or show_dir
 
-        # Store the directory name as a user alias when it differs from the
-        # English title.  Written into both columns from the start so
-        # generate_aliases (called below) preserves it via aliases_sources["user"]
-        # rather than relying on the migration guard for a null aliases_sources.
-        aliases: list[str] = []
-        aliases_sources: dict[str, list[str]] | None = None
-        if show_dir.lower() != title.lower():
-            dir_alias = show_dir.lower()
-            aliases.append(dir_alias)
-            aliases_sources = {"user": [dir_alias]}
+        aliases, aliases_sources = _directory_alias_fields(show_dir, title)
 
         fields = build_show_fields(data, tmdb_id, "tv", title_fallback=show_dir)
         show = Show(
             **fields,
             content_type=self.content_type,
-            aliases=aliases or None,
+            aliases=aliases,
             aliases_sources=aliases_sources,
         )
 
@@ -853,23 +872,11 @@ class PathImportOrchestrator:
             logger.info("[dry-run] Would create show %r (tmdb_id=%d)", title, tmdb_id)
             return show, "created"
 
-        try:
-            self.session.add(show)
-            await self.session.flush()
-        except IntegrityError:
-            await self.session.rollback()
-            # Race condition: another request created this show concurrently.
-            fallback = await self._db_find_show(title)
-            if fallback:
-                await self._emit("info", f"Show '{title}' already existed (concurrent create)")
-                # The winning request's own sync_show_episodes() may still be
-                # in flight (a TMDB round-trip with retries) -- without this
-                # check, every entry in this import's batch would be matched
-                # against zero episodes and reported as unmatched, a false
-                # negative caused entirely by losing the timing race.
-                await self._sync_episodes_if_needed(fallback)
-                return fallback, "found"
-            return None, "not_found"
+        winner, inserted = await insert_show_or_existing(
+            self.session, show, refind=lambda: self._db_find_show(title)
+        )
+        if not inserted:
+            return await self._adopt_race_winner(winner, title)
 
         # Commit the show row now, before the best-effort episode-sync and
         # alias-generation steps below. Both can fail via a DB-level error
@@ -887,37 +894,95 @@ class PathImportOrchestrator:
         )
         logger.info("Created show %r (tmdb_id=%d, id=%d)", title, tmdb_id, show.id)
 
+        await self._sync_new_show_episodes(show, title, tmdb_id)
+        await self._generate_new_show_aliases(show, title, tmdb_id)
+        return show, "created"
+
+    async def _adopt_race_winner(self, winner: Show | None, title: str) -> tuple[Show | None, str]:
+        """Resolve a lost concurrent show-create race.
+
+        Args:
+            winner: The show the other request created, or ``None`` if it can't be found.
+            title: Display title used in events.
+
+        Returns:
+            ``(winner, "found")``, or ``(None, "not_found")`` when there is no winner.
+        """
+        if winner is None:
+            return None, "not_found"
+        await self._emit("info", f"Show '{title}' already existed (concurrent create)")
+        # The winning request's own sync_show_episodes() may still be
+        # in flight (a TMDB round-trip with retries) -- without this
+        # check, every entry in this import's batch would be matched
+        # against zero episodes and reported as unmatched, a false
+        # negative caused entirely by losing the timing race.
+        await self._sync_episodes_if_needed(winner)
+        return winner, "found"
+
+    async def _sync_new_show_episodes(self, show: Show, title: str, tmdb_id: int) -> None:
+        """Sync a just-created show's episodes from TMDB; failures are reported, not raised.
+
+        The show row is already committed, so a failure here (including one in
+        the follow-up episode count or its event) only rolls back this step's
+        own partial work and import proceeds with whatever was synced.
+
+        Args:
+            show: The newly created, committed show.
+            title: Display title used in events and logs.
+            tmdb_id: TMDB ID used in logs.
+        """
         # Sync all episodes from TMDB so episode matching can proceed.
         await self._emit("info", f"Syncing episodes for '{title}' from TMDB")
-        try:
-            await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
-            ep_count = await count_show_episodes(self.session, show.id)
-            await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
-        except Exception as exc:
-            await self.session.rollback()
-            await self._emit("error", f"Episode sync failed for '{title}': {exc}")
-            logger.exception("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id)
+        error = await sync_episodes_best_effort(
+            self.session, self.tmdb, show, reraise_db_errors=False, rollback_on_failure=True
+        )
+        if error is None:
+            try:
+                ep_count = await count_show_episodes(self.session, show.id)
+                await self._emit("info", f"Synced {ep_count} episodes for '{title}'")
+            except Exception as exc:
+                # The count and the success event were part of the step, so
+                # a failure in either gets the same rollback and reporting.
+                await self.session.rollback()
+                error = exc
+        if error is not None:
+            await self._emit("error", f"Episode sync failed for '{title}': {error}")
+            logger.error("Episode sync failed for %r (tmdb_id=%d)", title, tmdb_id, exc_info=error)
             # Show row is already committed above; proceed to episode
             # matching with whatever was synced.
 
+    async def _generate_new_show_aliases(self, show: Show, title: str, tmdb_id: int) -> None:
+        """Generate a just-created show's aliases; failures are logged, not raised.
+
+        Args:
+            show: The newly created, committed show.
+            title: Display title used in events and logs.
+            tmdb_id: TMDB ID used in logs.
+        """
         # Generate TMDB alternative-title aliases and LLM aliases.  The
         # directory-name alias (stored in show.aliases at construction time when
         # it differs from the English title) is preserved via the migration guard
         # in generate_aliases (aliases_sources is None → fold into user bucket).
-        try:
-            from jidou.orchestrators.alias_orchestrator import generate_aliases
-
-            await generate_aliases(show, self.tmdb, llm=self.llm)
-            await self.session.flush()
-            await self._emit("info", f"Generated aliases for '{title}'")
-        except Exception:
-            await self.session.rollback()
+        error = await generate_aliases_best_effort(
+            self.session,
+            self.tmdb,
+            self.llm,
+            show,
+            reraise_db_errors=False,
+            rollback_on_failure=True,
+        )
+        if error is None:
+            try:
+                await self._emit("info", f"Generated aliases for '{title}'")
+            except Exception as exc:
+                # The success event was part of the step; mirror a failed step.
+                await self.session.rollback()
+                error = exc
+        if error is not None:
             logger.warning(
                 "Alias generation failed for %r (tmdb_id=%d); "
                 "aliases can be regenerated via the Manage Aliases modal",
                 title,
                 tmdb_id,
-                exc_info=True,
+                exc_info=error,
             )
-
-        return show, "created"
