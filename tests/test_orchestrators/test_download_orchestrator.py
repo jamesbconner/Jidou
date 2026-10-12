@@ -737,3 +737,465 @@ async def test_run_retries_mismatched_file_on_next_run(tmp_path):
     assert result.files_failed == 1
     assert file1.status == FileStatus.ERROR
     assert file1.local_path is None
+
+
+# ---------------------------------------------------------------------------
+# Characterization: full ordered trace of events / flush / commit / progress
+# ---------------------------------------------------------------------------
+
+_Trace = list[tuple]
+
+
+def _traced_session(files: list, trace: _Trace) -> MagicMock:
+    """Build a batch-mode session whose flush/commit append to *trace*."""
+    session = _make_session(files=files)
+
+    async def _flush() -> None:
+        trace.append(("flush",))
+
+    async def _commit() -> None:
+        trace.append(("commit",))
+
+    session.flush = AsyncMock(side_effect=_flush)
+    session.commit = AsyncMock(side_effect=_commit)
+    return session
+
+
+def _trace_callbacks(trace: _Trace):
+    async def on_event(level, message, ctx):
+        trace.append(("event", level, message, dict(ctx) if ctx else ctx))
+
+    async def on_progress(current, total, message):
+        trace.append(("progress", current, total, message))
+
+    return on_event, on_progress
+
+
+def _hash_by_name(mismatch_names: set[str], raise_names: set[str]):
+    """Return a _hash_file stand-in keyed on the staged file name."""
+
+    def _hash(path):
+        name = Path(path).name
+        if name in raise_names:
+            raise OSError(f"disk read failed: {name}")
+        if name in mismatch_names:
+            return "a" * 64, "00000000"
+        return "f" * 64, "FFFFFFFF"
+
+    return _hash
+
+
+def _sftp_with_outcomes(outcomes: dict[str, object]) -> MagicMock:
+    """sftp whose download_file returns a result of given size, or raises, per remote path."""
+
+    async def _download(remote_path, local_path):
+        outcome = outcomes[remote_path]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return _make_sftp_result(size=int(outcome))  # type: ignore[call-overload]
+
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock(side_effect=_download)
+    return sftp
+
+
+async def test_characterize_normal_batch_mixed_outcomes_trace():
+    """Mixed batch: ok, sftp error, CRC mismatch, noscan, cancelled task, in exact order."""
+    ok = _make_file(1, "ok.mkv", "/remote/ok.mkv")
+    err = _make_file(2, "err.mkv", "/remote/err.mkv")
+    bad = _make_file(3, "bad [DEADBEEF].mkv", "/remote/bad.mkv")
+    ign = _make_file(4, "ign.mkv", "/remote/ign.mkv")
+    ign.ignored_reason = IgnoredReason.NOSCAN_PATH
+    can = _make_file(5, "can.mkv", "/remote/can.mkv")
+    trace: _Trace = []
+    session = _traced_session([ok, err, bad, ign, can], trace)
+    sftp = _sftp_with_outcomes(
+        {
+            "/remote/ok.mkv": 10,
+            "/remote/err.mkv": RuntimeError("boom"),
+            "/remote/bad.mkv": 20,
+            "/remote/ign.mkv": 30,
+            "/remote/can.mkv": asyncio.CancelledError(),
+        }
+    )
+    on_event, on_progress = _trace_callbacks(trace)
+
+    with patch(
+        "jidou.orchestrators.download_orchestrator._hash_file",
+        new=_hash_by_name({"bad.mkv"}, set()),
+    ):
+        result = await DownloadOrchestrator(session, sftp, _STAGING).run(
+            on_event=on_event, on_progress=on_progress
+        )
+
+    assert (result.files_downloaded, result.bytes_downloaded, result.files_failed) == (2, 40, 3)
+    mismatch_msg = trace[5][2]
+    assert mismatch_msg.startswith("CRC32 mismatch — corrupt download")
+    assert mismatch_msg.endswith(": 'bad [DEADBEEF].mkv'")
+    assert trace == [
+        ("flush",),
+        ("commit",),
+        ("progress", 0, 5, "Downloading 5 files"),
+        ("event", "info", "Downloaded 'ok.mkv'", {"file_id": 1, "bytes": 10}),
+        ("event", "error", "Failed to download 'err.mkv': boom", {"file_id": 2, "error": "boom"}),
+        ("event", "error", mismatch_msg, {"file_id": 3}),
+        (
+            "event",
+            "info",
+            "Downloaded 'ign.mkv' (noscan — excluded from matching)",
+            {"file_id": 4, "bytes": 30},
+        ),
+        (
+            "event",
+            "error",
+            "Failed to download 'can.mkv': Download interrupted",
+            {"file_id": 5, "error": "Download interrupted"},
+        ),
+        ("flush",),
+        ("commit",),
+        ("progress", 1, 5, "Downloaded ok.mkv"),
+        ("progress", 2, 5, "Failed err.mkv"),
+        ("progress", 3, 5, "Failed bad [DEADBEEF].mkv"),
+        ("progress", 4, 5, "Downloaded ign.mkv"),
+        ("progress", 5, 5, "Failed can.mkv"),
+    ]
+    assert [f.status for f in (ok, err, bad, ign, can)] == [
+        FileStatus.DOWNLOADED,
+        FileStatus.ERROR,
+        FileStatus.ERROR,
+        FileStatus.IGNORED,
+        FileStatus.ERROR,
+    ]
+    assert err.error_message == "boom"
+    assert can.error_message == "Download interrupted"
+    assert bad.local_path is None
+    assert ok.local_path == f"{_STAGING}/remote/ok.mkv"
+    assert (ok.file_size, ign.file_size) == (10, 30)
+    assert ok.error_message is None
+    assert ok.hash_sha256 == "f" * 64
+
+
+async def test_characterize_stale_downloading_warning_event_precedes_commit():
+    """The stale-reclaim warning is emitted during claiming, before flush/commit."""
+    stale = _make_file(1, "old.mkv", "/remote/old.mkv")
+    stale.status = FileStatus.DOWNLOADING
+    stale.updated_at = "yesterday"
+    trace: _Trace = []
+    session = _traced_session([stale], trace)
+    sftp = _sftp_with_outcomes({"/remote/old.mkv": 5})
+    on_event, _ = _trace_callbacks(trace)
+
+    with patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(on_event=on_event)
+
+    assert trace[:3] == [
+        (
+            "event",
+            "warning",
+            "Retrying stuck download 'old.mkv' "
+            "(left DOWNLOADING by a previous, apparently crashed run)",
+            {"file_id": 1},
+        ),
+        ("flush",),
+        ("commit",),
+    ]
+
+
+async def test_characterize_mid_file_hash_failure_normal_path():
+    """A hash error on file 2 propagates; files 2 and 3 are failed 'interrupted', file 1 kept."""
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    f2 = _make_file(2, "b.mkv", "/remote/b.mkv")
+    f3 = _make_file(3, "c.mkv", "/remote/c.mkv")
+    trace: _Trace = []
+    session = _traced_session([f1, f2, f3], trace)
+    sftp = _sftp_with_outcomes({"/remote/a.mkv": 1, "/remote/b.mkv": 2, "/remote/c.mkv": 3})
+    on_event, on_progress = _trace_callbacks(trace)
+
+    with (
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name(set(), {"b.mkv"}),
+        ),
+        pytest.raises(OSError, match="disk read failed: b.mkv"),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(
+            on_event=on_event, on_progress=on_progress
+        )
+
+    assert trace == [
+        ("flush",),
+        ("commit",),
+        ("progress", 0, 3, "Downloading 3 files"),
+        ("event", "info", "Downloaded 'a.mkv'", {"file_id": 1, "bytes": 1}),
+        ("event", "error", "Download interrupted: 'b.mkv'", {"file_id": 2}),
+        ("event", "error", "Download interrupted: 'c.mkv'", {"file_id": 3}),
+        ("flush",),
+        ("commit",),
+    ]
+    assert f1.status == FileStatus.DOWNLOADED
+    assert f2.status == f3.status == FileStatus.ERROR
+    assert f2.error_message == f3.error_message == "Download interrupted"
+    # The hash columns were never written for the file that failed to hash.
+    assert f2.hash_sha256 is None
+
+
+async def test_characterize_mismatch_then_hash_failure_normal_path():
+    """A CRC mismatch (counted failed) followed by a hash error on the next file."""
+    f1 = _make_file(1, "a [DEADBEEF].mkv", "/remote/a.mkv")
+    f2 = _make_file(2, "b.mkv", "/remote/b.mkv")
+    trace: _Trace = []
+    session = _traced_session([f1, f2], trace)
+    sftp = _sftp_with_outcomes({"/remote/a.mkv": 1, "/remote/b.mkv": 2})
+    on_event, _ = _trace_callbacks(trace)
+
+    with (
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name({"a.mkv"}, {"b.mkv"}),
+        ),
+        pytest.raises(OSError),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(on_event=on_event)
+
+    assert [(t[0], t[1], t[3]) for t in trace if t[0] == "event"] == [
+        ("event", "error", {"file_id": 1}),
+        ("event", "error", {"file_id": 2}),
+    ]
+    assert trace[2][2].startswith("CRC32 mismatch")
+    assert trace[3][2] == "Download interrupted: 'b.mkv'"
+    assert f1.local_path is None
+    assert f1.status == f2.status == FileStatus.ERROR
+
+
+async def _gather_then_cancel(*tasks, **kwargs):
+    """Stand-in for asyncio.gather: let the tasks settle, then simulate outer cancellation."""
+    for _ in range(5):
+        await asyncio.sleep(0)
+    raise asyncio.CancelledError
+
+
+async def test_characterize_cancel_path_credits_finished_and_fails_rest():
+    """Outer cancel: finished transfers credited, mismatch failed, errored ones 'interrupted'."""
+    ok = _make_file(1, "ok.mkv", "/remote/ok.mkv")
+    bad = _make_file(2, "bad [DEADBEEF].mkv", "/remote/bad.mkv")
+    err = _make_file(3, "err.mkv", "/remote/err.mkv")
+    ign = _make_file(4, "ign.mkv", "/remote/ign.mkv")
+    ign.ignored_reason = IgnoredReason.NOSCAN_PATH
+    trace: _Trace = []
+    session = _traced_session([ok, bad, err, ign], trace)
+    sftp = _sftp_with_outcomes(
+        {
+            "/remote/ok.mkv": 10,
+            "/remote/bad.mkv": 20,
+            "/remote/err.mkv": RuntimeError("boom"),
+            "/remote/ign.mkv": 30,
+        }
+    )
+    on_event, on_progress = _trace_callbacks(trace)
+
+    with (
+        patch("asyncio.gather", new=_gather_then_cancel),
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name({"bad.mkv"}, set()),
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(
+            on_event=on_event, on_progress=on_progress
+        )
+
+    assert trace[:3] == [("flush",), ("commit",), ("progress", 0, 4, "Downloading 4 files")]
+    assert trace[3] == ("event", "info", "Downloaded 'ok.mkv'", {"file_id": 1, "bytes": 10})
+    assert trace[4][:2] == ("event", "error")
+    assert trace[4][2].startswith("CRC32 mismatch")
+    assert trace[4][3] == {"file_id": 2}
+    assert trace[5] == ("event", "error", "Download interrupted: 'err.mkv'", {"file_id": 3})
+    assert trace[6] == (
+        "event",
+        "info",
+        "Downloaded 'ign.mkv' (noscan — excluded from matching)",
+        {"file_id": 4, "bytes": 30},
+    )
+    # Cleanup persists exactly once (no second pass from the outer handler).
+    assert trace[7:] == [("flush",), ("commit",)]
+    assert [f.status for f in (ok, bad, err, ign)] == [
+        FileStatus.DOWNLOADED,
+        FileStatus.ERROR,
+        FileStatus.ERROR,
+        FileStatus.IGNORED,
+    ]
+    assert bad.local_path is None
+    assert ok.file_size == 10
+    assert err.error_message == "Download interrupted"
+
+
+async def test_characterize_cancel_path_hash_failure_falls_to_outer_handler():
+    """A hash error inside the cancel cleanup replaces the cancel and triggers the outer handler."""
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    f2 = _make_file(2, "b.mkv", "/remote/b.mkv")
+    f3 = _make_file(3, "c.mkv", "/remote/c.mkv")
+    trace: _Trace = []
+    session = _traced_session([f1, f2, f3], trace)
+    sftp = _sftp_with_outcomes({"/remote/a.mkv": 1, "/remote/b.mkv": 2, "/remote/c.mkv": 3})
+    on_event, _ = _trace_callbacks(trace)
+
+    with (
+        patch("asyncio.gather", new=_gather_then_cancel),
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name(set(), {"b.mkv"}),
+        ),
+        pytest.raises(OSError),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(on_event=on_event)
+
+    assert trace == [
+        ("flush",),
+        ("commit",),
+        ("event", "info", "Downloaded 'a.mkv'", {"file_id": 1, "bytes": 1}),
+        ("event", "error", "Download interrupted: 'b.mkv'", {"file_id": 2}),
+        ("event", "error", "Download interrupted: 'c.mkv'", {"file_id": 3}),
+        ("flush",),
+        ("commit",),
+    ]
+    assert f1.status == FileStatus.DOWNLOADED
+    assert f2.status == f3.status == FileStatus.ERROR
+
+
+async def test_characterize_on_progress_failure_after_commit_marks_nothing_twice():
+    """on_progress raising after the results commit: finished files stay, no re-fail."""
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    trace: _Trace = []
+    session = _traced_session([f1], trace)
+    sftp = _sftp_with_outcomes({"/remote/a.mkv": 1})
+    on_event, _ = _trace_callbacks(trace)
+
+    async def on_progress(current, total, message):
+        trace.append(("progress", current, total, message))
+        if current == 1:
+            raise RuntimeError("cancel requested")
+
+    with (
+        patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file),
+        pytest.raises(RuntimeError, match="cancel requested"),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(
+            on_event=on_event, on_progress=on_progress
+        )
+
+    assert trace == [
+        ("flush",),
+        ("commit",),
+        ("progress", 0, 1, "Downloading 1 files"),
+        ("event", "info", "Downloaded 'a.mkv'", {"file_id": 1, "bytes": 1}),
+        ("flush",),
+        ("commit",),
+        ("progress", 1, 1, "Downloaded a.mkv"),
+        # Outer handler: nothing is DOWNLOADING any more, but it still flush+commits.
+        ("flush",),
+        ("commit",),
+    ]
+    assert f1.status == FileStatus.DOWNLOADED
+
+
+async def test_characterize_persist_failure_is_logged_and_original_error_raised(caplog):
+    """If the interrupted-status commit itself fails, warn and re-raise the original error."""
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    session = _make_session(files=[f1])
+    session.commit = AsyncMock(side_effect=[None, RuntimeError("db down")])
+    sftp = _sftp_with_outcomes({"/remote/a.mkv": 1})
+
+    async def on_progress(current, total, message):
+        raise ValueError("stop")
+
+    with (
+        caplog.at_level("WARNING", logger="jidou.orchestrators.download_orchestrator"),
+        pytest.raises(ValueError, match="stop"),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run(on_progress=on_progress)
+
+    assert f1.status == FileStatus.ERROR
+    assert "Could not persist interrupted statuses" in caplog.text
+
+
+async def test_characterize_dry_run_trace_and_log(caplog):
+    """Dry run: progress then event per file, no commit/sftp, summary log with counts."""
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    f2 = _make_file(2, "b.mkv", "/remote/b.mkv")
+    trace: _Trace = []
+    session = _make_session(files=[f1, f2], dry_run=True)
+    sftp = MagicMock()
+    sftp.download_file = AsyncMock()
+    on_event, on_progress = _trace_callbacks(trace)
+
+    with caplog.at_level("INFO", logger="jidou.orchestrators.download_orchestrator"):
+        result = await DownloadOrchestrator(session, sftp, _STAGING).run(
+            dry_run=True, on_event=on_event, on_progress=on_progress
+        )
+
+    dest_a = str(Path(_STAGING) / "remote/a.mkv")
+    dest_b = str(Path(_STAGING) / "remote/b.mkv")
+    assert (result.files_downloaded, result.files_failed, result.bytes_downloaded) == (2, 0, 0)
+    assert result.dry_run is True
+    assert trace == [
+        ("progress", 1, 2, "Downloading a.mkv"),
+        (
+            "event",
+            "info",
+            f"[Dry run] Would download 'a.mkv' → {dest_a}",
+            {"file_id": 1, "dest": dest_a},
+        ),
+        ("progress", 2, 2, "Downloading b.mkv"),
+        (
+            "event",
+            "info",
+            f"[Dry run] Would download 'b.mkv' → {dest_b}",
+            {"file_id": 2, "dest": dest_b},
+        ),
+    ]
+    sftp.download_file.assert_not_called()
+    session.commit.assert_not_called()
+    assert "Download complete: 2 downloaded, 0 failed, 0 bytes (dry_run=True)" in caplog.text
+
+
+async def test_characterize_final_log_counts_and_mismatch_error_log(caplog):
+    """Normal path logs 'Download complete' with counts, and logger.error for CRC mismatches."""
+    ok = _make_file(1, "ok.mkv", "/remote/ok.mkv")
+    bad = _make_file(2, "bad [DEADBEEF].mkv", "/remote/bad.mkv")
+    session = _make_session(files=[ok, bad])
+    sftp = _sftp_with_outcomes({"/remote/ok.mkv": 7, "/remote/bad.mkv": 9})
+
+    with (
+        caplog.at_level("INFO", logger="jidou.orchestrators.download_orchestrator"),
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name({"bad.mkv"}, set()),
+        ),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run()
+
+    assert "Download complete: 1 downloaded, 1 failed, 7 bytes (dry_run=False)" in caplog.text
+    assert "CRC32 mismatch — corrupt download" in caplog.text
+    assert "/remote/bad.mkv" in caplog.text
+
+
+async def test_characterize_cancel_path_does_not_log_mismatch(caplog):
+    """Only the normal path writes the mismatch logger.error (pins log_mismatch=False)."""
+    bad = _make_file(1, "bad [DEADBEEF].mkv", "/remote/bad.mkv")
+    session = _make_session(files=[bad])
+    sftp = _sftp_with_outcomes({"/remote/bad.mkv": 9})
+
+    with (
+        caplog.at_level("ERROR", logger="jidou.orchestrators.download_orchestrator"),
+        patch("asyncio.gather", new=_gather_then_cancel),
+        patch(
+            "jidou.orchestrators.download_orchestrator._hash_file",
+            new=_hash_by_name({"bad.mkv"}, set()),
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await DownloadOrchestrator(session, sftp, _STAGING).run()
+
+    assert "CRC32 mismatch" not in caplog.text
+    assert bad.status == FileStatus.ERROR
