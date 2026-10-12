@@ -804,6 +804,8 @@ async def test_characterize_normal_batch_mixed_outcomes_trace():
     ok = _make_file(1, "ok.mkv", "/remote/ok.mkv")
     err = _make_file(2, "err.mkv", "/remote/err.mkv")
     bad = _make_file(3, "bad [DEADBEEF].mkv", "/remote/bad.mkv")
+    # A stale value that a mismatch must clear so the row is retried.
+    bad.local_path = "/stale/partial"
     ign = _make_file(4, "ign.mkv", "/remote/ign.mkv")
     ign.ignored_reason = IgnoredReason.NOSCAN_PATH
     can = _make_file(5, "can.mkv", "/remote/can.mkv")
@@ -916,7 +918,7 @@ async def test_characterize_mid_file_hash_failure_normal_path():
             "jidou.orchestrators.download_orchestrator._hash_file",
             new=_hash_by_name(set(), {"b.mkv"}),
         ),
-        pytest.raises(OSError, match="disk read failed: b.mkv"),
+        pytest.raises(OSError, match=r"disk read failed: b\.mkv"),
     ):
         await DownloadOrchestrator(session, sftp, _STAGING).run(
             on_event=on_event, on_progress=on_progress
@@ -1199,3 +1201,41 @@ async def test_characterize_cancel_path_does_not_log_mismatch(caplog):
 
     assert "CRC32 mismatch" not in caplog.text
     assert bad.status == FileStatus.ERROR
+
+
+@pytest.mark.parametrize("cancel", [False, True], ids=["normal", "cancel"])
+async def test_record_transfer_is_shared_by_normal_and_cancel_paths(cancel):
+    """Both the normal result loop and the cancel cleanup record transfers via one helper."""
+    original = DownloadOrchestrator._record_transfer
+    calls: list[str] = []
+
+    async def spy(self, file, local_path, size, sink, *, log_mismatch):
+        calls.append(file.original_filename)
+        return await original(self, file, local_path, size, sink, log_mismatch=log_mismatch)
+
+    f1 = _make_file(1, "a.mkv", "/remote/a.mkv")
+    f2 = _make_file(2, "b.mkv", "/remote/b.mkv")
+    f3 = _make_file(3, "c.mkv", "/remote/c.mkv")
+    session = _make_session(files=[f1, f2, f3])
+    # c fails to transfer, so only a and b are successfully completed transfers.
+    sftp = _sftp_with_outcomes(
+        {"/remote/a.mkv": 1, "/remote/b.mkv": 2, "/remote/c.mkv": RuntimeError("boom")}
+    )
+    orch = DownloadOrchestrator(session, sftp, _STAGING)
+
+    with (
+        patch.object(DownloadOrchestrator, "_record_transfer", new=spy),
+        patch("jidou.orchestrators.download_orchestrator._hash_file", new=_stub_hash_file),
+    ):
+        if cancel:
+            with (
+                patch("asyncio.gather", new=_gather_then_cancel),
+                pytest.raises(asyncio.CancelledError),
+            ):
+                await orch.run()
+        else:
+            await orch.run()
+
+    assert calls == ["a.mkv", "b.mkv"]
+    assert f1.status == f2.status == FileStatus.DOWNLOADED
+    assert f3.status == FileStatus.ERROR
