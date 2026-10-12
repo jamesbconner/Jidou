@@ -17,6 +17,7 @@ from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
 from jidou.services.file_filters import (
     MEDIA_EXTENSIONS,
+    QUALITY_TOKENS,
     RESOLUTION_TOKENS,
     is_release_year,
     is_valid_directory,
@@ -35,8 +36,17 @@ _SEASON_DIR = re.compile(r"^[Ss]eason\s+(\d{1,2})$")
 # Standard SxxExx notation — always carries both season and episode.
 _SE_PATTERN = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,4})")
 
+# x264/x265 codec tags, plus x266 (VVC), which is not in QUALITY_TOKENS. Glued to an audio
+# tag ("DD5.1x264") they would otherwise read as NxNNN once episodes take 3-4 digits.
+_X_CODEC_NUMBERS: tuple[str, ...] = (
+    *(token[1:] for token in QUALITY_TOKENS if re.fullmatch(r"x\d{3}", token)),
+    "266",
+)
+
 # NxNN / NNxNN — common release-group format (e.g. Criminal.Minds.01x01).
-_SxE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{1,4})(?!\d)")
+_SxE_PATTERN = re.compile(
+    r"(?<!\d)(\d{1,2})[xX](?!(?:" + "|".join(_X_CODEC_NUMBERS) + r")(?!\d))(\d{1,4})(?!\d)"
+)
 
 # "Season N Episode N" — long-form text label (e.g. "Breaking Bad Season 2 Episode 09").
 _SEASON_EPISODE_WORD = re.compile(

@@ -92,7 +92,11 @@ def _heuristic_patterns(max_year: int) -> tuple[re.Pattern[str], ...]:
     """
     excluded = [str(y) for y in range(RELEASE_YEAR_MIN, max_year + 1)] + list(RESOLUTION_TOKENS)
     # Rejects a whole excluded token; a longer number that merely starts with one still matches.
-    bare = r"(?!(?:" + "|".join(excluded) + r")(?!\d))\d{1,4}"
+    guard = r"(?!(?:" + "|".join(excluded) + r")(?!\d))"
+    bare = guard + r"\d{1,4}"
+    # Mid-string only: a 4-digit number loses to any later bare number, so a number in the
+    # show title ("The 4400 - 05 - Title") never beats the real 1-3 digit episode after it.
+    bare_mid = guard + r"(?:\d{1,3}|\d{4}(?!.*[\s\-]\d))"
     return (
         # "2nd Season 04" / "1st Season 01"
         re.compile(
@@ -110,7 +114,7 @@ def _heuristic_patterns(max_year: int) -> tuple[re.Pattern[str], ...]:
         # bare episode at end of string (end-anchored — more specific than mid-string)
         re.compile(rf"(?P<name>.*?)[\s\-]+(?P<episode>{bare})$"),
         # bare episode number anywhere, optional v2 suffix
-        re.compile(rf"(?P<name>.*?)[\s\-]+(?P<episode>{bare})(?:v\d)?\b"),
+        re.compile(rf"(?P<name>.*?)[\s\-]+(?P<episode>{bare_mid})(?:v\d)?\b"),
         # S01E02 with leading space only
         re.compile(r"(?P<name>.*?)\s+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,4})"),
     )
