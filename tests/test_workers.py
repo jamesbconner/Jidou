@@ -318,7 +318,7 @@ async def test_route_files_wires_orchestrator_and_returns_summary() -> None:
         new_callable=AsyncMock,
         return_value=route_result,
     ) as mock_run:
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
     assert wf_result.progress_current == 4
@@ -388,7 +388,7 @@ async def test_match_files_wires_orchestrator_and_returns_summary() -> None:
             return_value=parse_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_create_llm.assert_called_once()
     mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
@@ -481,7 +481,7 @@ async def test_sync_all_wires_orchestrator_and_returns_summary() -> None:
             return_value=sync_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_run.assert_awaited_once_with(dry_run=True, on_phase=on_progress, on_event=on_event)
     assert wf_result.progress_current == 5
@@ -578,7 +578,7 @@ async def test_scan_remote_wires_orchestrator_and_returns_summary() -> None:
             return_value=scan_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_sftp.assert_called_once()
     mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress, on_event=on_event)
@@ -629,7 +629,7 @@ async def test_download_files_wires_orchestrator_and_returns_summary() -> None:
             return_value=dl_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_sftp.assert_called_once()
     mock_run.assert_awaited_once()
@@ -697,12 +697,11 @@ async def test_path_import_wires_orchestrator_and_returns_summary() -> None:
 
     with (
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.TMDBService"),
         patch("jidou.workers.import_tasks.create_llm_service"),
         patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert captured_on_event == [on_event]
     assert wf_result.progress_current == 2
@@ -750,12 +749,11 @@ async def test_path_import_forwards_mode_to_orchestrator_and_summary() -> None:
 
     with (
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.TMDBService"),
         patch("jidou.workers.import_tasks.create_llm_service"),
         patch("jidou.workers.import_tasks.PathImportOrchestrator", FakePathOrchestrator),
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert captured_kwargs["mode"] == "shows_only"
     assert wf_result.result_summary["mode"] == "shows_only"
@@ -814,7 +812,6 @@ async def test_path_import_passes_content_type_root_to_parse_file() -> None:
         ),
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", mock_parse_file),
         patch("jidou.workers.import_tasks.TMDBService"),
@@ -862,7 +859,6 @@ async def test_path_import_shows_only_mode_passes_directories_only_true() -> Non
         ),
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.parse_file", mock_parse_file),
         patch("jidou.workers.import_tasks.TMDBService"),
@@ -913,7 +909,6 @@ async def test_path_import_zero_entries_from_nontrivial_file_emits_warning() -> 
         ),
         patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock),
         patch("jidou.workers._harness.check_task_cancelled", new_callable=AsyncMock),
-        patch("jidou.workers.import_tasks.update_task_status", new_callable=AsyncMock),
         patch("jidou.workers.import_tasks.append_task_event", mock_append_event),
         patch("jidou.workers.import_tasks.parse_file", return_value=[]),
         patch("jidou.workers.import_tasks.TMDBService"),
@@ -1076,7 +1071,7 @@ async def test_seed_remote_wires_orchestrator_and_returns_summary() -> None:
             return_value=seed_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_sftp.assert_called_once()
     mock_run.assert_awaited_once_with(dry_run=True, on_progress=on_progress)

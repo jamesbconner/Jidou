@@ -7,6 +7,7 @@ from jidou.orchestrators.route_orchestrator import RouteOrchestrator
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -38,7 +39,10 @@ async def _route_files(
     """Async implementation of the route task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         result = await RouteOrchestrator(session).run(
             dry_run=dry_run,

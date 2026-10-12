@@ -860,7 +860,7 @@ async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> No
             return_value=error_result,
         ),
     ):
-        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
+        wf_result = await captured["work"](AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
 
     assert wf_result.errors == ["Failed to parse RSS config: malformed JSON"]  # type: ignore[attr-defined]
 

@@ -11,6 +11,7 @@ from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -42,7 +43,10 @@ async def _sync_all(
     """Async implementation of the full sync task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         sftp = create_sftp_service(settings)
         tmdb_svc = TMDBService()

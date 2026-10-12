@@ -110,7 +110,7 @@ async def test_rss_import_wires_orchestrator_and_returns_summary() -> None:
             return_value=import_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_build_sftp.assert_called_once()
     mock_run.assert_awaited_once()
@@ -149,7 +149,7 @@ async def test_rss_import_error_result_becomes_soft_failure() -> None:
             return_value=error_result,
         ),
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert wf_result.errors == ["config not found"]
     assert wf_result.message == "Import failed: config not found"
@@ -184,7 +184,7 @@ async def test_rss_import_wires_on_event_to_orchestrator() -> None:
             return_value=RssImportResult(errors=[]),
         ),
     ):
-        await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert captured_kwargs["on_event"] is on_event
 
@@ -256,7 +256,7 @@ async def test_rss_publish_wires_orchestrator_and_returns_summary() -> None:
             return_value=publish_result,
         ) as mock_run,
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     mock_build_sftp.assert_called_once()
     mock_run.assert_awaited_once()
@@ -292,7 +292,7 @@ async def test_rss_publish_error_result_becomes_soft_failure() -> None:
             return_value=error_result,
         ),
     ):
-        wf_result = await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        wf_result = await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert wf_result.errors == ["upload failed"]
     assert wf_result.message == "Publish failed: upload failed"
@@ -327,6 +327,6 @@ async def test_rss_publish_wires_on_event_to_orchestrator() -> None:
             return_value=RssPublishResult(errors=[]),
         ),
     ):
-        await captured["work"](session, on_progress, on_event)  # type: ignore[operator]
+        await captured["work"](session, on_progress, on_event, AsyncMock())  # type: ignore[operator]
 
     assert captured_kwargs["on_event"] is on_event

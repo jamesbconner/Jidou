@@ -9,6 +9,7 @@ from jidou.services.sftp_service import create_sftp_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
+    SetTotalFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
@@ -37,7 +38,10 @@ async def _seed_remote(celery_task_id: str, dry_run: bool = False) -> str:
     """Async implementation of the seed task."""
 
     async def _work(
-        session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
+        session: AsyncSession,
+        on_progress: ProgressFn,
+        on_event: EventFn,
+        set_total: SetTotalFn,
     ) -> WorkflowResult:
         sftp = create_sftp_service(settings)
 
