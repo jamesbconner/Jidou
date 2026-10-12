@@ -77,6 +77,64 @@ def summarize(result: "DataclassInstance", *, dry_run: bool) -> dict[str, object
 WorkFn = Callable[[AsyncSession, ProgressFn, EventFn], Awaitable[WorkflowResult]]
 
 
+async def _finish(session: AsyncSession, celery_task_id: str, result: WorkflowResult) -> str | None:
+    """Write the terminal state for a *work* callback that returned normally.
+
+    A business failure (non-empty ``result.errors``) marks the row FAILED and emits
+    an ``error`` event. Otherwise the row is marked COMPLETED and a ``complete``
+    event is emitted, but only if the row is still COMPLETED afterwards: a
+    concurrent cancel can win the race, and announcing completion then would
+    contradict the stored state.
+
+    Args:
+        session: Active database session.
+        celery_task_id: The Celery task ID (also the BackgroundTask row's key).
+        result: The WorkflowResult returned by the *work* callback.
+
+    Returns:
+        The soft-failure message to raise once the session has closed, or ``None``
+        on success.
+    """
+    if result.errors:
+        await update_task_status(
+            session,
+            celery_task_id,
+            TaskStatus.FAILED,
+            progress_message=result.message,
+            result_summary=result.result_summary,
+        )
+        await emit_progress(
+            {
+                "celery_task_id": celery_task_id,
+                "type": "error",
+                "data": {"error": result.message},
+            }
+        )
+        # Use the caller's own message (e.g. "Import failed: ...") for the raised
+        # exception, not a re-derived "; ".join(errors) -- that would drop the
+        # prefix callers already composed.
+        return result.message
+
+    completed = await update_task_status(
+        session,
+        celery_task_id,
+        TaskStatus.COMPLETED,
+        progress_current=result.progress_current,
+        progress_total=result.progress_total,
+        progress_message=result.message,
+        result_summary=result.result_summary,
+    )
+    if completed is not None and completed.status == TaskStatus.COMPLETED:
+        await emit_progress(
+            {
+                "celery_task_id": celery_task_id,
+                "type": "complete",
+                "data": {"summary": result.complete_summary or result.result_summary},
+            }
+        )
+    return None
+
+
 async def run_task_workflow(
     celery_task_id: str,
     task_type: str,
@@ -158,45 +216,7 @@ async def run_task_workflow(
 
                 result = await work(session, on_progress, on_event)
 
-                if result.errors:
-                    await update_task_status(
-                        session,
-                        celery_task_id,
-                        TaskStatus.FAILED,
-                        progress_message=result.message,
-                        result_summary=result.result_summary,
-                    )
-                    await emit_progress(
-                        {
-                            "celery_task_id": celery_task_id,
-                            "type": "error",
-                            "data": {"error": result.message},
-                        }
-                    )
-                    # Use the caller's own message (e.g. "Import failed: ...") for
-                    # the raised exception, not a re-derived "; ".join(errors) --
-                    # that would drop the prefix callers already composed.
-                    soft_failure = result.message
-                else:
-                    completed = await update_task_status(
-                        session,
-                        celery_task_id,
-                        TaskStatus.COMPLETED,
-                        progress_current=result.progress_current,
-                        progress_total=result.progress_total,
-                        progress_message=result.message,
-                        result_summary=result.result_summary,
-                    )
-                    if completed is not None and completed.status == TaskStatus.COMPLETED:
-                        await emit_progress(
-                            {
-                                "celery_task_id": celery_task_id,
-                                "type": "complete",
-                                "data": {
-                                    "summary": result.complete_summary or result.result_summary
-                                },
-                            }
-                        )
+                soft_failure = await _finish(session, celery_task_id, result)
 
         except TaskCancelledError:
             logger.info("Task %s (%s) cancelled", celery_task_id, task_type)

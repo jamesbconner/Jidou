@@ -10,16 +10,18 @@ could see no active task and dispatch a duplicate.
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from contextlib import AsyncExitStack
 from typing import Any
 
 from celery import shared_task
-from sqlalchemy import func, select
+from sqlalchemy import delete
 
 from jidou.config import settings
 from jidou.database import task_sessionmaker
 from jidou.models.task import ACTIVE_TASK_STATUSES, BackgroundTask
 from jidou.services.progress import create_task_record
+from jidou.services.task_dispatch import get_active_task
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +43,7 @@ async def _try_claim_task(task_type: str, task_id: str) -> bool:
         already detected.
     """
     async with task_sessionmaker() as session_factory, session_factory() as session:
-        count: int = (
-            await session.execute(
-                select(func.count()).where(
-                    BackgroundTask.task_type == task_type,
-                    BackgroundTask.status.in_(ACTIVE_TASK_STATUSES),
-                )
-            )
-        ).scalar_one()
-        if count > 0:
+        if await get_active_task(session, task_type) is not None:
             return False
         await create_task_record(session, task_id, task_type, dry_run=False)
         return True
@@ -124,8 +118,6 @@ async def _delete_task_record(celery_task_id: str) -> None:
     Args:
         celery_task_id: The Celery task identifier of the row to remove.
     """
-    from sqlalchemy import delete
-
     # Parity with the pre-refactor helper: engine creation happens inside the try
     # (a creation failure is logged, not raised) while disposal runs after it, so
     # a dispose failure still propagates. The ExitStack gives exactly that split.
@@ -144,27 +136,73 @@ async def _delete_task_record(celery_task_id: str) -> None:
             )
 
 
-async def _scheduled_sync() -> str:
-    task_id = str(uuid.uuid4())
-    if not await _try_claim_task("sync", task_id):
-        logger.info("Scheduled sync skipped: a sync task is already active")
+async def _run_scheduled(
+    task_type: str,
+    load_task: Callable[[], Any],
+    *,
+    claim_skipped_message: str,
+    skip_reason: Callable[[], str | None] | None = None,
+) -> str:
+    """Run the shared beat flow: precondition, claim, lazy import, dispatch.
+
+    Args:
+        task_type: Type label used for the overlap guard and the pending row.
+        load_task: Zero-argument callable that imports and returns the Celery task.
+            Called only after the claim succeeds, so the worker module is imported
+            lazily (it pulls in heavy dependencies and would be circular at import).
+        claim_skipped_message: Info-level log line used when an active task of
+            this type is already present.
+        skip_reason: Optional precondition check. A returned message is logged as
+            a warning and the run is skipped *before* any slot is claimed (for
+            example ``RSS_CONFIG_REMOTE_PATH`` being unset).
+
+    Returns:
+        ``"skipped"`` when a precondition or the overlap guard stops the run,
+        otherwise the dispatched Celery task ID.
+    """
+    if skip_reason is not None and (reason := skip_reason()):
+        logger.warning(reason)
         return "skipped"
 
+    task_id = str(uuid.uuid4())
+    if not await _try_claim_task(task_type, task_id):
+        logger.info(claim_skipped_message)
+        return "skipped"
+
+    return await _dispatch_scheduled(task_type, load_task(), task_id)
+
+
+def _load_sync_task() -> Any:
     from jidou.workers.sync_tasks import sync_all_task
 
-    return await _dispatch_scheduled("sync", sync_all_task, task_id)
+    return sync_all_task
+
+
+def _load_rss_import_task() -> Any:
+    from jidou.workers.rss_tasks import rss_import_task
+
+    return rss_import_task
+
+
+def _rss_skip_reason() -> str | None:
+    """Return a skip message when the RSS config path is not configured."""
+    if not settings.rss_config_remote_path:
+        return "Scheduled RSS import skipped: RSS_CONFIG_REMOTE_PATH is not configured"
+    return None
+
+
+async def _scheduled_sync() -> str:
+    return await _run_scheduled(
+        "sync",
+        _load_sync_task,
+        claim_skipped_message="Scheduled sync skipped: a sync task is already active",
+    )
 
 
 async def _scheduled_rss_import() -> str:
-    if not settings.rss_config_remote_path:
-        logger.warning("Scheduled RSS import skipped: RSS_CONFIG_REMOTE_PATH is not configured")
-        return "skipped"
-
-    task_id = str(uuid.uuid4())
-    if not await _try_claim_task("rss_import", task_id):
-        logger.info("Scheduled RSS import skipped: an rss_import task is already active")
-        return "skipped"
-
-    from jidou.workers.rss_tasks import rss_import_task
-
-    return await _dispatch_scheduled("rss_import", rss_import_task, task_id)
+    return await _run_scheduled(
+        "rss_import",
+        _load_rss_import_task,
+        claim_skipped_message="Scheduled RSS import skipped: an rss_import task is already active",
+        skip_reason=_rss_skip_reason,
+    )

@@ -10,6 +10,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from jidou.models.task import TaskStatus
 from jidou.workers._harness import (
     WorkflowResult,
+    _finish,
     mark_task_timed_out,
     run_harnessed,
     run_task_workflow,
@@ -499,3 +500,82 @@ def test_summarize_adds_dry_run_and_recurses() -> None:
 def test_summarize_argument_overrides_result_dry_run_field() -> None:
     """A result's own dry_run field never wins over the explicit argument."""
     assert summarize(_Outer(total=1, dry_run=True), dry_run=False)["dry_run"] is False
+
+
+# ---------------------------------------------------------------------------
+# _finish
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_finish_soft_failure_returns_message_and_marks_failed() -> None:
+    """Non-empty errors mark FAILED with the summary, emit "error", and return the message."""
+    session = AsyncMock()
+    result = _success_result(
+        message="Import failed: bad config",
+        result_summary={"errors": ["bad config"]},
+        errors=["bad config"],
+    )
+
+    with (
+        patch("jidou.workers._harness.update_task_status", new_callable=AsyncMock) as mock_update,
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+    ):
+        message = await _finish(session, "tid-f1", result)
+
+    assert message == "Import failed: bad config"
+    mock_update.assert_awaited_once_with(
+        session,
+        "tid-f1",
+        TaskStatus.FAILED,
+        progress_message="Import failed: bad config",
+        result_summary={"errors": ["bad config"]},
+    )
+    mock_emit.assert_awaited_once_with(
+        {
+            "celery_task_id": "tid-f1",
+            "type": "error",
+            "data": {"error": "Import failed: bad config"},
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_finish_success_emits_complete_only_when_still_completed() -> None:
+    """A row cancelled concurrently (non-COMPLETED status) suppresses the "complete" event."""
+    session = AsyncMock()
+    cancelled = MagicMock(status=TaskStatus.CANCELLED.value)
+
+    with (
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=cancelled,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+    ):
+        message = await _finish(session, "tid-f2", _success_result())
+
+    assert message is None
+    mock_emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_finish_success_emits_complete_with_summary_when_completed() -> None:
+    session = AsyncMock()
+    completed = MagicMock(status=TaskStatus.COMPLETED.value)
+
+    with (
+        patch(
+            "jidou.workers._harness.update_task_status",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ),
+        patch("jidou.workers._harness.emit_progress", new_callable=AsyncMock) as mock_emit,
+    ):
+        message = await _finish(session, "tid-f3", _success_result(complete_summary={"n": 1}))
+
+    assert message is None
+    mock_emit.assert_awaited_once_with(
+        {"celery_task_id": "tid-f3", "type": "complete", "data": {"summary": {"n": 1}}}
+    )
