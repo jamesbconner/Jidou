@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators._events import EventSink
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator, DownloadResult
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, ParseResult
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator, RouteResult
@@ -55,15 +56,14 @@ async def _tick(on_phase: OnProgress | None, current: int, message: str) -> None
 
 
 async def _summary(on_event: OnEvent | None, message: str, ctx: dict[str, int]) -> None:
-    """Emit one phase-summary info event; errors from the callback propagate.
+    """Emit one phase-summary info event; a failing callback is logged, not raised.
 
     Args:
         on_event: Optional event callback.
         message: Summary line.
         ctx: Structured counts for the event.
     """
-    if on_event:
-        await on_event("info", message, ctx)
+    await EventSink(on_event, swallow_errors=True)("info", message, ctx)
 
 
 @dataclass

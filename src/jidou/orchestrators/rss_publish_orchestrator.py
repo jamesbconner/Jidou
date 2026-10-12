@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
-from jidou.orchestrators._events import log_only_event
+from jidou.orchestrators._events import EventSink, log_only_event
 from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
 from jidou.services.callbacks import OnEvent
 from jidou.services.rss_config import (
@@ -111,7 +111,8 @@ class RssPublishOrchestrator:
         self._sftp = sftp
         self._remote_path = remote_path
         self._dry_run = dry_run
-        self._on_event = on_event or log_only_event
+        # Event logging is best-effort: a failing callback is logged, never aborts the run.
+        self._on_event = EventSink(on_event or log_only_event, swallow_errors=True)
         if bool(deluge_stop_command) != bool(deluge_restart_command):
             raise ValueError(
                 "deluge_stop_command and deluge_restart_command must be set together "
