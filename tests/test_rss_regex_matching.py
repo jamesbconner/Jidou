@@ -4,7 +4,12 @@ import re
 
 import pytest
 
-from jidou.services.rss_regex_matching import MAX_TITLE_LENGTH, evaluate_regex
+from jidou.services.rss_regex_matching import (
+    MAX_TITLE_LENGTH,
+    CompiledFilter,
+    compile_pattern,
+    evaluate_regex,
+)
 
 TITLES = [
     "Show.Name.S02E05.1080p.WEB-DL.DDP5.1-GRP",
@@ -84,3 +89,64 @@ def test_very_long_titles_are_only_probed_up_to_the_cap() -> None:
 
     assert report.matched == []  # the tail beyond the cap is never inspected
     assert report.unmatched == [title]  # but the original title is reported intact
+
+
+# --- Characterization tests (pin pre-CompiledFilter behaviour) --------------
+
+
+def test_invalid_exclude_raises_even_when_include_is_empty() -> None:
+    # Both patterns are compiled up front, so a bad exclude fails the whole call.
+    with pytest.raises(re.error):
+        evaluate_regex(TITLES, include=None, exclude="(unclosed")
+
+
+def test_invalid_include_raises_before_exclude_is_considered() -> None:
+    with pytest.raises(re.error):
+        evaluate_regex(TITLES, include="[bad", exclude="(also bad")
+
+
+def test_empty_titles_still_validate_patterns() -> None:
+    assert evaluate_regex([], include="x", exclude=None).total == 0
+    with pytest.raises(re.error):
+        evaluate_regex([], include="(unclosed", exclude=None)
+
+
+def test_exclude_beyond_the_cap_is_not_seen() -> None:
+    title = "keep " + "a" * MAX_TITLE_LENGTH + "FRENCH"
+
+    report = evaluate_regex([title], include="keep", exclude="FRENCH")
+
+    assert report.matched == [title]
+
+
+def test_both_flags_off_are_case_sensitive() -> None:
+    report = evaluate_regex(
+        ["Show FRENCH", "show french"],
+        include="Show",
+        exclude="FRENCH",
+        include_ignorecase=False,
+        exclude_ignorecase=False,
+    )
+
+    assert report.matched == []
+    assert report.unmatched == ["Show FRENCH", "show french"]
+
+
+def test_compile_pattern_empty_and_flags() -> None:
+    assert compile_pattern(None, True) is None
+    assert compile_pattern("", False) is None
+    assert compile_pattern("a", True) is not None
+    assert compile_pattern("a", True).flags & re.IGNORECASE  # type: ignore[union-attr]
+    assert not compile_pattern("a", False).flags & re.IGNORECASE  # type: ignore[union-attr]
+    with pytest.raises(re.error):
+        compile_pattern("(unclosed", True)
+
+
+def test_compiled_filter_accepts() -> None:
+    assert not CompiledFilter(include=None, exclude=re.compile("x")).accepts("x")
+    assert CompiledFilter(include=re.compile("show"), exclude=None).accepts("a show b")
+    both = CompiledFilter(include=re.compile("show"), exclude=re.compile("french"))
+    assert not both.accepts("show french")
+    assert both.accepts("show english")
+    # Case-folding off: "SHOW" must not satisfy "show".
+    assert not CompiledFilter(include=compile_pattern("show", False), exclude=None).accepts("SHOW")

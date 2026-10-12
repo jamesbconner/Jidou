@@ -1,6 +1,7 @@
 """Shared logic for linking or creating an RSS subscription stub for a show."""
 
 import logging
+from collections.abc import Sequence
 
 from rapidfuzz import fuzz
 from sqlalchemy import select
@@ -13,6 +14,43 @@ from jidou.services.rss_config import fill_missing_yarss2_defaults
 logger = logging.getLogger(__name__)
 
 _FUZZY_THRESHOLD = 85
+
+
+def pick_unlinked_subscription(
+    subs: Sequence[RssSubscription], show_title: str
+) -> RssSubscription | None:
+    """Choose the unlinked subscription that best matches *show_title*.
+
+    An exact case-insensitive name match wins immediately, even when it comes
+    after a higher-scoring fuzzy match. Otherwise the best token-set ratio at or
+    above the threshold wins, unless two subscriptions tie at that best score:
+    linking either would be a guess, so the caller creates a stub instead.
+
+    Args:
+        subs: Candidate subscriptions (those with no linked show).
+        show_title: Title to match against each subscription's name.
+
+    Returns:
+        The matching subscription, or None when nothing qualifies or the best
+        fuzzy score is shared by more than one subscription.
+    """
+    title_lower = show_title.lower()
+    best_match: RssSubscription | None = None
+    best_score: float = 0
+    ambiguous = False
+    for sub in subs:
+        if sub.name.lower() == title_lower:
+            return sub
+        score = fuzz.token_set_ratio(title_lower, sub.name.lower())
+        if score < _FUZZY_THRESHOLD:
+            continue
+        if score > best_score:
+            best_score = score
+            best_match = sub
+            ambiguous = False
+        elif score == best_score:
+            ambiguous = True
+    return None if ambiguous else best_match
 
 
 async def ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) -> RssSubscription:
@@ -50,24 +88,8 @@ async def ensure_rss_stub(session: AsyncSession, show_id: int, show_title: str) 
     # Step 2: find an unlinked subscription and link it
     unlinked_stmt = select(RssSubscription).where(RssSubscription.show_id.is_(None))
     unlinked_subs = list((await session.execute(unlinked_stmt)).scalars().all())
-    title_lower = show_title.lower()
-    best_match: RssSubscription | None = None
-    best_score: float = 0
-    ambiguous = False
-    for sub in unlinked_subs:
-        if sub.name.lower() == title_lower:
-            best_match = sub
-            ambiguous = False
-            break
-        score = fuzz.token_set_ratio(title_lower, sub.name.lower())
-        if score >= _FUZZY_THRESHOLD:
-            if score > best_score:
-                best_score = score
-                best_match = sub
-                ambiguous = False
-            elif score == best_score:
-                ambiguous = True
-    if best_match is not None and not ambiguous:
+    best_match = pick_unlinked_subscription(unlinked_subs, show_title)
+    if best_match is not None:
         best_match.show_id = show_id
         logger.debug(
             "Linked unlinked RSS subscription id=%d name=%r to show_id=%d title=%r",

@@ -1,6 +1,9 @@
 """Tests for jidou.services.path_transport."""
 
+import pytest
+
 from jidou.services.path_transport import (
+    basename_any,
     decode_path_bytes,
     decode_path_bytes_for_display,
     encode_path_bytes,
@@ -107,3 +110,24 @@ class TestDecodePathBytesForDisplay:
     def test_output_always_encodes_as_utf8(self) -> None:
         encoded = encode_path_bytes("Am\udce9lie 100% \udcff done.mkv")
         decode_path_bytes_for_display(encoded).encode("utf-8")  # must not raise
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("C:\\a\\b.mkv", "b.mkv"),
+        ("/x/y.mkv", "y.mkv"),
+        ("z.mkv", "z.mkv"),
+        ("\\\\nas\\share\\dir/mixed.mkv", "mixed.mkv"),
+        ("/x/dir/", ""),
+        ("C:\\dir\\", ""),
+        ("", ""),
+    ],
+)
+def test_basename_any(path: str, expected: str) -> None:
+    assert basename_any(path) == expected
+
+
+@pytest.mark.parametrize("path", ["C:\\a\\b.mkv", "/x/y.mkv", "z.mkv", "a/b\\c.mkv", "/x/"])
+def test_basename_any_matches_the_inline_expression_it_replaced(path: str) -> None:
+    assert basename_any(path) == path.replace("\\", "/").rsplit("/", 1)[-1]

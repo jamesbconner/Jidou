@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.services.path_transport import decode_path_bytes
+from jidou.services.synthetic_file import SYNTHETIC_IMPORT_SCHEME
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ async def reconcile_local_file_existence(
         DownloadedFile.show_id == show_id,
         DownloadedFile.local_path.is_not(None),
         DownloadedFile.status.not_in(_IN_FLIGHT_STATUSES),
-        ~DownloadedFile.remote_path.like("synthetic-import://%"),
+        ~DownloadedFile.remote_path.like(f"{SYNTHETIC_IMPORT_SCHEME}%"),
     )
     rows = list((await db_session.execute(stmt)).scalars().all())
     if not rows:

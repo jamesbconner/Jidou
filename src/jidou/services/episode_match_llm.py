@@ -31,6 +31,7 @@ from jidou.services.llm_json import (
 )
 from jidou.services.llm_service import LLMService
 from jidou.services.llm_structured import JsonCallFailure, JsonCallResult, request_json_object
+from jidou.services.path_transport import basename_any
 
 logger = logging.getLogger(__name__)
 
@@ -426,7 +427,7 @@ async def llm_match_episode(
         f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
         for ep in eps[:_MAX_EPISODES_IN_PROMPT]
     )
-    filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    filename = basename_any(filename)
     prompt = (
         f"Show: {sanitize_for_prompt(show_title)}\n"
         f"Filename: {sanitize_for_prompt(filename)}\n\n"

@@ -9,15 +9,44 @@ only linked after the fact.
 from __future__ import annotations
 
 import logging
+from typing import Final
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
-from jidou.services.path_transport import decode_path_bytes_for_display
+from jidou.services.path_transport import basename_any, decode_path_bytes_for_display
 
 logger = logging.getLogger(__name__)
+
+# The ``remote_path`` prefix marking a file that was linked after the fact rather
+# than downloaded; code that matches or builds such paths must use the helpers below.
+SYNTHETIC_IMPORT_SCHEME: Final = "synthetic-import://"
+
+
+def synthetic_remote_path(path: str) -> str:
+    """Build the ``remote_path`` that records *path* as a synthetic import.
+
+    Args:
+        path: The file's on-disk path (or bare filename for episode lookups).
+
+    Returns:
+        ``SYNTHETIC_IMPORT_SCHEME`` followed by *path*.
+    """
+    return f"{SYNTHETIC_IMPORT_SCHEME}{path}"
+
+
+def is_synthetic_remote_path(remote_path: str) -> bool:
+    """Return whether *remote_path* belongs to a synthetic import row.
+
+    Args:
+        remote_path: A ``DownloadedFile.remote_path`` value.
+
+    Returns:
+        True when it starts with ``SYNTHETIC_IMPORT_SCHEME``.
+    """
+    return remote_path.startswith(SYNTHETIC_IMPORT_SCHEME)
 
 
 async def create_synthetic_import_file(
@@ -62,10 +91,8 @@ async def create_synthetic_import_file(
         The created (or pre-existing) :class:`DownloadedFile`, or ``None`` if
         a concurrent request won the race to create it.
     """
-    synthetic_remote_path = f"synthetic-import://{raw_path}"
-    existing_stmt = select(DownloadedFile).where(
-        DownloadedFile.remote_path == synthetic_remote_path
-    )
+    remote_path = synthetic_remote_path(raw_path)
+    existing_stmt = select(DownloadedFile).where(DownloadedFile.remote_path == remote_path)
     existing = (await session.execute(existing_stmt)).scalar_one_or_none()
     if existing is not None:
         return existing
@@ -73,12 +100,12 @@ async def create_synthetic_import_file(
     # original_filename is display-only (never echoed back for a lookup, unlike
     # local_path/remote_path below), so store the human-readable decoded form
     # directly rather than leaking raw_path's percent-encoding into the UI.
-    filename = decode_path_bytes_for_display(raw_path).replace("\\", "/").rsplit("/", 1)[-1]
+    filename = basename_any(decode_path_bytes_for_display(raw_path))
     record = DownloadedFile(
         show_id=show_id,
         episode_id=episode_id,
         original_filename=filename,
-        remote_path=synthetic_remote_path,
+        remote_path=remote_path,
         local_path=raw_path,
         status=FileStatus.ROUTED,
         parsed_season=parsed_season,

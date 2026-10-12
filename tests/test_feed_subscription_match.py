@@ -88,3 +88,47 @@ def test_regex_match_beats_show_link() -> None:
     matcher = SubscriptionMatcher([linked, by_regex])
 
     assert matcher.find(TITLES, show_id=42) == 9
+
+
+# --- Characterization tests (pin pre-CompiledFilter behaviour) --------------
+
+
+def test_invalid_exclude_is_ignored_and_include_still_decides(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        matcher = SubscriptionMatcher([_rule(7, r"Example", regex_exclude=r"(unclosed")])
+
+    assert matcher.find(TITLES) == 7
+    assert any("7" in r.message for r in caplog.records)
+
+
+def test_invalid_include_falls_back_to_show_link() -> None:
+    rule = SubscriptionRule(subscription_id=9, show_id=42, regex_include=r"(unclosed")
+
+    assert SubscriptionMatcher([rule]).find(TITLES, show_id=42) == 9
+    assert SubscriptionMatcher([rule]).find(TITLES) is None
+
+
+def test_titles_are_not_truncated() -> None:
+    # Unlike the regex preview, subscription matching sees the whole title.
+    title = "a" * 400 + "NEEDLE"
+
+    assert SubscriptionMatcher([_rule(1, "NEEDLE")]).find([title]) == 1
+
+
+def test_exclude_ignorecase_flag_is_independent() -> None:
+    titles = ["Example FRENCH"]
+    sensitive = _rule(1, "example", regex_exclude="french", exclude_ignorecase=False)
+    insensitive = _rule(2, "example", regex_exclude="french")
+
+    assert SubscriptionMatcher([sensitive]).find(titles) == 1
+    assert SubscriptionMatcher([insensitive]).find(titles) is None
+
+
+def test_empty_exclude_excludes_nothing() -> None:
+    assert SubscriptionMatcher([_rule(3, "Example", regex_exclude="")]).find(TITLES) == 3
+
+
+def test_empty_group_matches_nothing_by_regex() -> None:
+    assert SubscriptionMatcher([_rule(3, "Example")]).find([]) is None

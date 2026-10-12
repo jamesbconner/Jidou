@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.services.path_transport import encode_path_bytes
-from jidou.services.synthetic_file import create_synthetic_import_file
+from jidou.services.synthetic_file import (
+    SYNTHETIC_IMPORT_SCHEME,
+    create_synthetic_import_file,
+    is_synthetic_remote_path,
+    synthetic_remote_path,
+)
 
 
 def _make_session(existing: MagicMock | None = None) -> MagicMock:
@@ -112,3 +117,10 @@ async def test_returns_existing_record_without_creating_duplicate() -> None:
 
     assert record is existing
     session.add.assert_not_called()
+
+
+def test_synthetic_remote_path_round_trip() -> None:
+    assert synthetic_remote_path("/p") == f"{SYNTHETIC_IMPORT_SCHEME}/p"
+    assert is_synthetic_remote_path(synthetic_remote_path("/p"))
+    assert not is_synthetic_remote_path("/p")
+    assert not is_synthetic_remote_path("")

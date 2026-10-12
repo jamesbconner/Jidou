@@ -21,7 +21,12 @@ from jidou.schemas.show_schema import (
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.episode_watching import clear_episode_watched, mark_episode_watched
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
-from jidou.services.synthetic_file import create_synthetic_import_file
+from jidou.services.synthetic_file import (
+    SYNTHETIC_IMPORT_SCHEME,
+    create_synthetic_import_file,
+    is_synthetic_remote_path,
+    synthetic_remote_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +75,7 @@ async def list_episodes(
                 DownloadedFile.episode_id.in_(episode_ids),
                 # Exclude pending synthetic rows so a cancelled Fix Match on an
                 # imported episode doesn't flip the chip from Imported → Matched.
-                ~DownloadedFile.remote_path.like("synthetic-import://%"),
+                ~DownloadedFile.remote_path.like(f"{SYNTHETIC_IMPORT_SCHEME}%"),
             )
             .order_by(DownloadedFile.id)
         )
@@ -373,7 +378,7 @@ async def _detach_episode_tracking(db_session: AsyncSession, ep: Episode) -> Non
     """
     backing_stmt = select(DownloadedFile).where(DownloadedFile.episode_id == ep.id)
     for backing_file in (await db_session.execute(backing_stmt)).scalars().all():
-        if backing_file.remote_path.startswith("synthetic-import://"):
+        if is_synthetic_remote_path(backing_file.remote_path):
             await db_session.delete(backing_file)
         else:
             backing_file.episode_id = None
@@ -624,11 +629,11 @@ async def link_episode_file(
     )
     await db_session.commit()
 
-    synthetic_remote_path = f"synthetic-import://{payload.path}"
+    remote_path = synthetic_remote_path(payload.path)
     refreshed = (
         await db_session.execute(
             select(DownloadedFile)
-            .where(DownloadedFile.remote_path == synthetic_remote_path)
+            .where(DownloadedFile.remote_path == remote_path)
             .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
         )
     ).scalar_one()
@@ -675,7 +680,7 @@ async def _resync_synthetic_file_episode(
         episode_number: The new episode's episode number.
     """
     stmt = select(DownloadedFile).where(
-        DownloadedFile.remote_path == f"synthetic-import://{filename}"
+        DownloadedFile.remote_path == synthetic_remote_path(filename)
     )
     synthetic_file = (await db_session.execute(stmt)).scalar_one_or_none()
     if synthetic_file is not None:
