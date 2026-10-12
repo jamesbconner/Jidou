@@ -3,10 +3,8 @@
 import logging
 import re
 import shutil
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators._events import EventSink
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file, mark_episode_tracked
 from jidou.services.path_transport import decode_path_bytes
@@ -180,8 +180,8 @@ class RouteOrchestrator:
     async def run(
         self,
         dry_run: bool = False,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
-        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
+        on_event: OnEvent | None = None,
     ) -> RouteResult:
         """Route all MATCHED files to their final locations.
 
@@ -202,12 +202,7 @@ class RouteOrchestrator:
             RouteResult with counts.
         """
 
-        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
-            if on_event:
-                try:
-                    await on_event(level, msg, ctx)
-                except Exception:
-                    logger.warning("Event logging failed; continuing", exc_info=True)
+        _emit = EventSink(on_event, swallow_errors=True)
 
         stmt = (
             select(DownloadedFile, Show)
