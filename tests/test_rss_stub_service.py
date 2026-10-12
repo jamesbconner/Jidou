@@ -64,6 +64,23 @@ def test_pick_tie_at_best_fuzzy_score_is_ambiguous() -> None:
     assert pick_unlinked_subscription(subs, "Example Show") is None
 
 
+def test_pick_duplicate_exact_names_are_ambiguous() -> None:
+    """DF-12 (D18): two subscriptions with the same name (any case) are not linked."""
+    assert pick_unlinked_subscription(_subs("Some Show", "some show"), "Some Show") is None
+
+
+def test_pick_duplicate_exact_names_do_not_fall_through_to_fuzzy() -> None:
+    subs = _subs("Some Show", "Some Show", "Some Show Extra")
+
+    assert pick_unlinked_subscription(subs, "Some Show") is None
+
+
+def test_pick_single_exact_name_still_wins_over_fuzzy_near_miss() -> None:
+    subs = _subs("Some Show Extra", "Some Show")
+
+    assert pick_unlinked_subscription(subs, "Some Show") is subs[1]
+
+
 def test_pick_best_score_below_threshold_is_none() -> None:
     assert pick_unlinked_subscription(_subs("Completely Different"), "Example Show") is None
 

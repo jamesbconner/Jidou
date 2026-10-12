@@ -12,6 +12,40 @@ logger = logging.getLogger(__name__)
 FUZZY_THRESHOLD: Final = 85
 
 
+def unambiguous_title_match(
+    query: str, candidates: Sequence[str], *, threshold: int = FUZZY_THRESHOLD
+) -> int | None:
+    """Return the index of the one candidate that matches *query*, exact first.
+
+    An exact case-insensitive match wins even when a fuzzy candidate scores as
+    high or is listed earlier. Two or more exact matches are ambiguous and give
+    None, the same as a fuzzy tie: they do not fall through to the fuzzy step,
+    which would otherwise pick a weaker near-miss over a title that matched
+    exactly. With no exact match the fuzzy fallback decides.
+
+    Args:
+        query: Name to look up.
+        candidates: Names to compare against.
+        threshold: Minimum fuzzy score (inclusive) used when nothing matches exactly.
+
+    Returns:
+        Index into *candidates* of the match, or None when nothing qualifies or the
+        best match is shared by more than one candidate.
+    """
+    query_lower = query.lower()
+    exact = [i for i, c in enumerate(candidates) if c.lower() == query_lower]
+    if len(exact) == 1:
+        return exact[0]
+    if exact:
+        logger.debug(
+            "unambiguous_title_match: %d candidates match %r exactly - ambiguous",
+            len(exact),
+            query,
+        )
+        return None
+    return unambiguous_best_match(query, candidates, threshold=threshold)
+
+
 def unambiguous_best_match(
     query: str, candidates: Sequence[str], *, threshold: int = FUZZY_THRESHOLD
 ) -> int | None:

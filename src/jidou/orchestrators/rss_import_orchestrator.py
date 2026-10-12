@@ -20,32 +20,31 @@ from jidou.models.rss import RssConfigSnapshot, RssFeed, RssSubscription
 from jidou.models.show import Show
 from jidou.orchestrators._events import EventSink, log_only_event
 from jidou.services.callbacks import OnEvent
-from jidou.services.fuzzy_match import unambiguous_best_match
+from jidou.services.fuzzy_match import unambiguous_title_match
 from jidou.services.rss_config import compute_subscription_deltas, parse_rss_config
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
 
 
-def _fuzzy_show_id(name: str, show_by_lower_title: dict[str, int]) -> int | None:
+def _fuzzy_show_id(name: str, shows: list[tuple[str, int]]) -> int | None:
     """Return a show_id for name using exact then token-set-ratio fuzzy match.
+
+    Two shows with the same title are ambiguous and give None, so the list keeps
+    every show rather than collapsing duplicate titles.
 
     Args:
         name: Subscription name from the remote config.
-        show_by_lower_title: Mapping of lowercase show title → show_id.
+        shows: ``(lowercase title, show_id)`` pairs, one per show.
 
     Returns:
-        Matched show_id, or None if no match meets the threshold.
+        Matched show_id, or None if no unambiguous match meets the threshold.
     """
-    exact = show_by_lower_title.get(name.lower())
-    if exact is not None:
-        return exact
-    titles = list(show_by_lower_title.keys())
-    index = unambiguous_best_match(name, titles)
+    index = unambiguous_title_match(name, [title for title, _ in shows])
     if index is None:
         return None
-    logger.debug("_fuzzy_show_id: fuzzy-matched %r -> %r", name, titles[index])
-    return show_by_lower_title[titles[index]]
+    logger.debug("_fuzzy_show_id: matched %r -> %r", name, shows[index][0])
+    return shows[index][1]
 
 
 # Fields carried from the parsed remote dict directly into a new DB row.
@@ -96,7 +95,7 @@ def _extra_config_for(sub_dict: dict[str, object]) -> dict[str, object] | None:
 class _LinkIndex:
     """Lookups used to link remote subscriptions to shows and local stubs."""
 
-    show_by_lower_title: dict[str, int]
+    shows: list[tuple[str, int]]
     stubs_by_show_id: dict[int, RssSubscription]
     stubs_by_lower_name: dict[str, RssSubscription]
 
@@ -307,7 +306,7 @@ class RssImportOrchestrator:
         # Create new subscriptions (or promote matching stubs)
         for sub_dict in delta.to_create:
             name = str(sub_dict.get("name", ""))
-            show_id = _fuzzy_show_id(name, index.show_by_lower_title)
+            show_id = _fuzzy_show_id(name, index.shows)
 
             stub = index.find_stub(name, show_id)
             if stub is not None:
@@ -345,7 +344,7 @@ class RssImportOrchestrator:
         """
         shows_stmt = select(Show.id, Show.title)
         show_rows = (await self._session.execute(shows_stmt)).all()
-        show_by_lower_title: dict[str, int] = {r.title.lower(): r.id for r in show_rows}
+        shows: list[tuple[str, int]] = [(r.title.lower(), r.id) for r in show_rows]
 
         # Stubs are rows with remote_key=None created by the watchlist integration.
         # When the remote has a subscription matching a stub (by show_id or name), we promote
@@ -358,7 +357,7 @@ class RssImportOrchestrator:
         stubs_by_lower_name: dict[str, RssSubscription] = {
             sub.name.lower(): sub for sub in db_subs if sub.remote_key is None
         }
-        return _LinkIndex(show_by_lower_title, stubs_by_show_id, stubs_by_lower_name)
+        return _LinkIndex(shows, stubs_by_show_id, stubs_by_lower_name)
 
     async def _warn_unresolved_feed(
         self,
@@ -498,7 +497,7 @@ class RssImportOrchestrator:
         # Auto-link show: read db_row.show_id but only write in live run
         if db_row.show_id is None:
             name = str(merged.get("name", db_row.name))
-            show_id = _fuzzy_show_id(name, index.show_by_lower_title)
+            show_id = _fuzzy_show_id(name, index.shows)
             if show_id:
                 if not self._dry_run:
                     db_row.show_id = show_id
