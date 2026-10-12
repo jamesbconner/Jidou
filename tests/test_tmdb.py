@@ -838,9 +838,11 @@ class TestTMDBCallSurfaceCharacterization:
         self, tmdb_service: TMDBService, method: str, args: tuple[object, ...]
     ) -> None:
         """Invalid media types raise ValueError and never reach the cache or network."""
-        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request:
-            with pytest.raises(ValueError, match="Invalid media_type"):
-                await getattr(tmdb_service, method)(*args)
+        with (
+            patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_request,
+            pytest.raises(ValueError, match="Invalid media_type"),
+        ):
+            await getattr(tmdb_service, method)(*args)
         mock_request.assert_not_called()
 
     @pytest.mark.asyncio
