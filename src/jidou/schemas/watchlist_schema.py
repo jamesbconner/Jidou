@@ -2,15 +2,14 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from jidou.models.watchlist import WatchlistStatus
+from jidou.schemas._base import ORMModel
 
 
-class ShowBrief(BaseModel):
+class ShowBrief(ORMModel):
     """Minimal show info embedded in watchlist responses."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     title: str
     tmdb_id: int
@@ -18,15 +17,13 @@ class ShowBrief(BaseModel):
     backdrop_path: str | None = None
 
 
-class WatchlistNextUpEpisode(BaseModel):
+class WatchlistNextUpEpisode(ORMModel):
     """Minimal episode info for the watchlist's "next up" indicator.
 
     ``air_date`` is included deliberately unfiltered — the lowest unwatched
     episode may not have aired yet, and showing the date lets the user judge
     that for themselves rather than having it silently filtered out.
     """
-
-    model_config = ConfigDict(from_attributes=True)
 
     season_number: int
     episode_number: int
@@ -59,10 +56,8 @@ class WatchlistPositionItem(BaseModel):
     position: int
 
 
-class WatchlistRead(BaseModel):
+class WatchlistRead(ORMModel):
     """Full watchlist entry record."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     show_id: int

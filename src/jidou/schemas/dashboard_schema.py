@@ -2,13 +2,11 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from jidou.schemas._base import ORMModel
 
 
-class RecentShowItem(BaseModel):
+class RecentShowItem(ORMModel):
     """A show card for the dashboard's "Recently Added Shows" carousel."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     tmdb_id: int
@@ -30,10 +28,8 @@ class RecentShowItem(BaseModel):
     adult: bool | None = None
 
 
-class DashboardShowSummary(BaseModel):
+class DashboardShowSummary(ORMModel):
     """The subset of a show's fields shown alongside an episode card."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     title: str
@@ -45,10 +41,8 @@ class DashboardShowSummary(BaseModel):
     adult: bool | None = None
 
 
-class RecentEpisodeItem(BaseModel):
+class RecentEpisodeItem(ORMModel):
     """An episode card for the dashboard's "Recently Added Episodes" carousel."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     show_id: int

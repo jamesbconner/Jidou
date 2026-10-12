@@ -2,24 +2,21 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from jidou.models.downloaded_file import FileStatus
+from jidou.schemas._base import ORMModel
 
 
-class ShowBrief(BaseModel):
+class ShowBrief(ORMModel):
     """Minimal show fields embedded in file responses."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     title: str
 
 
-class EpisodeBrief(BaseModel):
+class EpisodeBrief(ORMModel):
     """Minimal episode fields embedded in file responses."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     season_number: int
@@ -27,10 +24,8 @@ class EpisodeBrief(BaseModel):
     name: str
 
 
-class FileRead(BaseModel):
+class FileRead(ORMModel):
     """Full downloaded-file record."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     show_id: int | None = None

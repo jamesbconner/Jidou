@@ -3,9 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, RegexPattern
+from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, ORMModel, RegexPattern
 from jidou.schemas.show_schema import ShowCreate
 
 MAX_REGEX_SAMPLES = 3
@@ -24,10 +24,8 @@ class RegexHintSample(BaseModel):
     hint: NonEmptyRegexPattern
 
 
-class RssShowBrief(BaseModel):
+class RssShowBrief(ORMModel):
     """Minimal show info embedded in subscription responses."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     title: str
@@ -67,10 +65,8 @@ class RssFeedUpdate(BaseModel):
     extra_config: dict[str, object] | None = None
 
 
-class RssFeedRead(BaseModel):
+class RssFeedRead(ORMModel):
     """Full RSS feed record."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     remote_key: str | None
@@ -122,10 +118,8 @@ class RssSubscriptionUpdate(BaseModel):
     extra_config: dict[str, object] | None = None
 
 
-class RssSubscriptionRead(BaseModel):
+class RssSubscriptionRead(ORMModel):
     """Full RSS subscription record with embedded feed and show."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     remote_key: str | None

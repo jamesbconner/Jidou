@@ -3,9 +3,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel
 
 from jidou.models.task import TaskStatus
+from jidou.schemas._base import ORMModel
 
 # Every task_type string a worker actually creates a BackgroundTask row under
 # (see the run_task_workflow(celery_task_id, "<type>", ...) call in each
@@ -27,18 +28,8 @@ TaskType = Literal[
 ]
 
 
-def _coerce_task_status(value: object) -> TaskStatus:
-    """Convert a raw DB string to TaskStatus, defaulting to PENDING on unknown values."""
-    try:
-        return TaskStatus(str(value))
-    except ValueError:
-        return TaskStatus.PENDING
-
-
-class TaskList(BaseModel):
+class TaskList(ORMModel):
     """List view with fields sufficient to render outcome details in the UI."""
-
-    model_config = ConfigDict(from_attributes=True)
 
     id: int
     task_type: TaskType
@@ -51,18 +42,14 @@ class TaskList(BaseModel):
     created_at: datetime
     completed_at: datetime | None
 
-    @field_validator("status", mode="before")
-    @classmethod
-    def _validate_status(cls, value: object) -> TaskStatus:
-        """Convert raw DB string to TaskStatus enum."""
-        return _coerce_task_status(value)
-
 
 class TaskRead(TaskList):
     """Full task state for GET /tasks/{id} — extends TaskList with celery_task_id and event_log."""
 
     celery_task_id: str
-    event_log: list[dict[str, object]] = []
+    # Pydantic copies mutable defaults per instance; RUF012 only knows that for direct
+    # BaseModel subclasses, not via ORMModel.
+    event_log: list[dict[str, object]] = []  # noqa: RUF012
 
 
 class TaskTrigger(BaseModel):
@@ -79,5 +66,3 @@ class TaskTrigger(BaseModel):
 
     task_type: str
     dry_run: bool = False
-
-    model_config = ConfigDict(validate_assignment=True)
