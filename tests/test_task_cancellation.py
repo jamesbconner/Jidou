@@ -67,7 +67,7 @@ async def test_pubsub_stop_cancels_listen_task():
     ):
         mock_listen.side_effect = asyncio.CancelledError
 
-        await subscriber.start()
+        await subscriber.start(AsyncMock())
 
         # Verify listen task was created
         assert subscriber._listen_task is not None

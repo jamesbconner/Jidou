@@ -29,6 +29,7 @@ from jidou.api.routes import (
     settings as settings_routes,
 )
 from jidou.api.websocket import ws_router
+from jidou.api.websocket.task_progress import manager
 from jidou.config import settings
 from jidou.database import close_db, init_db
 from jidou.services.llm_service import create_llm_service
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     # Start Redis PubSub subscriber for WebSocket progress
     try:
-        await pubsub_subscriber.start()
+        await pubsub_subscriber.start(manager.broadcast_to_task)
     except Exception as exc:
         logger.warning("PubSub subscriber failed to start: %s", exc)
 

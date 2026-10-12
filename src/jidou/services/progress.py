@@ -4,7 +4,6 @@ import json
 import logging
 from datetime import UTC, datetime
 
-import redis.asyncio as aioredis
 from sqlalchemy import cast, literal, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,10 +14,9 @@ from jidou.models.task import (
     BackgroundTask,
     TaskStatus,
 )
+from jidou.services.redis_conn import TASK_PROGRESS_CHANNEL, redis_session
 
 logger = logging.getLogger(__name__)
-
-REDIS_CHANNEL = "task_progress"
 
 
 async def emit_progress(message: dict[str, object]) -> None:
@@ -28,14 +26,14 @@ async def emit_progress(message: dict[str, object]) -> None:
         message: Dictionary with at least ``celery_task_id`` and ``type``.
             Additional keys are forwarded as the payload.
     """
-    redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        await redis_client.publish(REDIS_CHANNEL, json.dumps(message))
-        logger.debug("Emitted progress: %s", message.get("celery_task_id"))
-    except Exception as exc:
-        logger.warning("Failed to emit progress: %s", exc)
-    finally:
-        await redis_client.aclose()
+    async with redis_session(settings.redis_url, decode_responses=True) as redis_client:
+        # Publish failures are swallowed (progress is best-effort); the session
+        # still closes the client afterwards.
+        try:
+            await redis_client.publish(TASK_PROGRESS_CHANNEL, json.dumps(message))
+            logger.debug("Emitted progress: %s", message.get("celery_task_id"))
+        except Exception as exc:
+            logger.warning("Failed to emit progress: %s", exc)
 
 
 async def update_task_status(

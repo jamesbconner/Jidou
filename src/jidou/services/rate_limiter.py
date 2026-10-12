@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from jidou.config import settings
+from jidou.services.redis_conn import redis_session
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +45,6 @@ class RateLimiter:
         self._last_call: float = 0.0
         self._lock = asyncio.Lock()
 
-    def _get_redis(self) -> Any:
-        """Create a Redis async client bound to the current event loop.
-
-        A new client is created on every call rather than caching one, so the
-        client is always bound to the running event loop.  This is required for
-        Celery workers that use ``asyncio.run()`` per task — a cached client
-        stays bound to the previous loop and raises ``RuntimeError`` on any
-        subsequent task in the same worker process.
-        """
-        import redis.asyncio as aioredis
-
-        return aioredis.from_url(self._redis_url)
-
     # Extra headroom so the Redis key outlives any in-flight HTTP request.
     # TMDB calls have a 10s timeout; 15s gives a safe margin.
     _HOLD_BUFFER_MS: int = 15_000
@@ -84,8 +72,9 @@ class RateLimiter:
         """
         async with self._lock:
             if self._redis_url is not None:
-                r = self._get_redis()
-                try:
+                # A fresh client per acquire keeps it bound to the running event
+                # loop (Celery workers use ``asyncio.run()`` per task).
+                async with redis_session(self._redis_url) as r:
                     await self._wait_redis(r)
                     try:
                         yield
@@ -93,8 +82,6 @@ class RateLimiter:
                         # Reset TTL to just the window gap measured from now so
                         # the next caller waits the correct inter-call interval.
                         await r.set(self._redis_key, "1", px=int(self._window * 1000))
-                finally:
-                    await r.aclose()
             else:
                 await self._wait_local()
                 try:

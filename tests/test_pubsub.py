@@ -45,15 +45,14 @@ async def test_listen_processes_valid_message() -> None:
 
     with (
         patch("redis.asyncio.from_url", return_value=mock_redis),
-        patch("jidou.services.pubsub_subscriber.manager") as mock_manager,
     ):
-        mock_manager.broadcast_to_task = AsyncMock()
-        await subscriber.start()
+        broadcast = AsyncMock()
+        await subscriber.start(broadcast)
         # Allow the background task to process the message before stopping.
         await asyncio.sleep(0.05)
         await subscriber.stop()
 
-    mock_manager.broadcast_to_task.assert_called_once_with(
+    broadcast.assert_called_once_with(
         "task-abc",
         {"celery_task_id": "task-abc", "type": "progress"},
     )
@@ -81,10 +80,12 @@ async def test_listen_skips_invalid_json() -> None:
     mock_pubsub.get_message = AsyncMock(side_effect=fake_get_message)
     mock_redis.pubsub = MagicMock(return_value=mock_pubsub)
 
+    broadcast = AsyncMock()
     with patch("redis.asyncio.from_url", return_value=mock_redis):
-        await subscriber.start()
+        await subscriber.start(broadcast)
         await asyncio.sleep(0.05)
         await subscriber.stop()
+    broadcast.assert_not_called()
     # No exception means the subscriber swallowed the JSON error correctly.
 
 
@@ -119,14 +120,13 @@ async def test_listen_skips_non_message_type() -> None:
 
     with (
         patch("redis.asyncio.from_url", return_value=mock_redis),
-        patch("jidou.services.pubsub_subscriber.manager") as mock_manager,
     ):
-        mock_manager.broadcast_to_task = AsyncMock()
-        await subscriber.start()
+        broadcast = AsyncMock()
+        await subscriber.start(broadcast)
         await asyncio.sleep(0.05)
         await subscriber.stop()
 
-    mock_manager.broadcast_to_task.assert_not_called()
+    broadcast.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -153,14 +153,13 @@ async def test_listen_skips_message_missing_task_id() -> None:
 
     with (
         patch("redis.asyncio.from_url", return_value=mock_redis),
-        patch("jidou.services.pubsub_subscriber.manager") as mock_manager,
     ):
-        mock_manager.broadcast_to_task = AsyncMock()
-        await subscriber.start()
+        broadcast = AsyncMock()
+        await subscriber.start(broadcast)
         await asyncio.sleep(0.05)
         await subscriber.stop()
 
-    mock_manager.broadcast_to_task.assert_not_called()
+    broadcast.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -208,9 +207,34 @@ async def test_listen_exception_triggers_resubscribe_and_continues() -> None:
     subscriber._pubsub = mock_pubsub
     subscriber._running = True
 
-    with (
-        patch("asyncio.sleep", new_callable=AsyncMock),
-        patch("jidou.services.pubsub_subscriber.manager") as mock_manager,
-    ):
-        mock_manager.broadcast_to_task = AsyncMock()
+    subscriber._broadcast = AsyncMock()
+    with patch("asyncio.sleep", new_callable=AsyncMock):
         await subscriber._listen()
+
+    mock_pubsub.subscribe.assert_awaited_once_with("task_progress")
+
+
+@pytest.mark.asyncio
+async def test_recover_sleeps_five_seconds_then_resubscribes() -> None:
+    """Reconnect path: 5 s backoff first, then re-subscribe to the progress channel."""
+    order: list[str] = []
+    pubsub = AsyncMock()
+    pubsub.subscribe = AsyncMock(side_effect=lambda ch: order.append(f"subscribe:{ch}"))
+
+    async def fake_sleep(seconds: float) -> None:
+        order.append(f"sleep:{seconds}")
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        await PubSubSubscriber._recover(pubsub)
+
+    assert order == ["sleep:5", "subscribe:task_progress"]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_without_broadcast_logs_and_skips(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A valid message with no broadcast callback set is skipped with an error log."""
+    subscriber = PubSubSubscriber()
+    await subscriber._handle_message({"type": "message", "data": '{"celery_task_id": "t"}'})
+    assert "broadcast callback not set" in caplog.text

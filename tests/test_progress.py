@@ -274,3 +274,37 @@ async def test_check_task_cancelled_passes_when_missing() -> None:
     """check_task_cancelled must not raise when no task row exists."""
     session = _make_mock_session(None)
     await check_task_cancelled(session, "nonexistent")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_emit_progress_publish_failure_still_closes_client() -> None:
+    """A failed publish is swallowed and the Redis client is still closed exactly once."""
+    from unittest.mock import patch
+
+    from jidou.services.progress import emit_progress
+
+    client = AsyncMock()
+    client.publish = AsyncMock(side_effect=ConnectionError("down"))
+    with patch("redis.asyncio.from_url", return_value=client):
+        result = await emit_progress({"celery_task_id": "x", "type": "progress"})
+
+    assert result is None
+    client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_emit_progress_publishes_json_on_task_progress_channel() -> None:
+    """Pins the wire contract: channel name, JSON payload, decoded-response client."""
+    import json
+    from unittest.mock import patch
+
+    from jidou.config import settings
+    from jidou.services.progress import emit_progress
+
+    client = AsyncMock()
+    message = {"celery_task_id": "x", "type": "progress"}
+    with patch("redis.asyncio.from_url", return_value=client) as from_url:
+        await emit_progress(message)
+
+    from_url.assert_called_once_with(settings.redis_url, decode_responses=True)
+    client.publish.assert_awaited_once_with("task_progress", json.dumps(message))

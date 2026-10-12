@@ -11,9 +11,11 @@ import hashlib
 import json
 import logging
 import time
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from jidou.config import settings
+from jidou.services.redis_conn import redis_session
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +45,14 @@ class CacheBackend:
         self._maxsize = maxsize
         self._ttl = ttl
 
-    def _get_redis(self) -> Any:
-        """Create a Redis async client bound to the current event loop.
+    def _redis(self) -> AbstractAsyncContextManager[Any]:
+        """Open a short-lived, per-operation Redis client (see ``redis_session``).
 
-        A new client is created on every call rather than caching one, so the
-        client is always bound to the running event loop. This mirrors
-        :class:`~jidou.services.rate_limiter.RateLimiter` — Celery workers use
-        ``asyncio.run()`` per task, and a cached client stays bound to the
-        previous loop, raising ``RuntimeError`` on any subsequent task.
+        A fresh client per call keeps it bound to the running event loop —
+        Celery workers use ``asyncio.run()`` per task, and a cached client would
+        stay bound to the previous loop and raise ``RuntimeError``.
         """
-        import redis.asyncio as aioredis
-
-        return aioredis.from_url(self._redis_url, decode_responses=True)
+        return redis_session(self._redis_url, decode_responses=True)
 
     async def get(self, key: str) -> Any | None:
         """Retrieve a value from the cache.
@@ -65,11 +63,8 @@ class CacheBackend:
         Returns:
             The cached value, or None if not found or expired.
         """
-        r = self._get_redis()
-        try:
+        async with self._redis() as r:
             raw = await r.get(_ENTRY_PREFIX + key)
-        finally:
-            await r.aclose()
         if raw is None:
             return None
         return json.loads(raw)
@@ -80,11 +75,8 @@ class CacheBackend:
         Args:
             key: The cache key to remove.
         """
-        r = self._get_redis()
-        try:
+        async with self._redis() as r:
             await r.delete(_ENTRY_PREFIX + key, _LABEL_PREFIX + key)
-        finally:
-            await r.aclose()
 
     async def set(
         self,
@@ -108,8 +100,7 @@ class CacheBackend:
                  onto one global TTL. Defaults to the cache's configured TTL.
         """
         effective_ttl = ttl if ttl is not None else self._ttl
-        r = self._get_redis()
-        try:
+        async with self._redis() as r:
             payload = json.dumps(value)
             pipe = r.pipeline()
             pipe.set(_ENTRY_PREFIX + key, payload, ex=effective_ttl)
@@ -118,8 +109,6 @@ class CacheBackend:
             pipe.zadd(_ORDER_ZSET, {key: time.time()})
             await pipe.execute()
             await self._enforce_maxsize(r)
-        finally:
-            await r.aclose()
 
     async def _enforce_maxsize(self, r: Any) -> None:
         """Evict the oldest *live* entries (by insertion order) if over capacity.
@@ -170,8 +159,7 @@ class CacheBackend:
         Returns:
             Dictionary with count, capacity, TTL, and labelled entry list.
         """
-        r = self._get_redis()
-        try:
+        async with self._redis() as r:
             entry_keys = await self._scan_keys(r, _ENTRY_PREFIX)
             entries: list[dict[str, str]] = []
             if entry_keys:
@@ -188,8 +176,6 @@ class CacheBackend:
                 "ttl_seconds": self._ttl,
                 "entries": sorted(entries, key=lambda e: e["label"]),
             }
-        finally:
-            await r.aclose()
 
     async def flush(self) -> int:
         """Delete every cache entry, label, and the order-tracking sorted set.
@@ -197,16 +183,13 @@ class CacheBackend:
         Returns:
             The number of entries removed.
         """
-        r = self._get_redis()
-        try:
+        async with self._redis() as r:
             entry_keys = await self._scan_keys(r, _ENTRY_PREFIX)
             label_keys = await self._scan_keys(r, _LABEL_PREFIX)
             all_keys = entry_keys + label_keys + [_ORDER_ZSET]
             if all_keys:
                 await r.delete(*all_keys)
             return len(entry_keys)
-        finally:
-            await r.aclose()
 
     @staticmethod
     async def _scan_keys(r: Any, prefix: str) -> list[str]:

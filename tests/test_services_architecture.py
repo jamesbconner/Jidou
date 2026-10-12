@@ -11,13 +11,13 @@ from pathlib import Path
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "src" / "jidou" / "services"
 
-# Measured maximum is 12 (``pubsub_subscriber._listen``); refactors lower this, never raise it.
-_SERVICES_MAX_COMPLEXITY = 12
+# Measured maximum is 10 (``show_creation.get_or_create_show_from_tmdb``); refactors lower this,
+# never raise it.
+_SERVICES_MAX_COMPLEXITY = 10
 
-# Shrinks to empty: Task 9 removes the first entry, Task 10 the other two.
+# Shrinks to empty: Task 10 removes the remaining two.
 _KNOWN_UPWARD_IMPORTS: frozenset[tuple[str, str]] = frozenset(
     {
-        ("pubsub_subscriber", "jidou.api.websocket.task_progress"),
         ("show_creation", "jidou.orchestrators.tmdb_orchestrator"),
         ("show_creation", "jidou.orchestrators.alias_orchestrator"),
     }
@@ -58,7 +58,11 @@ def _is_upper_layer(module: str) -> bool:
 def test_services_do_not_import_upper_layers() -> None:
     """Services must not import ``jidou.api`` / ``jidou.orchestrators`` except known cases."""
     found: set[tuple[str, str]] = set()
-    for path in sorted(SERVICES_DIR.glob("*.py")):
+    paths = sorted(SERVICES_DIR.glob("*.py"))
+    # Non-vacuous: the scan must really cover the services, including the former offender.
+    assert len(paths) > 10
+    assert "pubsub_subscriber" in {p.stem for p in paths}
+    for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         # Walk every node so function-local (deferred) imports are caught too.
         for node in ast.walk(tree):
