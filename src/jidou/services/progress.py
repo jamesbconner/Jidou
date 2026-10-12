@@ -11,7 +11,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
-from jidou.models.task import BackgroundTask, TaskStatus
+from jidou.models.task import (
+    ACTIVE_TASK_STATUSES,
+    TERMINAL_TASK_STATUSES,
+    BackgroundTask,
+    TaskStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +81,7 @@ async def update_task_status(
     # other state, including other terminal states (e.g. CANCELLED→COMPLETED).
     # Only idempotent self-transitions (CANCELLED→CANCELLED) are permitted so
     # that worker cleanup paths remain safe.
-    _terminal_values = {
-        TaskStatus.CANCELLED.value,
-        TaskStatus.COMPLETED.value,
-        TaskStatus.FAILED.value,
-    }
-    if task.status in _terminal_values and task.status != status.value:
+    if task.status in TERMINAL_TASK_STATUSES and task.status != status:
         logger.info(
             "Refusing to update terminal task %s from %s to %s",
             celery_task_id,
@@ -94,10 +94,7 @@ async def update_task_status(
     # terminal update (e.g. COMPLETED→COMPLETED self-transition, which the
     # guard above explicitly permits) must not bump the original completion
     # timestamp forward.
-    if (
-        status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
-        and task.completed_at is None
-    ):
+    if status in TERMINAL_TASK_STATUSES and task.completed_at is None:
         task.completed_at = datetime.now(UTC)
 
     task.status = status
@@ -144,7 +141,7 @@ async def check_task_cancelled(
     if task is None:
         return
 
-    if task.status == TaskStatus.CANCELLED.value:
+    if task.status == TaskStatus.CANCELLED:
         raise TaskCancelledError(f"Task {celery_task_id} was cancelled")
 
 
@@ -228,7 +225,7 @@ async def create_task_record(
         task = BackgroundTask(
             celery_task_id=celery_task_id,
             task_type=task_type,
-            status=TaskStatus.PENDING.value,
+            status=TaskStatus.PENDING,
             progress_total=progress_total,
             dry_run=dry_run,
         )
@@ -236,12 +233,7 @@ async def create_task_record(
     else:
         # Never re-open a terminal task: the API may have cancelled it before
         # the worker started, or a previous run completed/failed.
-        terminal = {
-            TaskStatus.CANCELLED.value,
-            TaskStatus.COMPLETED.value,
-            TaskStatus.FAILED.value,
-        }
-        if task.status in terminal:
+        if task.status in TERMINAL_TASK_STATUSES:
             return task
         task.task_type = task_type
         # Preserve progress_total when the worker has already set a non-zero value.
@@ -250,8 +242,8 @@ async def create_task_record(
         task.dry_run = dry_run
         # A re-queued task (worker hard-killed) arrives with status=RUNNING.
         # Reset so the restarted worker goes through PENDING→RUNNING again.
-        if task.status == TaskStatus.RUNNING.value:
-            task.status = TaskStatus.PENDING.value
+        if task.status == TaskStatus.RUNNING:
+            task.status = TaskStatus.PENDING
             task.progress_current = 0
             task.progress_message = "Restarting after worker failure"
 
@@ -267,10 +259,6 @@ class TaskDispatchError(Exception):
     (a DB error), so callers can translate only a genuine broker failure to a
     503 without also catching and mislabeling database errors that way.
     """
-
-
-# Statuses that indicate a task is still occupying the pipeline.
-_ACTIVE_STATUSES = {TaskStatus.PENDING.value, TaskStatus.RUNNING.value}
 
 
 async def get_active_task(session: AsyncSession, task_type: str) -> BackgroundTask | None:
@@ -295,7 +283,9 @@ async def get_active_task(session: AsyncSession, task_type: str) -> BackgroundTa
     """
     stmt = (
         select(BackgroundTask)
-        .where(BackgroundTask.task_type == task_type, BackgroundTask.status.in_(_ACTIVE_STATUSES))
+        .where(
+            BackgroundTask.task_type == task_type, BackgroundTask.status.in_(ACTIVE_TASK_STATUSES)
+        )
         .order_by(BackgroundTask.created_at.desc())
         .limit(1)
     )
