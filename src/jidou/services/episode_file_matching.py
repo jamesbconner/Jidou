@@ -6,18 +6,15 @@ so both bulk text-import and the show-scoped local-directory scan
 instead of maintaining two copies of the same lookup chain.
 """
 
-from collections.abc import Awaitable, Callable
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
+from jidou.services.callbacks import OnEvent
 from jidou.services.episode_group_mapping import resolve_declared_season
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode, llm_parse_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry
-
-OnEvent = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
 
 
 async def match_entry_to_episode(

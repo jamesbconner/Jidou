@@ -20,7 +20,6 @@ title so future lookups (parse orchestrator, manual search) hit the GIN index.
 
 import logging
 import re
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
@@ -29,7 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators._events import EventSink
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.episode_match_llm import llm_pick_candidate
 from jidou.services.episode_tracking import mark_episode_tracked
@@ -193,7 +194,7 @@ class PathImportOrchestrator:
         content_type: str = "anime",
         dry_run: bool = False,
         llm: LLMService | None = None,
-        on_event: Callable[[str, str, dict[str, object] | None], Awaitable[None]] | None = None,
+        on_event: OnEvent | None = None,
         mode: str = "full",
         local_tv_path: str = "/data/media/tv",
         local_anime_path: str = "/data/media/anime",
@@ -205,24 +206,17 @@ class PathImportOrchestrator:
         self.dry_run = dry_run
         self.llm = llm
         self.on_event = on_event
+        # Propagating sink: path import has always aborted when the event callback fails.
+        self._emit = EventSink(on_event, swallow_errors=False)
         self.mode = mode
         self.local_tv_path = local_tv_path
         self.local_anime_path = local_anime_path
         self.local_movie_path = local_movie_path
 
-    async def _emit(
-        self,
-        level: str,
-        msg: str,
-        ctx: dict[str, object] | None = None,
-    ) -> None:
-        if self.on_event:
-            await self.on_event(level, msg, ctx)
-
     async def run(
         self,
         entries: list[ParsedPathEntry],
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
     ) -> PathImportResult:
         """Run the full import workflow.
 

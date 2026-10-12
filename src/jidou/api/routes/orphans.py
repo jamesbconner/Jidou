@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.api.lookups import get_or_404, get_show_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
@@ -76,9 +77,7 @@ async def list_orphans_for_show(
     Raises:
         HTTPException: 404 if the show is not found.
     """
-    show = (await db_session.execute(select(Show).where(Show.id == show_id))).scalar_one_or_none()
-    if show is None:
-        raise HTTPException(status_code=404, detail="Show not found")
+    show = await get_show_or_404(db_session, show_id)
 
     stmt = (
         select(OrphanedTrackingRecord)
@@ -106,13 +105,12 @@ async def dismiss_orphan(
     Raises:
         HTTPException: 404 if the record is not found.
     """
-    record = (
-        await db_session.execute(
-            select(OrphanedTrackingRecord).where(OrphanedTrackingRecord.id == orphan_id)
-        )
-    ).scalar_one_or_none()
-    if record is None:
-        raise HTTPException(status_code=404, detail="Orphan record not found")
+    record = await get_or_404(
+        db_session,
+        OrphanedTrackingRecord,
+        OrphanedTrackingRecord.id == orphan_id,
+        detail="Orphan record not found",
+    )
     await db_session.delete(record)
     await db_session.flush()
     logger.info("Dismissed orphan id=%d (show_id=%d)", orphan_id, record.show_id)
@@ -140,19 +138,16 @@ async def resolve_orphan(
     Raises:
         HTTPException: 404 if the orphan record or target episode is not found.
     """
-    record = (
-        await db_session.execute(
-            select(OrphanedTrackingRecord).where(OrphanedTrackingRecord.id == orphan_id)
-        )
-    ).scalar_one_or_none()
-    if record is None:
-        raise HTTPException(status_code=404, detail="Orphan record not found")
+    record = await get_or_404(
+        db_session,
+        OrphanedTrackingRecord,
+        OrphanedTrackingRecord.id == orphan_id,
+        detail="Orphan record not found",
+    )
 
-    ep = (
-        await db_session.execute(select(Episode).where(Episode.id == payload.episode_id))
-    ).scalar_one_or_none()
-    if ep is None:
-        raise HTTPException(status_code=404, detail="Episode not found")
+    ep = await get_or_404(
+        db_session, Episode, Episode.id == payload.episode_id, detail="Episode not found"
+    )
 
     if ep.show_id != record.show_id:
         raise HTTPException(

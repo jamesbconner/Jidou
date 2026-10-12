@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from jidou.api.dependencies import get_llm_service
+from jidou.api.lookups import get_or_404, one_or_404
 from jidou.database import get_session
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
 from jidou.models.episode import Episode
@@ -194,9 +195,7 @@ async def get_file(
         .where(DownloadedFile.id == file_id)
         .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
     )
-    file = (await db_session.execute(stmt)).scalar_one_or_none()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+    file = await one_or_404(db_session, stmt, detail="File not found")
     return file
 
 
@@ -221,10 +220,9 @@ async def tmdb_suggestions(
         HTTPException: 404 if the file is not found.
         HTTPException: 422 if the file has no parsed show name to search with.
     """
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
-    file = (await db_session.execute(stmt)).scalar_one_or_none()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+    file = await get_or_404(
+        db_session, DownloadedFile, DownloadedFile.id == file_id, detail="File not found"
+    )
 
     query = file.parsed_show_name or ""
     if not query:
@@ -274,10 +272,9 @@ async def patch_file(
         HTTPException: 404 if the file is not found.
         HTTPException: 400 if the status value is not a valid FileStatus.
     """
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
-    file = (await db_session.execute(stmt)).scalar_one_or_none()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+    file = await get_or_404(
+        db_session, DownloadedFile, DownloadedFile.id == file_id, detail="File not found"
+    )
 
     if "show_id" in payload.model_fields_set:
         show_changed = file.show_id != payload.show_id
@@ -378,10 +375,9 @@ async def ignore_file(
         HTTPException: 404 if the file is not found.
         HTTPException: 409 if the file is in a non-ignorable status.
     """
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
-    file = (await db_session.execute(stmt)).scalar_one_or_none()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+    file = await get_or_404(
+        db_session, DownloadedFile, DownloadedFile.id == file_id, detail="File not found"
+    )
 
     ignorable = {FileStatus.UNMATCHED, FileStatus.ERROR}
     if file.status not in ignorable:
@@ -444,10 +440,9 @@ async def manual_match_file(
             detail="Provide either show_id or tmdb_id, not both",
         )
 
-    stmt = select(DownloadedFile).where(DownloadedFile.id == file_id)
-    file = (await db_session.execute(stmt)).scalar_one_or_none()
-    if file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+    file = await get_or_404(
+        db_session, DownloadedFile, DownloadedFile.id == file_id, detail="File not found"
+    )
 
     matchable = {
         FileStatus.DOWNLOADED,
