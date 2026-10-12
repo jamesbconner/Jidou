@@ -4,14 +4,35 @@ Content-type inference and default local-path computation. The create-or-get
 workflow itself lives in ``jidou.orchestrators.show_creation_orchestrator``.
 """
 
-from jidou.schemas.show_schema import ShowCreate
+from typing import Protocol
+
 from jidou.services.path_resolution import resolve_show_local_path
+
+
+class ContentTypeInputs(Protocol):
+    """The TMDB metadata :func:`infer_content_type` reads.
+
+    Structural so both the HTTP ``ShowCreate`` schema and the orchestrator's
+    ``ShowSeed`` satisfy it without this service importing either.
+    """
+
+    @property
+    def media_type(self) -> str: ...
+    @property
+    def genres(self) -> list[dict[str, object]] | None: ...
+    @property
+    def genre_ids(self) -> list[int] | None: ...
+    @property
+    def original_language(self) -> str | None: ...
+    @property
+    def origin_country(self) -> list[str] | None: ...
+
 
 # TMDB genre ID 16 = Animation
 _ANIMATION_GENRE_ID = 16
 
 
-def infer_content_type(payload: ShowCreate) -> str:
+def infer_content_type(payload: ContentTypeInputs) -> str:
     """Infer routing content type from TMDB metadata.
 
     Rules (applied in order):

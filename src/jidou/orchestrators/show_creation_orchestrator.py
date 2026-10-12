@@ -6,18 +6,20 @@ metadata fetch, content-type inference and episode sync.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any, Self
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jidou.models.show import Show
+from jidou.models.show import ContentType, Show
 from jidou.orchestrators._show_provisioning import (
     generate_aliases_best_effort,
     insert_show_or_existing,
     sync_episodes_best_effort,
 )
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+from jidou.schemas._base import MediaType
 from jidou.schemas.show_schema import ShowCreate
 from jidou.services.llm_service import LLMService
 from jidou.services.show_creation import auto_local_path, infer_content_type
@@ -39,6 +41,83 @@ class ShowCreationResult:
 
     show: Show
     created: bool
+
+
+# Seed fields the orchestrator applies explicitly (or only uses to derive
+# other values), so they are not part of the TMDB-field fallback dict.
+# ``genre_ids`` only feeds content-type inference; ``Show`` has no such column.
+_NON_FALLBACK_FIELDS = frozenset({"genre_ids", "sys_name", "content_type", "local_path"})
+
+
+@dataclass(frozen=True)
+class ShowSeed:
+    """Immutable input to :func:`get_or_create_show_from_tmdb`.
+
+    Mirrors :class:`~jidou.schemas.show_schema.ShowCreate` field-for-field so
+    the orchestrator never touches the HTTP schema. Callers build it once at
+    their boundary with :meth:`from_create`; a guard test keeps the two field
+    sets identical so nothing is silently dropped.
+
+    Attributes mirror the ``ShowCreate`` fields of the same name; see that
+    schema for their meaning.
+    """
+
+    tmdb_id: int
+    title: str
+    media_type: MediaType = "tv"
+    overview: str | None = None
+    poster_path: str | None = None
+    backdrop_path: str | None = None
+    vote_average: float | None = None
+    vote_count: int = 0
+    release_date: str | None = None
+    original_language: str | None = None
+    genres: list[dict[str, object]] | None = None
+    genre_ids: list[int] | None = None
+    origin_country: list[str] | None = None
+    last_air_date: str | None = None
+    last_episode_to_air: dict[str, object] | None = None
+    next_episode_to_air: dict[str, object] | None = None
+    homepage: str | None = None
+    external_ids: dict[str, object] | None = None
+    episode_groups: list[dict[str, object]] | None = None
+    status: str | None = None
+    in_production: bool | None = None
+    number_of_seasons: int | None = None
+    number_of_episodes: int | None = None
+    networks: list[dict[str, object]] | None = None
+    show_type: str | None = None
+    runtime: int | None = None
+    tagline: str | None = None
+    content_type: ContentType | None = None
+    sys_name: str | None = None
+    local_path: str | None = None
+    adult: bool | None = None
+
+    @classmethod
+    def from_create(cls, payload: ShowCreate) -> Self:
+        """Build a seed from the HTTP/RSS request schema (deep-copies nested data).
+
+        Args:
+            payload: Validated show-creation payload.
+
+        Returns:
+            A seed carrying every ``ShowCreate`` field.
+
+        Raises:
+            TypeError: If ``ShowCreate`` gains a field this class lacks, so the
+                two can never drift apart silently.
+        """
+        return cls(**payload.model_dump())
+
+    def search_card_fields(self) -> dict[str, Any]:
+        """TMDB-field fallback used when the full details fetch fails.
+
+        Returns:
+            Field name -> value for every seed field that maps straight onto a
+            ``Show`` column (excludes the explicitly-applied fields).
+        """
+        return {k: v for k, v in asdict(self).items() if k not in _NON_FALLBACK_FIELDS}
 
 
 async def _existing_show(session: AsyncSession, tmdb: TMDBService, tmdb_id: int) -> Show | None:
@@ -119,7 +198,7 @@ async def _generate_aliases_best_effort(
 async def get_or_create_show_from_tmdb(
     session: AsyncSession,
     tmdb: TMDBService,
-    payload: ShowCreate,
+    payload: ShowSeed,
     *,
     llm: LLMService,
 ) -> ShowCreationResult:
@@ -143,7 +222,7 @@ async def get_or_create_show_from_tmdb(
     Args:
         session: Active DB session.
         tmdb: TMDB service.
-        payload: Show data from a TMDB search/trending result.
+        payload: Show seed built from a TMDB search/trending result.
         llm: LLM service used for alias generation.
 
     Returns:
@@ -157,15 +236,9 @@ async def get_or_create_show_from_tmdb(
     if existing is not None:
         return ShowCreationResult(show=existing, created=False)
 
-    data = payload.model_dump()
-    sys_name = data.get("sys_name") or sanitize_sys_name(payload.title)
-    content_type = data.get("content_type") or infer_content_type(payload)
-    local_path = data.get("local_path") or auto_local_path(content_type, sys_name)
-    # genre_ids only feeds infer_content_type above; Show has no such column.
-    # sys_name/content_type/local_path are applied explicitly below instead,
-    # so drop all four here to keep `data` a plain TMDB-field fallback dict.
-    for key in ("genre_ids", "sys_name", "content_type", "local_path"):
-        data.pop(key, None)
+    sys_name = payload.sys_name or sanitize_sys_name(payload.title)
+    content_type = payload.content_type or infer_content_type(payload)
+    local_path = payload.local_path or auto_local_path(content_type, sys_name)
 
     try:
         tmdb_data = await fetch_show_metadata(tmdb, payload.tmdb_id, payload.media_type)
@@ -179,7 +252,7 @@ async def get_or_create_show_from_tmdb(
             payload.tmdb_id,
             exc_info=True,
         )
-        fields = data
+        fields = payload.search_card_fields()
     # build_show_fields derives its own sys_name from the fetched title;
     # the caller-computed one (payload-provided, or derived above) is the
     # one actually used, so it doesn't fight the explicit kwarg below.

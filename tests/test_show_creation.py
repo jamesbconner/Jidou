@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from jidou.models.show import Show
-from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
+from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.schemas.show_schema import ShowCreate
 from jidou.services.show_creation import auto_local_path, infer_content_type
 
@@ -62,7 +62,10 @@ async def test_existing_show_is_returned_unchanged_and_not_created(externals) ->
     session = _session(existing)
 
     result = await get_or_create_show_from_tmdb(
-        session, MagicMock(), ShowCreate(tmdb_id=1396, title="X"), llm=MagicMock()
+        session,
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="X")),
+        llm=MagicMock(),
     )
 
     assert result.show is existing
@@ -80,7 +83,10 @@ async def test_new_tv_show_is_created_synced_committed_then_aliased(externals) -
     externals["aliases"].side_effect = lambda *a, **k: order.append("aliases")
 
     result = await get_or_create_show_from_tmdb(
-        session, MagicMock(), ShowCreate(tmdb_id=1396, title="Brand New Show"), llm=MagicMock()
+        session,
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="Brand New Show")),
+        llm=MagicMock(),
     )
 
     assert result.created is True
@@ -100,7 +106,7 @@ async def test_new_movie_skips_episode_sync(externals) -> None:
         result = await get_or_create_show_from_tmdb(
             session,
             MagicMock(),
-            ShowCreate(tmdb_id=603, title="A Movie", media_type="movie"),
+            ShowSeed.from_create(ShowCreate(tmdb_id=603, title="A Movie", media_type="movie")),
             llm=MagicMock(),
         )
 
@@ -118,7 +124,10 @@ async def test_concurrent_insert_race_resolves_to_the_existing_show(externals) -
     session.rollback = AsyncMock()
 
     result = await get_or_create_show_from_tmdb(
-        session, MagicMock(), ShowCreate(tmdb_id=1396, title="X"), llm=MagicMock()
+        session,
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="X")),
+        llm=MagicMock(),
     )
 
     assert result.show is winner
@@ -133,7 +142,9 @@ async def test_details_fetch_failure_falls_back_to_search_card_fields(externals)
     result = await get_or_create_show_from_tmdb(
         session,
         MagicMock(),
-        ShowCreate(tmdb_id=1396, title="Fallback Title", overview="from the card"),
+        ShowSeed.from_create(
+            ShowCreate(tmdb_id=1396, title="Fallback Title", overview="from the card")
+        ),
         llm=MagicMock(),
     )
 
@@ -147,7 +158,10 @@ async def test_alias_generation_failure_does_not_undo_creation(externals) -> Non
     externals["aliases"].side_effect = RuntimeError("llm down")
 
     result = await get_or_create_show_from_tmdb(
-        session, MagicMock(), ShowCreate(tmdb_id=1396, title="X"), llm=MagicMock()
+        session,
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="X")),
+        llm=MagicMock(),
     )
 
     assert result.created is True

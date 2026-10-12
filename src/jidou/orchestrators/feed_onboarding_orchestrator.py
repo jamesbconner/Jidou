@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.errors import InvalidRequestError, NotFoundError
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
+from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
 from jidou.services.llm_service import LLMService
@@ -136,7 +136,7 @@ class FeedOnboardingOrchestrator:
         if request.show is None:  # unreachable via the validated request model
             raise InvalidRequestError("Provide exactly one of show_id or show")
         result = await get_or_create_show_from_tmdb(
-            self.session, self.tmdb, request.show, llm=self.llm
+            self.session, self.tmdb, ShowSeed.from_create(request.show), llm=self.llm
         )
         return result.show, result.created
 
