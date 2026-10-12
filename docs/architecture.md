@@ -40,13 +40,22 @@ Design decisions, system structure, and the reasoning behind key choices in Jido
 
 ## Layer separation
 
-Jidou follows a strict four-layer architecture:
+Jidou follows a strict four-layer architecture. Dependencies point one way only:
+
+```
+api (routes) ──► orchestrators ──► services ──► models
+     │                                ▲
+     └────────── (simple reads) ──────┘
+workers ──► workers/_harness.py ──► orchestrators
+```
+
+Routes may call a service directly for a simple read or a task dispatch (and `routes/admin.py` and `routes/tasks.py` import `celery_app` to inspect and control running tasks), but nothing below the API imports upward: services never import `jidou.api` or `jidou.orchestrators`, and orchestrators never import FastAPI. Two small modules sit below every layer so any of them can use them: `src/jidou/errors.py` (domain errors) and `src/jidou/services/callbacks.py` (the shared `OnEvent` / `OnProgress` callback types). These rules are enforced by tests; see [Layering guards](#layering-guards).
 
 ### 1. Models (`src/jidou/models/`)
-SQLAlchemy ORM models defining the database schema. No business logic — only column definitions, relationships, and enums.
+SQLAlchemy ORM models defining the database schema. No business logic — only column definitions, relationships, indexes, and enums. Shared status sets live here too (`ACTIVE_TASK_STATUSES`, `TERMINAL_TASK_STATUSES` in `models/task.py`).
 
 ### 2. Services (`src/jidou/services/`)
-Stateless clients for external systems: TMDB API, SFTP server, LLM providers, Redis rate limiter, task progress tracking. Each service is a class with a clear interface; the concrete implementation is injected at construction time.
+Stateless clients for external systems: TMDB API, SFTP server, LLM providers, Redis rate limiter, task progress tracking. Each service is a class with a clear interface; the concrete implementation is injected at construction time. Services that cannot satisfy a request raise a domain error from `errors.py`, never `HTTPException`.
 
 Services are intentionally narrow. `TMDBService` only knows how to call TMDB; it does not know about shows or episodes. `SFTPService` only knows how to list and download files; it does not know about the database.
 
@@ -55,14 +64,33 @@ Multi-step workflows that coordinate multiple services and models. An orchestrat
 
 For example, `ParseOrchestrator` fetches DOWNLOADED files from the database, extracts show name/season/episode via a regex heuristic and optionally `LLMService`, looks up the matching show and episode, then writes the match result back to the database. It doesn't care how TMDB works and doesn't call SFTP.
 
+Orchestrators report failures the caller should see by raising a subclass of `OrchestratorError` from `src/jidou/errors.py` (`NotFoundError`, `InvalidRequestError`, `UpstreamError`, `ServiceUnavailableError`). `jidou.main` maps each class to an HTTP status in one handler, so neither orchestrators nor services import FastAPI. Helpers shared between orchestrators live in underscore-prefixed modules (`_events.py`, `_bulk_existence.py`, `_remote_inventory.py`, `_show_provisioning.py`); a public orchestrator module's own `_private` names are not imported by other orchestrators.
+
 ### 4. Routes (`src/jidou/api/routes/`)
 Thin FastAPI handlers. Each handler:
-1. Validates the request (via Pydantic schemas).
+1. Validates the request (via Pydantic schemas; request bodies subclass `RequestModel` from `schemas/_base.py`, which rejects unknown fields with a 422).
 2. Opens a database session (via `Depends(get_session)`).
 3. Delegates to an orchestrator or service.
 4. Returns a response (via Pydantic response models).
 
 Route handlers contain no business logic. If a handler is more than ~30 lines, the logic belongs in an orchestrator.
+
+Routes that start background work go through `src/jidou/services/task_dispatch.py` instead of calling Celery themselves. It pre-creates the `BackgroundTask` row, enqueues the task, and marks the row FAILED with the single `"Task broker unavailable"` 503 detail if the broker is down. `TASK_REGISTRY` there is the list of task types `POST /api/tasks/trigger` accepts; it names each worker task by module string, so the services layer never imports `jidou.workers`.
+
+### Layering guards
+
+The boundaries above are checked by ordinary pytest tests, so a violation fails CI rather than waiting for review:
+
+| Layer | Guard file | What it enforces |
+|-------|-----------|------------------|
+| API | `tests/test_api_contract.py` | OpenAPI document matches `tests/fixtures/openapi_snapshot.json`; no literal route is shadowed by a parameterized one; McCabe complexity ratchet for `src/jidou/api/` |
+| Services | `tests/test_services_architecture.py` | No service imports `jidou.api` or `jidou.orchestrators` (empty allowlist); complexity ratchet |
+| Orchestrators | `tests/test_orchestrators/test_architecture.py` | No FastAPI imports; no cross-orchestrator imports of private names; no function-level imports; complexity ratchet |
+| Workers | `tests/test_workers_architecture.py` | Every `@shared_task` module is in `celery_app.conf.include`; broker `visibility_timeout` exceeds every task's hard time limit; complexity ratchet |
+| Models | `tests/test_models_schema.py` plus `alembic check` in CI | Hand-written indexes and enums stay declared on the models; the models match the migrations |
+| Frontend | `frontend/eslint.config.js` | Hooks boundary (see [Hooks boundary](#hooks-boundary)); `complexity` ratchet |
+
+The current ratchet values and how to work with them are in the [Developer Guide](developer.md#guardrails). The allowlists in these tests are empty and compared with exact equality, so a stale entry fails as well as a new violation.
 
 ---
 
@@ -70,7 +98,7 @@ Route handlers contain no business logic. If a handler is more than ~30 lines, t
 
 Celery tasks in `src/jidou/workers/` are intentionally thin: they receive a task ID, mark the task as running, delegate to an orchestrator, then mark the task as completed or failed. All logic lives in the orchestrator.
 
-A shared harness, `run_task_workflow()` (`src/jidou/workers/_harness.py`), wraps every task's `_work` closure with two callbacks: `on_progress` (current/total/message) and `on_event` (level/message/context). Orchestrators call `on_event` for every item they process — success, skip, or failure — not just for errors; every orchestrator (Scan, Download, Match/Parse, Route, path-import) follows the same internal pattern: an `_emit()` closure that wraps the callback in a try/except so a logging failure can never break the task itself.
+A shared harness in `src/jidou/workers/_harness.py` owns the task lifecycle. Every task that tracks a `BackgroundTask` row wraps its coroutine in `run_harnessed()`, which marks the row FAILED on a soft time limit. (The beat-only housekeeping tasks in `scheduled_tasks.py` and `image_cache_tasks.py` have no row and skip the harness.) Inside it, `run_task_workflow()` creates the row, marks it RUNNING, runs the task's `work` callback, and records the terminal state from the `WorkflowResult` that callback returns (`summarize()` builds the summary dict from an orchestrator's result dataclass). The `work` callback gets the session, a `set_total(total, message)` callback for publishing the step count once known, and two callbacks whose shapes are typed once in `services/callbacks.py`: `on_progress` (current/total/message) and `on_event` (level/message/context). Orchestrators call `on_event` for every item they process — success, skip, or failure — not just for errors. They emit through `EventSink` (`orchestrators/_events.py`), which logs and swallows a failure in the callback, so a logging failure can never break the task itself.
 
 Progress and events are written to the `background_tasks` table (`event_log` is an append-only JSONB column) by the orchestrators, and then published to a Redis PubSub channel. The FastAPI WebSocket handler subscribes to that channel and forwards events to connected browser clients.
 
@@ -160,13 +188,17 @@ All server state is managed by [TanStack Query](https://tanstack.com/query). Thi
 - Background refetching when the window regains focus.
 - Optimistic updates for mutations.
 
+### Hooks boundary
+
+Pages and components never call the API client or the query client themselves. They read and mutate server data through a hook in `frontend/src/hooks/`, so query keys and cache invalidation live in one layer (each hook module exports a key factory such as `showKeys`; `hooks/invalidation.ts` holds shared invalidations). ESLint enforces this in `frontend/eslint.config.js` for `src/pages/**` and `src/components/**`: importing `@/api/client` (or any relative `**/api/client` spelling) is a `no-restricted-imports` error, and calling `useQueryClient` is a `no-restricted-syntax` error. The same config sets the frontend `complexity` ratchet; test files are exempt from both.
+
 ### Real-time updates
 
 A WebSocket connection per task (`api/websocket.ts:connectTaskProgress`, auto-reconnecting) receives task progress events; `stores/wsConnection.tsx` exposes the shared connection state (`connecting`/`open`/`closed`/`idle`) via React context for the `ConnectionBadge` component. Components subscribe to specific task IDs via a custom hook; unrelated events are ignored.
 
 ### TypeScript types
 
-`frontend/src/types/api-generated.ts` is regenerated from the FastAPI OpenAPI spec via `make.py generate-types` (requires the API running) and is safe to overwrite freely. `frontend/src/types/api.ts` is hand-maintained on top of it — thin aliases and `Omit<>`+override narrowings per type, needed where the backend schema is looser than what the frontend relies on (e.g. a bare `string` narrowed to a literal union), plus fully hand-written types with no backend schema at all (TMDB proxy endpoints returning raw `dict[str, Any]`, WebSocket payloads, frontend-only compositions). `generate-types` never touches `api.ts`; diff it against the regenerated file after running the command to catch drift from a schema rename or a newly-loosened field.
+`frontend/src/types/api-generated.ts` is regenerated from the FastAPI OpenAPI spec (`make.py export-openapi` plus the pinned `openapi-typescript@7.13.0`, no server needed; or `make.py generate-types` against a running API) and is safe to overwrite freely. CI fails if the committed file differs from what the current backend generates. `frontend/src/types/api.ts` is hand-maintained on top of it — thin aliases and `Omit<>`+override narrowings per type, needed where the backend schema is looser than what the frontend relies on (e.g. a bare `string` narrowed to a literal union), plus fully hand-written types with no backend schema at all (TMDB proxy endpoints returning raw `dict[str, Any]`, WebSocket payloads, frontend-only compositions). `generate-types` never touches `api.ts`; diff it against the regenerated file after running the command to catch drift from a schema rename or a newly-loosened field.
 
 ### Shared UI primitives
 
