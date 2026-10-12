@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import type {
-  AppConfig,
   ConnectionTestResult,
   MediaPathEntry,
   ServiceHealth,
@@ -270,10 +270,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('general')
 
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-  })
+  const { data: config } = useConfig()
 
   const testTmdb = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/tmdb') })
   const testSftp = useMutation({ mutationFn: () => api.post<ConnectionTestResult>('/config/test/sftp') })

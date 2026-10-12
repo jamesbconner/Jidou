@@ -7,6 +7,9 @@ import {
   useRecentMovies,
   useRecentEpisodes,
   useDashboardGenres,
+  useAdminStats,
+  useFilesTimeline,
+  usePipelineStatus,
 } from '@/hooks/useDashboard'
 
 function makeWrapper() {
@@ -134,5 +137,19 @@ describe('useDashboardGenres', () => {
 
     expect(vi.mocked(fetch).mock.calls[0][0]).toContain('/api/dashboard/genres')
     expect(result.current.data).toEqual(['Action', 'Drama'])
+  })
+})
+
+describe.each([
+  ['useAdminStats', useAdminStats, '/api/admin/stats'],
+  ['useFilesTimeline', useFilesTimeline, '/api/admin/stats/files-timeline'],
+  ['usePipelineStatus', usePipelineStatus, '/api/admin/stats/pipeline-status'],
+])('%s', (_name, hook, path) => {
+  test(`fetches ${path}`, async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse([]))
+    const { result } = renderHook(() => hook(), { wrapper: makeWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(vi.mocked(fetch).mock.calls[0][0] as string).toContain(path)
   })
 })

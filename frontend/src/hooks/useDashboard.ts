@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { RecentEpisodeItem, RecentShowItem } from '@/types/api'
+import type {
+  AdminStats,
+  FileTimelineEntry,
+  PipelineStatusEntry,
+  RecentEpisodeItem,
+  RecentShowItem,
+} from '@/types/api'
 
 export type RecentSort = 'tracked' | 'release'
 
@@ -61,5 +67,35 @@ export function useDashboardGenres() {
     queryKey: dashboardKeys.genres(),
     queryFn: () => api.get<string[]>('/dashboard/genres'),
     staleTime: 60_000,
+  })
+}
+
+/**
+ * Headline library counts for the Dashboard. Polled every 30 s so the numbers
+ * track a running scan without a manual refresh.
+ */
+export function useAdminStats() {
+  return useQuery({
+    queryKey: ['admin', 'stats'] as const,
+    queryFn: () => api.get<AdminStats>('/admin/stats'),
+    refetchInterval: 30_000,
+  })
+}
+
+/** Files-per-day series behind the Dashboard's activity bar chart. */
+export function useFilesTimeline() {
+  return useQuery({
+    queryKey: ['admin', 'stats', 'files-timeline'] as const,
+    queryFn: () => api.get<FileTimelineEntry[]>('/admin/stats/files-timeline'),
+    refetchInterval: 60_000,
+  })
+}
+
+/** File counts per pipeline status, for the Dashboard's status pie chart. */
+export function usePipelineStatus() {
+  return useQuery({
+    queryKey: ['admin', 'stats', 'pipeline-status'] as const,
+    queryFn: () => api.get<PipelineStatusEntry[]>('/admin/stats/pipeline-status'),
+    refetchInterval: 30_000,
   })
 }

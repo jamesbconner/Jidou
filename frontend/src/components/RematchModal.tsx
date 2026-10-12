@@ -1,19 +1,17 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useRematchFile } from '@/hooks/useFiles'
 import { useTriggerTask } from '@/hooks/useTasks'
 import { useLocalShowSearch, useTmdbSearch, useLibraryIndex } from '@/hooks/useShows'
 import { useDebounce } from '@/hooks/useDebounce'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { toHostPath, toContainerPath, sanitizeFolderName } from '@/utils/paths'
 import type {
   FileRead,
   ShowSearchResult,
   TmdbResult,
   ContentType,
-  AppConfig,
 } from '@/types/api'
 
 const TMDB_IMAGE_BASE = '/api/images/w300'
@@ -33,11 +31,7 @@ export function RematchModal({ file, onClose }: Props) {
   const [contentType, setContentType] = useState<ContentType>('tv')
   const [folderName, setFolderName] = useState('')
 
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
 
   const { data: tmdbResults, isFetching: tmdbLoading } = useTmdbSearch(
     mode === 'tmdb' && searchQuery.length >= 2 ? debouncedQuery : '',

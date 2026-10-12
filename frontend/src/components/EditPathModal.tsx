@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/api/client'
+import { useConfig } from '@/hooks/useConfig'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { toHostPath, toContainerPath, parseContainerPath } from '@/utils/paths'
-import type { AppConfig, ContentType } from '@/types/api'
+import type { ContentType } from '@/types/api'
 
 export function EditPathModal({
   current,
@@ -17,11 +16,7 @@ export function EditPathModal({
   onClose: () => void
   isPending: boolean
 }) {
-  const { data: config } = useQuery({
-    queryKey: ['config'],
-    queryFn: () => api.get<AppConfig>('/config'),
-    staleTime: 60_000,
-  })
+  const { data: config } = useConfig()
 
   const mediaPaths = config?.media_paths
   const parsed = mediaPaths ? parseContainerPath(current, mediaPaths) : null

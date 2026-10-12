@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { TaskEvent, TaskList, TaskRead, TaskTrigger, TaskType } from '@/types/api'
+import type { TaskEvent, TaskList, TaskRead, TaskStatus, TaskTrigger, TaskType } from '@/types/api'
 
 export const taskKeys = {
   all: ['tasks'] as const,
@@ -110,6 +110,36 @@ export function useTaskDetailCache(id: number) {
     queryFn: () => api.get<TaskRead>(`/tasks/${id}`),
     enabled: false,
     staleTime: Infinity,
+  })
+}
+
+/**
+ * Statuses after which a task never changes again. Defined here (not derived
+ * from the generated types) so polling hooks know when to stop.
+ */
+export const TERMINAL_TASK_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
+  'completed',
+  'failed',
+  'cancelled',
+])
+
+/**
+ * Poll one task until it reaches a terminal status, then stop.
+ *
+ * Replaces the hand-rolled polling queries pages used to build for a task they
+ * had just triggered. Pass `null` before the task exists; no request is made
+ * until there is a real id.
+ */
+export function useTaskUntilDone(id: number | null, opts: { intervalMs?: number } = {}) {
+  const intervalMs = opts.intervalMs ?? 3000
+  return useQuery({
+    queryKey: taskKeys.detail(id ?? 0),
+    queryFn: () => api.get<TaskRead>(`/tasks/${id}`),
+    enabled: id != null && id > 0,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && TERMINAL_TASK_STATUSES.has(status) ? false : intervalMs
+    },
   })
 }
 

@@ -252,8 +252,14 @@ describe('AddShowFromFeedPane', () => {
     await waitFor(() => expect(screen.getByText('1 of 1 current title selected')).toBeInTheDocument(), {
       timeout: 2000,
     })
-    const testCalls = calls.filter((c) => c.url.includes('/test-regex'))
-    const testCall = testCalls[testCalls.length - 1]
+    // The unedited form may already have triggered a preview; wait for the
+    // request that actually carries the edited regex before asserting on it.
+    const editedCall = () =>
+      calls
+        .filter((c) => c.url.includes('/test-regex'))
+        .find((c) => JSON.parse(c.init!.body as string).regex_include === 'Brand.*05')
+    await waitFor(() => expect(editedCall()).toBeDefined(), { timeout: 2000 })
+    const testCall = editedCall()!
     expect(JSON.parse(testCall.init!.body as string)).toMatchObject({
       parsed_name: 'Brand New Show',
       regex_include: 'Brand.*05',

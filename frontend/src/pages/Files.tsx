@@ -1,15 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router'
-import { useFiles, fileKeys, type FilesPage } from '@/hooks/useFiles'
-import { showKeys, useShowEpisodes } from '@/hooks/useShows'
+import { useFiles, useAssignFileShow, useAssignFileEpisode } from '@/hooks/useFiles'
+import { useShowEpisodes } from '@/hooks/useShows'
 import { FileStatusBadge } from '@/components/FileStatusBadge'
 import { Pagination } from '@/components/Pagination'
 import { ResolveFileModal } from '@/components/ResolveFileModal'
 import { RematchModal } from '@/components/RematchModal'
 import { FixEpisodeModal } from '@/components/FixEpisodeModal'
 import { Card } from '@/components/ui/Card'
-import { api } from '@/api/client'
-import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { useLocalStorageState } from '@/hooks/useLocalStorage'
 import type { FileRead, FileStatus, EpisodeBrief } from '@/types/api'
 import { buildSeasonMap } from '@/utils/episodeUtils'
@@ -33,15 +31,7 @@ function InlineShowId({ fileId, showId }: { fileId: number; showId: number | nul
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(showId?.toString() ?? '')
   const cancelRef = useRef(false)
-  const qc = useQueryClient()
-  const patch = useMutation({
-    mutationFn: (newShowId: number | null) =>
-      api.patch<FileRead>(`/files/${fileId}`, { show_id: newShowId }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: fileKeys.all })
-      qc.invalidateQueries({ queryKey: showKeys.all })
-    },
-  })
+  const patch = useAssignFileShow(fileId)
 
   function commit() {
     if (cancelRef.current) { cancelRef.current = false; return }
@@ -102,29 +92,14 @@ function InlineEpisodePicker({
   const [editing, setEditing] = useState(false)
   const [selectValue, setSelectValue] = useState(episodeId?.toString() ?? '')
   const [error, setError] = useState<string | null>(null)
-  const qc = useQueryClient()
   const { data: episodes = [] } = useShowEpisodes(showId)
 
-  const patch = useMutation({
-    mutationFn: (newEpisodeId: number | null) =>
-      api.patch<FileRead>(`/files/${fileId}`, {
-        episode_id: newEpisodeId,
-        ...(newEpisodeId !== null ? { status: 'matched', error_message: null } : {}),
-      }),
-    onSuccess: (updated) => {
+  const patch = useAssignFileEpisode(fileId, {
+    onSuccess: () => {
       setEditing(false)
       setError(null)
-      qc.setQueriesData<FilesPage>(
-        { queryKey: [...fileKeys.all, 'list'] },
-        (old) =>
-          old
-            ? { ...old, data: old.data.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)) }
-            : old,
-      )
-      qc.invalidateQueries({ queryKey: fileKeys.all })
-      qc.invalidateQueries({ queryKey: showKeys.all })
     },
-    onError: (err: unknown) => {
+    onError: (err) => {
       setSelectValue(episodeId?.toString() ?? '')
       const msg = err instanceof Error ? err.message : 'Failed to update episode'
       setError(msg)

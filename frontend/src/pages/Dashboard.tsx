@@ -1,11 +1,9 @@
 import { useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { api } from '@/api/client'
 import { useColorScheme } from '@/stores/theme'
 import { useAppSettings } from '@/hooks/useSettings'
 import { useActiveTasks, useTask, useCancelTask } from '@/hooks/useTasks'
@@ -16,11 +14,9 @@ import { RecentMoviesSection } from '@/components/RecentMoviesSection'
 import { RecentEpisodesSection } from '@/components/RecentEpisodesSection'
 import { MediaDetailModal } from '@/components/MediaDetailModal'
 import { Card } from '@/components/ui/Card'
-import type { RecentSort } from '@/hooks/useDashboard'
+import { useAdminStats, useFilesTimeline, usePipelineStatus, type RecentSort } from '@/hooks/useDashboard'
 import type {
-  AdminStats,
   FileTimelineEntry,
-  PipelineStatusEntry,
   RecentShowItem,
   RecentEpisodeItem,
 } from '@/types/api'
@@ -90,23 +86,9 @@ export default function Dashboard() {
     [],
   )
 
-  const { data: stats } = useQuery({
-    queryKey: ['admin', 'stats'],
-    queryFn: () => api.get<AdminStats>('/admin/stats'),
-    refetchInterval: 30_000,
-  })
-
-  const { data: timeline = [] } = useQuery({
-    queryKey: ['admin', 'stats', 'files-timeline'],
-    queryFn: () => api.get<FileTimelineEntry[]>('/admin/stats/files-timeline'),
-    refetchInterval: 60_000,
-  })
-
-  const { data: pipelineStatus = [] } = useQuery({
-    queryKey: ['admin', 'stats', 'pipeline-status'],
-    queryFn: () => api.get<PipelineStatusEntry[]>('/admin/stats/pipeline-status'),
-    refetchInterval: 30_000,
-  })
+  const { data: stats } = useAdminStats()
+  const { data: timeline = [] } = useFilesTimeline()
+  const { data: pipelineStatus = [] } = usePipelineStatus()
 
   // Fill missing days in the timeline with 0 so bars are evenly spaced
   const timelineData = (() => {

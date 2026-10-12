@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { showKeys } from '@/hooks/useShows'
 import { dashboardKeys } from '@/hooks/useDashboard'
+import { useTaskUntilDone } from '@/hooks/useTasks'
 import type {
   RssFeedRead,
   RssFeedCreate,
@@ -78,17 +80,40 @@ export function useEnsureRssStub() {
   })
 }
 
+function patchRssSubscription({ id, update }: { id: number; update: RssSubscriptionUpdate }) {
+  return api.patch<RssSubscriptionRead>(`/rss/subscriptions/${id}`, update)
+}
+
 export function usePatchRssSubscription() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, update }: { id: number; update: RssSubscriptionUpdate }) =>
-      api.patch<RssSubscriptionRead>(`/rss/subscriptions/${id}`, update),
+    mutationFn: patchRssSubscription,
     onSuccess: (updated) => {
       qc.setQueriesData<RssSubscriptionRead[]>(
         { queryKey: rssKeys.subscriptions() },
         (old) => old?.map((s) => (s.id === updated.id ? updated : s)),
       )
       qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    },
+  })
+}
+
+/**
+ * Accept one activate/deactivate recommendation. Same PATCH as
+ * `usePatchRssSubscription`, but the recommendation list must also refetch
+ * because the accepted row should drop out of it.
+ */
+export function useAcceptRssRecommendation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: patchRssSubscription,
+    onSuccess: (updated) => {
+      qc.setQueriesData<RssSubscriptionRead[]>(
+        { queryKey: rssKeys.subscriptions() },
+        (old) => old?.map((s) => (s.id === updated.id ? updated : s)),
+      )
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+      qc.invalidateQueries({ queryKey: rssKeys.recommendations() })
     },
   })
 }
@@ -153,6 +178,40 @@ export function useTriggerRssPublish(dryRun = false) {
       qc.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
+}
+
+/**
+ * Poll the task started by "Import from server" and, once it completes,
+ * refetch the feeds and subscriptions it just rewrote. Keeps the page free of
+ * the query client.
+ */
+export function useRssImportTask(taskId: number | null) {
+  const qc = useQueryClient()
+  const query = useTaskUntilDone(taskId)
+  const status = query.data?.status
+  useEffect(() => {
+    if (status === 'completed') {
+      qc.invalidateQueries({ queryKey: rssKeys.feeds() })
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    }
+  }, [status, qc])
+  return query
+}
+
+/**
+ * Poll the task started by "Publish to server" and refetch subscriptions
+ * when it completes (publishing can stamp remote keys onto stub rows).
+ */
+export function useRssPublishTask(taskId: number | null) {
+  const qc = useQueryClient()
+  const query = useTaskUntilDone(taskId)
+  const status = query.data?.status
+  useEffect(() => {
+    if (status === 'completed') {
+      qc.invalidateQueries({ queryKey: rssKeys.subscriptions() })
+    }
+  }, [status, qc])
+  return query
 }
 
 export function useRssDownload() {

@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import {
-  rssKeys,
   useRssRecommendations,
-  usePatchRssSubscription,
+  useAcceptRssRecommendation,
   useBulkPatchRssSubscriptions,
 } from '@/hooks/useRss'
 import { Badge } from '@/components/ui/Badge'
@@ -13,10 +11,9 @@ import type { RssSubscriptionRecommendation } from '@/types/api'
 
 export function RecommendationsTab() {
   const { data: recs = [], isLoading, refetch } = useRssRecommendations()
-  const patch = usePatchRssSubscription()
+  const accept = useAcceptRssRecommendation()
   const bulkPatch = useBulkPatchRssSubscriptions()
   const [filter, setFilter] = useState<'all' | 'activate' | 'deactivate'>('all')
-  const qc = useQueryClient()
 
   const visible = recs.filter((r) => filter === 'all' || r.recommendation === filter)
   const deactivateCount = recs.filter((r) => r.recommendation === 'deactivate').length
@@ -28,10 +25,7 @@ export function RecommendationsTab() {
   }
 
   const handleAcceptOne = (rec: RssSubscriptionRecommendation) => {
-    patch.mutate(
-      { id: rec.id, update: { active: rec.recommendation === 'activate' } },
-      { onSuccess: () => qc.invalidateQueries({ queryKey: rssKeys.recommendations() }) },
-    )
+    accept.mutate({ id: rec.id, update: { active: rec.recommendation === 'activate' } })
   }
 
   if (isLoading) return <p className="text-sm text-gray-400 dark:text-gray-500 py-6">Loading recommendations…</p>
@@ -131,7 +125,7 @@ export function RecommendationsTab() {
                   <td className="px-3 py-2">
                     <button
                       onClick={() => handleAcceptOne(rec)}
-                      disabled={patch.isPending || bulkPatch.isPending}
+                      disabled={accept.isPending || bulkPatch.isPending}
                       className="text-xs text-[var(--color-ocean-600)] dark:text-[var(--color-ocean-400)] hover:underline disabled:opacity-50"
                     >
                       Accept

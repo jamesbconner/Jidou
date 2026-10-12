@@ -56,6 +56,47 @@ export default [
     },
   },
   {
+    // Hooks boundary (frontend simplification plan, Task 4): pages and
+    // components consume data through `@/hooks/*`; they never call the API
+    // client or the query client themselves, so cache keys and invalidation
+    // stay in one layer.
+    files: ['src/pages/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/api/client',
+              message: 'Pages and components must go through a hook in src/hooks/ instead of calling the API client.',
+            },
+          ],
+          // Also catch relative spellings such as '../api/client'.
+          patterns: [
+            {
+              group: ['**/api/client'],
+              message: 'Pages and components must go through a hook in src/hooks/ instead of calling the API client.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='useQueryClient']",
+          message: 'Pages and components must not use the query client; put the cache logic in a hook in src/hooks/.',
+        },
+      ],
+    },
+  },
+  {
+    // Temporary: Settings still calls the API client for its connection tests
+    // and seed/backfill triggers. FE-2 Task 5 moves those into hooks and
+    // removes this override.
+    files: ['src/pages/Settings.tsx'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
     // Test bodies are long linear scripts; the ratchet targets production code.
     files: ['src/tests/**'],
     rules: { complexity: 'off' },

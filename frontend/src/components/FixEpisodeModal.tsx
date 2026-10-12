@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useShowEpisodes, showKeys } from '@/hooks/useShows'
-import { fileKeys } from '@/hooks/useFiles'
+import { useFixFileEpisode } from '@/hooks/useFiles'
+import { useShowEpisodes } from '@/hooks/useShows'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { api } from '@/api/client'
 import type { FileRead } from '@/types/api'
 import { buildSeasonMap } from '@/utils/episodeUtils'
 
@@ -19,27 +17,13 @@ interface Props {
 
 export function FixEpisodeModal({ file, onClose }: Props) {
   const [selectedId, setSelectedId] = useState(file.episode_id?.toString() ?? '')
-  const qc = useQueryClient()
 
   const { data: episodes = [] } = useShowEpisodes(file.show_id!)
 
   const seasonMap = useMemo(() => buildSeasonMap(episodes), [episodes])
   const seasons = useMemo(() => Array.from(seasonMap.keys()).sort((a, b) => a - b), [seasonMap])
 
-  const patch = useMutation({
-    mutationFn: (episodeId: number | null) =>
-      api.patch<FileRead>(`/files/${file.id}`, {
-        episode_id: episodeId,
-        ...(episodeId !== null
-          ? { status: 'matched', error_message: null }
-          : { status: 'unmatched' }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: fileKeys.all })
-      qc.invalidateQueries({ queryKey: showKeys.all })
-      onClose()
-    },
-  })
+  const patch = useFixFileEpisode(file.id, { onSuccess: onClose })
 
   const currentEp = episodes.find((e) => e.id === file.episode_id)
   const selectedEp = selectedId ? episodes.find((e) => e.id === Number(selectedId)) : undefined

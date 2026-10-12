@@ -97,9 +97,6 @@ export function useApplyEpisodeGroup(showId: number) {
     mutationFn: (groupId: string) =>
       api.post<EpisodeGroupApplyResponse>(`/shows/${showId}/episode-groups/${groupId}/apply`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.episodeGroups(showId) })
       qc.invalidateQueries({ queryKey: showKeys.all })
       // Episode count/tracking changed materially -- same cache-namespace
       // gap as useRematchShow, which this mutation is functionally similar to.
@@ -249,7 +246,6 @@ export function useUpdateShowPaths(showId: number) {
   return useMutation({
     mutationFn: (paths: ShowPaths) => api.put<ShowRead>(`/shows/${showId}/paths`, paths),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
@@ -272,8 +268,7 @@ export function useSyncEpisodes() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (showId: number) => api.post<EpisodeList[]>(`/shows/${showId}/sync-episodes`),
-    onSuccess: (_data, showId) => {
-      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
@@ -284,8 +279,7 @@ export function usePatchShow() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: ShowPatch }) =>
       api.patch<ShowRead>(`/shows/${id}`, patch),
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: showKeys.detail(id) })
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: showKeys.all })
     },
   })
@@ -297,8 +291,6 @@ export function useRematchShow(showId: number) {
     mutationFn: ({ tmdbId, mediaType }: { tmdbId: number; mediaType: string }) =>
       api.post<ShowRead>(`/shows/${showId}/rematch`, { tmdb_id: tmdbId, media_type: mediaType }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
-      qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
       qc.invalidateQueries({ queryKey: showKeys.all })
       // Same cache-namespace gap as useCreateShow/useDeleteShow — a rematch
       // can change the title/poster/tmdb_id shown in the Dashboard carousels.
@@ -374,12 +366,11 @@ export function useClearEpisodeTracking() {
 }
 
 // A show-list card's watched-progress overlay reads ShowList.watched_episode_count,
-// so every watched mutation must also invalidate showKeys.all, not just the
-// per-show episode list.
+// so every watched mutation invalidates showKeys.all. That prefix also covers
+// the per-show episode list, so no separate episodes call is needed.
 function useInvalidateWatched() {
   const qc = useQueryClient()
-  return (showId: number) => {
-    qc.invalidateQueries({ queryKey: showKeys.episodes(showId) })
+  return () => {
     qc.invalidateQueries({ queryKey: showKeys.all })
   }
 }
@@ -389,7 +380,7 @@ export function useSetEpisodeWatched() {
   return useMutation({
     mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
       api.post<EpisodeList>(`/shows/${showId}/episodes/${episodeId}/watched`),
-    onSuccess: (_data, { showId }) => invalidate(showId),
+    onSuccess: () => invalidate(),
   })
 }
 
@@ -398,7 +389,7 @@ export function useClearEpisodeWatched() {
   return useMutation({
     mutationFn: ({ showId, episodeId }: { showId: number; episodeId: number }) =>
       api.delete<EpisodeList>(`/shows/${showId}/episodes/${episodeId}/watched`),
-    onSuccess: (_data, { showId }) => invalidate(showId),
+    onSuccess: () => invalidate(),
   })
 }
 
@@ -409,7 +400,7 @@ export function useBulkSetEpisodesWatched() {
       api.post<EpisodeList[]>(`/shows/${showId}/episodes/watched`, {
         season_number: seasonNumber ?? null,
       }),
-    onSuccess: (_data, { showId }) => invalidate(showId),
+    onSuccess: () => invalidate(),
   })
 }
 
@@ -420,6 +411,6 @@ export function useBulkClearEpisodesWatched() {
       api.delete<EpisodeList[]>(`/shows/${showId}/episodes/watched`, {
         season_number: seasonNumber ?? null,
       }),
-    onSuccess: (_data, { showId }) => invalidate(showId),
+    onSuccess: () => invalidate(),
   })
 }
