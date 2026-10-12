@@ -42,7 +42,9 @@ async def reassign_show(
     No-op when the show is unchanged. On change: the matcher is cleared, orphan
     records for the file are dismissed (resolving them later would corrupt
     ``show_id``), and the episode link / error message are cleared unless the
-    caller is setting them explicitly in the same operation.
+    caller is setting them explicitly in the same operation. When the episode
+    link is dropped, the old episode's tracking is cleared if no other file
+    still references it.
 
     Args:
         session: Active async DB session.
@@ -53,6 +55,7 @@ async def reassign_show(
     """
     if file.show_id == new_show_id:
         return
+    old_episode_id = file.episode_id
     file.show_id = new_show_id
     if not keep_episode:
         file.episode_id = None
@@ -60,6 +63,10 @@ async def reassign_show(
     if not keep_error:
         file.error_message = None
     await dismiss_orphans_for_file(session, file.id)
+    if not keep_episode:
+        # Must run after the link is nulled: the reference count autoflushes, and
+        # a still-linked file would count itself and keep the stale tracking.
+        await clear_if_unreferenced(session, old_episode_id, None)
 
 
 async def relink_episode(
