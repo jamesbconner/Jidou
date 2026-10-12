@@ -8,7 +8,7 @@ from jidou.models.downloaded_file import FileStatus
 from jidou.schemas._base import ORMModel
 
 
-class ShowBrief(ORMModel):
+class FileShowBrief(ORMModel):
     """Minimal show fields embedded in file responses."""
 
     id: int
@@ -46,7 +46,7 @@ class FileRead(ORMModel):
     parsed_content_type: str | None = None
     created_at: datetime
     updated_at: datetime
-    show: ShowBrief | None = None
+    show: FileShowBrief | None = None
     episode: EpisodeBrief | None = None
 
 

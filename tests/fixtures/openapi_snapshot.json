@@ -1624,7 +1624,7 @@
           "show": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/jidou__schemas__file_schema__ShowBrief"
+                "$ref": "#/components/schemas/FileShowBrief"
               },
               {
                 "type": "null"
@@ -1661,6 +1661,25 @@
           "updated_at"
         ],
         "title": "FileRead",
+        "type": "object"
+      },
+      "FileShowBrief": {
+        "description": "Minimal show fields embedded in file responses.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "FileShowBrief",
         "type": "object"
       },
       "FileStatus": {
@@ -5369,7 +5388,7 @@
             "type": "integer"
           },
           "show": {
-            "$ref": "#/components/schemas/jidou__schemas__watchlist_schema__ShowBrief"
+            "$ref": "#/components/schemas/WatchlistShowBrief"
           },
           "show_id": {
             "title": "Show Id",
@@ -5394,6 +5413,47 @@
           "updated_at"
         ],
         "title": "WatchlistRead",
+        "type": "object"
+      },
+      "WatchlistShowBrief": {
+        "description": "Minimal show info embedded in watchlist responses.",
+        "properties": {
+          "backdrop_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Path"
+          },
+          "poster_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Path"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tmdb_id": {
+            "title": "Tmdb Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "tmdb_id"
+        ],
+        "title": "WatchlistShowBrief",
         "type": "object"
       },
       "WatchlistStatus": {
@@ -5445,66 +5505,6 @@
           }
         },
         "title": "WatchlistUpdate",
-        "type": "object"
-      },
-      "jidou__schemas__file_schema__ShowBrief": {
-        "description": "Minimal show fields embedded in file responses.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title"
-        ],
-        "title": "ShowBrief",
-        "type": "object"
-      },
-      "jidou__schemas__watchlist_schema__ShowBrief": {
-        "description": "Minimal show info embedded in watchlist responses.",
-        "properties": {
-          "backdrop_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Backdrop Path"
-          },
-          "poster_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Poster Path"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "tmdb_id": {
-            "title": "Tmdb Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "title",
-          "tmdb_id"
-        ],
-        "title": "ShowBrief",
         "type": "object"
       }
     }

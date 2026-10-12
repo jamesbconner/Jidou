@@ -85,7 +85,7 @@ export type EpisodeGroupApplyResponse = components['schemas']['EpisodeGroupApply
 
 // ─── Files ────────────────────────────────────────────────────────────────
 
-export type ShowBrief = components['schemas']['jidou__schemas__file_schema__ShowBrief']
+export type ShowBrief = components['schemas']['FileShowBrief']
 
 export type EpisodeBrief = components['schemas']['EpisodeBrief']
 
@@ -414,7 +414,7 @@ export interface CacheStats {
 
 export type WatchlistStatus = components['schemas']['WatchlistStatus']
 
-export type WatchlistShowBrief = components['schemas']['jidou__schemas__watchlist_schema__ShowBrief']
+export type WatchlistShowBrief = components['schemas']['WatchlistShowBrief']
 
 export type WatchlistNextUp = components['schemas']['WatchlistNextUpEpisode']
 
