@@ -22,8 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.episode import Episode
 from jidou.services.callbacks import OnEvent
-from jidou.services.llm_json import parse_llm_json, sanitize_for_prompt
+from jidou.services.llm_json import (
+    NULLABLE_INT,
+    json_schema_format,
+    optional_int,
+    sanitize_for_prompt,
+)
 from jidou.services.llm_service import LLMService
+from jidou.services.llm_structured import JsonCallFailure, JsonCallResult, request_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +52,9 @@ _LLM_EPISODE_PARSE_SYSTEM = (
     "No other text, no markdown, no explanation."
 )
 
-_LLM_EPISODE_PARSE_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "episode_parse",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["season", "episode"],
-            "additionalProperties": False,
-        },
-    },
-}
+_LLM_EPISODE_PARSE_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "episode_parse", {"season": NULLABLE_INT, "episode": NULLABLE_INT}
+)
 
 _LLM_SHOW_MATCH_SYSTEM = (
     "You are a TV show title matcher. "
@@ -76,21 +69,9 @@ _LLM_SHOW_MATCH_SYSTEM = (
     "Use null if no candidate matches. No other text, no markdown, no explanation."
 )
 
-_LLM_SHOW_MATCH_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "show_match",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "match": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["match"],
-            "additionalProperties": False,
-        },
-    },
-}
+_LLM_SHOW_MATCH_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "show_match", {"match": NULLABLE_INT}
+)
 
 _LLM_SYSTEM = (
     "You are a filename-to-episode matcher. "
@@ -102,22 +83,9 @@ _LLM_SYSTEM = (
     "No other text, no markdown, no explanation."
 )
 
-_LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "episode_match",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "season": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-                "episode": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
-            },
-            "required": ["season", "episode"],
-            "additionalProperties": False,
-        },
-    },
-}
+_LLM_MATCH_RESPONSE_FORMAT: dict[str, object] = json_schema_format(
+    "episode_match", {"season": NULLABLE_INT, "episode": NULLABLE_INT}
+)
 
 # Prompt-token-budget cap on the number of episodes shown to the LLM in
 # llm_match_episode()'s episode list. Comfortably larger than any current
@@ -132,6 +100,41 @@ async def _emit(
 ) -> None:
     if on_event:
         await on_event(level, msg, ctx)
+
+
+async def _report_parse_failure(
+    result: JsonCallResult, filename: str, on_event: OnEvent | None
+) -> None:
+    """Log and emit the message for a failed episode-parse call (one per failure kind)."""
+    content = result.content
+    match result.failure:
+        case JsonCallFailure.RAISED:
+            logger.warning("LLM episode-parse failed for %r", filename)
+            await _emit(
+                on_event, "warn", f"LLM episode-parse failed for '{filename}': {result.error}"
+            )
+        case JsonCallFailure.NO_RESPONSE:
+            await _emit(
+                on_event, "warn", f"LLM episode-parse returned no response for '{filename}'"
+            )
+        case JsonCallFailure.INVALID_JSON:
+            logger.warning(
+                "LLM returned invalid JSON for episode parse of %r: %r", filename, content
+            )
+            await _emit(
+                on_event,
+                "warn",
+                f"LLM episode-parse returned invalid JSON for '{filename}': {content!r}",
+            )
+        case _:
+            logger.warning(
+                "LLM returned non-dict JSON for episode parse of %r: %r", filename, content
+            )
+            await _emit(
+                on_event,
+                "warn",
+                f"LLM episode-parse returned non-object JSON for '{filename}': {content!r}",
+            )
 
 
 async def llm_parse_episode(
@@ -162,52 +165,21 @@ async def llm_parse_episode(
         return None, None
 
     hint = f"\nKnown season from directory: {known_season}" if known_season is not None else ""
+    result = await request_json_object(
+        llm,
+        prompt=f"Filename: {sanitize_for_prompt(filename)}{hint}",
+        system=_LLM_EPISODE_PARSE_SYSTEM,
+        response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
+    )
+    if result.data is None:
+        await _report_parse_failure(result, filename, on_event)
+        return None, None
+
     try:
-        response = await llm.complete(
-            prompt=f"Filename: {sanitize_for_prompt(filename)}{hint}",
-            system=_LLM_EPISODE_PARSE_SYSTEM,
-            response_format=_LLM_EPISODE_PARSE_RESPONSE_FORMAT,
-        )
-    except Exception as exc:
-        logger.warning("LLM episode-parse failed for %r", filename)
-        await _emit(on_event, "warn", f"LLM episode-parse failed for '{filename}': {exc}")
-        return None, None
-
-    if response is None:
-        await _emit(on_event, "warn", f"LLM episode-parse returned no response for '{filename}'")
-        return None, None
-
-    parsed = parse_llm_json(response.content)
-    if parsed is None:
-        logger.warning(
-            "LLM returned invalid JSON for episode parse of %r: %r", filename, response.content
-        )
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-parse returned invalid JSON for '{filename}': {response.content!r}",
-        )
-        return None, None
-
-    if not isinstance(parsed, dict):
-        logger.warning(
-            "LLM returned non-dict JSON for episode parse of %r: %r", filename, response.content
-        )
-        content = response.content
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-parse returned non-object JSON for '{filename}': {content!r}",
-        )
-        return None, None
-
-    raw_season = parsed.get("season")
-    raw_episode = parsed.get("episode")
-    try:
-        season = int(raw_season) if raw_season is not None else None
-        episode = int(raw_episode) if raw_episode is not None else None
+        season = optional_int(result.data.get("season"))
+        episode = optional_int(result.data.get("episode"))
     except (TypeError, ValueError):
-        logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
+        logger.warning("LLM returned non-integer S/E for %r: %r", filename, result.data)
         await _emit(
             on_event,
             "warn",
@@ -223,6 +195,27 @@ async def llm_parse_episode(
         {"filename": filename, "season": season, "episode": episode},
     )
     return season, episode
+
+
+async def _report_pick_failure(
+    result: JsonCallResult, show_dir: str, on_event: OnEvent | None
+) -> None:
+    """Log and emit the message for a failed show-match call (RAISED/NO_RESPONSE/INVALID_JSON)."""
+    match result.failure:
+        case JsonCallFailure.RAISED:
+            logger.warning("LLM show-match failed for %r", show_dir)
+            await _emit(on_event, "warn", f"LLM show-match failed for '{show_dir}': {result.error}")
+        case JsonCallFailure.NO_RESPONSE:
+            await _emit(on_event, "warn", f"LLM show-match returned no response for '{show_dir}'")
+        case _:
+            logger.warning(
+                "LLM returned invalid JSON for show-match of %r: %r", show_dir, result.content
+            )
+            await _emit(
+                on_event,
+                "warn",
+                f"LLM show-match returned invalid JSON for '{show_dir}': {result.content!r}",
+            )
 
 
 async def llm_pick_candidate(
@@ -259,34 +252,19 @@ async def llm_pick_candidate(
     ]
     prompt = f'Directory: "{sanitize_for_prompt(show_dir)}"\n\nCandidates:\n' + "\n".join(lines)
 
-    try:
-        response = await llm.complete(
-            prompt=prompt,
-            system=_LLM_SHOW_MATCH_SYSTEM,
-            response_format=_LLM_SHOW_MATCH_RESPONSE_FORMAT,
-        )
-    except Exception as exc:
-        logger.warning("LLM show-match failed for %r", show_dir)
-        await _emit(on_event, "warn", f"LLM show-match failed for '{show_dir}': {exc}")
+    result = await request_json_object(
+        llm,
+        prompt=prompt,
+        system=_LLM_SHOW_MATCH_SYSTEM,
+        response_format=_LLM_SHOW_MATCH_RESPONSE_FORMAT,
+    )
+    if result.failure is not None and result.failure is not JsonCallFailure.NOT_OBJECT:
+        await _report_pick_failure(result, show_dir, on_event)
         return None
 
-    if response is None:
-        await _emit(on_event, "warn", f"LLM show-match returned no response for '{show_dir}'")
-        return None
-
-    parsed = parse_llm_json(response.content)
-    if parsed is None:
-        logger.warning(
-            "LLM returned invalid JSON for show-match of %r: %r", show_dir, response.content
-        )
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM show-match returned invalid JSON for '{show_dir}': {response.content!r}",
-        )
-        return None
-
-    raw_match = parsed.get("match") if isinstance(parsed, dict) else None
+    # A non-object reply (e.g. a bare array) carries no pick, so it is reported
+    # the same way as an explicit ``{"match": null}``.
+    raw_match = result.data.get("match") if result.data is not None else None
     if raw_match is None:
         await _emit(on_event, "warn", f"LLM show-match could not pick a candidate for '{show_dir}'")
         return None
@@ -312,6 +290,95 @@ async def llm_pick_candidate(
     logger.warning("LLM returned out-of-range index %d for show dir %r", idx + 1, show_dir)
     await _emit(on_event, "warn", f"LLM show-match returned an out-of-range pick for '{show_dir}'")
     return None
+
+
+async def _load_episodes(session: AsyncSession, show_id: int) -> list[Episode]:
+    """Return the show's episodes in season/episode order for the LLM's episode list."""
+    result = await session.execute(
+        select(Episode)
+        .where(Episode.show_id == show_id)
+        .order_by(Episode.season_number, Episode.episode_number)
+    )
+    return list(result.scalars().all())
+
+
+async def _warn_if_over_prompt_cap(
+    eps: list[Episode], show_title: str, on_event: OnEvent | None
+) -> None:
+    """Warn (log and event) when the episode list exceeds the prompt budget."""
+    if len(eps) <= _MAX_EPISODES_IN_PROMPT:
+        return
+    logger.warning(
+        "Show %r has %d episodes; truncating to first %d for LLM match "
+        "(tail episodes unmatchable via this path)",
+        show_title,
+        len(eps),
+        _MAX_EPISODES_IN_PROMPT,
+    )
+    await _emit(
+        on_event,
+        "warn",
+        f"Show '{show_title}' has {len(eps)} episodes; only the first "
+        f"{_MAX_EPISODES_IN_PROMPT} are shown to the LLM match, so tail "
+        "episodes cannot be matched via this path",
+    )
+
+
+async def _report_match_failure(
+    result: JsonCallResult, filename: str, show_title: str, on_event: OnEvent | None
+) -> None:
+    """Log and emit the message for a failed episode-list call (one per failure kind)."""
+    content = result.content
+    match result.failure:
+        case JsonCallFailure.RAISED:
+            logger.warning("LLM match failed for %r in show %r", filename, show_title)
+            await _emit(
+                on_event, "warn", f"LLM episode-list match failed for '{filename}': {result.error}"
+            )
+        case JsonCallFailure.NO_RESPONSE:
+            await _emit(
+                on_event, "warn", f"LLM episode-list match returned no response for '{filename}'"
+            )
+        case JsonCallFailure.INVALID_JSON:
+            logger.warning("LLM returned invalid JSON for match of %r: %r", filename, content)
+            await _emit(
+                on_event,
+                "warn",
+                f"LLM episode-list match returned invalid JSON for '{filename}': {content!r}",
+            )
+        case _:
+            logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, content)
+            await _emit(
+                on_event,
+                "warn",
+                f"LLM episode-list match returned non-object JSON for '{filename}': {content!r}",
+            )
+
+
+async def _proposed_season_episode(
+    data: dict[str, Any], filename: str, on_event: OnEvent | None
+) -> tuple[int, int] | None:
+    """Extract the LLM's proposed ``(season, episode)``, or None (after reporting why)."""
+    raw_season = data.get("season")
+    raw_episode = data.get("episode")
+    if raw_season is None or raw_episode is None:
+        await _emit(
+            on_event,
+            "warn",
+            f"LLM episode-list match could not identify '{filename}' among episodes",
+        )
+        return None
+
+    try:
+        return int(raw_season), int(raw_episode)
+    except (TypeError, ValueError):
+        logger.warning("LLM returned non-integer S/E for %r: %r", filename, data)
+        await _emit(
+            on_event,
+            "warn",
+            f"LLM episode-list match returned non-integer season/episode for '{filename}'",
+        )
+        return None
 
 
 async def llm_match_episode(
@@ -348,35 +415,11 @@ async def llm_match_episode(
     if llm is None or not llm.is_available():
         return None, None, None
 
-    eps = list(
-        (
-            await session.execute(
-                select(Episode)
-                .where(Episode.show_id == show_id)
-                .order_by(Episode.season_number, Episode.episode_number)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    eps = await _load_episodes(session, show_id)
     if not eps:
         return None, None, None
 
-    if len(eps) > _MAX_EPISODES_IN_PROMPT:
-        logger.warning(
-            "Show %r has %d episodes; truncating to first %d for LLM match "
-            "(tail episodes unmatchable via this path)",
-            show_title,
-            len(eps),
-            _MAX_EPISODES_IN_PROMPT,
-        )
-        await _emit(
-            on_event,
-            "warn",
-            f"Show '{show_title}' has {len(eps)} episodes; only the first "
-            f"{_MAX_EPISODES_IN_PROMPT} are shown to the LLM match, so tail "
-            "episodes cannot be matched via this path",
-        )
+    await _warn_if_over_prompt_cap(eps, show_title, on_event)
 
     ep_list = "\n".join(
         f"S{ep.season_number:02d}E{ep.episode_number:02d}: {ep.name}"
@@ -389,64 +432,20 @@ async def llm_match_episode(
         f"Episodes:\n{ep_list}"
     )
 
-    try:
-        response = await llm.complete(
-            prompt=prompt,
-            system=_LLM_SYSTEM,
-            response_format=_LLM_MATCH_RESPONSE_FORMAT,
-        )
-    except Exception as exc:
-        logger.warning("LLM match failed for %r in show %r", filename, show_title)
-        await _emit(on_event, "warn", f"LLM episode-list match failed for '{filename}': {exc}")
+    result = await request_json_object(
+        llm,
+        prompt=prompt,
+        system=_LLM_SYSTEM,
+        response_format=_LLM_MATCH_RESPONSE_FORMAT,
+    )
+    if result.data is None:
+        await _report_match_failure(result, filename, show_title, on_event)
         return None, None, None
 
-    if response is None:
-        await _emit(
-            on_event, "warn", f"LLM episode-list match returned no response for '{filename}'"
-        )
+    proposed = await _proposed_season_episode(result.data, filename, on_event)
+    if proposed is None:
         return None, None, None
-
-    parsed = parse_llm_json(response.content)
-    if parsed is None:
-        content = response.content
-        logger.warning("LLM returned invalid JSON for match of %r: %r", filename, content)
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-list match returned invalid JSON for '{filename}': {content!r}",
-        )
-        return None, None, None
-
-    if not isinstance(parsed, dict):
-        logger.warning("LLM returned non-dict JSON for match of %r: %r", filename, response.content)
-        content = response.content
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-list match returned non-object JSON for '{filename}': {content!r}",
-        )
-        return None, None, None
-
-    raw_season = parsed.get("season")
-    raw_episode = parsed.get("episode")
-    if raw_season is None or raw_episode is None:
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-list match could not identify '{filename}' among episodes",
-        )
-        return None, None, None
-
-    try:
-        season, episode_num = int(raw_season), int(raw_episode)
-    except (TypeError, ValueError):
-        logger.warning("LLM returned non-integer S/E for %r: %r", filename, parsed)
-        await _emit(
-            on_event,
-            "warn",
-            f"LLM episode-list match returned non-integer season/episode for '{filename}'",
-        )
-        return None, None, None
+    season, episode_num = proposed
 
     stmt = select(Episode).where(
         Episode.show_id == show_id,

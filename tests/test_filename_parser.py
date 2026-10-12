@@ -392,3 +392,77 @@ async def test_parse_filename_sends_regex_hint():
     prompt = call_args.kwargs.get("prompt") or call_args.args[0]
     assert "season=2" in prompt
     assert "episode=5" in prompt
+
+
+async def test_parse_filename_llm_raising_propagates():
+    """parse_filename never caught provider exceptions; the error reaches the caller."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    import pytest
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.complete = AsyncMock(side_effect=RuntimeError("provider exploded"))
+
+    with pytest.raises(RuntimeError, match="provider exploded"):
+        await parse_filename("Attack.on.Titan.S01E02.1080p.mkv", llm=llm)
+
+
+async def test_parse_filename_failure_logs_are_pinned(caplog):
+    """Each fallback path logs its documented warning."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    cases = [
+        (None, "LLM returned no response for 'a.S01E02.mkv'; falling back to heuristic"),
+        (
+            "[1]",
+            "LLM returned non-object JSON for 'a.S01E02.mkv': '[1]'; falling back to heuristic",
+        ),
+        (
+            "nope",
+            "LLM returned non-object JSON for 'a.S01E02.mkv': 'nope'; falling back to heuristic",
+        ),
+    ]
+    for content, expected in cases:
+        caplog.clear()
+        llm = MagicMock()
+        llm.is_available.return_value = True
+        if content is None:
+            llm.complete = AsyncMock(return_value=None)
+        else:
+            response = MagicMock()
+            response.content = content
+            llm.complete = AsyncMock(return_value=response)
+
+        with caplog.at_level("WARNING", logger="jidou.services.filename_parser"):
+            result = await parse_filename("a.S01E02.mkv", llm=llm)
+
+        assert result.llm_ok is False
+        assert [r.getMessage() for r in caplog.records] == [expected]
+
+
+async def test_parse_filename_call_arguments_are_pinned():
+    """Prompt text and schema name sent to the LLM do not change."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from jidou.services.filename_parser import parse_filename
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    response = MagicMock()
+    response.content = '{"show_name": "A", "season": 1, "episode": 2, "confidence": 0.9}'
+    llm.complete = AsyncMock(return_value=response)
+
+    await parse_filename("A.S01E02.mkv", llm=llm)
+
+    kwargs = llm.complete.await_args.kwargs
+    assert kwargs["prompt"] == (
+        "Given this filename: A.S01E02.mkv\nRegex anchor detected: season=1 episode=2"
+    )
+    assert kwargs["response_format"]["json_schema"]["name"] == "filename_parse"
+    assert kwargs.get("max_tokens", 1024) == 1024
+    assert kwargs.get("bypass_cache", False) is False

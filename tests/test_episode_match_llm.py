@@ -725,3 +725,290 @@ async def test_llm_match_exception_is_emitted() -> None:
     assert len(failures) == 1
     assert failures[0][0] == "warn"
     assert "timed out" in failures[0][1]
+
+
+# ---------------------------------------------------------------------------
+# Pinned failure-path output (events + log text) for every call site, so a
+# refactor onto a shared structured-call helper cannot silently reword them.
+# ---------------------------------------------------------------------------
+
+
+def _llm_returning(content: str | None, *, raises: Exception | None = None) -> MagicMock:
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    if raises is not None:
+        llm.complete = AsyncMock(side_effect=raises)
+    elif content is None:
+        llm.complete = AsyncMock(return_value=None)
+    else:
+        response = MagicMock()
+        response.content = content
+        llm.complete = AsyncMock(return_value=response)
+    return llm
+
+
+_PARSE_FAILURE_CASES = [
+    pytest.param(
+        None,
+        RuntimeError("boom"),
+        [("warn", "LLM episode-parse failed for 'a.mkv': boom")],
+        ["LLM episode-parse failed for 'a.mkv'"],
+        id="raised",
+    ),
+    pytest.param(
+        None,
+        None,
+        [("warn", "LLM episode-parse returned no response for 'a.mkv'")],
+        [],
+        id="no_response",
+    ),
+    pytest.param(
+        "nope",
+        None,
+        [("warn", "LLM episode-parse returned invalid JSON for 'a.mkv': 'nope'")],
+        ["LLM returned invalid JSON for episode parse of 'a.mkv': 'nope'"],
+        id="invalid_json",
+    ),
+    pytest.param(
+        "[1]",
+        None,
+        [("warn", "LLM episode-parse returned non-object JSON for 'a.mkv': '[1]'")],
+        ["LLM returned non-dict JSON for episode parse of 'a.mkv': '[1]'"],
+        id="not_object",
+    ),
+    pytest.param(
+        '{"season": "x", "episode": 1}',
+        None,
+        [("warn", "LLM episode-parse returned non-integer season/episode for 'a.mkv'")],
+        ["LLM returned non-integer S/E for 'a.mkv': {'season': 'x', 'episode': 1}"],
+        id="non_integer",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "raises", "expected_events", "expected_logs"), _PARSE_FAILURE_CASES
+)
+async def test_llm_parse_episode_failure_events_and_logs_are_pinned(
+    content: str | None,
+    raises: Exception | None,
+    expected_events: list[tuple[str, str]],
+    expected_logs: list[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each failure kind emits exactly one warn event and the documented log line."""
+    events, capture = _event_capture()
+    llm = _llm_returning(content, raises=raises)
+
+    with caplog.at_level("WARNING", logger="jidou.services.episode_match_llm"):
+        result = await llm_parse_episode(llm, "a.mkv", on_event=capture)
+
+    assert result == (None, None)
+    assert [(lvl, msg) for lvl, msg, _ in events] == expected_events
+    assert [r.getMessage() for r in caplog.records] == expected_logs
+
+
+@pytest.mark.asyncio
+async def test_llm_parse_episode_call_arguments_are_pinned() -> None:
+    """The prompt, system text and schema name sent to the LLM do not change."""
+    llm = _llm_returning('{"season": 2, "episode": 3}')
+
+    await llm_parse_episode(llm, "a.mkv", known_season=2)
+
+    kwargs = llm.complete.await_args.kwargs
+    assert kwargs["prompt"] == "Filename: a.mkv\nKnown season from directory: 2"
+    assert kwargs["system"].startswith("You are a TV episode filename parser.")
+    assert kwargs["response_format"]["json_schema"]["name"] == "episode_parse"
+    assert kwargs.get("max_tokens", 1024) == 1024
+    assert kwargs.get("bypass_cache", False) is False
+
+
+_PICK_CANDIDATES = [{"name": "Show", "first_air_date": "2020-01-01"}]
+_PICK_FAILURE_CASES = [
+    pytest.param(
+        None,
+        RuntimeError("boom"),
+        [("warn", "LLM show-match failed for 'Dir': boom")],
+        ["LLM show-match failed for 'Dir'"],
+        id="raised",
+    ),
+    pytest.param(
+        None,
+        None,
+        [("warn", "LLM show-match returned no response for 'Dir'")],
+        [],
+        id="no_response",
+    ),
+    pytest.param(
+        "nope",
+        None,
+        [("warn", "LLM show-match returned invalid JSON for 'Dir': 'nope'")],
+        ["LLM returned invalid JSON for show-match of 'Dir': 'nope'"],
+        id="invalid_json",
+    ),
+    pytest.param(
+        "[1]",
+        None,
+        [("warn", "LLM show-match could not pick a candidate for 'Dir'")],
+        [],
+        id="not_object_is_could_not_pick",
+    ),
+    pytest.param(
+        '{"match": null}',
+        None,
+        [("warn", "LLM show-match could not pick a candidate for 'Dir'")],
+        [],
+        id="null_match",
+    ),
+    pytest.param(
+        '{"match": "x"}',
+        None,
+        [("warn", "LLM show-match returned a non-integer pick for 'Dir'")],
+        ["LLM returned non-integer match 'x' for show dir 'Dir'"],
+        id="non_integer",
+    ),
+    pytest.param(
+        '{"match": 5}',
+        None,
+        [("warn", "LLM show-match returned an out-of-range pick for 'Dir'")],
+        ["LLM returned out-of-range index 5 for show dir 'Dir'"],
+        id="out_of_range",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "raises", "expected_events", "expected_logs"), _PICK_FAILURE_CASES
+)
+async def test_llm_pick_candidate_failure_events_and_logs_are_pinned(
+    content: str | None,
+    raises: Exception | None,
+    expected_events: list[tuple[str, str]],
+    expected_logs: list[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each failure kind emits exactly one warn event and the documented log line."""
+    events, capture = _event_capture()
+    llm = _llm_returning(content, raises=raises)
+
+    with caplog.at_level("WARNING", logger="jidou.services.episode_match_llm"):
+        result = await llm_pick_candidate(llm, "Dir", _PICK_CANDIDATES, on_event=capture)
+
+    assert result is None
+    assert [(lvl, msg) for lvl, msg, _ in events] == expected_events
+    assert [r.getMessage() for r in caplog.records] == expected_logs
+
+
+@pytest.mark.asyncio
+async def test_llm_pick_candidate_success_and_call_arguments_are_pinned() -> None:
+    """A valid pick returns the candidate, emits the info event, and sends the same prompt."""
+    events, capture = _event_capture()
+    llm = _llm_returning('{"match": 1}')
+
+    result = await llm_pick_candidate(llm, "Dir", _PICK_CANDIDATES, on_event=capture)
+
+    assert result == _PICK_CANDIDATES[0]
+    assert events == [
+        ("info", "LLM show-match: 'Dir' -> 'Show'", {"show_dir": "Dir", "picked": "Show"})
+    ]
+    kwargs = llm.complete.await_args.kwargs
+    assert kwargs["prompt"] == 'Directory: "Dir"\n\nCandidates:\n1. Show (2020)'
+    assert kwargs["response_format"]["json_schema"]["name"] == "show_match"
+    assert kwargs.get("max_tokens", 1024) == 1024
+    assert kwargs.get("bypass_cache", False) is False
+
+
+_MATCH_FAILURE_CASES = [
+    pytest.param(
+        None,
+        RuntimeError("boom"),
+        [("warn", "LLM episode-list match failed for 'ep.mkv': boom")],
+        ["LLM match failed for 'ep.mkv' in show 'Show'"],
+        id="raised",
+    ),
+    pytest.param(
+        None,
+        None,
+        [("warn", "LLM episode-list match returned no response for 'ep.mkv'")],
+        [],
+        id="no_response",
+    ),
+    pytest.param(
+        "nope",
+        None,
+        [("warn", "LLM episode-list match returned invalid JSON for 'ep.mkv': 'nope'")],
+        ["LLM returned invalid JSON for match of 'ep.mkv': 'nope'"],
+        id="invalid_json",
+    ),
+    pytest.param(
+        "[1]",
+        None,
+        [("warn", "LLM episode-list match returned non-object JSON for 'ep.mkv': '[1]'")],
+        ["LLM returned non-dict JSON for match of 'ep.mkv': '[1]'"],
+        id="not_object",
+    ),
+    pytest.param(
+        '{"season": null, "episode": 1}',
+        None,
+        [("warn", "LLM episode-list match could not identify 'ep.mkv' among episodes")],
+        [],
+        id="null_field",
+    ),
+    pytest.param(
+        '{"season": "x", "episode": 1}',
+        None,
+        [("warn", "LLM episode-list match returned non-integer season/episode for 'ep.mkv'")],
+        ["LLM returned non-integer S/E for 'ep.mkv': {'season': 'x', 'episode': 1}"],
+        id="non_integer",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "raises", "expected_events", "expected_logs"), _MATCH_FAILURE_CASES
+)
+async def test_llm_match_episode_failure_events_and_logs_are_pinned(
+    content: str | None,
+    raises: Exception | None,
+    expected_events: list[tuple[str, str]],
+    expected_logs: list[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each failure kind emits exactly one warn event and the documented log line."""
+    events, capture = _event_capture()
+    llm = _llm_returning(content, raises=raises)
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1, "Pilot")]
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=eps_result)
+
+    with caplog.at_level("WARNING", logger="jidou.services.episode_match_llm"):
+        result = await llm_match_episode(
+            session, llm, show_id=1, show_title="Show", filename="ep.mkv", on_event=capture
+        )
+
+    assert result == (None, None, None)
+    assert [(lvl, msg) for lvl, msg, _ in events] == expected_events
+    assert [r.getMessage() for r in caplog.records] == expected_logs
+
+
+@pytest.mark.asyncio
+async def test_llm_match_episode_call_arguments_are_pinned() -> None:
+    """The episode-list prompt, system text and schema name sent to the LLM do not change."""
+    llm = _llm_returning('{"season": null, "episode": null}')
+    eps_result = MagicMock()
+    eps_result.scalars.return_value.all.return_value = [_make_ep_row(1, 1, "Pilot")]
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=eps_result)
+
+    await llm_match_episode(session, llm, show_id=1, show_title="Show", filename=_FILENAME)
+
+    kwargs = llm.complete.await_args.kwargs
+    assert kwargs["prompt"] == "Show: Show\nFilename: ep.mkv\n\nEpisodes:\nS01E01: Pilot"
+    assert kwargs["system"].startswith("You are a filename-to-episode matcher.")
+    assert kwargs["response_format"]["json_schema"]["name"] == "episode_match"
+    assert kwargs.get("max_tokens", 1024) == 1024
+    assert kwargs.get("bypass_cache", False) is False

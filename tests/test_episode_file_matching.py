@@ -523,3 +523,32 @@ async def test_uses_llm_match_season_episode_over_stale_locals() -> None:
     assert ep is None
     assert season == 5
     assert episode_num == 10
+
+
+@pytest.mark.asyncio
+async def test_match_entry_no_episode_uses_llm_season_when_list_match_has_none() -> None:
+    """With no regex episode, the LLM's season survives an episode-list match that has none."""
+    entry = ParsedPathEntry(
+        raw_path=r"Z:\tv\Show\Extras.mkv",
+        show_dir="Show",
+        show_root=r"Z:\tv\Show",
+        season=None,
+        episode=None,
+        is_absolute=True,
+    )
+
+    with (
+        patch(
+            "jidou.services.episode_file_matching.llm_parse_episode",
+            AsyncMock(return_value=(3, None)),
+        ),
+        patch(
+            "jidou.services.episode_file_matching.llm_match_episode",
+            AsyncMock(return_value=(None, None, None)),
+        ),
+    ):
+        result = await match_entry_to_episode(
+            AsyncMock(), MagicMock(), show_id=1, show_title="Show", entry=entry
+        )
+
+    assert result == (None, 3, None)
