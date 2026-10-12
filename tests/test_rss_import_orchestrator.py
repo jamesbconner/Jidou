@@ -1579,3 +1579,50 @@ async def test_run_malformed_config_reports_error_and_writes_nothing() -> None:
     assert events[-1] == ("error", result.errors[0], None)
     session.add.assert_not_called()
     session.execute.assert_not_called()
+
+
+async def _link_by_titles(shows: list[tuple[int, str]], remote_name: str) -> int | None:
+    """Run one create-path import against shows with the given (id, title) rows."""
+    from jidou.orchestrators.rss_import_orchestrator import RssImportResult
+
+    show_rows = []
+    for show_id, title in shows:
+        row = MagicMock()
+        row.id = show_id
+        row.title = title
+        show_rows.append(row)
+    shows_result = MagicMock()
+    shows_result.all.return_value = show_rows
+
+    session = _make_session()
+    session.execute = AsyncMock(side_effect=[_exec_result(scalars_all=[]), shows_result])
+    orc = RssImportOrchestrator(
+        session=session,
+        sftp=_make_sftp(),
+        remote_path="/remote/yarss2.conf",
+        dry_run=False,
+        on_event=_noop_event,
+    )
+    await orc._upsert_subscriptions(
+        {"9": {"name": remote_name, "active": True}}, {}, RssImportResult()
+    )
+    return session.add.call_args_list[0].args[0].show_id  # type: ignore[no-any-return]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_exact_show_titles_are_ambiguous_and_not_linked() -> None:
+    """DF-12 (D18): two shows with the same title (any case) give no link."""
+    assert await _link_by_titles([(1, "Some Show"), (2, "some show")], "Some Show") is None
+
+
+@pytest.mark.asyncio
+async def test_duplicate_exact_titles_do_not_fall_through_to_a_fuzzy_pick() -> None:
+    """A duplicate exact match is a tie, so a lone fuzzy near-miss must not be picked."""
+    shows = [(1, "Some Show"), (2, "Some Show"), (3, "Some Show Extra")]
+    assert await _link_by_titles(shows, "Some Show") is None
+
+
+@pytest.mark.asyncio
+async def test_single_exact_title_still_links_despite_fuzzy_near_miss() -> None:
+    """One exact match keeps winning over a fuzzy candidate (unchanged behaviour)."""
+    assert await _link_by_titles([(1, "Some Show Extra"), (2, "Some Show")], "Some Show") == 2

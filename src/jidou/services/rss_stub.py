@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssSubscription
-from jidou.services.fuzzy_match import unambiguous_best_match
+from jidou.services.fuzzy_match import unambiguous_title_match
 from jidou.services.rss_config import fill_missing_yarss2_defaults
 
 logger = logging.getLogger(__name__)
@@ -19,10 +19,11 @@ def pick_unlinked_subscription(
 ) -> RssSubscription | None:
     """Choose the unlinked subscription that best matches *show_title*.
 
-    An exact case-insensitive name match wins immediately, even when it comes
-    after a higher-scoring fuzzy match. Otherwise the best token-set ratio at or
-    above the threshold wins, unless two subscriptions tie at that best score:
-    linking either would be a guess, so the caller creates a stub instead.
+    A single exact case-insensitive name match wins, even when it comes after a
+    higher-scoring fuzzy match. Two or more exact matches are ambiguous. With no
+    exact match the best token-set ratio at or above the threshold wins, unless
+    two subscriptions tie at that best score. In every ambiguous case linking
+    either would be a guess, so the caller creates a stub instead.
 
     Args:
         subs: Candidate subscriptions (those with no linked show).
@@ -30,14 +31,9 @@ def pick_unlinked_subscription(
 
     Returns:
         The matching subscription, or None when nothing qualifies or the best
-        fuzzy score is shared by more than one subscription.
+        match (exact or fuzzy) is shared by more than one subscription.
     """
-    title_lower = show_title.lower()
-    # An exact name match wins even when it comes after a higher-scoring fuzzy one.
-    for sub in subs:
-        if sub.name.lower() == title_lower:
-            return sub
-    index = unambiguous_best_match(show_title, [sub.name for sub in subs])
+    index = unambiguous_title_match(show_title, [sub.name for sub in subs])
     return None if index is None else subs[index]
 
 

@@ -3,7 +3,11 @@
 import pytest
 
 from jidou.orchestrators.alias_orchestrator import _ALIAS_RESPONSE_FORMAT
-from jidou.services.fuzzy_match import FUZZY_THRESHOLD, unambiguous_best_match
+from jidou.services.fuzzy_match import (
+    FUZZY_THRESHOLD,
+    unambiguous_best_match,
+    unambiguous_title_match,
+)
 from jidou.services.rss_stub import pick_unlinked_subscription
 
 # Literal copy of the schema as it was hand-written before json_schema_format
@@ -85,3 +89,19 @@ def test_pick_unlinked_subscription_characterisation(
 
 def test_alias_schema_unchanged() -> None:
     assert _ALIAS_RESPONSE_FORMAT == _LEGACY_ALIAS_RESPONSE_FORMAT
+
+
+@pytest.mark.parametrize(
+    ("query", "candidates", "expected"),
+    [
+        ("Some Show", ["Other", "some show"], 1),  # one exact match
+        ("Some Show", ["Some Show", "SOME SHOW"], None),  # duplicate exact -> ambiguous
+        ("Some Show", ["Some Show", "Some Show", "Some Show Extra"], None),  # no fuzzy fall-through
+        ("Some Show", ["Some Show Extra", "Some Show"], 1),  # exact beats higher-listed fuzzy
+        ("Daredevil", ["Marvel Daredevil", "Bleach"], 0),  # no exact: fuzzy fallback
+        ("Daredevil", ["Daredevil Born Again", "Marvel Daredevil"], None),  # fuzzy tie
+        ("Naruto", [], None),
+    ],
+)
+def test_unambiguous_title_match(query: str, candidates: list[str], expected: int | None) -> None:
+    assert unambiguous_title_match(query, candidates) == expected
