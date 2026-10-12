@@ -266,3 +266,38 @@ class TestBeatScheduleWiring:
         names = celery_app.tasks
         assert any("scheduled_sync_task" in n for n in names)
         assert any("scheduled_rss_import_task" in n for n in names)
+
+
+# ---------------------------------------------------------------------------
+# _delete_task_record — engine-lifecycle error semantics
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteTaskRecord:
+    @pytest.mark.asyncio
+    async def test_engine_creation_failure_is_logged_not_raised(self) -> None:
+        """Best-effort cleanup: a failure creating the engine is swallowed."""
+        from jidou.workers.scheduled_tasks import _delete_task_record
+
+        with patch("jidou.database.create_async_engine", side_effect=OSError("no engine")):
+            await _delete_task_record("orphan-id")  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_dispose_failure_propagates(self) -> None:
+        """Disposal runs after the swallow block, so its failure still propagates."""
+        from jidou.workers.scheduled_tasks import _delete_task_record
+
+        session = _make_session()
+        engine = MagicMock()
+        engine.dispose = AsyncMock(side_effect=OSError("dispose failed"))
+
+        with (
+            patch("jidou.database.create_async_engine", return_value=engine),
+            patch(
+                "jidou.database.async_sessionmaker", return_value=MagicMock(return_value=session)
+            ),
+            pytest.raises(OSError, match="dispose failed"),
+        ):
+            await _delete_task_record("orphan-id")
+
+        session.commit.assert_awaited()

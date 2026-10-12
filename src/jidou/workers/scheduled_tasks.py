@@ -10,6 +10,7 @@ could see no active task and dispatch a duplicate.
 import asyncio
 import logging
 import uuid
+from contextlib import AsyncExitStack
 from typing import Any
 
 from celery import shared_task
@@ -125,9 +126,12 @@ async def _delete_task_record(celery_task_id: str) -> None:
     """
     from sqlalchemy import delete
 
-    # Engine create/dispose stay outside the try: only the best-effort delete is swallowed.
-    async with task_sessionmaker() as session_factory:
+    # Parity with the pre-refactor helper: engine creation happens inside the try
+    # (a creation failure is logged, not raised) while disposal runs after it, so
+    # a dispose failure still propagates. The ExitStack gives exactly that split.
+    async with AsyncExitStack() as stack:
         try:
+            session_factory = await stack.enter_async_context(task_sessionmaker())
             async with session_factory() as session:
                 await session.execute(
                     delete(BackgroundTask).where(BackgroundTask.celery_task_id == celery_task_id)
