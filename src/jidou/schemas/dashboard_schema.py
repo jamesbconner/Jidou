@@ -3,7 +3,7 @@
 from datetime import date, datetime
 
 from jidou.models.show import ContentType
-from jidou.schemas._base import ORMModel
+from jidou.schemas._base import ORMModel, TmdbGenre
 
 
 class RecentShowItem(ORMModel):
@@ -19,7 +19,7 @@ class RecentShowItem(ORMModel):
     overview: str | None = None
     tagline: str | None = None
     vote_average: float | None = None
-    genres: list[dict[str, object]] | None = None
+    genres: list[TmdbGenre] | None = None
     release_date: str | None = None
     status: str | None = None
     number_of_seasons: int | None = None
@@ -38,7 +38,7 @@ class DashboardShowSummary(ORMModel):
     media_type: str
     poster_path: str | None = None
     vote_average: float | None = None
-    genres: list[dict[str, object]] | None = None
+    genres: list[TmdbGenre] | None = None
     adult: bool | None = None
 
 
