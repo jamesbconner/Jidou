@@ -1413,7 +1413,7 @@ async def test_celery_publish_task_marks_failed_and_raises() -> None:
         await _rss_publish("test-publish-task-id", dry_run=False)
 
     with (
-        patch("jidou.workers.rss_tasks._build_sftp", return_value=MagicMock()),
+        patch("jidou.workers.rss_tasks.create_sftp_service", return_value=MagicMock()),
         patch(
             "jidou.workers.rss_tasks.RssPublishOrchestrator.run",
             new_callable=AsyncMock,

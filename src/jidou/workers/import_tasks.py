@@ -18,6 +18,7 @@ from jidou.workers._harness import (
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,31 +144,7 @@ async def _path_import(
         )
         import_result = await orchestrator.run(entries, on_progress=on_progress)
 
-        summary: dict[str, object] = {
-            "shows_processed": import_result.shows_processed,
-            "shows_created": import_result.shows_created,
-            "shows_found": import_result.shows_found,
-            "shows_not_found": import_result.shows_not_found,
-            "episodes_tracked": import_result.episodes_tracked,
-            "episodes_unmatched": import_result.episodes_unmatched,
-            "episodes_already_tracked": import_result.episodes_already_tracked,
-            "show_results": [
-                {
-                    "show_dir": r.show_dir,
-                    "tmdb_id": r.tmdb_id,
-                    "tmdb_title": r.tmdb_title,
-                    "action": r.action,
-                    "episodes_tracked": r.episodes_tracked,
-                    "episodes_unmatched": r.episodes_unmatched,
-                    "episodes_already_tracked": r.episodes_already_tracked,
-                    "unmatched_paths": r.unmatched_paths,
-                    "already_tracked_paths": r.already_tracked_paths,
-                }
-                for r in import_result.show_results
-            ],
-            "dry_run": dry_run,
-            "mode": import_result.mode,
-        }
+        summary = summarize(import_result, dry_run=dry_run)
 
         if import_result.mode == "shows_only":
             done_message = (

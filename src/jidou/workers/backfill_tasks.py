@@ -15,6 +15,7 @@ from jidou.workers._harness import (
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,14 +50,7 @@ async def _backfill(celery_task_id: str, dry_run: bool = False) -> str:
             progress_current=result.shows_checked,
             progress_total=result.shows_checked,
             message=f"Backfilled {result.shows_updated} show(s), {result.shows_failed} failed",
-            result_summary={
-                "shows_checked": result.shows_checked,
-                "shows_updated": result.shows_updated,
-                "shows_failed": result.shows_failed,
-                "updated_titles": result.updated_titles,
-                "failed_titles": result.failed_titles,
-                "dry_run": dry_run,
-            },
+            result_summary=summarize(result, dry_run=dry_run),
         )
 
     return await run_task_workflow(

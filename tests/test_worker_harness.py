@@ -1,6 +1,7 @@
 """Tests for the jidou.workers._harness entrypoint and lifecycle helpers."""
 
 import re
+from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from jidou.workers._harness import (
     mark_task_timed_out,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 
@@ -468,3 +470,32 @@ async def test_mark_task_timed_out_message_and_ws_error_text() -> None:
 
     assert mock_update.call_args.kwargs["progress_message"] == "Task exceeded soft time limit"
     assert mock_emit.call_args.args[0]["data"] == {"error": "Soft time limit exceeded"}
+
+
+@dataclass
+class _Inner:
+    name: str
+    count: int = 0
+
+
+@dataclass
+class _Outer:
+    total: int
+    items: list[_Inner] = field(default_factory=list)
+    dry_run: bool = False
+
+
+def test_summarize_adds_dry_run_and_recurses() -> None:
+    """Fields become dict keys, nested dataclasses recurse, and dry_run is the argument."""
+    result = _Outer(total=2, items=[_Inner("a", 1), _Inner("b")])
+
+    assert summarize(result, dry_run=True) == {
+        "total": 2,
+        "items": [{"name": "a", "count": 1}, {"name": "b", "count": 0}],
+        "dry_run": True,
+    }
+
+
+def test_summarize_argument_overrides_result_dry_run_field() -> None:
+    """A result's own dry_run field never wins over the explicit argument."""
+    assert summarize(_Outer(total=1, dry_run=True), dry_run=False)["dry_run"] is False

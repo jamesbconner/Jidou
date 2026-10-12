@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator
-from jidou.services.sftp_service import SFTPService
+from jidou.services.sftp_service import create_sftp_service
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
     WorkflowResult,
     run_harnessed,
     run_task_workflow,
+    summarize,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,17 +46,7 @@ async def _download_files(
     async def _work(
         session: AsyncSession, on_progress: ProgressFn, on_event: EventFn
     ) -> WorkflowResult:
-        sftp = SFTPService(
-            host=settings.sftp_host or "",
-            port=settings.sftp_port,
-            username=settings.sftp_username,
-            password=settings.sftp_password,
-            key_path=settings.sftp_key_path,
-            known_hosts=None,
-            max_workers=settings.sftp_max_workers,
-            max_retries=settings.sftp_max_retries,
-            retry_delay=settings.sftp_retry_delay,
-        )
+        sftp = create_sftp_service(settings)
 
         remote_paths = settings.sftp_remote_paths_list or ["/"]
         result = await DownloadOrchestrator(
@@ -73,12 +64,7 @@ async def _download_files(
             progress_current=total_processed,
             progress_total=total_processed,
             message=f"Download complete: {result.files_downloaded} files",
-            result_summary={
-                "files_downloaded": result.files_downloaded,
-                "bytes_downloaded": result.bytes_downloaded,
-                "files_failed": result.files_failed,
-                "dry_run": dry_run,
-            },
+            result_summary=summarize(result, dry_run=dry_run),
             complete_summary={"files_downloaded": result.files_downloaded, "dry_run": dry_run},
         )
 

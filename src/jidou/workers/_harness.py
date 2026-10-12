@@ -3,8 +3,8 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,9 @@ from jidou.services.progress import (
     emit_progress,
     update_task_status,
 )
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,23 @@ class WorkflowResult:
     result_summary: dict[str, object]
     complete_summary: dict[str, object] | None = None
     errors: list[str] = field(default_factory=list)
+
+
+def summarize(result: "DataclassInstance", *, dry_run: bool) -> dict[str, object]:
+    """Build a ``result_summary`` from an orchestrator's result dataclass.
+
+    Kept at module level so ``asdict`` recurses into nested dataclasses (e.g.
+    ``PathImportResult.show_results``). The explicit *dry_run* wins over any
+    ``dry_run`` field the result itself carries.
+
+    Args:
+        result: The orchestrator's result dataclass instance.
+        dry_run: Whether the task ran in dry-run mode.
+
+    Returns:
+        The result's fields as a dict plus a ``dry_run`` key.
+    """
+    return {**asdict(result), "dry_run": dry_run}
 
 
 WorkFn = Callable[[AsyncSession, ProgressFn, EventFn], Awaitable[WorkflowResult]]

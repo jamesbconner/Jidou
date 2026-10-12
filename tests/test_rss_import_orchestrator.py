@@ -853,7 +853,7 @@ async def test_celery_task_marks_failed_when_orchestrator_returns_errors() -> No
         await _rss_import("test-task-id", dry_run=False)
 
     with (
-        patch("jidou.workers.rss_tasks._build_sftp", return_value=MagicMock()),
+        patch("jidou.workers.rss_tasks.create_sftp_service", return_value=MagicMock()),
         patch(
             "jidou.workers.rss_tasks.RssImportOrchestrator.run",
             new_callable=AsyncMock,
