@@ -98,7 +98,7 @@ function mockApi(routes: Routes = {}): string[] {
         ? mockResponse({ detail: 'no such id' }, routes.detailsStatus)
         : mockResponse(routes.details ?? {})
     }
-    if (url.startsWith('/api/shows?')) return mockResponse([])
+    if (url.startsWith('/api/shows/index')) return mockResponse([])
     if (url === '/api/files/100/tmdb-suggestions') {
       return routes.suggestionsStatus
         ? mockResponse({ detail: 'suggest exploded' }, routes.suggestionsStatus)
@@ -141,7 +141,7 @@ describe('ResolveFileModal characterization: suggestions mode', () => {
       'GET /api/config',
       'GET /api/files/100/tmdb-suggestions',
       'GET /api/shows/search?query=Example%20Show&limit=6',
-      'GET /api/shows?sort=title_asc&limit=10000',
+      'GET /api/shows/index',
     ])
     expect(dom()).toMatchSnapshot()
   })

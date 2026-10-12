@@ -87,7 +87,7 @@ function setupFetch(options: {
     const url = String(input)
     if (url.endsWith('/api/settings')) return mockResponse(appSettings)
     if (url.includes('/api/shows/1/similar')) return mockResponse(similar)
-    if (url.includes('/api/shows?')) return mockResponse(library)
+    if (url.includes('/api/shows/index')) return mockResponse(library)
     return mockResponse([])
   })
 }
@@ -121,7 +121,7 @@ describe('SimilarTitlesSection', () => {
     // resolved too, so /similar would have been requested by now if it were
     // ever going to be.
     await waitFor(() =>
-      expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).includes('/api/shows?'))).toBe(
+      expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).includes('/api/shows/index'))).toBe(
         true,
       ),
     )

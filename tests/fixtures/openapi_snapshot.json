@@ -3856,6 +3856,81 @@
         "title": "ShowCreate",
         "type": "object"
       },
+      "ShowIndexEntry": {
+        "description": "One row of ``GET /shows/index``: the lightweight library index.\n\nCarries only what pickers and ``tmdb_id:media_type`` library lookups need,\nso the whole library can be fetched in one cheap column-only query.\n``local_path`` is included because the file-resolution and rematch modals\ndecide whether an already-tracked show can be reused from it.",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "local_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Path"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "sys_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sys Name"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tmdb_id": {
+            "title": "Tmdb Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tmdb_id",
+          "title",
+          "media_type"
+        ],
+        "title": "ShowIndexEntry",
+        "type": "object"
+      },
       "ShowList": {
         "description": "Slim show record returned by ``GET /shows``.",
         "properties": {
@@ -9682,6 +9757,60 @@
         ]
       }
     },
+    "/api/shows/index": {
+      "get": {
+        "description": "Return the lightweight index of every show in the library.\n\nMeant for pickers and ``tmdb_id:media_type`` lookups that need the whole\nlibrary but none of the per-show counts ``GET /shows`` computes. It is a\nsingle column-only query with no pagination, sized for libraries of\nseveral thousand shows. Registered before ``/{show_id}`` so the literal\npath is not captured by the integer route.\n\nOrdering is deterministic: ``title`` ascending (database collation), then\n``id`` ascending as the tie-breaker for shows sharing a title.\n\nArgs:\n    db_session: DB session (injected).\n\nReturns:\n    One entry per show, ordered by title then id.",
+        "operationId": "list_show_index_api_shows_index_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShowIndexEntry"
+                  },
+                  "title": "Response List Show Index Api Shows Index Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Show Index",
+        "tags": [
+          "shows"
+        ]
+      }
+    },
     "/api/shows/search": {
       "get": {
         "description": "Search the local library by title, alias, ``sys_name`` or folder name.\n\nCase-insensitive substring match; results are ranked exact > prefix >\nsubstring. Folder matching uses only the final component of ``local_path``.\nFor TMDB search use ``GET /shows/tmdb/search``.\n\nArgs:\n    query: Search text (at least two characters).\n    limit: Maximum number of results.\n    db_session: Async database session (injected).\n\nReturns:\n    Ranked matching shows, each tagged with the field that matched.",
@@ -12209,7 +12338,7 @@
     },
     "/api/watchlist": {
       "get": {
-        "description": "List all watchlist entries, ordered by position then creation time.\n\nEach entry's ``next_up`` field is the lowest ``(season_number,\nepisode_number)`` episode of its show that is not yet watched,\nregardless of whether it has aired \u2014 the caller decides what to do with\nan unaired \"next up\" episode using its ``air_date``, rather than that\ninformation being silently filtered out here.\n\nArgs:\n    status: Optional filter by watchlist status.\n    limit: Maximum results to return (default 50).\n    offset: Number of results to skip for pagination.\n    db_session: DB session (injected).\n\nReturns:\n    List of watchlist entries.\n\nRaises:\n    HTTPException: 400 if status is not a valid WatchlistStatus.",
+        "description": "List all watchlist entries, ordered by position then creation time.\n\nEach entry's ``next_up`` field is the lowest ``(season_number,\nepisode_number)`` episode of its show that is not yet watched,\nregardless of whether it has aired \u2014 the caller decides what to do with\nan unaired \"next up\" episode using its ``air_date``, rather than that\ninformation being silently filtered out here.\n\nArgs:\n    status: Optional filter by watchlist status.\n    show_id: Optional filter to one show's entry (at most one row, since a\n        show is on the watchlist at most once). Lets a page check one\n        show's membership without fetching the whole watchlist.\n    limit: Maximum results to return (default 50).\n    offset: Number of results to skip for pagination.\n    db_session: DB session (injected).\n\nReturns:\n    List of watchlist entries.\n\nRaises:\n    HTTPException: 400 if status is not a valid WatchlistStatus.",
         "operationId": "list_watchlist_api_watchlist_get",
         "parameters": [
           {
@@ -12246,6 +12375,22 @@
               "default": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Show Id"
             }
           },
           {

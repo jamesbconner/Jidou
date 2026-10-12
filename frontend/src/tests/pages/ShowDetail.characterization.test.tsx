@@ -136,7 +136,12 @@ function mockApi(opts: Opts = {}): string[] {
       })
     if (url.includes('/rss/subscriptions')) return mockResponse(opts.rssSubs ?? [])
     if (url.includes('/rss/feeds')) return mockResponse([])
-    if (url.includes('/watchlist')) return mockResponse(opts.watchlist ?? [])
+    if (url.includes('/watchlist')) {
+      // Honour the by-show filter the way the API does (DF-18).
+      const all = (opts.watchlist ?? []) as { show_id: number }[]
+      const byShow = /[?&]show_id=(\d+)/.exec(url)
+      return mockResponse(byShow ? all.filter((e) => e.show_id === Number(byShow[1])) : all)
+    }
     return mockResponse([])
   })
   return log

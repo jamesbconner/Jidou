@@ -29,6 +29,7 @@ router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 @router.get("", response_model=list[WatchlistRead])
 async def list_watchlist(
     status: str | None = None,
+    show_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
     db_session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -43,6 +44,9 @@ async def list_watchlist(
 
     Args:
         status: Optional filter by watchlist status.
+        show_id: Optional filter to one show's entry (at most one row, since a
+            show is on the watchlist at most once). Lets a page check one
+            show's membership without fetching the whole watchlist.
         limit: Maximum results to return (default 50).
         offset: Number of results to skip for pagination.
         db_session: DB session (injected).
@@ -83,6 +87,8 @@ async def list_watchlist(
                 detail=f"Invalid status {status!r}. Must be one of: {valid}",
             ) from None
         stmt = stmt.where(WatchlistEntry.status == status)
+    if show_id is not None:
+        stmt = stmt.where(WatchlistEntry.show_id == show_id)
 
     stmt = stmt.order_by(WatchlistEntry.position.asc(), WatchlistEntry.created_at.asc())
     stmt = stmt.offset(offset).limit(limit)

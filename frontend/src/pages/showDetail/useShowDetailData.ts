@@ -1,7 +1,7 @@
 import { useShow, useShowEpisodes } from '@/hooks/useShows'
 import { useFilesByShow } from '@/hooks/useFiles'
 import { useRssSubscriptions, useRssFeeds } from '@/hooks/useRss'
-import { useWatchlist } from '@/hooks/useWatchlist'
+import { useWatchlist, useWatchlistEntryForShow } from '@/hooks/useWatchlist'
 import { useConfig } from '@/hooks/useConfig'
 
 /**
@@ -21,11 +21,14 @@ export function useShowDetailData(showId: number) {
   const { data: movieFiles = [] } = useFilesByShow(showId, isMovie)
   const { data: rssSubs = [] } = useRssSubscriptions({ show_id: showId })
   const { data: rssFeeds = [] } = useRssFeeds()
-  // TODO: fetches the entire watchlist just to look up this one show (no by-show
-  // API filter exists yet). Add a `show_id` filter to GET /watchlist and use it
-  // here; keep a lazy full-list fetch (enabled only once this show is confirmed
-  // on the watchlist) for the Queue #N position/reorder dropdown.
-  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000)
+  // Membership comes from the by-show filter, so a show that is not on the
+  // watchlist never fetches the whole list. The full list is loaded only once
+  // the show is confirmed on the watchlist: the Queue #N position/reorder
+  // select needs every entry in queue order.
+  const { data: watchlistEntry = null } = useWatchlistEntryForShow(showId)
+  const { data: watchlistEntries = [] } = useWatchlist(undefined, 10000, {
+    enabled: watchlistEntry !== null,
+  })
 
   return {
     show,
@@ -34,6 +37,7 @@ export function useShowDetailData(showId: number) {
     config,
     rssSubs,
     rssFeeds,
+    watchlistEntry,
     watchlistEntries,
     isMovie,
     isLoading,

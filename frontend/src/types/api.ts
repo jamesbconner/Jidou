@@ -30,6 +30,8 @@ export type TmdbNetwork = components['schemas']['TmdbNetwork']
 
 export type ShowList = components['schemas']['ShowList']
 
+export type ShowIndexEntry = components['schemas']['ShowIndexEntry']
+
 export type ShowRead = Omit<components['schemas']['ShowRead'], 'aliases_sources'> & {
   aliases_sources: { tmdb: string[]; llm: string[]; user: string[] } | null
 }

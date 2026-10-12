@@ -160,7 +160,7 @@ exports[`AddShowFromFeedPane characterization > hand edit previews after the deb
 [
   "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
   "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
-  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/shows/index",
   "POST /api/rss/feeds/7/suggest-regex",
   "POST /api/rss/feeds/7/test-regex",
   "POST /api/rss/feeds/7/test-regex",
@@ -184,7 +184,7 @@ exports[`AddShowFromFeedPane characterization > library pick: suggestion fills t
 [
   "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
   "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
-  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/shows/index",
   "POST /api/rss/feeds/7/suggest-regex",
 ]
 `;
@@ -297,7 +297,7 @@ exports[`AddShowFromFeedPane characterization > nothing picked: search results f
 [
   "GET /api/shows/search?query=Brand%20New%20Show&limit=6",
   "GET /api/shows/tmdb/search?query=Brand%20New%20Show&media_type=multi",
-  "GET /api/shows?sort=title_asc&limit=10000",
+  "GET /api/shows/index",
 ]
 `;
 

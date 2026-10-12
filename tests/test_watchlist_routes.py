@@ -238,6 +238,73 @@ def test_list_watchlist_invalid_status_returns_400() -> None:
         app.dependency_overrides.clear()
 
 
+def _executed_list_sql(session_holder: list[AsyncMock]) -> str:
+    """Compile the statement the list route executed, for WHERE-clause assertions."""
+    from sqlalchemy.dialects import postgresql
+
+    stmt = session_holder[0].execute.await_args.args[0]
+    return str(stmt.compile(dialect=postgresql.dialect()))
+
+
+def _capturing_override(entries: list[MagicMock]) -> tuple[list[AsyncMock], "type[AsyncMock]"]:
+    """Wrap ``_session_override`` so the test can inspect the yielded session."""
+    holder: list[AsyncMock] = []
+    inner = _session_override(many=entries)
+
+    async def _override() -> AsyncMock:
+        async for session in inner():  # type: ignore[attr-defined]
+            holder.append(session)
+            yield session
+
+    return holder, _override  # type: ignore[return-value]
+
+
+def test_list_watchlist_filter_by_show_id() -> None:
+    """GET /api/watchlist?show_id=N filters to that show in SQL (DF-18 membership check)."""
+    from jidou.database import get_session
+
+    entry = _make_entry(id=4, show_id=42)
+    holder, override = _capturing_override([entry])
+    app.dependency_overrides[get_session] = override
+    try:
+        response = TestClient(app).get("/api/watchlist?show_id=42")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert [e["show_id"] for e in response.json()] == [42]
+    sql = _executed_list_sql(holder)
+    assert "WHERE watchlist.show_id = %(show_id_1)s" in sql
+    assert holder[0].execute.await_count == 1
+
+
+def test_list_watchlist_without_show_id_is_unfiltered() -> None:
+    """Omitting show_id keeps the full-list query (no show_id predicate)."""
+    from jidou.database import get_session
+
+    holder, override = _capturing_override([_make_entry()])
+    app.dependency_overrides[get_session] = override
+    try:
+        response = TestClient(app).get("/api/watchlist")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "watchlist.show_id =" not in _executed_list_sql(holder)
+
+
+def test_list_watchlist_rejects_non_integer_show_id() -> None:
+    """show_id is typed as an int query parameter."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(many=[])
+    try:
+        response = TestClient(app).get("/api/watchlist?show_id=abc")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
 def test_list_watchlist_ordered_by_position() -> None:
     """GET /api/watchlist returns entries ordered by position ascending."""
     from jidou.database import get_session
