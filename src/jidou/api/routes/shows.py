@@ -16,7 +16,7 @@ from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
+from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.schemas.calendar_schema import CalendarEpisode, CalendarSyncResult
 from jidou.schemas.discover_schema import DiscoverResult
 from jidou.schemas.episode_schema import EpisodeList
@@ -519,7 +519,9 @@ async def create_show(
     Returns:
         The created or existing :class:`Show` record.
     """
-    result = await get_or_create_show_from_tmdb(db_session, tmdb, payload, llm=llm)
+    result = await get_or_create_show_from_tmdb(
+        db_session, tmdb, ShowSeed.from_create(payload), llm=llm
+    )
     return result.show
 
 

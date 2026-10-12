@@ -4,13 +4,14 @@ These pin the exact ``Show`` attributes the orchestrator builds, so the
 ``ShowSeed`` refactor (DF-16) can be proven behaviour-preserving.
 """
 
+import dataclasses
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from jidou.models.show import Show
-from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
+from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.schemas.show_schema import ShowCreate
 
 _ORCH = "jidou.orchestrators.show_creation_orchestrator"
@@ -80,7 +81,9 @@ def externals():
 
 
 async def _create(payload: ShowCreate) -> Show:
-    result = await get_or_create_show_from_tmdb(_session(), MagicMock(), payload, llm=MagicMock())
+    result = await get_or_create_show_from_tmdb(
+        _session(), MagicMock(), ShowSeed.from_create(payload), llm=MagicMock()
+    )
     assert result.created is True
     return result.show
 
@@ -161,3 +164,33 @@ async def test_success_path_honours_explicit_overrides(externals) -> None:
 
     assert (show.content_type, show.sys_name, show.local_path) == ("anime", "Mine", "/mine")
     assert show.media_type == "movie"
+
+
+def test_show_seed_covers_every_show_create_field() -> None:
+    """No ShowCreate field may be silently dropped by the seed."""
+    seed_fields = {f.name for f in dataclasses.fields(ShowSeed)}
+    assert seed_fields == set(ShowCreate.model_fields)
+    assert len(seed_fields) >= 30
+
+
+def test_show_seed_round_trips_every_field_and_is_frozen() -> None:
+    seed = ShowSeed.from_create(ShowCreate(**FULL_PAYLOAD))
+
+    assert dataclasses.asdict(seed) == FULL_PAYLOAD
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        seed.title = "other"  # type: ignore[misc]
+
+
+def test_search_card_fields_are_exactly_the_old_dump_minus_explicit_fields() -> None:
+    fields = ShowSeed.from_create(ShowCreate(**FULL_PAYLOAD)).search_card_fields()
+
+    assert set(fields) == set(FULL_PAYLOAD) - NOT_IN_FALLBACK
+    assert fields == {k: v for k, v in FULL_PAYLOAD.items() if k not in NOT_IN_FALLBACK}
+
+
+def test_from_create_does_not_alias_the_request_payload() -> None:
+    payload = ShowCreate(**FULL_PAYLOAD)
+    seed = ShowSeed.from_create(payload)
+
+    assert seed.genres == payload.genres
+    assert seed.genres is not payload.genres

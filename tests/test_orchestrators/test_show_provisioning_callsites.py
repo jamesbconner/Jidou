@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from jidou.models.show import Show
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
 from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
-from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
+from jidou.orchestrators.show_creation_orchestrator import ShowSeed, get_or_create_show_from_tmdb
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
 from jidou.schemas.show_schema import ShowCreate
@@ -69,7 +69,10 @@ def creation_patches():
 
 async def _create(session: AsyncMock):
     return await get_or_create_show_from_tmdb(
-        session, MagicMock(), ShowCreate(tmdb_id=1396, title="X"), llm=MagicMock()
+        session,
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="X")),
+        llm=MagicMock(),
     )
 
 
