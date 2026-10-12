@@ -45,7 +45,7 @@ from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.path_resolution import resolve_show_local_path
 from jidou.services.path_transport import basename_any
-from jidou.services.show_lookup import find_show_by_name
+from jidou.services.show_lookup import find_show_by_name, find_show_by_tmdb_id
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
@@ -983,8 +983,10 @@ class PathImportOrchestrator:
             logger.info("[dry-run] Would create show %r (tmdb_id=%d)", title, tmdb_id)
             return show, "created"
 
+        # Recover a lost race by tmdb_id (unique), not by title: another show can share the
+        # title, and adopting it would import this directory's files into the wrong show.
         winner, inserted = await insert_show_or_existing(
-            self.session, show, refind=lambda: self._db_find_show(title)
+            self.session, show, refind=lambda: find_show_by_tmdb_id(self.session, tmdb_id)
         )
         if not inserted:
             return await self._adopt_race_winner(winner, title)
