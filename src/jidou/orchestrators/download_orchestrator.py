@@ -4,16 +4,16 @@ import asyncio
 import hashlib
 import logging
 import zlib
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
+from jidou.orchestrators._events import EventSink
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.filename_parser import extract_crc32
 from jidou.services.sftp_service import SFTPService
 
@@ -186,8 +186,8 @@ class DownloadOrchestrator:
         dry_run: bool = False,
         max_workers: int = 8,
         stale_downloading_seconds: int = 3600,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
-        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
+        on_event: OnEvent | None = None,
     ) -> DownloadResult:
         """Download all DISCOVERED files, updating status to DOWNLOADED or ERROR.
 
@@ -215,12 +215,7 @@ class DownloadOrchestrator:
             DownloadResult with counts.
         """
 
-        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
-            if on_event:
-                try:
-                    await on_event(level, msg, ctx)
-                except Exception:
-                    logger.warning("Event logging failed; continuing", exc_info=True)
+        _emit = EventSink(on_event, swallow_errors=True)
 
         files_downloaded = 0
         bytes_downloaded = 0

@@ -9,15 +9,15 @@ walked again. See ``ScannedDirectory``.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReason
 from jidou.models.scanned_directory import ScannedDirectory
 from jidou.orchestrators._bulk_existence import chunked_existing_paths, insert_or_skip_duplicate
+from jidou.orchestrators._events import EventSink
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.file_filters import find_noscan_scan_overlaps, is_under_any_path
 from jidou.services.sftp_service import RecursiveListResult, RemoteFile, SFTPService
 
@@ -92,8 +92,8 @@ class ScanOrchestrator:
     async def run(
         self,
         dry_run: bool = False,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
-        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
+        on_event: OnEvent | None = None,
     ) -> ScanResult:
         """Scan every remote path and create DISCOVERED records for new files.
 
@@ -121,12 +121,7 @@ class ScanOrchestrator:
             merely seen as new.
         """
 
-        async def _emit(level: str, msg: str, ctx: dict[str, Any] | None = None) -> None:
-            if on_event:
-                try:
-                    await on_event(level, msg, ctx)
-                except Exception:
-                    logger.warning("Event logging failed; continuing", exc_info=True)
+        _emit = EventSink(on_event, swallow_errors=True)
 
         total = len(self.remote_paths)
         all_top_level_files: list[RemoteFile] = []

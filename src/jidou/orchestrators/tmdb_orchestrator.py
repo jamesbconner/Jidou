@@ -2,7 +2,7 @@
 
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, cast
@@ -14,6 +14,7 @@ from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.services.callbacks import OnProgress
 from jidou.services.episode_group_mapping import (
     fetch_group_breakdowns,
     flatten_for_absolute_numbering,
@@ -144,7 +145,7 @@ class TMDBOrchestrator:
     async def sync_show_episodes(
         self,
         show: Show,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
         bypass_cache: bool = False,
     ) -> TMDBSyncResult:
         """Fetch all seasons and episodes for one show and upsert Episode rows.
@@ -626,7 +627,7 @@ class TMDBOrchestrator:
 
     async def sync_all_shows(
         self,
-        on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+        on_progress: OnProgress | None = None,
     ) -> TMDBSyncResult:
         """Sync episodes for all shows where cached=False or episodes don't exist.
 

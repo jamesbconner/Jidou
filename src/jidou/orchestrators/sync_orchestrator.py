@@ -1,9 +1,7 @@
 """Orchestrator for running the full sync pipeline."""
 
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +14,7 @@ from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, ParseResul
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator, RouteResult
 from jidou.orchestrators.scan_orchestrator import ScanOrchestrator, ScanResult
 from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator, TMDBSyncResult
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.sftp_service import SFTPService
@@ -161,8 +160,8 @@ class SyncOrchestrator:
         self,
         show_id: int | None = None,
         dry_run: bool = False,
-        on_phase: Callable[[int, int, str], Awaitable[None]] | None = None,
-        on_event: Callable[[str, str, dict[str, Any] | None], Awaitable[None]] | None = None,
+        on_phase: OnProgress | None = None,
+        on_event: OnEvent | None = None,
     ) -> SyncResult:
         """Execute all 5 phases in order, reporting phase-level progress.
 

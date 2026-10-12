@@ -2,7 +2,8 @@
 
 These tests freeze the *current* behavior, which is deliberately inconsistent:
 download, parse, route and scan swallow an event-logging failure and finish the
-work; sync and path import let it propagate and abort the run. A later approved
+work; sync, path import, RSS import and RSS publish let it propagate and abort
+the run. A later approved
 roadmap item (DF-7) changes these semantics on purpose, so each test is named
 per orchestrator and is expected to be edited, not deleted, when that happens.
 
@@ -19,8 +20,11 @@ from jidou.orchestrators.download_orchestrator import DownloadOrchestrator
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
 from jidou.orchestrators.path_import_orchestrator import PathImportOrchestrator
 from jidou.orchestrators.route_orchestrator import RouteOrchestrator
+from jidou.orchestrators.rss_import_orchestrator import RssImportOrchestrator
+from jidou.orchestrators.rss_publish_orchestrator import RssPublishOrchestrator
 from jidou.orchestrators.scan_orchestrator import ScanOrchestrator
 from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
+from tests import test_rss_publish_orchestrator as rss_publish_tests
 from tests.test_orchestrators import test_download_orchestrator as download_tests
 from tests.test_orchestrators import test_match_orchestrator as match_tests
 from tests.test_orchestrators import test_route_orchestrator as route_tests
@@ -135,3 +139,53 @@ async def test_path_import_event_failure_propagates() -> None:
 
     with pytest.raises(RuntimeError, match="log down"):
         await orch.run([])
+
+
+async def test_rss_import_event_failure_propagates() -> None:
+    """RssImportOrchestrator aborts with the on_event error instead of swallowing it."""
+    sftp = MagicMock()
+    sftp.download_bytes = AsyncMock(return_value=b"{}")
+    orch = RssImportOrchestrator(
+        MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=_failing_on_event()
+    )
+
+    with pytest.raises(RuntimeError, match="log down"):
+        await orch.run()
+
+    # The very first event precedes the download, so a propagating failure
+    # means the remote config was never fetched.
+    sftp.download_bytes.assert_not_awaited()
+
+
+async def test_rss_import_parse_error_event_failure_propagates() -> None:
+    """A failing on_event also aborts RssImportOrchestrator on its error-reporting path."""
+    sftp = MagicMock()
+    sftp.download_bytes = AsyncMock(return_value=b"not a yarss2 config")
+    on_event = AsyncMock(side_effect=[None, RuntimeError("log down")])
+    orch = RssImportOrchestrator(
+        MagicMock(), sftp, "/remote/yarss2.conf", dry_run=True, on_event=on_event
+    )
+
+    with pytest.raises(RuntimeError, match="log down"):
+        await orch.run()
+
+    assert on_event.await_count == 2
+
+
+async def test_rss_publish_event_failure_propagates() -> None:
+    """RssPublishOrchestrator aborts with the on_event error instead of swallowing it."""
+    session = rss_publish_tests._make_session()
+    sftp = MagicMock()
+    sftp.upload_bytes = AsyncMock()
+
+    with patch("jidou.orchestrators.rss_publish_orchestrator.RssImportOrchestrator") as import_cls:
+        import_cls.return_value.run = AsyncMock(return_value=rss_publish_tests._import_result_ok())
+        orch = RssPublishOrchestrator(
+            session, sftp, "/remote/yarss2.conf", dry_run=True, on_event=_failing_on_event()
+        )
+        with pytest.raises(RuntimeError, match="log down"):
+            await orch.run()
+
+    # The failing first event precedes the pre-publish import and any upload.
+    import_cls.return_value.run.assert_not_awaited()
+    sftp.upload_bytes.assert_not_awaited()
