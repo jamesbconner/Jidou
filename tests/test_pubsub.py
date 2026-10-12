@@ -210,3 +210,31 @@ async def test_listen_exception_triggers_resubscribe_and_continues() -> None:
     subscriber._broadcast = AsyncMock()
     with patch("asyncio.sleep", new_callable=AsyncMock):
         await subscriber._listen()
+
+    mock_pubsub.subscribe.assert_awaited_once_with("task_progress")
+
+
+@pytest.mark.asyncio
+async def test_recover_sleeps_five_seconds_then_resubscribes() -> None:
+    """Reconnect path: 5 s backoff first, then re-subscribe to the progress channel."""
+    order: list[str] = []
+    pubsub = AsyncMock()
+    pubsub.subscribe = AsyncMock(side_effect=lambda ch: order.append(f"subscribe:{ch}"))
+
+    async def fake_sleep(seconds: float) -> None:
+        order.append(f"sleep:{seconds}")
+
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        await PubSubSubscriber._recover(pubsub)
+
+    assert order == ["sleep:5", "subscribe:task_progress"]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_without_broadcast_logs_and_skips(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A valid message with no broadcast callback set is skipped with an error log."""
+    subscriber = PubSubSubscriber()
+    await subscriber._handle_message({"type": "message", "data": '{"celery_task_id": "t"}'})
+    assert "broadcast callback not set" in caplog.text

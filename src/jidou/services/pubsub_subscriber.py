@@ -87,12 +87,23 @@ class PubSubSubscriber:
                 raise
             except Exception:
                 logger.exception("PubSub subscriber loop failed — retrying in 5 seconds")
-                await asyncio.sleep(5)
-                # Re-subscribe on the next iteration
-                try:
-                    await pubsub.subscribe(TASK_PROGRESS_CHANNEL)
-                except Exception:
-                    logger.exception("Failed to re-subscribe to Redis channel")
+                await self._recover(pubsub)
+
+    @staticmethod
+    async def _recover(pubsub: aioredis.client.PubSub) -> None:
+        """Back off for 5 seconds, then re-subscribe so the listen loop can resume.
+
+        A failed re-subscribe is logged, not raised: the next loop iteration
+        will fail again and retry, which keeps the subscriber alive.
+
+        Args:
+            pubsub: The PubSub connection to re-subscribe.
+        """
+        await asyncio.sleep(5)
+        try:
+            await pubsub.subscribe(TASK_PROGRESS_CHANNEL)
+        except Exception:
+            logger.exception("Failed to re-subscribe to Redis channel")
 
     async def _handle_message(self, message: dict[str, Any] | None) -> None:
         """Parse one PubSub message and forward it to the broadcast callback.
