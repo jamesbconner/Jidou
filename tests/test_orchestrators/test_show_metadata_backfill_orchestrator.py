@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from jidou.orchestrators.show_metadata_backfill_orchestrator import (
+    _SKIP_FIELDS,
     ShowMetadataBackfillOrchestrator,
 )
 
@@ -324,3 +325,8 @@ async def test_reports_progress_per_candidate() -> None:
         (2, 3, "Backfilling Show 2"),
         (3, 3, "Backfilling Show 3"),
     ]
+
+
+def test_skip_fields_is_exactly_sys_name() -> None:
+    """Deriving _SKIP_FIELDS from column provenance must not change the skipped set."""
+    assert frozenset({"sys_name"}) == _SKIP_FIELDS

@@ -16,7 +16,7 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus, IgnoredReas
 from jidou.models.episode import Episode, TrackedSource
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.rss import RssConfigSnapshot, RssSubscription, SnapshotType
-from jidou.models.show import ContentType, Show
+from jidou.models.show import ContentType, Show, show_columns
 from jidou.models.task import (
     ACTIVE_TASK_STATUSES,
     TERMINAL_TASK_STATUSES,
@@ -151,3 +151,34 @@ def test_vocabulary_enum_values_match_production_data() -> None:
     assert {m.value for m in ContentType} == {"anime", "tv", "movie"}
     assert {m.value for m in TrackedSource} == {"match", "import"}
     assert {m.value for m in SnapshotType} == {"import", "pre_publish", "post_publish"}
+
+
+def test_every_show_column_has_source() -> None:
+    """Every Show column declares its provenance, so show_columns() partitions the table."""
+    all_columns = {c.name for c in Show.__table__.columns}
+    assert len(all_columns) >= 40
+    tagged = [c.name for c in Show.__table__.columns if "source" in c.info]
+    assert set(tagged) == all_columns
+
+    buckets = [show_columns(s) for s in ("tmdb", "user", "derived", "key")]
+    # Disjoint and exhaustive: each column belongs to exactly one source.
+    assert sum(len(b) for b in buckets) == len(all_columns)
+    assert frozenset().union(*buckets) == all_columns
+
+
+def test_show_column_provenance_tagging() -> None:
+    """Pin the documented provenance of the non-TMDB columns."""
+    assert show_columns("key") == {"id", "tmdb_id", "created_at", "updated_at"}
+    assert show_columns("derived") == {"sys_name", "cached", "episode_group_map"}
+    assert show_columns("user") == {
+        "content_type",
+        "local_path",
+        "aliases",
+        "aliases_sources",
+        "active_episode_group_id",
+        "active_episode_group_name",
+        "list_poster_path",
+        "detail_poster_path",
+        "banner_path",
+        "track_missing_episodes",
+    }
