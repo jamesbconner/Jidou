@@ -42,10 +42,10 @@ export default [
       // false positives on TS-only constructs that tsc already catches.
       'no-undef': 'off',
       // Complexity ratchet (frontend simplification plan, Task 1): pinned at
-      // the measured maximum (ResolveFileModal = 76 after the FE-4 ShowDetail modal split;
-      // ShowDetail itself is now 51).
+      // the measured maximum (ShowDetail = 51 after the FE-6 ResolveFileModal split, which
+      // dropped ResolveFileModal from 76 to 37; Shows is 42).
       // It may only ever be lowered.
-      complexity: ['error', 76],
+      complexity: ['error', 51],
     },
   },
   {
