@@ -173,8 +173,8 @@ def test_shadowing_guard_detects_shadowed_route() -> None:
 _API_DIR = Path(__file__).parent.parent / "src" / "jidou" / "api"
 
 # Ratchet: lower this whenever a refactor reduces the worst offender; never raise it.
-# Current worst: shows.py discover_shows (14).
-_API_MAX_COMPLEXITY = 14
+# Current worst: shows.py get_similar_shows (11), settings.py update_settings (11).
+_API_MAX_COMPLEXITY = 11
 
 
 def test_api_cyclomatic_complexity_ratchet() -> None:
