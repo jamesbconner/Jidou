@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,9 +22,17 @@ class RssFeed(TimestampMixin, Base):
     """
 
     __tablename__ = "rss_feeds"
+    __table_args__ = (
+        # 0001_initial created both a unique constraint and a separate plain
+        # index on remote_key; declare exactly that pair so ``alembic check``
+        # matches the database (``unique=True, index=True`` would yield one
+        # unique index instead).
+        UniqueConstraint("remote_key", name="rss_feeds_remote_key_key"),
+        Index("ix_rss_feeds_remote_key", "remote_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    remote_key: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    remote_key: Mapped[str | None] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(255))
     url: Mapped[str] = mapped_column(String(2048))
     default_download_location: Mapped[str | None] = mapped_column(String(1024))
@@ -66,6 +74,15 @@ class RssSubscription(TimestampMixin, Base):
             "remote_key",
             unique=True,
             postgresql_where="remote_key IS NOT NULL",
+        ),
+        # At most one stub (remote_key IS NULL) subscription per show; the
+        # consumer is services/rss_stub, which relies on the resulting
+        # IntegrityError to ignore concurrent stub inserts.
+        Index(
+            "ix_rss_subscriptions_unique_stub_per_show",
+            "show_id",
+            unique=True,
+            postgresql_where=text("remote_key IS NULL"),
         ),
     )
 

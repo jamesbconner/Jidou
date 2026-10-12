@@ -141,6 +141,9 @@ jobs:
       - name: Check migration state
         run: docker compose exec -T jidou-api alembic current
 
+      - name: Check models match migrations
+        run: docker compose exec -T jidou-api alembic check
+
       - name: Print API logs on failure
         if: failure()
         run: docker compose logs jidou-api

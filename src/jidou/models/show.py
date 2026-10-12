@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy import Boolean, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,17 @@ class Show(TimestampMixin, Base):
     """Represents a movie or TV series discovered via TMDB."""
 
     __tablename__ = "shows"
+    __table_args__ = (
+        # GIN index for the JSONB containment (@>) alias lookup in
+        # services/show_lookup. Created by hand in a migration, so it must be
+        # declared here or ``alembic check`` reports it as drift.
+        Index(
+            "ix_shows_aliases_gin",
+            "aliases",
+            postgresql_using="gin",
+            postgresql_ops={"aliases": "jsonb_path_ops"},
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     tmdb_id: Mapped[int] = mapped_column(unique=True, index=True)
