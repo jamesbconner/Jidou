@@ -122,12 +122,22 @@ Read it first. Finding IDs (M*, D*) and section numbers (§) refer to it.
 **Interfaces:**
 - `Show.__table_args__` gains:
   ```python
-  Index("ix_shows_aliases_gin", "aliases", postgresql_using="gin", postgresql_ops={"aliases": "jsonb_path_ops"})
+  Index(
+      "ix_shows_aliases_gin",
+      "aliases",
+      postgresql_using="gin",
+      postgresql_ops={"aliases": "jsonb_path_ops"},
+  )
   ```
   with a comment naming `services/show_lookup` as its consumer.
 - `RssSubscription.__table_args__` gains:
   ```python
-  Index("ix_rss_subscriptions_unique_stub_per_show", "show_id", unique=True, postgresql_where=text("remote_key IS NULL"))
+  Index(
+      "ix_rss_subscriptions_unique_stub_per_show",
+      "show_id",
+      unique=True,
+      postgresql_where=text("remote_key IS NULL"),
+  )
   ```
   with a comment naming `services/rss_stub` as its consumer.
 - `Episode.__table_args__` gains
@@ -202,9 +212,15 @@ Read it first. Finding IDs (M*, D*) and section numbers (§) refer to it.
 **Interfaces:**
 - Produces, in `models/task.py`:
   ```python
-  ACTIVE_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset({TaskStatus.PENDING, TaskStatus.RUNNING})
-  TERMINAL_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED})
-  status: Mapped[TaskStatus] = mapped_column(str_enum(TaskStatus, native_enum=False, length=50), default=TaskStatus.PENDING)
+  ACTIVE_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+      {TaskStatus.PENDING, TaskStatus.RUNNING}
+  )
+  TERMINAL_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+      {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+  )
+  status: Mapped[TaskStatus] = mapped_column(
+      str_enum(TaskStatus, native_enum=False, length=50), default=TaskStatus.PENDING
+  )
   ```
   - The members are `StrEnum`s, so the sets also match plain strings,
     and `.in_(…)` binds their values.
@@ -249,8 +265,15 @@ Read it first. Finding IDs (M*, D*) and section numbers (§) refer to it.
 **Interfaces:**
 - Produces:
   ```python
-  class TrackedSource(StrEnum): MATCH = "match"; IMPORT = "import"   # models/episode.py
-  class SnapshotType(StrEnum): IMPORT = "import"; PRE_PUBLISH = "pre_publish"; POST_PUBLISH = "post_publish"  # models/rss.py
+  class TrackedSource(StrEnum):
+      MATCH = "match"
+      IMPORT = "import"  # models/episode.py
+
+
+  class SnapshotType(StrEnum):
+      IMPORT = "import"
+      PRE_PUBLISH = "pre_publish"
+      POST_PUBLISH = "post_publish"  # models/rss.py
   ```
   - `Show.content_type: Mapped[ContentType | None]`,
     `Episode.tracked_source` / `OrphanedTrackingRecord.tracked_source:
