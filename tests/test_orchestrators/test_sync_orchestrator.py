@@ -1,5 +1,7 @@
 """Tests for SyncOrchestrator."""
 
+from contextlib import ExitStack
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -408,3 +410,508 @@ async def test_run_on_event_forwarded_to_every_sub_orchestrator():
         mock_cls.return_value.run.assert_called_once()
         call_kwargs = mock_cls.return_value.run.call_args.kwargs
         assert call_kwargs.get("on_event") is on_event
+
+
+# ---------------------------------------------------------------------------
+# Characterization tests (ORC-7): pin the observable sequence of the pipeline
+# -- external calls, events, progress ticks, commit/rollback -- so the phase
+# split cannot reorder or drop any of it, including on failure paths.
+# ---------------------------------------------------------------------------
+
+_PATCH_BASE = "jidou.orchestrators.sync_orchestrator"
+
+
+def _scripted_session(calls: list[str], results: list[object]) -> MagicMock:
+    """Session whose execute() returns *results* in order and logs every DB call."""
+    session = MagicMock()
+    queue = list(results)
+
+    async def execute(*_args: object, **_kwargs: object) -> object:
+        calls.append("db.execute")
+        if not queue:
+            raise AssertionError("unexpected extra session.execute() call")
+        item = queue.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    async def commit() -> None:
+        calls.append("db.commit")
+
+    async def rollback() -> None:
+        calls.append("db.rollback")
+
+    async def flush() -> None:
+        calls.append("db.flush")
+
+    session.execute = execute
+    session.commit = commit
+    session.rollback = rollback
+    session.flush = flush
+    return session
+
+
+def _scalar_one_or_none(value: object) -> MagicMock:
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = value
+    return res
+
+
+def _scalar(value: object) -> MagicMock:
+    res = MagicMock()
+    res.scalar.return_value = value
+    return res
+
+
+def _scalars_all(values: list[object]) -> MagicMock:
+    res = MagicMock()
+    res.scalars.return_value.all.return_value = values
+    return res
+
+
+def _patched_pipeline(calls: list[str]) -> tuple[ExitStack, dict[str, MagicMock]]:
+    """Patch the five sub-orchestrators; each ``run`` appends to *calls*."""
+
+    def make(name: str, result: object) -> MagicMock:
+        cls = MagicMock()
+
+        async def run(**kwargs: object) -> object:
+            calls.append(f"{name}.run")
+            return result
+
+        cls.return_value.run = run
+        return cls
+
+    stack = ExitStack()
+    mocks: dict[str, MagicMock] = {}
+    for key, name, result in (
+        ("ScanOrchestrator", "scan", _make_scan_result()),
+        ("DownloadOrchestrator", "download", _make_download_result()),
+        ("ParseOrchestrator", "parse", _make_parse_result()),
+        ("RouteOrchestrator", "route", _make_route_result()),
+    ):
+        mocks[key] = stack.enter_context(patch(f"{_PATCH_BASE}.{key}", make(name, result)))
+    tmdb_cls = stack.enter_context(patch(f"{_PATCH_BASE}.TMDBOrchestrator"))
+
+    async def sync_all() -> TMDBSyncResult:
+        calls.append("tmdb.sync_all_shows")
+        return _make_tmdb_result()
+
+    tmdb_cls.return_value.sync_all_shows = sync_all
+    mocks["TMDBOrchestrator"] = tmdb_cls
+    return stack, mocks
+
+
+def _recorders(calls: list[str]) -> tuple[Any, Any]:
+    async def on_phase(current: int, total: int, message: str) -> None:
+        calls.append(f"phase:{current}/{total}:{message}")
+
+    async def on_event(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        calls.append(f"event:{level}:{message}")
+
+    return on_phase, on_event
+
+
+def _sftp() -> MagicMock:
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    return sftp
+
+
+def _cached_show(*, cached: bool, show_id: int = 7) -> MagicMock:
+    show = MagicMock()
+    show.id = show_id
+    show.cached = cached
+    return show
+
+
+async def test_characterize_full_run_call_order_all_shows():
+    """Phase ticks, TMDB/sub-orchestrator calls and summary events interleave in order."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalars_all([])])  # phase 4.5 gap query only
+    on_phase, on_event = _recorders(calls)
+    stack, _ = _patched_pipeline(calls)
+    with stack:
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(
+            on_phase=on_phase, on_event=on_event
+        )
+
+    assert calls == [
+        "phase:1/5:Syncing TMDB episode data",
+        "tmdb.sync_all_shows",
+        "event:info:TMDB sync: 1 shows refreshed, 5 episodes upserted",
+        "phase:2/5:Scanning remote files",
+        "scan.run",
+        "event:info:Scan: 3 new file(s) discovered, 0 already known",
+        "phase:3/5:Downloading new files",
+        "download.run",
+        "event:info:Download: 3 file(s) downloaded",
+        "phase:4/5:Parsing and matching files to shows",
+        "parse.run",
+        "event:info:Parse: 3 file(s) matched to shows",
+        "db.execute",  # phase 4.5 gap query
+        "phase:5/5:Routing matched files",
+        "route.run",
+        "event:info:Route: 3 file(s) routed to final paths",
+    ]
+
+
+async def test_characterize_dry_run_call_order_and_event_suffixes():
+    """Dry run: no TMDB, no gap fill, no DB access; suffixes and zero TMDB counts pinned."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [])
+    events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    async def on_event(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        calls.append(f"event:{message}")
+        events.append((level, message, ctx))
+
+    stack, mocks = _patched_pipeline(calls)
+    with stack:
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(
+            dry_run=True, on_event=on_event
+        )
+
+    mocks["TMDBOrchestrator"].assert_not_called()
+    assert calls == [
+        "event:TMDB sync: 0 shows refreshed, 0 episodes upserted (skipped — dry run)",
+        "scan.run",
+        "event:Scan: 3 new file(s) discovered, 0 already known (dry run)",
+        "download.run",
+        "event:Download: 3 file(s) downloaded (dry run)",
+        "parse.run",
+        "event:Parse: 3 file(s) matched to shows (dry run)",
+        "route.run",
+        "event:Route: 3 file(s) routed to final paths (dry run)",
+    ]
+    assert result.tmdb == TMDBSyncResult(0, 0, 0)
+    assert [e[0] for e in events] == ["info"] * 5
+    assert events[0][2] == {"shows_synced": 0, "episodes_upserted": 0}
+    assert events[1][2] == {"files_created": 3, "files_skipped": 0}
+    assert events[2][2] == {"files_downloaded": 3}
+    assert events[3][2] == {"files_matched": 3}
+    assert events[4][2] == {"files_routed": 3}
+
+
+async def test_characterize_single_show_sync_commits_before_scan():
+    """show_id sync: select show, episode-exists check, sync, commit, then later phases."""
+    calls: list[str] = []
+    show = _cached_show(cached=False)
+    session = _scripted_session(calls, [_scalar_one_or_none(show), _scalar(True), _scalars_all([])])
+    stack, mocks = _patched_pipeline(calls)
+
+    async def sync_show(s: object) -> TMDBSyncResult:
+        calls.append("tmdb.sync_show_episodes")
+        assert s is show
+        return TMDBSyncResult(1, 9, 2)
+
+    with stack:
+        mocks["TMDBOrchestrator"].return_value.sync_show_episodes = sync_show
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(show_id=7)
+
+    assert calls == [
+        "db.execute",  # select show
+        "db.execute",  # episodes-exist check
+        "tmdb.sync_show_episodes",
+        "db.commit",
+        "scan.run",
+        "download.run",
+        "parse.run",
+        "db.execute",  # gap query
+        "route.run",
+    ]
+    assert result.tmdb == TMDBSyncResult(1, 9, 2)
+
+
+async def test_characterize_cached_show_with_episodes_skips_sync_but_builds_orchestrator():
+    """Cached show with episodes: empty TMDB result, orchestrator still built for gap fill."""
+    calls: list[str] = []
+    session = _scripted_session(
+        calls, [_scalar_one_or_none(_cached_show(cached=True)), _scalar(True), _scalars_all([])]
+    )
+    stack, mocks = _patched_pipeline(calls)
+    with stack:
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(show_id=7)
+
+    mocks["TMDBOrchestrator"].assert_called_once()
+    assert result.tmdb == TMDBSyncResult(0, 0, 0)
+    assert "db.commit" not in calls
+    assert calls.count("db.execute") == 3  # show, exists, gap query (gap fill ran)
+
+
+async def test_characterize_cached_show_without_episodes_still_syncs():
+    """show.cached=True but no Episode rows: the sync still runs."""
+    calls: list[str] = []
+    session = _scripted_session(
+        calls, [_scalar_one_or_none(_cached_show(cached=True)), _scalar(False), _scalars_all([])]
+    )
+    stack, mocks = _patched_pipeline(calls)
+    mocks["TMDBOrchestrator"].return_value.sync_show_episodes = AsyncMock(
+        return_value=TMDBSyncResult(1, 2, 0)
+    )
+    with stack:
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(show_id=7)
+
+    mocks["TMDBOrchestrator"].return_value.sync_show_episodes.assert_awaited_once()
+    assert result.tmdb == TMDBSyncResult(1, 2, 0)
+    assert calls[:4] == ["db.execute", "db.execute", "db.commit", "scan.run"]
+
+
+async def test_characterize_missing_show_still_builds_orchestrator_for_gap_fill():
+    """Spec section 6 item 5: show_id not in DB gives an empty result, and gap fill still runs."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalar_one_or_none(None), _scalars_all([])])
+    stack, mocks = _patched_pipeline(calls)
+    with stack:
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(show_id=99)
+
+    mocks["TMDBOrchestrator"].assert_called_once()
+    assert result.tmdb == TMDBSyncResult(0, 0, 0)
+    assert calls == [
+        "db.execute",  # select show
+        "scan.run",
+        "download.run",
+        "parse.run",
+        "db.execute",  # gap query proves _fill_missing_episodes ran
+        "route.run",
+    ]
+
+
+async def test_characterize_tmdb_failure_rolls_back_then_continues_in_order():
+    """sync_show_episodes failure: rollback (no commit), zero counts, pipeline continues."""
+    calls: list[str] = []
+    session = _scripted_session(
+        calls,
+        [
+            _scalar_one_or_none(_cached_show(cached=False, show_id=5)),
+            _scalar(False),
+            _scalars_all([]),
+        ],
+    )
+    on_phase, on_event = _recorders(calls)
+    stack, mocks = _patched_pipeline(calls)
+    mocks["TMDBOrchestrator"].return_value.sync_show_episodes = AsyncMock(
+        side_effect=RuntimeError("TMDB API down")
+    )
+    with stack:
+        result = await SyncOrchestrator(session, _sftp(), MagicMock()).run(
+            show_id=5, on_phase=on_phase, on_event=on_event
+        )
+
+    assert result.tmdb == TMDBSyncResult(0, 0, 0)
+    assert calls[:6] == [
+        "phase:1/5:Syncing TMDB episode data",
+        "db.execute",
+        "db.execute",
+        "db.rollback",
+        "event:info:TMDB sync: 0 shows refreshed, 0 episodes upserted",
+        "phase:2/5:Scanning remote files",
+    ]
+    assert "db.commit" not in calls
+
+
+async def test_characterize_raising_on_event_propagates_from_tmdb_summary():
+    """A raising on_event is NOT swallowed by sync: it aborts before the scan starts."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [])
+
+    async def boom(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        calls.append("event")
+        raise RuntimeError("sink down")
+
+    stack, _ = _patched_pipeline(calls)
+    with stack, pytest.raises(RuntimeError, match="sink down"):
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_event=boom)
+
+    assert calls == ["tmdb.sync_all_shows", "event"]
+
+
+async def test_characterize_raising_on_event_propagates_from_parse_summary():
+    """An on_event failure after Parse skips gap fill and Route."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [])
+
+    async def boom_on_parse(level: str, message: str, ctx: dict[str, Any] | None = None) -> None:
+        if message.startswith("Parse:"):
+            raise RuntimeError("sink down")
+
+    stack, _ = _patched_pipeline(calls)
+    with stack, pytest.raises(RuntimeError, match="sink down"):
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_event=boom_on_parse)
+
+    assert calls == ["tmdb.sync_all_shows", "scan.run", "download.run", "parse.run"]
+
+
+async def test_characterize_cancellation_at_phase_5_after_gap_fill():
+    """Cancelling at the phase-5 tick leaves Parse and the gap fill done, Route unrun."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalars_all([])])
+
+    async def on_phase(current: int, total: int, message: str) -> None:
+        calls.append(f"phase:{current}")
+        if current == 5:
+            raise TaskCancelledError("cancelled")
+
+    stack, _ = _patched_pipeline(calls)
+    with stack, pytest.raises(TaskCancelledError):
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_phase=on_phase)
+
+    assert calls == [
+        "phase:1",
+        "tmdb.sync_all_shows",
+        "phase:2",
+        "scan.run",
+        "phase:3",
+        "download.run",
+        "phase:4",
+        "parse.run",
+        "db.execute",
+        "phase:5",
+    ]
+
+
+async def test_characterize_cancellation_at_phase_1_builds_nothing():
+    """Cancelling at the first tick means no TMDB orchestrator is built and nothing runs."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [])
+
+    async def on_phase(current: int, total: int, message: str) -> None:
+        raise TaskCancelledError("cancelled")
+
+    stack, mocks = _patched_pipeline(calls)
+    with stack, pytest.raises(TaskCancelledError):
+        await SyncOrchestrator(session, _sftp(), MagicMock()).run(on_phase=on_phase)
+
+    mocks["TMDBOrchestrator"].assert_not_called()
+    assert calls == []
+
+
+def _gap_file(file_id: int, season: int | None = None) -> MagicMock:
+    f = MagicMock()
+    f.id = file_id
+    f.original_filename = f"file{file_id}.mkv"
+    f.parsed_season = season
+    f.parsed_episode = 3
+    f.episode_id = None
+    return f
+
+
+async def test_characterize_gap_fill_commits_per_show_and_backfills_season():
+    """Per show: select show, resync, retry select, resolve each file, commit; season backfill."""
+    calls: list[str] = []
+    f_none, f_set, f_unresolved = _gap_file(1), _gap_file(2, season=1), _gap_file(3)
+    session = _scripted_session(
+        calls,
+        [
+            _scalars_all([1, 2]),
+            _scalar_one_or_none(MagicMock()),
+            _scalars_all([f_none, f_set, f_unresolved]),
+            _scalar_one_or_none(MagicMock()),
+            _scalars_all([]),
+        ],
+    )
+    tmdb_orch = MagicMock()
+
+    async def sync_show(show: object) -> None:
+        calls.append("tmdb.sync_show_episodes")
+
+    tmdb_orch.sync_show_episodes = sync_show
+    ep = MagicMock()
+    ep.id = 55
+    ep.season_number = 2
+    outcomes = iter([ep, ep, None])
+
+    async def resolve(_s: object, sid: int, season: int | None, episode: int | None) -> object:
+        calls.append(f"resolve:{sid}:{season}:{episode}")
+        return next(outcomes)
+
+    with patch(f"{_PATCH_BASE}.resolve_episode", resolve):
+        await SyncOrchestrator(session, _sftp(), MagicMock())._fill_missing_episodes(tmdb_orch)
+
+    assert calls == [
+        "db.execute",  # gap query
+        "db.execute",  # show 1
+        "tmdb.sync_show_episodes",
+        "db.execute",  # retry files
+        "resolve:1:None:3",
+        "resolve:1:1:3",
+        "resolve:1:None:3",
+        "db.commit",
+        "db.execute",  # show 2
+        "tmdb.sync_show_episodes",
+        "db.execute",
+        "db.commit",
+    ]
+    assert f_none.episode_id == 55 and f_none.parsed_season == 2  # backfilled
+    assert f_set.episode_id == 55 and f_set.parsed_season == 1  # left alone
+    assert f_unresolved.episode_id is None and f_unresolved.parsed_season is None
+
+
+async def test_characterize_gap_fill_db_error_mid_show_rolls_back_and_continues():
+    """A failing resync rolls back and skips that show (no commit); later shows still commit."""
+    calls: list[str] = []
+    f = _gap_file(9)
+    session = _scripted_session(
+        calls,
+        [
+            _scalars_all([1, 2]),
+            _scalar_one_or_none(MagicMock()),
+            _scalar_one_or_none(MagicMock()),
+            _scalars_all([f]),
+        ],
+    )
+    tmdb_orch = MagicMock()
+    attempts = 0
+
+    async def sync_show(show: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        calls.append(f"tmdb.sync:{attempts}")
+        if attempts == 1:
+            raise RuntimeError("db boom")
+
+    tmdb_orch.sync_show_episodes = sync_show
+    ep = MagicMock()
+    ep.id = 4
+    ep.season_number = 1
+    with patch(f"{_PATCH_BASE}.resolve_episode", AsyncMock(return_value=ep)):
+        await SyncOrchestrator(session, _sftp(), MagicMock())._fill_missing_episodes(tmdb_orch)
+
+    assert calls == [
+        "db.execute",
+        "db.execute",
+        "tmdb.sync:1",
+        "db.rollback",
+        "db.execute",
+        "tmdb.sync:2",
+        "db.execute",
+        "db.commit",
+    ]
+    assert f.episode_id == 4
+
+
+async def test_characterize_gap_fill_skips_missing_show_without_commit():
+    """A show id whose row vanished is skipped: no resync, no commit."""
+    calls: list[str] = []
+    session = _scripted_session(calls, [_scalars_all([1]), _scalar_one_or_none(None)])
+    tmdb_orch = MagicMock()
+    tmdb_orch.sync_show_episodes = AsyncMock()
+    await SyncOrchestrator(session, _sftp(), MagicMock())._fill_missing_episodes(tmdb_orch)
+
+    tmdb_orch.sync_show_episodes.assert_not_called()
+    assert calls == ["db.execute", "db.execute"]
+
+
+async def test_characterize_gap_fill_db_error_in_retry_query_propagates_without_commit():
+    """A DB error outside the resync try/except propagates and aborts the pipeline."""
+    calls: list[str] = []
+    session = _scripted_session(
+        calls,
+        [_scalars_all([1]), _scalar_one_or_none(MagicMock()), RuntimeError("db gone")],
+    )
+    tmdb_orch = MagicMock()
+    tmdb_orch.sync_show_episodes = AsyncMock()
+    with pytest.raises(RuntimeError, match="db gone"):
+        await SyncOrchestrator(session, _sftp(), MagicMock())._fill_missing_episodes(tmdb_orch)
+
+    assert "db.commit" not in calls and "db.rollback" not in calls
