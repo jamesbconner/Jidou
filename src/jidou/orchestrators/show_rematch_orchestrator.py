@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from typing import Any, TypedDict
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +11,7 @@ from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.orphan import OrphanedTrackingRecord
 from jidou.models.show import Show
+from jidou.orchestrators.errors import UpstreamError
 from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
@@ -64,7 +64,7 @@ class ShowRematchOrchestrator:
             The updated Show record.
 
         Raises:
-            HTTPException: 502 if TMDB details or episode sync fails.
+            UpstreamError: If TMDB details or episode sync fails.
         """
         from jidou.orchestrators.alias_orchestrator import generate_aliases
 
@@ -104,12 +104,12 @@ class ShowRematchOrchestrator:
             from their own endpoints (see fetch_show_metadata).
 
         Raises:
-            HTTPException: 502 on any TMDB error.
+            UpstreamError: On any TMDB error.
         """
         try:
             return await fetch_show_metadata(self.tmdb, payload.tmdb_id, payload.media_type)
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="Failed to fetch TMDB details") from exc
+            raise UpstreamError("Failed to fetch TMDB details") from exc
 
     def _apply_tmdb_metadata(
         self, show: Show, payload: RematchRequest, data: dict[str, Any]
@@ -210,7 +210,7 @@ class ShowRematchOrchestrator:
             show: Show ORM object whose episodes should be populated.
 
         Raises:
-            HTTPException: 502 if the TMDB episode sync fails.
+            UpstreamError: If the TMDB episode sync fails.
         """
         from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
 
@@ -218,9 +218,7 @@ class ShowRematchOrchestrator:
             await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(show)
         except Exception as exc:
             logger.exception("Episode sync failed after rematch for show id=%d", show.id)
-            raise HTTPException(
-                status_code=502, detail="TMDB episode sync failed; rematch aborted"
-            ) from exc
+            raise UpstreamError("TMDB episode sync failed; rematch aborted") from exc
 
         logger.info(
             "Re-matched show id=%d → tmdb_id=%d title=%r", show.id, show.tmdb_id, show.title

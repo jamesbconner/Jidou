@@ -170,8 +170,8 @@ async def test_fetch_tmdb_details_returns_data() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_tmdb_details_raises_502_on_error() -> None:
-    """_fetch_tmdb_details wraps TMDB exceptions as 502 HTTPException."""
-    from fastapi import HTTPException
+    """_fetch_tmdb_details wraps TMDB exceptions as UpstreamError."""
+    from jidou.orchestrators.errors import UpstreamError
 
     session = MagicMock()
     tmdb = MagicMock()
@@ -179,10 +179,10 @@ async def test_fetch_tmdb_details_raises_502_on_error() -> None:
 
     orch = ShowRematchOrchestrator(session, tmdb)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(UpstreamError) as exc_info:
         await orch._fetch_tmdb_details(_make_payload())
 
-    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == "Failed to fetch TMDB details"
 
 
 @pytest.mark.asyncio
@@ -623,8 +623,8 @@ async def test_rematch_skips_restore_when_preserve_tracking_false() -> None:
 
 @pytest.mark.asyncio
 async def test_sync_new_episodes_raises_502_on_failure() -> None:
-    """_sync_new_episodes wraps TMDBOrchestrator failures as 502."""
-    from fastapi import HTTPException
+    """_sync_new_episodes wraps TMDBOrchestrator failures as UpstreamError."""
+    from jidou.orchestrators.errors import UpstreamError
 
     show = _make_show()
     session = MagicMock()
@@ -636,8 +636,7 @@ async def test_sync_new_episodes_raises_502_on_failure() -> None:
         mock_tmdb_orch_cls.return_value.sync_show_episodes = AsyncMock(
             side_effect=RuntimeError("TMDB down")
         )
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UpstreamError) as exc_info:
             await orch._sync_new_episodes(show)
 
-    assert exc_info.value.status_code == 502
     assert "TMDB episode sync failed" in exc_info.value.detail

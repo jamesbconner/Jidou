@@ -207,7 +207,6 @@ def mm_patches():
             "jidou.orchestrators.manual_match_orchestrator.fetch_show_metadata",
             new=AsyncMock(return_value=data),
         ),
-        patch("jidou.orchestrators.manual_match_orchestrator.TMDBService"),
         patch(_LAZY_ALIASES, new=AsyncMock()) as aliases,
         patch.object(TMDBOrchestrator, "sync_show_episodes", new=AsyncMock()) as sync,
         patch.object(TMDBOrchestrator, "ensure_episode_group_map", new=AsyncMock()) as ensure,
@@ -225,7 +224,9 @@ async def test_manual_match_success_call_sequence(mm_patches) -> None:
     mm_patches["sync"].side_effect = lambda _s: order.append("sync")
     mm_patches["aliases"].side_effect = lambda *a, **k: order.append("aliases")
 
-    show = await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+    show = await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
+        _mm_payload()
+    )
 
     assert show.id == 42
     assert order == ["add", "flush", "sync", "commit", "aliases", "flush"]
@@ -236,7 +237,7 @@ async def test_manual_match_alias_db_error_propagates_after_commit(mm_patches) -
     mm_patches["aliases"].side_effect = _db_error()
 
     with pytest.raises(OperationalError):
-        await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+        await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(_mm_payload())
 
     session.commit.assert_awaited_once()
     session.rollback.assert_not_awaited()
@@ -248,7 +249,9 @@ async def test_manual_match_alias_generic_failure_is_swallowed_without_rollback(
     session = _mm_session(None)
     mm_patches["aliases"].side_effect = RuntimeError("llm down")
 
-    show = await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+    show = await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
+        _mm_payload()
+    )
 
     assert show.id == 42
     session.commit.assert_awaited_once()
@@ -260,7 +263,7 @@ async def test_manual_match_sync_db_error_propagates_without_rollback(mm_patches
     mm_patches["sync"].side_effect = _db_error()
 
     with pytest.raises(OperationalError):
-        await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+        await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(_mm_payload())
 
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()
@@ -270,7 +273,7 @@ async def test_manual_match_sync_db_error_propagates_without_rollback(mm_patches
 async def test_manual_match_movie_skips_sync(mm_patches) -> None:
     session = _mm_session(None)
 
-    await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(
+    await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
         _mm_payload(tmdb_media_type="movie", content_type="movie")
     )
 
@@ -289,7 +292,9 @@ async def test_manual_match_race_winner_gets_fields_filled_then_syncs(mm_patches
     session = _mm_session(None, winner)
     session.flush.side_effect = [IntegrityError("stmt", {}, Exception("dup")), None, None]
 
-    show = await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+    show = await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
+        _mm_payload()
+    )
 
     assert show is winner
     assert winner.local_path == "/media/tv/Show"
@@ -313,7 +318,7 @@ async def test_manual_match_race_winner_keeps_existing_fields(mm_patches) -> Non
     session = _mm_session(None, winner)
     session.flush.side_effect = [IntegrityError("stmt", {}, Exception("dup")), None, None]
 
-    await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+    await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(_mm_payload())
 
     assert winner.local_path == "/already/set"
     assert winner.content_type == "anime"
@@ -324,7 +329,7 @@ async def test_manual_match_race_without_winner_reraises(mm_patches) -> None:
     session.flush.side_effect = IntegrityError("stmt", {}, Exception("dup"))
 
     with pytest.raises(IntegrityError):
-        await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+        await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(_mm_payload())
 
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
@@ -340,7 +345,9 @@ async def test_manual_match_existing_show_is_filled_flushed_then_group_mapped(mm
     session.flush.side_effect = lambda: order.append("flush")
     mm_patches["ensure"].side_effect = lambda _s: order.append("ensure")
 
-    show = await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(_mm_payload())
+    show = await ManualMatchOrchestrator(session, MagicMock())._resolve_show_by_tmdb_id(
+        _mm_payload()
+    )
 
     assert show is existing
     assert existing.local_path == "/media/tv/Show"

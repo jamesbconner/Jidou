@@ -1,13 +1,14 @@
 """Tests for ManualMatchOrchestrator."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
-from fastapi import HTTPException
 
 from jidou.models.downloaded_file import FileStatus, MatchedBy
+from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.manual_match_orchestrator import ManualMatchOrchestrator
 from jidou.schemas.file_schema import FileMatchRequest
+from jidou.services.tmdb import TMDBService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,6 +80,11 @@ def _exec_result(scalar: object = None, count: int | None = None) -> MagicMock:
     return r
 
 
+def _tmdb_service() -> MagicMock:
+    """Return an autospecced TMDB service double to inject into the orchestrator."""
+    return create_autospec(TMDBService, instance=True)
+
+
 def _payload(**kwargs: object) -> FileMatchRequest:
     return FileMatchRequest(**kwargs)  # type: ignore[arg-type]
 
@@ -93,7 +99,7 @@ async def test_match_no_show_id_or_tmdb_id_resets_to_downloaded() -> None:
     f = _make_file(status=FileStatus.UNMATCHED, show_id=10)
     session = _make_session([])
 
-    result = await ManualMatchOrchestrator(session).match(f, _payload())
+    result = await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload())
 
     assert result is f
     assert f.status == FileStatus.DOWNLOADED
@@ -108,7 +114,7 @@ async def test_match_routed_file_resets_to_downloaded() -> None:
     f = _make_file(status=FileStatus.ROUTED, show_id=10)
     session = _make_session([])
 
-    await ManualMatchOrchestrator(session).match(f, _payload())
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload())
 
     assert f.status == FileStatus.DOWNLOADED
     assert f.show_id is None
@@ -124,10 +130,9 @@ async def test_match_show_id_not_found_raises_404() -> None:
     f = _make_file()
     session = _make_session([_exec_result(scalar=None)])
 
-    with pytest.raises(HTTPException) as exc_info:
-        await ManualMatchOrchestrator(session).match(f, _payload(show_id=9999))
+    with pytest.raises(NotFoundError) as exc_info:
+        await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=9999))
 
-    assert exc_info.value.status_code == 404
     assert "Show not found" in exc_info.value.detail
 
 
@@ -137,10 +142,9 @@ async def test_match_show_with_no_local_path_raises_422() -> None:
     show = _make_show(local_path=None)
     session = _make_session([_exec_result(scalar=show)])
 
-    with pytest.raises(HTTPException) as exc_info:
-        await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    with pytest.raises(InvalidRequestError) as exc_info:
+        await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
-    assert exc_info.value.status_code == 422
     assert "local_path" in exc_info.value.detail
 
 
@@ -151,7 +155,9 @@ async def test_match_show_id_sets_matched_status() -> None:
     # show lookup, then episode-resolution lookup (no episode found in DB)
     session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
 
-    result = await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    result = await ManualMatchOrchestrator(session, _tmdb_service()).match(
+        f, _payload(show_id=show.id)
+    )
 
     assert result is f
     assert f.status == FileStatus.MATCHED
@@ -167,7 +173,7 @@ async def test_match_adds_parsed_name_as_alias() -> None:
     show = _make_show(title="Example Show (2019)")
     session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert show.aliases == ["example show"]
     assert show.aliases_sources == {"user": ["example show"]}
@@ -182,7 +188,7 @@ async def test_match_does_not_duplicate_existing_alias() -> None:
     show.aliases_sources = {"user": ["example show"]}
     session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert show.aliases == ["example show"]
     assert show.aliases_sources == {"user": ["example show"]}
@@ -197,7 +203,7 @@ async def test_match_skips_alias_when_name_missing_or_equals_title(
     show = _make_show(title="Test Show")
     session = _make_session([_exec_result(scalar=show), _exec_result(scalar=None)])
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert show.aliases is None
     assert show.aliases_sources is None
@@ -212,7 +218,7 @@ async def test_match_flushes_before_commit() -> None:
     session.flush = AsyncMock(side_effect=lambda: call_order.append("flush"))
     session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert call_order == ["flush", "commit"]
 
@@ -241,7 +247,7 @@ async def test_match_clears_old_episode_tracking_on_show_change() -> None:
         ]
     )
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert old_ep.file_tracked is False
     assert old_ep.tracked_filename is None
@@ -267,7 +273,7 @@ async def test_match_clears_old_episode_tracking_same_show() -> None:
         ]
     )
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     assert old_ep.file_tracked is False
     assert old_ep.tracked_filename is None
@@ -299,7 +305,7 @@ async def test_match_does_not_clear_tracking_when_episode_unchanged() -> None:
         ]
     )
 
-    await ManualMatchOrchestrator(session).match(f, _payload(show_id=show.id))
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(show_id=show.id))
 
     # Tracking must NOT be cleared -- the episode didn't change.
     assert same_ep.file_tracked is True
@@ -332,10 +338,9 @@ async def test_match_tmdb_id_without_local_path_raises_422() -> None:
     f = _make_file()
     session = _make_session([_exec_result(scalar=None)])  # tmdb_id lookup miss
 
-    with pytest.raises(HTTPException) as exc_info:
-        await ManualMatchOrchestrator(session).match(f, _payload(tmdb_id=1396))
+    with pytest.raises(InvalidRequestError) as exc_info:
+        await ManualMatchOrchestrator(session, _tmdb_service()).match(f, _payload(tmdb_id=1396))
 
-    assert exc_info.value.status_code == 422
     assert "local_path" in exc_info.value.detail
 
 
@@ -344,17 +349,15 @@ async def test_match_tmdb_id_lookup_failure_raises_404() -> None:
     f = _make_file()
     session = _make_session([_exec_result(scalar=None)])
 
-    with patch(
-        "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-    ) as mock_tmdb:
-        mock_tmdb.return_value.get_details = AsyncMock(side_effect=RuntimeError("network error"))
+    mock_tmdb = _tmdb_service()
 
-        with pytest.raises(HTTPException) as exc_info:
-            await ManualMatchOrchestrator(session).match(
-                f, _payload(tmdb_id=1396, local_path="/media/tv/Breaking Bad", content_type="tv")
-            )
+    mock_tmdb.get_details = AsyncMock(side_effect=RuntimeError("network error"))
 
-    assert exc_info.value.status_code == 404
+    with pytest.raises(NotFoundError) as exc_info:
+        await ManualMatchOrchestrator(session, mock_tmdb).match(
+            f, _payload(tmdb_id=1396, local_path="/media/tv/Breaking Bad", content_type="tv")
+        )
+
     assert "TMDB lookup failed" in exc_info.value.detail
 
 
@@ -375,18 +378,17 @@ async def test_match_tmdb_id_creates_show_and_matches() -> None:
     )
     session.add = MagicMock(side_effect=_add)
 
-    with patch(
-        "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-    ) as mock_tmdb:
-        mock_tmdb.return_value.get_details.return_value = _tmdb_data()
-        mock_tmdb.return_value.get_external_ids.return_value = {}
-        mock_tmdb.return_value.get_episode_groups.return_value = {}
-        mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
-        mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
+    mock_tmdb = _tmdb_service()
 
-        result = await ManualMatchOrchestrator(session).match(
-            f, _payload(tmdb_id=1396, local_path="/media/tv/Breaking Bad", content_type="tv")
-        )
+    mock_tmdb.get_details.return_value = _tmdb_data()
+    mock_tmdb.get_external_ids.return_value = {}
+    mock_tmdb.get_episode_groups.return_value = {}
+    mock_tmdb.get_show_seasons = AsyncMock(return_value={"seasons": []})
+    mock_tmdb.get_alternative_titles = AsyncMock(return_value={"results": []})
+
+    result = await ManualMatchOrchestrator(session, mock_tmdb).match(
+        f, _payload(tmdb_id=1396, local_path="/media/tv/Breaking Bad", content_type="tv")
+    )
 
     assert result is f
     assert f.status == FileStatus.MATCHED
@@ -408,20 +410,17 @@ async def test_match_tmdb_id_creates_show_with_adult_flag() -> None:
     session = _make_session([_exec_result(scalar=None), _exec_result(scalar=None)])
     session.add = MagicMock(side_effect=_add)
 
-    with patch(
-        "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-    ) as mock_tmdb:
-        mock_tmdb.return_value.get_details.return_value = _tmdb_data(
-            id=1397, name="Adult Show", adult=True
-        )
-        mock_tmdb.return_value.get_external_ids.return_value = {}
-        mock_tmdb.return_value.get_episode_groups.return_value = {}
-        mock_tmdb.return_value.get_show_seasons = AsyncMock(return_value={"seasons": []})
-        mock_tmdb.return_value.get_alternative_titles = AsyncMock(return_value={"results": []})
+    mock_tmdb = _tmdb_service()
 
-        await ManualMatchOrchestrator(session).match(
-            f, _payload(tmdb_id=1397, local_path="/media/tv/Adult Show", content_type="tv")
-        )
+    mock_tmdb.get_details.return_value = _tmdb_data(id=1397, name="Adult Show", adult=True)
+    mock_tmdb.get_external_ids.return_value = {}
+    mock_tmdb.get_episode_groups.return_value = {}
+    mock_tmdb.get_show_seasons = AsyncMock(return_value={"seasons": []})
+    mock_tmdb.get_alternative_titles = AsyncMock(return_value={"results": []})
+
+    await ManualMatchOrchestrator(session, mock_tmdb).match(
+        f, _payload(tmdb_id=1397, local_path="/media/tv/Adult Show", content_type="tv")
+    )
 
     assert captured["adult"] is True
 
@@ -455,22 +454,21 @@ async def test_match_tmdb_id_commits_after_sync_before_alias_generation() -> Non
     async def _generate_aliases(*_args: object, **_kwargs: object) -> None:
         call_order.append("alias")
 
+    mock_tmdb = _tmdb_service()
+
     with (
-        patch(
-            "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-        ) as mock_tmdb,
         patch(
             "jidou.orchestrators._show_provisioning.generate_aliases",
             new_callable=AsyncMock,
             side_effect=_generate_aliases,
         ),
     ):
-        mock_tmdb.return_value.get_details.return_value = _tmdb_data(id=1398, name="Commit Show")
-        mock_tmdb.return_value.get_external_ids.return_value = {}
-        mock_tmdb.return_value.get_episode_groups.return_value = {}
-        mock_tmdb.return_value.get_show_seasons = AsyncMock(side_effect=_get_show_seasons)
+        mock_tmdb.get_details.return_value = _tmdb_data(id=1398, name="Commit Show")
+        mock_tmdb.get_external_ids.return_value = {}
+        mock_tmdb.get_episode_groups.return_value = {}
+        mock_tmdb.get_show_seasons = AsyncMock(side_effect=_get_show_seasons)
 
-        await ManualMatchOrchestrator(session).match(
+        await ManualMatchOrchestrator(session, mock_tmdb).match(
             f,
             _payload(tmdb_id=1398, local_path="/media/tv/Commit Order Show", content_type="tv"),
         )
@@ -500,15 +498,14 @@ async def test_match_tmdb_id_episode_sync_sqlalchemy_error_propagates() -> None:
     session = _make_session([_exec_result(scalar=None)])
     session.add = MagicMock(side_effect=_add)
 
+    mock_tmdb = _tmdb_service()
+
     with (
-        patch(
-            "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-        ) as mock_tmdb,
         patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls,
     ):
-        mock_tmdb.return_value.get_details.return_value = _tmdb_data(id=1399, name="DB Fail Show")
-        mock_tmdb.return_value.get_external_ids.return_value = {}
-        mock_tmdb.return_value.get_episode_groups.return_value = {}
+        mock_tmdb.get_details.return_value = _tmdb_data(id=1399, name="DB Fail Show")
+        mock_tmdb.get_external_ids.return_value = {}
+        mock_tmdb.get_episode_groups.return_value = {}
         mock_orch = MagicMock()
         mock_orch.sync_show_episodes = AsyncMock(
             side_effect=OperationalError("conn lost", None, None)
@@ -516,7 +513,7 @@ async def test_match_tmdb_id_episode_sync_sqlalchemy_error_propagates() -> None:
         mock_orch_cls.return_value = mock_orch
 
         with pytest.raises(OperationalError):
-            await ManualMatchOrchestrator(session).match(
+            await ManualMatchOrchestrator(session, mock_tmdb).match(
                 f,
                 _payload(tmdb_id=1399, local_path="/media/tv/DB Fail Show", content_type="tv"),
             )
@@ -536,24 +533,23 @@ async def test_match_tmdb_id_episode_sync_generic_exception_is_best_effort() -> 
     session = _make_session([_exec_result(scalar=None), _exec_result(scalar=None)])
     session.add = MagicMock(side_effect=_add)
 
+    mock_tmdb = _tmdb_service()
+
     with (
-        patch(
-            "jidou.orchestrators.manual_match_orchestrator.TMDBService", autospec=True
-        ) as mock_tmdb,
         patch("jidou.orchestrators._show_provisioning.TMDBOrchestrator") as mock_orch_cls,
         patch(
             "jidou.orchestrators._show_provisioning.generate_aliases",
             new_callable=AsyncMock,
         ),
     ):
-        mock_tmdb.return_value.get_details.return_value = _tmdb_data(id=1400, name="Sync Fail Show")
-        mock_tmdb.return_value.get_external_ids.return_value = {}
-        mock_tmdb.return_value.get_episode_groups.return_value = {}
+        mock_tmdb.get_details.return_value = _tmdb_data(id=1400, name="Sync Fail Show")
+        mock_tmdb.get_external_ids.return_value = {}
+        mock_tmdb.get_episode_groups.return_value = {}
         mock_orch = MagicMock()
         mock_orch.sync_show_episodes = AsyncMock(side_effect=RuntimeError("transient TMDB hiccup"))
         mock_orch_cls.return_value = mock_orch
 
-        result_show = await ManualMatchOrchestrator(session)._resolve_show_by_tmdb_id(
+        result_show = await ManualMatchOrchestrator(session, mock_tmdb)._resolve_show_by_tmdb_id(
             _payload(tmdb_id=1400, local_path="/media/tv/Sync Fail Show", content_type="tv")
         )
 
@@ -575,7 +571,7 @@ async def test_match_existing_show_by_tmdb_id_fills_missing_fields_only() -> Non
         ]
     )
 
-    await ManualMatchOrchestrator(session).match(
+    await ManualMatchOrchestrator(session, _tmdb_service()).match(
         f, _payload(tmdb_id=1396, local_path="/should/not/overwrite", content_type="movie")
     )
 

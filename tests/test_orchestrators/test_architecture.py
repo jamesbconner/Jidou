@@ -16,10 +16,9 @@ _ORCH_DIR = Path(__file__).resolve().parents[2] / "src" / "jidou" / "orchestrato
 # as orchestrators are simplified; never raise it.
 _ORCH_MAX_COMPLEXITY = 21
 
-# Task 9 empties this.
-_KNOWN_FASTAPI_IMPORTERS: frozenset[str] = frozenset(
-    {"manual_match_orchestrator", "show_rematch_orchestrator"}
-)
+# Empty: orchestrators raise the domain errors in ``errors.py``; only ``jidou.main`` maps them
+# to HTTP.
+_KNOWN_FASTAPI_IMPORTERS: frozenset[str] = frozenset()
 
 # Empty: shared helpers live in private modules such as ``_events``, which may be imported freely.
 _KNOWN_PRIVATE_IMPORTS: frozenset[tuple[str, str]] = frozenset()

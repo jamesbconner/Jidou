@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
+from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
 from jidou.orchestrators.show_creation_orchestrator import get_or_create_show_from_tmdb
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.services.alias_handling import add_alias, sanitize_alias
@@ -29,20 +30,6 @@ from jidou.services.rss_config import fill_missing_yarss2_defaults
 from jidou.services.tmdb import TMDBService
 
 logger = logging.getLogger(__name__)
-
-
-class FeedOnboardingError(Exception):
-    """The onboarding request cannot be satisfied.
-
-    Attributes:
-        status_code: HTTP status the route layer should answer with.
-        detail: User-safe explanation.
-    """
-
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -102,7 +89,7 @@ class FeedOnboardingOrchestrator:
             What was done. With ``request.dry_run`` nothing is written.
 
         Raises:
-            FeedOnboardingError: 404 if ``request.show_id`` does not exist.
+            NotFoundError: If ``request.show_id`` does not exist.
         """
         if request.dry_run:
             return await self._plan(feed, request)
@@ -140,14 +127,14 @@ class FeedOnboardingOrchestrator:
             await self.session.execute(select(Show).where(Show.id == show_id))
         ).scalar_one_or_none()
         if show is None:
-            raise FeedOnboardingError(404, "Show not found")
+            raise NotFoundError("Show not found")
         return show
 
     async def _resolve_show(self, request: FeedAddShowRequest) -> tuple[Show, bool]:
         if request.show_id is not None:
             return await self._load_show(request.show_id), False
         if request.show is None:  # unreachable via the validated request model
-            raise FeedOnboardingError(422, "Provide exactly one of show_id or show")
+            raise InvalidRequestError("Provide exactly one of show_id or show")
         result = await get_or_create_show_from_tmdb(
             self.session, self.tmdb, request.show, llm=self.llm
         )
@@ -238,7 +225,7 @@ class FeedOnboardingOrchestrator:
             show = await self._load_show(request.show_id)
         else:
             if request.show is None:  # unreachable via the validated request model
-                raise FeedOnboardingError(422, "Provide exactly one of show_id or show")
+                raise InvalidRequestError("Provide exactly one of show_id or show")
             show = (
                 await self.session.execute(select(Show).where(Show.tmdb_id == request.show.tmdb_id))
             ).scalar_one_or_none()

@@ -7,10 +7,8 @@ import pytest
 
 from jidou.models.rss import RssFeed, RssSubscription
 from jidou.models.show import Show
-from jidou.orchestrators.feed_onboarding_orchestrator import (
-    FeedOnboardingError,
-    FeedOnboardingOrchestrator,
-)
+from jidou.orchestrators.errors import InvalidRequestError, NotFoundError
+from jidou.orchestrators.feed_onboarding_orchestrator import FeedOnboardingOrchestrator
 from jidou.orchestrators.show_creation_orchestrator import ShowCreationResult
 from jidou.schemas.rss_schema import FeedAddShowRequest
 from jidou.schemas.show_schema import ShowCreate
@@ -158,10 +156,10 @@ async def test_new_tmdb_show_is_created_through_the_shared_service(create_show) 
 
 
 async def test_missing_library_show_is_404() -> None:
-    with pytest.raises(FeedOnboardingError) as exc_info:
+    with pytest.raises(NotFoundError) as exc_info:
         await _orch(_Session(show=None)).add_show_from_feed(_feed(), _req(show_id=999))
 
-    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Show not found"
 
 
 # ------------------------------- idempotency -------------------------------
@@ -307,7 +305,7 @@ async def test_request_without_any_show_source_is_a_422_not_an_assertion(dry_run
         dry_run=dry_run,
     )
 
-    with pytest.raises(FeedOnboardingError) as exc_info:
+    with pytest.raises(InvalidRequestError) as exc_info:
         await _orch(_Session()).add_show_from_feed(_feed(), bad)
 
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Provide exactly one of show_id or show"

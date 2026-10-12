@@ -37,10 +37,47 @@ from jidou.api.websocket import ws_router
 from jidou.api.websocket.task_progress import manager
 from jidou.config import settings
 from jidou.database import close_db, init_db
+from jidou.orchestrators.errors import (
+    InvalidRequestError,
+    NotFoundError,
+    OrchestratorError,
+    UpstreamError,
+)
 from jidou.services.llm_service import create_llm_service
 from jidou.services.pubsub_subscriber import pubsub_subscriber
 
 logger = logging.getLogger(__name__)
+
+# The one place orchestrator domain errors become HTTP statuses. To map a new error class, add
+# a subclass of OrchestratorError in ``jidou.orchestrators.errors`` and one line here.
+_ORCHESTRATOR_ERROR_STATUS: dict[type[OrchestratorError], int] = {
+    NotFoundError: 404,
+    InvalidRequestError: 422,
+    UpstreamError: 502,
+}
+
+
+async def orchestrator_error_handler(request: Request, exc: OrchestratorError) -> JSONResponse:
+    """Render an orchestrator domain error as the JSON body ``HTTPException`` would produce.
+
+    Args:
+        request: The failing request (unused; required by the handler signature).
+        exc: The domain error raised by an orchestrator.
+
+    Returns:
+        A response with the mapped status code and ``{"detail": exc.detail}``.
+    """
+    # Walk the MRO so a subclass of a mapped error inherits its parent's status; an unmapped
+    # error is a programming mistake, so it surfaces as a 500 rather than a guessed client error.
+    status_code = next(
+        (
+            _ORCHESTRATOR_ERROR_STATUS[cls]
+            for cls in type(exc).__mro__
+            if cls in _ORCHESTRATOR_ERROR_STATUS
+        ),
+        500,
+    )
+    return JSONResponse({"detail": exc.detail}, status_code=status_code)
 
 
 @asynccontextmanager
@@ -130,6 +167,8 @@ def create_app() -> FastAPI:
     app.include_router(import_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(export_routes.router, prefix="/api", dependencies=_auth)
     app.include_router(ws_router)
+
+    app.add_exception_handler(OrchestratorError, orchestrator_error_handler)  # type: ignore[arg-type]
 
     # Exception handlers for client errors
     @app.exception_handler(ValueError)
