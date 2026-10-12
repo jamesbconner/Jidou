@@ -92,3 +92,33 @@ def test_every_regex_field_uses_regex_pattern() -> None:
                 assert _has_regex_validator(info), f"{model.__name__}.{name}"
     # Guard against silently iterating nothing.
     assert checked >= len(_REGEX_FIELDS)
+
+
+_LENGTH_CAPPED_FIELDS = [
+    (model, field, required)
+    for model, field, required in _REGEX_FIELDS
+    if model in (FeedRegexTestRequest, FeedAddShowRequest)
+]
+
+
+@pytest.mark.parametrize(
+    ("model", "field", "required"),
+    _LENGTH_CAPPED_FIELDS,
+    ids=[f"{m.__name__}.{f}" for m, f, _ in _LENGTH_CAPPED_FIELDS],
+)
+@pytest.mark.parametrize(
+    "value",
+    ["a" * 513, "(" + "a" * 600],
+    ids=["valid-too-long", "invalid-too-long"],
+)
+def test_length_cap_runs_before_regex_check(
+    model: type[BaseModel], field: str, required: dict[str, Any], value: str
+) -> None:
+    """Over-length patterns fail on length (as before), never on regex compilation."""
+    assert len(_LENGTH_CAPPED_FIELDS) == 4
+    with pytest.raises(ValidationError) as exc_info:
+        model.model_validate({**required, field: value})
+
+    first = exc_info.value.errors()[0]
+    assert first["type"] == "string_too_long"
+    assert first["loc"][-1] == field

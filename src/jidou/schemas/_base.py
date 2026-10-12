@@ -3,7 +3,7 @@
 import re
 from typing import Annotated
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, Field
 
 
 def _validate_regex(value: str) -> str:
@@ -28,3 +28,13 @@ def _validate_regex(value: str) -> str:
 # An AfterValidator runs after Field constraints (min/max length), so length
 # errors still win over regex errors, and it adds nothing to the JSON schema.
 RegexPattern = Annotated[str, AfterValidator(_validate_regex)]
+
+
+MAX_REGEX_PATTERN_LENGTH = 512
+
+# Length cap first, then compile: Annotated metadata runs in order, so this keeps
+# over-length input failing with ``string_too_long`` rather than a regex error.
+# (``Annotated[RegexPattern, Field(max_length=...)]`` would run the cap last.)
+BoundedRegexPattern = Annotated[
+    str, Field(max_length=MAX_REGEX_PATTERN_LENGTH), AfterValidator(_validate_regex)
+]

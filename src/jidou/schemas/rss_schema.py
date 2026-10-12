@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from jidou.schemas._base import RegexPattern
+from jidou.schemas._base import BoundedRegexPattern, RegexPattern
 from jidou.schemas.show_schema import ShowCreate
 
 MAX_REGEX_SAMPLES = 3
@@ -264,9 +264,6 @@ class FeedEntriesRead(BaseModel):
     groups: list[FeedEntryGroupRead]
 
 
-MAX_REGEX_PATTERN_LENGTH = 512
-
-
 class RegexMatchReportRead(BaseModel):
     """Which of a feed group's current titles a regex filter selects.
 
@@ -322,8 +319,8 @@ class FeedRegexTestRequest(BaseModel):
     """
 
     parsed_name: str = Field(min_length=1, max_length=300)
-    regex_include: RegexPattern | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
-    regex_exclude: RegexPattern | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include: BoundedRegexPattern | None = None
+    regex_exclude: BoundedRegexPattern | None = None
     regex_include_ignorecase: bool = True
     regex_exclude_ignorecase: bool = True
 
@@ -354,8 +351,8 @@ class FeedAddShowRequest(BaseModel):
     show_id: int | None = None
     show: ShowCreate | None = None
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    regex_include: RegexPattern | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
-    regex_exclude: RegexPattern | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include: BoundedRegexPattern | None = None
+    regex_exclude: BoundedRegexPattern | None = None
     regex_include_ignorecase: bool = True
     regex_exclude_ignorecase: bool = True
     enabled: bool = False
