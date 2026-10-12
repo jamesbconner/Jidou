@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { arrayMove } from '@dnd-kit/sortable'
 import {
   useUpdateShowPaths,
   useSyncEpisodes,
@@ -13,127 +12,24 @@ import {
 } from '@/hooks/useShows'
 import { useBeginEpisodeRematch } from '@/hooks/useFiles'
 import { useEnsureRssStub } from '@/hooks/useRss'
-import {
-  useCreateWatchlistEntry,
-  useDeleteWatchlistEntry,
-  useReorderWatchlist,
-} from '@/hooks/useWatchlist'
-import { WatchlistStatusSelect } from '@/components/WatchlistStatusSelect'
-import { TrackedBadges } from '@/components/TrackedBadges'
-import { WatchedToggle } from '@/components/WatchedToggle'
-import { WatchedProgressBar } from '@/components/WatchedProgressBar'
-import { MissingEpisodesList } from '@/components/MissingEpisodesList'
 import { SimilarTitlesSection } from '@/components/SimilarTitlesSection'
 import { ShowDetailHeader } from '@/components/ShowDetailHeader'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 import { useBannerStyle } from '@/hooks/useBannerStyle'
 import { ShowDetailModals } from '@/pages/showDetail/ShowDetailModals'
 import type { ShowDetailModal } from '@/pages/showDetail/modalState'
 import { useShowDetailData } from '@/pages/showDetail/useShowDetailData'
-import { toHostPath } from '@/utils/paths'
-import { computeMissingEpisodes } from '@/utils/missingEpisodes'
-import type { ContentType, EpisodeList, WatchlistRead } from '@/types/api'
+import { EpisodesCard, type EpisodesTab } from '@/pages/showDetail/EpisodesCard'
+import {
+  LocalPathCard,
+  MaintenanceActions,
+  MovieFileCard,
+  PrimaryActions,
+  SecondaryInfo,
+} from '@/pages/showDetail/ShowDetailSections'
+import { episodeStats } from '@/pages/showDetail/episodeStats'
+import type { ContentType, EpisodeList } from '@/types/api'
 
 const TMDB_POSTER = '/api/images/w500'
-
-// ---------------------------------------------------------------------------
-// Watchlist controls
-// ---------------------------------------------------------------------------
-
-function WatchlistToggleButton({
-  showId,
-  entryId,
-}: {
-  showId: number
-  entryId: number | null
-}) {
-  const create = useCreateWatchlistEntry()
-  const del = useDeleteWatchlistEntry()
-  const pending = create.isPending || del.isPending
-  const inWatchlist = entryId != null
-
-  return (
-    <button
-      onClick={() => (inWatchlist ? del.mutate(entryId) : create.mutate({ show_id: showId }))}
-      disabled={pending}
-      className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-        inWatchlist
-          ? 'border-[var(--color-ocean-300)] text-[var(--color-ocean-700)] bg-[var(--color-ocean-50)] hover:bg-[var(--color-ocean-100)] dark:bg-[var(--color-ocean-950)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/40'
-          : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
-      }`}
-    >
-      {pending ? '…' : inWatchlist ? 'Remove From Watchlist' : 'Add To Watchlist'}
-    </button>
-  )
-}
-
-function QueuePositionSelect({
-  entries,
-  entryId,
-}: {
-  entries: WatchlistRead[]
-  entryId: number
-}) {
-  const [editing, setEditing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const reorder = useReorderWatchlist()
-  const index = entries.findIndex((e) => e.id === entryId)
-
-  if (index === -1) return null
-
-  if (!editing) {
-    return (
-      <>
-        <Badge
-          color="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-          onClick={() => {
-            setError(null)
-            setEditing(true)
-          }}
-          title="Click to change queue position"
-        >
-          Queue #{index + 1}
-        </Badge>
-        {error && (
-          <span className="text-xs text-red-600 dark:text-red-400" title={error}>
-            Reorder failed
-          </span>
-        )}
-      </>
-    )
-  }
-
-  return (
-    <select
-      autoFocus
-      defaultValue={index}
-      onChange={(e) => {
-        const newIndex = Number(e.target.value)
-        setEditing(false)
-        if (newIndex === index) return
-        reorder.mutate(arrayMove(entries, index, newIndex), {
-          onError: (err) => {
-            setError(err instanceof Error ? err.message : 'Failed to reorder')
-          },
-        })
-      }}
-      onBlur={() => setEditing(false)}
-      className="text-xs border rounded px-1 py-0.5 bg-white text-gray-900 border-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
-    >
-      {entries.map((_, i) => (
-        <option key={i} value={i} className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100">
-          #{i + 1}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default function ShowDetail() {
   const { id } = useParams<{ id: string }>()
@@ -164,7 +60,7 @@ export default function ShowDetail() {
 
   const [modal, setModal] = useState<ShowDetailModal | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [episodesTab, setEpisodesTab] = useState<'episodes' | 'missing'>('episodes')
+  const [episodesTab, setEpisodesTab] = useState<EpisodesTab>('episodes')
   const [bannerStyle] = useBannerStyle()
 
   // Resets the modal selection, the tab and other local UI state plus 4 react-query
@@ -208,21 +104,11 @@ export default function ShowDetail() {
   if (isLoading) return <p className="text-gray-400 dark:text-gray-500">Loading…</p>
   if (!show) return <p className="text-red-500 dark:text-red-400">Show not found.</p>
 
-  const bySeason: Record<number, typeof episodes> = {}
-  for (const ep of episodes) {
-    ;(bySeason[ep.season_number] ??= []).push(ep)
-  }
-
-  const trackedCount = episodes.filter((e) => e.file_tracked).length
-  const watchedCount = episodes.filter((e) => e.watched).length
-  const missingCount = show.track_missing_episodes
-    ? (
-        config?.today
-          ? computeMissingEpisodes(episodes, config.today)
-          : computeMissingEpisodes(episodes)
-      ).reduce((sum, s) => sum + s.missing.length, 0)
-    : 0
-  const allWatched = episodes.length > 0 && watchedCount === episodes.length
+  const { trackedCount, watchedCount, missingCount, allWatched } = episodeStats(
+    episodes,
+    show.track_missing_episodes,
+    config?.today,
+  )
 
   const tmdbMediaPath = show.media_type === 'movie' ? 'movie' : 'tv'
   const tmdbUrl = `https://www.themoviedb.org/${tmdbMediaPath}/${show.tmdb_id}`
@@ -288,117 +174,69 @@ export default function ShowDetail() {
     }
   }
 
+  function handleToggleSeason(seasonNumber: number, seasonAllWatched: boolean) {
+    if (seasonAllWatched) {
+      bulkClearWatched.mutate({ showId, seasonNumber })
+    } else {
+      bulkSetWatched.mutate({ showId, seasonNumber })
+    }
+  }
+
+  const bulkPending = bulkSetWatched.isPending || bulkClearWatched.isPending
+
   const posterPath = show.detail_poster_path ?? show.poster_path
   const posterSrc = posterPath ? `${TMDB_POSTER}${posterPath}` : null
 
   // Built here (they touch page mutation hooks) and handed to <ShowDetailHeader>,
   // which arranges them per the chosen banner style.
   const primaryActions = (
-    <div className="flex items-center gap-2 flex-wrap mt-2">
-      <WatchlistToggleButton showId={showId} entryId={watchlistEntry?.id ?? null} />
-      {!isMovie && episodes.length > 0 && (
-        <button
-          onClick={() =>
-            allWatched
-              ? bulkClearWatched.mutate({ showId })
-              : bulkSetWatched.mutate({ showId })
-          }
-          disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
-          className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-            allWatched
-              ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/40'
-              : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
-          }`}
-        >
-          {allWatched ? 'Mark Unwatched' : 'Mark Watched'}
-        </button>
-      )}
-      {!isMovie && (
-        <button
-          onClick={() =>
-            patchShow.mutate({
-              id: showId,
-              patch: { track_missing_episodes: !show.track_missing_episodes },
-            })
-          }
-          disabled={patchShow.isPending}
-          className={`px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-            !show.track_missing_episodes
-              ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40'
-              : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
-          }`}
-        >
-          {show.track_missing_episodes ? 'Ignore Missing Eps' : 'Track Missing Eps'}
-        </button>
-      )}
-      {watchlistEntry && (
-        <>
-          <QueuePositionSelect entries={watchlistEntries} entryId={watchlistEntry.id} />
-          <WatchlistStatusSelect id={watchlistEntry.id} current={watchlistEntry.status} />
-        </>
-      )}
-    </div>
+    <PrimaryActions
+      showId={showId}
+      show={show}
+      isMovie={isMovie}
+      episodeCount={episodes.length}
+      allWatched={allWatched}
+      bulkPending={bulkPending}
+      patchPending={patchShow.isPending}
+      onBulkToggle={() =>
+        allWatched ? bulkClearWatched.mutate({ showId }) : bulkSetWatched.mutate({ showId })
+      }
+      onToggleTrackMissing={() =>
+        patchShow.mutate({
+          id: showId,
+          patch: { track_missing_episodes: !show.track_missing_episodes },
+        })
+      }
+      watchlistEntry={watchlistEntry}
+      watchlistEntries={watchlistEntries}
+    />
   )
 
   const secondaryInfo = (
-    <>
-      {show.overview && (
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-xl">{show.overview}</p>
-      )}
-      {!isMovie && (
-        <WatchedProgressBar
-          watched={watchedCount}
-          total={episodes.length}
-          showLabel
-          className="mt-2 max-w-xl"
-        />
-      )}
-      {isMovie ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          {movieFiles.length > 0 ? 'File linked' : 'No file linked'}
-        </p>
-      ) : (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          {trackedCount} / {episodes.length} episodes tracked
-        </p>
-      )}
-    </>
+    <SecondaryInfo
+      show={show}
+      isMovie={isMovie}
+      movieFileCount={movieFiles.length}
+      episodeCount={episodes.length}
+      watchedCount={watchedCount}
+      trackedCount={trackedCount}
+    />
   )
 
   const maintenanceActions = (
-    <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-      <Button onClick={() => setModal({ kind: 'deleteConfirm' })} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
-        {isDeleting ? 'Removing…' : 'Remove Show'}
-      </Button>
-      <button
-        onClick={handleRssButtonClick}
-        disabled={ensureRssStub.isPending}
-        className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
-          existingRssSub
-            ? 'border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40'
-            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-        }`}
-      >
-        {ensureRssStub.isPending ? 'Loading…' : existingRssSub ? 'Edit RSS' : 'Add RSS'}
-      </button>
-      <Button onClick={() => setModal({ kind: 'rematch' })} variant="secondary" tone="light" size="sm" className="w-28">
-        Fix Match
-      </Button>
-      <Button onClick={() => setModal({ kind: 'contentType' })} variant="secondary" tone="light" size="sm" className="w-28">
-        {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
-      </Button>
-      <Button onClick={() => setModal({ kind: 'aliases' })} variant="secondary" tone="light" size="sm" className="w-28">
-        Manage Aliases
-      </Button>
-      <Button onClick={() => setModal({ kind: 'image' })} variant="secondary" tone="light" size="sm" className="w-28">
-        Change Images
-      </Button>
-      {ensureRssStub.isError && (
-        <span className="text-xs text-red-600 text-right max-w-[10rem]">
-          {(ensureRssStub.error as Error).message}
-        </span>
-      )}
-    </div>
+    <MaintenanceActions
+      show={show}
+      isDeleting={isDeleting}
+      hasRssSubscription={existingRssSub != null}
+      rssPending={ensureRssStub.isPending}
+      rssError={ensureRssStub.isError ? (ensureRssStub.error as Error) : null}
+      onRemove={() => setModal({ kind: 'deleteConfirm' })}
+      onRss={handleRssButtonClick}
+      onFixMatch={() => setModal({ kind: 'rematch' })}
+      onContentType={() => setModal({ kind: 'contentType' })}
+      onAliases={() => setModal({ kind: 'aliases' })}
+      onImages={() => setModal({ kind: 'image' })}
+    />
   )
 
   return (
@@ -415,255 +253,43 @@ export default function ShowDetail() {
         maintenanceActions={maintenanceActions}
       />
 
-      {/* Local path */}
-      <Card as="section" padding="md">
-        <h2 className="font-semibold mb-1 dark:text-gray-100">Local path</h2>
-        {show.local_path ? (
-          <div className="flex items-start justify-between gap-4">
-            <p className="font-mono text-sm text-gray-700 dark:text-gray-300 break-all flex-1">
-              {config ? toHostPath(show.local_path, config.media_paths) : show.local_path}
-            </p>
-            <button
-              onClick={() => setModal({ kind: 'path' })}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
-            >
-              Edit Path
-            </button>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400 dark:text-gray-500 italic">Not set</p>
-        )}
-        {updatePaths.isSuccess && <p className="text-xs text-green-600 dark:text-green-400 mt-1">Saved.</p>}
-      </Card>
+      <LocalPathCard
+        localPath={show.local_path}
+        mediaPaths={config?.media_paths}
+        saved={updatePaths.isSuccess}
+        onEdit={() => setModal({ kind: 'path' })}
+      />
 
-      {/* Movie file / Episodes */}
       {isMovie ? (
-        <Card as="section" padding="md">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold dark:text-gray-100">Movie file</h2>
-            <button
-              onClick={() => setModal({ kind: 'scanLocalMovieFile' })}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              Scan Local Files
-            </button>
-          </div>
-          {movieFiles.length > 0 ? (
-            <div className="divide-y border rounded-lg">
-              {movieFiles.map((f) => (
-                <div
-                  key={f.id}
-                  className="flex items-center justify-between px-3 py-2 text-sm gap-3"
-                >
-                  <span className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
-                    {f.original_filename}
-                  </span>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {!['downloading', 'routing', 'pending', 'discovered'].includes(f.status) && (
-                      <button
-                        onClick={() => setModal({ kind: 'fixMovieFile' })}
-                        className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
-                      >
-                        Fix Match
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-              No file linked yet. Use Scan Local Files to link one from this movie&apos;s local
-              path.
-            </p>
-          )}
-        </Card>
+        <MovieFileCard
+          movieFiles={movieFiles}
+          onScan={() => setModal({ kind: 'scanLocalMovieFile' })}
+          onFix={() => setModal({ kind: 'fixMovieFile' })}
+        />
       ) : (
-        <Card as="section" padding="md">
-          <div className="flex items-center justify-between mb-3 gap-4 flex-wrap">
-            <div className="flex border-b -mb-3">
-              <button
-                onClick={() => setEpisodesTab('episodes')}
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  episodesTab === 'episodes'
-                    ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
-                }`}
-              >
-                Episodes ({episodes.length})
-              </button>
-              <button
-                onClick={() => setEpisodesTab('missing')}
-                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  episodesTab === 'missing'
-                    ? 'border-[var(--color-ocean-600)] text-[var(--color-ocean-600)] dark:border-[var(--color-ocean-400)] dark:text-[var(--color-ocean-400)]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300'
-                }`}
-              >
-                Missing Episodes
-                {missingCount > 0 && (
-                  <span className="ml-2 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs rounded-full px-1.5 py-0.5">
-                    {missingCount}
-                  </span>
-                )}
-              </button>
-            </div>
-            {episodesTab === 'episodes' && (
-              <div className="flex gap-2 flex-wrap items-center">
-                {syncEpisodes.isSuccess && (
-                  <span className="text-xs text-green-600 dark:text-green-400">Episodes synced</span>
-                )}
-                {syncEpisodes.isError && (
-                  <span className="text-xs text-red-600 dark:text-red-400">
-                    {(syncEpisodes.error as Error).message}
-                  </span>
-                )}
-                <button
-                  onClick={() => syncEpisodes.mutate(showId)}
-                  disabled={syncEpisodes.isPending}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-                >
-                  {syncEpisodes.isPending ? 'Syncing…' : 'Sync Episodes'}
-                </button>
-                <button
-                  onClick={() => setModal({ kind: 'scanLocalFiles' })}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  Scan Local Files
-                </button>
-                <button
-                  onClick={() => setModal({ kind: 'episodeGroups' })}
-                  className="px-3 py-1 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  {show.active_episode_group_id ? 'Change Episode Grouping' : 'Use Alternate Grouping'}
-                </button>
-              </div>
-            )}
-          </div>
-          {episodesTab === 'missing' ? (
-            <MissingEpisodesList episodes={episodes} today={config?.today} />
-          ) : (
-            <>
-          {beginRematch.isError && (
-            <p className="text-xs text-red-500 dark:text-red-400 mb-2">{(beginRematch.error as Error).message}</p>
-          )}
-          {Object.entries(bySeason)
-            .sort(([a], [b]) => Number(a) - Number(b))
-            .map(([season, eps]) => {
-              const seasonNumber = Number(season)
-              const seasonTracked = eps.filter((e) => e.file_tracked).length
-              const seasonWatched = eps.filter((e) => e.watched).length
-              const seasonAllWatched = seasonWatched === eps.length
-              return (
-                <details key={season} className="mb-2">
-                  <summary className="cursor-pointer text-sm font-medium py-1 flex items-center gap-2 dark:text-gray-100">
-                    <span onClick={(e) => e.preventDefault()}>
-                      <WatchedToggle
-                        watched={seasonAllWatched}
-                        onToggle={() => {
-                          if (seasonAllWatched) {
-                            bulkClearWatched.mutate({ showId, seasonNumber })
-                          } else {
-                            bulkSetWatched.mutate({ showId, seasonNumber })
-                          }
-                        }}
-                        disabled={bulkSetWatched.isPending || bulkClearWatched.isPending}
-                      />
-                    </span>
-                    <span>
-                      Season {season} ({eps.length} episodes)
-                    </span>
-                    {seasonTracked > 0 && (
-                      <span className="text-xs text-green-600 dark:text-green-400">{seasonTracked} tracked</span>
-                    )}
-                    {seasonWatched > 0 && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{seasonWatched} watched</span>
-                    )}
-                  </summary>
-                  <div className="mt-2 divide-y border rounded-lg">
-                    {eps
-                      .sort((a, b) => a.episode_number - b.episode_number)
-                      .map((ep) => {
-                        const header = (
-                          <>
-                            <span className="text-gray-400 dark:text-gray-500 mr-2">{ep.episode_number}.</span>
-                            {ep.name}
-                            {ep.air_date && (
-                              <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{ep.air_date}</span>
-                            )}
-                          </>
-                        )
-                        return (
-                        <div
-                          key={ep.id}
-                          className="flex items-start justify-between px-3 py-2 text-sm gap-3 dark:text-gray-200"
-                        >
-                          <div className="flex items-start gap-2 min-w-0">
-                            <WatchedToggle
-                              watched={ep.watched}
-                              onToggle={() => handleToggleWatched(ep)}
-                              disabled={
-                                (setEpisodeWatched.isPending &&
-                                  setEpisodeWatched.variables?.episodeId === ep.id) ||
-                                (clearEpisodeWatched.isPending &&
-                                  clearEpisodeWatched.variables?.episodeId === ep.id)
-                              }
-                            />
-                            <div className="min-w-0">
-                              {ep.overview ? (
-                                <details>
-                                  <summary className="cursor-pointer list-none">{header}</summary>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ep.overview}</p>
-                                </details>
-                              ) : (
-                                header
-                              )}
-                              {ep.file_tracked &&
-                                (ep.backing_files.length > 0
-                                  ? ep.backing_files.map((bf) => (
-                                      <div
-                                        key={bf.id}
-                                        className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5"
-                                      >
-                                        {bf.filename.replace(/\\/g, '/').split('/').pop() ??
-                                          bf.filename}
-                                      </div>
-                                    ))
-                                  : ep.tracked_filename_display && (
-                                      <div className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">
-                                        {ep.tracked_filename_display.replace(/\\/g, '/').split('/').pop() ??
-                                          ep.tracked_filename_display}
-                                      </div>
-                                    ))}
-                            </div>
-                          </div>
-                          {ep.file_tracked ? (
-                            <TrackedBadges
-                              ep={ep}
-                              onFix={(fileId) => handleEpisodeFix(ep, fileId)}
-                              onFixEps={(fileId) => handleEpisodeFixEps(ep, fileId)}
-                              fixMatchDisabled={beginRematch.isPending}
-                            />
-                          ) : (
-                            <div className="shrink-0 flex items-center gap-2">
-                              <button
-                                onClick={() => setModal({ kind: 'linkFile', episode: ep })}
-                                className="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--color-ocean-100)] text-[var(--color-ocean-700)] hover:bg-[var(--color-ocean-200)] dark:bg-[var(--color-ocean-900)]/40 dark:text-[var(--color-ocean-300)] dark:hover:bg-[var(--color-ocean-900)]/70"
-                              >
-                                Match File
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        )
-                      })}
-                  </div>
-                </details>
-              )
-            })}
-            </>
-          )}
-        </Card>
+        <EpisodesCard
+          showId={showId}
+          show={show}
+          episodes={episodes}
+          today={config?.today}
+          missingCount={missingCount}
+          tab={episodesTab}
+          onTabChange={setEpisodesTab}
+          syncEpisodes={syncEpisodes}
+          beginRematch={beginRematch}
+          bulkPending={bulkPending}
+          isEpisodeToggling={(episodeId) =>
+            (setEpisodeWatched.isPending && setEpisodeWatched.variables?.episodeId === episodeId) ||
+            (clearEpisodeWatched.isPending && clearEpisodeWatched.variables?.episodeId === episodeId)
+          }
+          onToggleSeason={handleToggleSeason}
+          onToggleWatched={handleToggleWatched}
+          onFix={handleEpisodeFix}
+          onFixEps={handleEpisodeFixEps}
+          onLinkFile={(episode) => setModal({ kind: 'linkFile', episode })}
+          onScanLocalFiles={() => setModal({ kind: 'scanLocalFiles' })}
+          onEpisodeGroups={() => setModal({ kind: 'episodeGroups' })}
+        />
       )}
 
       <SimilarTitlesSection showId={showId} />
