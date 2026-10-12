@@ -4,17 +4,19 @@ import asyncio
 import hashlib
 import logging
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.orchestrators._events import EventSink
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.filename_parser import extract_crc32
+from jidou.services.sftp_service import DownloadResult as SFTPDownloadResult
 from jidou.services.sftp_service import SFTPService
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,57 @@ class DownloadResult:
     dry_run: bool
 
 
+@dataclass
+class _Tally:
+    """Running totals for one download run, turned into a :class:`DownloadResult` at the end."""
+
+    downloaded: int = 0
+    failed: int = 0
+    bytes: int = 0
+
+    def record(self, ok: bool, size: int) -> None:
+        """Count one finished transfer as downloaded (with its size) or failed.
+
+        Args:
+            ok: Whether the transfer was recorded successfully.
+            size: Transferred size in bytes, counted only when ``ok``.
+        """
+        if ok:
+            self.downloaded += 1
+            self.bytes += size
+        else:
+            self.failed += 1
+
+
+# One claimed batch: each row paired with its local staging destination.
+_Pending = list[tuple[DownloadedFile, Path]]
+
+
+def _complete(tally: _Tally, dry_run: bool) -> DownloadResult:
+    """Log the run summary and build the :class:`DownloadResult`.
+
+    Args:
+        tally: Final running totals.
+        dry_run: Whether this was a dry run.
+
+    Returns:
+        The result for the caller.
+    """
+    logger.info(
+        "Download complete: %d downloaded, %d failed, %d bytes (dry_run=%s)",
+        tally.downloaded,
+        tally.failed,
+        tally.bytes,
+        dry_run,
+    )
+    return DownloadResult(
+        files_downloaded=tally.downloaded,
+        bytes_downloaded=tally.bytes,
+        files_failed=tally.failed,
+        dry_run=dry_run,
+    )
+
+
 class DownloadOrchestrator:
     """Download DISCOVERED DownloadedFile records from SFTP to a local staging area.
 
@@ -215,11 +268,8 @@ class DownloadOrchestrator:
             DownloadResult with counts.
         """
 
-        _emit = EventSink(on_event, swallow_errors=True)
-
-        files_downloaded = 0
-        bytes_downloaded = 0
-        files_failed = 0
+        sink = EventSink(on_event, swallow_errors=True)
+        tally = _Tally()
 
         # Only retry ERROR files that never reached staging (local_path IS NULL).
         # Parse and route failures also land in ERROR but have a staging local_path;
@@ -240,37 +290,7 @@ class DownloadOrchestrator:
         )
 
         if dry_run:
-            stmt = select(DownloadedFile).where(base_where)
-            rows = list((await self.session.execute(stmt)).scalars().all())
-            total = len(rows)
-
-            for idx, file in enumerate(rows, 1):
-                if on_progress:
-                    await on_progress(idx, total, f"Downloading {file.original_filename}")
-                local_path = _staging_path_for(
-                    file.remote_path, self.local_staging_path, self.remote_paths
-                )
-                logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
-                await _emit(
-                    "info",
-                    f"[Dry run] Would download {file.original_filename!r} → {local_path}",
-                    {"file_id": file.id, "dest": str(local_path)},
-                )
-                files_downloaded += 1
-
-            logger.info(
-                "Download complete: %d downloaded, %d failed, %d bytes (dry_run=%s)",
-                files_downloaded,
-                files_failed,
-                bytes_downloaded,
-                dry_run,
-            )
-            return DownloadResult(
-                files_downloaded=files_downloaded,
-                bytes_downloaded=bytes_downloaded,
-                files_failed=files_failed,
-                dry_run=dry_run,
-            )
+            return await self._dry_run_preview(base_where, on_progress, sink)
 
         # Count upfront for accurate progress reporting (no lock held).
         count_stmt = select(func.count(DownloadedFile.id)).where(base_where)
@@ -278,47 +298,11 @@ class DownloadOrchestrator:
 
         progress_idx = 0
 
-        while True:
-            # Claim up to max_workers eligible rows; other workers skip locked rows.
-            stmt = (
-                select(DownloadedFile)
-                .where(base_where)
-                .with_for_update(skip_locked=True, of=DownloadedFile)
-                .limit(max_workers)
-            )
-
-            batch = list((await self.session.execute(stmt)).scalars().all())
-            if not batch:
-                break
-
-            # Mark all batch files DOWNLOADING before releases the locks.
-            pending: list[tuple[DownloadedFile, Path]] = []
-            for file in batch:
-                if file.status == FileStatus.DOWNLOADING:
-                    logger.warning(
-                        "Reclaiming stale DOWNLOADING file (stuck since %s): %s",
-                        file.updated_at,
-                        file.remote_path,
-                    )
-                    await _emit(
-                        "warning",
-                        f"Retrying stuck download {file.original_filename!r} "
-                        "(left DOWNLOADING by a previous, apparently crashed run)",
-                        {"file_id": file.id},
-                    )
-                local_path = _staging_path_for(
-                    file.remote_path, self.local_staging_path, self.remote_paths
-                )
-                file.status = FileStatus.DOWNLOADING
-                pending.append((file, local_path))
-
-            # Flush DOWNLOADING status and commit to release FOR UPDATE locks.
-            await self.session.flush()
-            await self.session.commit()
-
+        # An empty claim means nothing eligible is left.
+        while pending := await self._claim_batch(base_where, max_workers, sink):
             gather_cleanup_done = False
             try:
-                if on_progress and pending:
+                if on_progress:
                     await on_progress(progress_idx, total, f"Downloading {len(pending)} files")
 
                 tasks = [
@@ -331,149 +315,315 @@ class DownloadOrchestrator:
                 except BaseException:
                     # Outer task cancelled while gather was in flight.
                     # Tasks that completed successfully must be credited, not reset.
-                    for (file, local_path), task in zip(pending, tasks, strict=True):
-                        if task.done() and not task.cancelled() and task.exception() is None:
-                            r = task.result()
-                            sha256_hex, crc32_hex = await asyncio.to_thread(_hash_file, local_path)
-                            mismatch = _verify_integrity(file, sha256_hex, crc32_hex)
-                            if mismatch is not None:
-                                file.status = FileStatus.ERROR
-                                file.error_message = mismatch
-                                file.local_path = None
-                                files_failed += 1
-                                await _emit(
-                                    "error",
-                                    f"{mismatch}: {file.original_filename!r}",
-                                    {"file_id": file.id},
-                                )
-                            else:
-                                file.status = _post_download_status(file)
-                                file.local_path = str(local_path)
-                                file.file_size = r.size
-                                file.error_message = None
-                                files_downloaded += 1
-                                bytes_downloaded += r.size
-                                suffix = (
-                                    " (noscan — excluded from matching)"
-                                    if file.ignored_reason
-                                    else ""
-                                )
-                                await _emit(
-                                    "info",
-                                    f"Downloaded {file.original_filename!r}{suffix}",
-                                    {"file_id": file.id, "bytes": r.size},
-                                )
-                        elif file.status == FileStatus.DOWNLOADING:
-                            file.status = FileStatus.ERROR
-                            file.error_message = "Download interrupted"
-                            files_failed += 1
-                            await _emit(
-                                "error",
-                                f"Download interrupted: {file.original_filename!r}",
-                                {"file_id": file.id},
-                            )
-                    try:
-                        await self.session.flush()
-                        await self.session.commit()
-                    except Exception:
-                        logger.warning(
-                            "Could not persist interrupted statuses; "
-                            "manual recovery via PATCH /files/<id> may be required"
-                        )
+                    await self._credit_finished_transfers(pending, tasks, tally, sink)
+                    await self._persist_best_effort()
                     gather_cleanup_done = True
                     raise
 
                 # Update statuses sequentially — safe because all SFTP I/O is done.
-                for (file, local_path), result in zip(pending, results, strict=True):
-                    if isinstance(result, BaseException):
-                        error_msg = (
-                            "Download interrupted"
-                            if isinstance(result, asyncio.CancelledError)
-                            else str(result)
-                        )
-                        logger.error("Failed to download %s: %s", file.remote_path, result)
-                        file.status = FileStatus.ERROR
-                        file.error_message = error_msg
-                        files_failed += 1
-                        await _emit(
-                            "error",
-                            f"Failed to download {file.original_filename!r}: {error_msg}",
-                            {"file_id": file.id, "error": error_msg},
-                        )
-                    else:
-                        sha256_hex, crc32_hex = await asyncio.to_thread(_hash_file, local_path)
-                        mismatch = _verify_integrity(file, sha256_hex, crc32_hex)
-                        if mismatch is not None:
-                            logger.error("%s: %s", mismatch, file.remote_path)
-                            file.status = FileStatus.ERROR
-                            file.error_message = mismatch
-                            file.local_path = None
-                            files_failed += 1
-                            await _emit(
-                                "error",
-                                f"{mismatch}: {file.original_filename!r}",
-                                {"file_id": file.id},
-                            )
-                            continue
-                        file.status = _post_download_status(file)
-                        file.local_path = str(local_path)
-                        file.file_size = result.size
-                        file.error_message = None
-                        files_downloaded += 1
-                        bytes_downloaded += result.size
-                        suffix = " (noscan — excluded from matching)" if file.ignored_reason else ""
-                        await _emit(
-                            "info",
-                            f"Downloaded {file.original_filename!r}{suffix}",
-                            {"file_id": file.id, "bytes": result.size},
-                        )
+                await self._apply_results(pending, results, tally, sink)
 
                 await self.session.flush()
                 await self.session.commit()
 
                 # Emit progress after committing so the DB reflects final state.
-                if on_progress:
-                    for file, _ in pending:
-                        progress_idx += 1
-                        msg = (
-                            f"Downloaded {file.original_filename}"
-                            if file.status in (FileStatus.DOWNLOADED, FileStatus.IGNORED)
-                            else f"Failed {file.original_filename}"
-                        )
-                        await on_progress(progress_idx, total, msg)
+                progress_idx = await self._report_batch_progress(
+                    pending, progress_idx, total, on_progress
+                )
 
             except BaseException:
                 if not gather_cleanup_done:
-                    for file, _ in pending:
-                        if file.status == FileStatus.DOWNLOADING:
-                            file.status = FileStatus.ERROR
-                            file.error_message = "Download interrupted"
-                            files_failed += 1
-                            await _emit(
-                                "error",
-                                f"Download interrupted: {file.original_filename!r}",
-                                {"file_id": file.id},
-                            )
-                    try:
-                        await self.session.flush()
-                        await self.session.commit()
-                    except Exception:
-                        logger.warning(
-                            "Could not persist interrupted statuses; "
-                            "manual recovery via PATCH /files/<id> may be required"
-                        )
+                    tally.failed += await self._mark_interrupted(pending, sink)
+                    await self._persist_best_effort()
                 raise
 
-        logger.info(
-            "Download complete: %d downloaded, %d failed, %d bytes (dry_run=%s)",
-            files_downloaded,
-            files_failed,
-            bytes_downloaded,
-            dry_run,
+        return _complete(tally, dry_run)
+
+    async def _dry_run_preview(
+        self,
+        base_where: ColumnElement[bool],
+        on_progress: OnProgress | None,
+        sink: EventSink,
+    ) -> DownloadResult:
+        """Log and emit what a real run would download, without any transfer or write.
+
+        Args:
+            base_where: Eligibility predicate shared with the real run.
+            on_progress: Optional progress callback, called once per file.
+            sink: Event sink for the per-file "would download" events.
+
+        Returns:
+            A dry-run ``DownloadResult`` counting every eligible file as downloaded.
+        """
+        tally = _Tally()
+        stmt = select(DownloadedFile).where(base_where)
+        rows = list((await self.session.execute(stmt)).scalars().all())
+        total = len(rows)
+
+        for idx, file in enumerate(rows, 1):
+            if on_progress:
+                await on_progress(idx, total, f"Downloading {file.original_filename}")
+            local_path = _staging_path_for(
+                file.remote_path, self.local_staging_path, self.remote_paths
+            )
+            logger.info("[DRY RUN] Would download %s → %s", file.remote_path, local_path)
+            await sink(
+                "info",
+                f"[Dry run] Would download {file.original_filename!r} → {local_path}",
+                {"file_id": file.id, "dest": str(local_path)},
+            )
+            tally.downloaded += 1
+
+        return _complete(tally, dry_run=True)
+
+    async def _claim_batch(
+        self,
+        base_where: ColumnElement[bool],
+        max_workers: int,
+        sink: EventSink,
+    ) -> _Pending:
+        """Claim up to ``max_workers`` eligible rows, mark them DOWNLOADING and commit.
+
+        Args:
+            base_where: Eligibility predicate.
+            max_workers: Maximum batch size.
+            sink: Event sink for the stale-reclaim warning.
+
+        Returns:
+            The claimed ``(file, staging_path)`` pairs; empty when nothing is
+            eligible (in which case nothing is flushed or committed).
+        """
+        # Claim up to max_workers eligible rows; other workers skip locked rows.
+        stmt = (
+            select(DownloadedFile)
+            .where(base_where)
+            .with_for_update(skip_locked=True, of=DownloadedFile)
+            .limit(max_workers)
         )
-        return DownloadResult(
-            files_downloaded=files_downloaded,
-            bytes_downloaded=bytes_downloaded,
-            files_failed=files_failed,
-            dry_run=dry_run,
+
+        batch = list((await self.session.execute(stmt)).scalars().all())
+        if not batch:
+            return []
+
+        # Mark all batch files DOWNLOADING before releases the locks.
+        pending: _Pending = []
+        for file in batch:
+            if file.status == FileStatus.DOWNLOADING:
+                logger.warning(
+                    "Reclaiming stale DOWNLOADING file (stuck since %s): %s",
+                    file.updated_at,
+                    file.remote_path,
+                )
+                await sink(
+                    "warning",
+                    f"Retrying stuck download {file.original_filename!r} "
+                    "(left DOWNLOADING by a previous, apparently crashed run)",
+                    {"file_id": file.id},
+                )
+            local_path = _staging_path_for(
+                file.remote_path, self.local_staging_path, self.remote_paths
+            )
+            file.status = FileStatus.DOWNLOADING
+            pending.append((file, local_path))
+
+        # Flush DOWNLOADING status and commit to release FOR UPDATE locks.
+        await self.session.flush()
+        await self.session.commit()
+        return pending
+
+    async def _credit_finished_transfers(
+        self,
+        pending: _Pending,
+        tasks: Sequence[asyncio.Future[SFTPDownloadResult]],
+        tally: _Tally,
+        sink: EventSink,
+    ) -> None:
+        """After an outer cancel, credit completed transfers and fail the rest.
+
+        Args:
+            pending: The batch, in task order.
+            tasks: The transfer futures matching ``pending`` one-to-one.
+            tally: Running totals, updated in place.
+            sink: Event sink.
+        """
+        for (file, local_path), task in zip(pending, tasks, strict=True):
+            if task.done() and not task.cancelled() and task.exception() is None:
+                size = task.result().size
+                # The cancel path historically does not write the mismatch log line.
+                ok = await self._record_transfer(file, local_path, size, sink, log_mismatch=False)
+                tally.record(ok, size)
+            elif file.status == FileStatus.DOWNLOADING:
+                await self._interrupt_file(file, sink)
+                tally.failed += 1
+
+    async def _apply_results(
+        self,
+        pending: _Pending,
+        results: list[SFTPDownloadResult | BaseException],
+        tally: _Tally,
+        sink: EventSink,
+    ) -> None:
+        """Record each gathered transfer outcome sequentially.
+
+        Args:
+            pending: The batch, in task order.
+            results: ``asyncio.gather(..., return_exceptions=True)`` output.
+            tally: Running totals, updated in place.
+            sink: Event sink.
+        """
+        for (file, local_path), result in zip(pending, results, strict=True):
+            if isinstance(result, BaseException):
+                await self._record_failure(file, result, sink)
+                tally.failed += 1
+            else:
+                ok = await self._record_transfer(
+                    file, local_path, result.size, sink, log_mismatch=True
+                )
+                tally.record(ok, result.size)
+
+    async def _record_transfer(
+        self,
+        file: DownloadedFile,
+        local_path: Path,
+        size: int,
+        sink: EventSink,
+        *,
+        log_mismatch: bool,
+    ) -> bool:
+        """Hash and verify a transferred file, then set its status and emit the event.
+
+        Args:
+            file: The row whose transfer completed.
+            local_path: Where the transfer landed.
+            size: Transferred size in bytes.
+            sink: Event sink.
+            log_mismatch: Whether to also ``logger.error`` a CRC32 mismatch. Only
+                the normal (non-cancelled) path does this today.
+
+        Returns:
+            True if the file was recorded as downloaded/ignored, False on a
+            CRC32 mismatch (the row is set to ERROR with ``local_path`` cleared).
+        """
+        sha256_hex, crc32_hex = await asyncio.to_thread(_hash_file, local_path)
+        mismatch = _verify_integrity(file, sha256_hex, crc32_hex)
+        if mismatch is not None:
+            if log_mismatch:
+                logger.error("%s: %s", mismatch, file.remote_path)
+            file.status = FileStatus.ERROR
+            file.error_message = mismatch
+            file.local_path = None
+            await sink(
+                "error",
+                f"{mismatch}: {file.original_filename!r}",
+                {"file_id": file.id},
+            )
+            return False
+        file.status = _post_download_status(file)
+        file.local_path = str(local_path)
+        file.file_size = size
+        file.error_message = None
+        suffix = " (noscan — excluded from matching)" if file.ignored_reason else ""
+        await sink(
+            "info",
+            f"Downloaded {file.original_filename!r}{suffix}",
+            {"file_id": file.id, "bytes": size},
         )
+        return True
+
+    async def _record_failure(
+        self, file: DownloadedFile, error: BaseException, sink: EventSink
+    ) -> None:
+        """Mark a file ERROR after its SFTP transfer raised, and emit the event.
+
+        Args:
+            file: The row whose transfer failed.
+            error: The exception gathered for it.
+            sink: Event sink.
+        """
+        error_msg = (
+            "Download interrupted" if isinstance(error, asyncio.CancelledError) else str(error)
+        )
+        logger.error("Failed to download %s: %s", file.remote_path, error)
+        file.status = FileStatus.ERROR
+        file.error_message = error_msg
+        await sink(
+            "error",
+            f"Failed to download {file.original_filename!r}: {error_msg}",
+            {"file_id": file.id, "error": error_msg},
+        )
+
+    async def _interrupt_file(self, file: DownloadedFile, sink: EventSink) -> None:
+        """Mark one DOWNLOADING file ERROR ("Download interrupted") and emit the event.
+
+        Args:
+            file: The row to fail.
+            sink: Event sink.
+        """
+        file.status = FileStatus.ERROR
+        file.error_message = "Download interrupted"
+        await sink(
+            "error",
+            f"Download interrupted: {file.original_filename!r}",
+            {"file_id": file.id},
+        )
+
+    async def _mark_interrupted(self, pending: _Pending, sink: EventSink) -> int:
+        """Fail every still-DOWNLOADING file of the batch as interrupted.
+
+        Args:
+            pending: The batch.
+            sink: Event sink.
+
+        Returns:
+            The number of files newly failed.
+        """
+        interrupted = 0
+        for file, _ in pending:
+            if file.status == FileStatus.DOWNLOADING:
+                await self._interrupt_file(file, sink)
+                interrupted += 1
+        return interrupted
+
+    async def _persist_best_effort(self) -> None:
+        """Flush and commit interrupted statuses, logging instead of raising on failure.
+
+        Used on the abort paths, where the original exception must win.
+        """
+        try:
+            await self.session.flush()
+            await self.session.commit()
+        except Exception:
+            logger.warning(
+                "Could not persist interrupted statuses; "
+                "manual recovery via PATCH /files/<id> may be required"
+            )
+
+    @staticmethod
+    async def _report_batch_progress(
+        pending: _Pending,
+        progress_idx: int,
+        total: int,
+        on_progress: OnProgress | None,
+    ) -> int:
+        """Emit one progress call per file of a committed batch.
+
+        Args:
+            pending: The batch.
+            progress_idx: Progress counter before this batch.
+            total: Total files expected this run.
+            on_progress: Optional progress callback.
+
+        Returns:
+            The updated progress counter.
+        """
+        if not on_progress:
+            return progress_idx
+        for file, _ in pending:
+            progress_idx += 1
+            msg = (
+                f"Downloaded {file.original_filename}"
+                if file.status in (FileStatus.DOWNLOADED, FileStatus.IGNORED)
+                else f"Failed {file.original_filename}"
+            )
+            await on_progress(progress_idx, total, msg)
+        return progress_idx
