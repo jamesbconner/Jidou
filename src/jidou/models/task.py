@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,9 +44,15 @@ class BackgroundTask(TimestampMixin, Base):
     """Tracks a long-running Celery task with progress updates."""
 
     __tablename__ = "background_tasks"
+    __table_args__ = (
+        # The database has only this named unique constraint (from 0001_initial)
+        # and no separate plain index, so ``unique=True, index=True`` on the
+        # column would be reported as drift.
+        UniqueConstraint("celery_task_id", name="background_tasks_celery_task_id_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    celery_task_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    celery_task_id: Mapped[str] = mapped_column(String(255))
     task_type: Mapped[str] = mapped_column(String(100))  # "download", "scan", "match", "sync"
     status: Mapped[str] = mapped_column(
         String(50),

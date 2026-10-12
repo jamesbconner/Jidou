@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from jidou.models.base import Base, TimestampMixin
@@ -21,6 +21,11 @@ class Episode(TimestampMixin, Base):
     """
 
     __tablename__ = "episodes"
+    __table_args__ = (
+        # Composite index for per-show tracked/missing episode counts; created
+        # by hand in a migration, declared here so ``alembic check`` sees it.
+        Index("ix_episodes_show_id_file_tracked", "show_id", "file_tracked"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     show_id: Mapped[int] = mapped_column(ForeignKey("shows.id", ondelete="CASCADE"), index=True)
