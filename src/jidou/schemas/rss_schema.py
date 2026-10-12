@@ -1,23 +1,12 @@
 """Pydantic schemas for RSS feed and subscription API endpoints."""
 
-import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from jidou.schemas._base import BoundedRegexPattern, NonEmptyRegexPattern, RegexPattern
 from jidou.schemas.show_schema import ShowCreate
-
-
-def _validate_regex(v: str | None) -> str | None:
-    """Compile *v* as a Python regex, raising ValueError if invalid."""
-    if v is not None:
-        try:
-            re.compile(v)
-        except re.error as exc:
-            raise ValueError(f"Invalid regular expression: {exc}") from exc
-    return v
-
 
 MAX_REGEX_SAMPLES = 3
 MAX_PREVIOUS_SUGGESTIONS = 5
@@ -32,14 +21,7 @@ class RegexHintSample(BaseModel):
     """
 
     sample_name: str = ""
-    hint: str = Field(min_length=1)
-
-    @field_validator("hint")
-    @classmethod
-    def validate_hint(cls, v: str) -> str:
-        """Reject hints that fail to compile as Python regexes."""
-        _validate_regex(v)
-        return v
+    hint: NonEmptyRegexPattern
 
 
 class RssShowBrief(BaseModel):
@@ -65,14 +47,8 @@ class RssFeedCreate(BaseModel):
     regex_include_samples: list[RegexHintSample] | None = Field(
         default=None, max_length=MAX_REGEX_SAMPLES
     )
-    regex_exclude_hint: str | None = None
+    regex_exclude_hint: RegexPattern | None = None
     extra_config: dict[str, object] | None = None
-
-    @field_validator("regex_exclude_hint")
-    @classmethod
-    def validate_regex_hint(cls, v: str | None) -> str | None:
-        """Reject hints that fail to compile as Python regexes."""
-        return _validate_regex(v)
 
 
 class RssFeedUpdate(BaseModel):
@@ -87,14 +63,8 @@ class RssFeedUpdate(BaseModel):
     regex_include_samples: list[RegexHintSample] | None = Field(
         default=None, max_length=MAX_REGEX_SAMPLES
     )
-    regex_exclude_hint: str | None = None
+    regex_exclude_hint: RegexPattern | None = None
     extra_config: dict[str, object] | None = None
-
-    @field_validator("regex_exclude_hint")
-    @classmethod
-    def validate_regex_hint(cls, v: str | None) -> str | None:
-        """Reject hints that fail to compile as Python regexes."""
-        return _validate_regex(v)
 
 
 class RssFeedRead(BaseModel):
@@ -122,8 +92,8 @@ class RssSubscriptionCreate(BaseModel):
     feed_id: int | None = None
     show_id: int | None = None
     name: str
-    regex_include: str | None = None
-    regex_exclude: str | None = None
+    regex_include: RegexPattern | None = None
+    regex_exclude: RegexPattern | None = None
     regex_include_ignorecase: bool = True
     regex_exclude_ignorecase: bool = True
     download_location: str | None = None
@@ -133,12 +103,6 @@ class RssSubscriptionCreate(BaseModel):
     label: str | None = None
     extra_config: dict[str, object] | None = None
 
-    @field_validator("regex_include", "regex_exclude")
-    @classmethod
-    def validate_regex(cls, v: str | None) -> str | None:
-        """Reject patterns that fail to compile as Python regexes."""
-        return _validate_regex(v)
-
 
 class RssSubscriptionUpdate(BaseModel):
     """Request body for updating an RSS subscription — all fields optional."""
@@ -146,8 +110,8 @@ class RssSubscriptionUpdate(BaseModel):
     feed_id: int | None = None
     show_id: int | None = None
     name: str | None = None
-    regex_include: str | None = None
-    regex_exclude: str | None = None
+    regex_include: RegexPattern | None = None
+    regex_exclude: RegexPattern | None = None
     regex_include_ignorecase: bool | None = None
     regex_exclude_ignorecase: bool | None = None
     download_location: str | None = None
@@ -156,12 +120,6 @@ class RssSubscriptionUpdate(BaseModel):
     enabled_in_config: bool | None = None
     label: str | None = None
     extra_config: dict[str, object] | None = None
-
-    @field_validator("regex_include", "regex_exclude")
-    @classmethod
-    def validate_regex(cls, v: str | None) -> str | None:
-        """Reject patterns that fail to compile as Python regexes."""
-        return _validate_regex(v)
 
 
 class RssSubscriptionRead(BaseModel):
@@ -306,9 +264,6 @@ class FeedEntriesRead(BaseModel):
     groups: list[FeedEntryGroupRead]
 
 
-MAX_REGEX_PATTERN_LENGTH = 512
-
-
 class RegexMatchReportRead(BaseModel):
     """Which of a feed group's current titles a regex filter selects.
 
@@ -364,16 +319,10 @@ class FeedRegexTestRequest(BaseModel):
     """
 
     parsed_name: str = Field(min_length=1, max_length=300)
-    regex_include: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
-    regex_exclude: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include: BoundedRegexPattern | None = None
+    regex_exclude: BoundedRegexPattern | None = None
     regex_include_ignorecase: bool = True
     regex_exclude_ignorecase: bool = True
-
-    @field_validator("regex_include", "regex_exclude")
-    @classmethod
-    def validate_regex(cls, v: str | None) -> str | None:
-        """Reject patterns that fail to compile as Python regexes."""
-        return _validate_regex(v)
 
 
 class FeedAddShowRequest(BaseModel):
@@ -402,18 +351,12 @@ class FeedAddShowRequest(BaseModel):
     show_id: int | None = None
     show: ShowCreate | None = None
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    regex_include: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
-    regex_exclude: str | None = Field(default=None, max_length=MAX_REGEX_PATTERN_LENGTH)
+    regex_include: BoundedRegexPattern | None = None
+    regex_exclude: BoundedRegexPattern | None = None
     regex_include_ignorecase: bool = True
     regex_exclude_ignorecase: bool = True
     enabled: bool = False
     dry_run: bool = False
-
-    @field_validator("regex_include", "regex_exclude")
-    @classmethod
-    def validate_regex(cls, v: str | None) -> str | None:
-        """Reject patterns that fail to compile as Python regexes."""
-        return _validate_regex(v)
 
     @model_validator(mode="after")
     def exactly_one_show_source(self) -> "FeedAddShowRequest":

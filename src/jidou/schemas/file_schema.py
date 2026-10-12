@@ -55,22 +55,6 @@ class FileRead(BaseModel):
     episode: EpisodeBrief | None = None
 
 
-class FileList(BaseModel):
-    """Slim downloaded-file record for list endpoints."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    original_filename: str
-    remote_path: str
-    file_size: int
-    status: FileStatus
-    show_id: int | None = None
-    episode_id: int | None = None
-    parsed_show_name: str | None = None
-    created_at: datetime
-
-
 class FileMatchRequest(BaseModel):
     """Request body for assigning a show to an unmatched file.
 

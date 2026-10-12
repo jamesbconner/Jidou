@@ -73,16 +73,3 @@ class WatchlistRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     next_up: WatchlistNextUpEpisode | None = None
-
-
-class WatchlistList(BaseModel):
-    """Slim watchlist entry for list endpoints."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    show_id: int
-    show: ShowBrief
-    status: WatchlistStatus
-    position: int
-    created_at: datetime

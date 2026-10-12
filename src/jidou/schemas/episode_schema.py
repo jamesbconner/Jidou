@@ -7,30 +7,6 @@ from pydantic import BaseModel, ConfigDict, computed_field
 from jidou.services.path_transport import decode_path_bytes_for_display
 
 
-class EpisodeRead(BaseModel):
-    """Full episode record returned by detail endpoints."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    show_id: int
-    tmdb_id: int
-    season_number: int
-    episode_number: int
-    name: str
-    overview: str | None = None
-    air_date: date | None = None
-    runtime: int | None = None
-    absolute_episode_number: int | None = None
-    episode_type: str | None = None
-    still_path: str | None = None
-    file_tracked: bool
-    watched: bool
-    watched_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
 class BackingFile(BaseModel):
     """A DownloadedFile record linked to an episode, for the episode list."""
 
