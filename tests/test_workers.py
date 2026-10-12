@@ -1092,3 +1092,13 @@ async def test_seed_remote_wires_orchestrator_and_returns_summary() -> None:
         "dry_run": True,
     }
     assert wf_result.complete_summary is None
+
+
+def test_long_running_tasks_pin_exact_time_limits() -> None:
+    """sync_all_task and path_import_task keep the 7h hard / 6h soft limits exactly."""
+    from jidou.workers.import_tasks import path_import_task
+    from jidou.workers.sync_tasks import sync_all_task
+
+    for task in (sync_all_task, path_import_task):
+        assert task.time_limit == 25200
+        assert task.soft_time_limit == 21600

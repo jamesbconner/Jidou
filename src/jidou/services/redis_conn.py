@@ -43,3 +43,31 @@ async def redis_session(
         yield client
     finally:
         await client.aclose()
+
+
+@asynccontextmanager
+async def redis_try_lock(url: str, key: str, ttl_seconds: int) -> AsyncIterator[bool]:
+    """Try to take a best-effort Redis lock for one unit of work.
+
+    Issues ``SET key "1" NX EX ttl_seconds``. The lock is only released (``DEL``)
+    when this caller acquired it, so a run that lost the race never deletes the
+    winner's lock. The TTL bounds how long a crashed holder can wedge the lock.
+    Errors from Redis (including it being down) propagate to the caller, and the
+    client is always closed.
+
+    Args:
+        url: Redis connection URL.
+        key: Lock key.
+        ttl_seconds: Expiry applied to the lock when acquired.
+
+    Yields:
+        True when the lock was acquired, False when another holder has it.
+    """
+    async with redis_session(url) as client:
+        acquired = bool(await client.set(key, "1", nx=True, ex=ttl_seconds))
+        try:
+            yield acquired
+        finally:
+            # Only the holder may release; a loser deleting would free the winner's lock.
+            if acquired:
+                await client.delete(key)

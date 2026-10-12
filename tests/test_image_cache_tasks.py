@@ -117,3 +117,77 @@ def test_purge_stale_images_task_forwards_dry_run() -> None:
         purge_stale_images_task(dry_run=True)
 
     mock_purge.assert_called_once_with(dry_run=True)
+
+
+@pytest.mark.asyncio
+async def test_purge_stale_images_acquires_lock_with_key_and_ttl() -> None:
+    """The lock is SET NX EX with the pinned key and one-hour TTL (wire contract)."""
+    r = _mock_redis()
+
+    with (
+        patch(
+            "jidou.workers.image_cache_tasks.image_cache_backend.purge_older_than",
+            AsyncMock(return_value=0),
+        ),
+        patch("redis.asyncio.from_url", return_value=r),
+    ):
+        await _purge_stale_images()
+
+    r.set.assert_awaited_once_with("jidou:image_cache_purge:lock", "1", nx=True, ex=3600)
+    r.delete.assert_awaited_once_with("jidou:image_cache_purge:lock")
+
+
+@pytest.mark.asyncio
+async def test_purge_stale_images_lock_held_does_not_delete_and_closes() -> None:
+    """A held lock is never deleted by the loser, and the client is still closed."""
+    r = _mock_redis(lock_acquired=False)
+
+    with (
+        patch(
+            "jidou.workers.image_cache_tasks.image_cache_backend.purge_older_than",
+            AsyncMock(return_value=1),
+        ),
+        patch("redis.asyncio.from_url", return_value=r),
+    ):
+        await _purge_stale_images()
+
+    r.delete.assert_not_awaited()
+    r.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_purge_stale_images_releases_lock_when_purge_raises() -> None:
+    """A failing purge propagates, but the lock is released and the client closed."""
+    r = _mock_redis()
+
+    with (
+        patch(
+            "jidou.workers.image_cache_tasks.image_cache_backend.purge_older_than",
+            AsyncMock(side_effect=OSError("disk gone")),
+        ),
+        patch("redis.asyncio.from_url", return_value=r),
+        pytest.raises(OSError, match="disk gone"),
+    ):
+        await _purge_stale_images()
+
+    r.delete.assert_awaited_once_with("jidou:image_cache_purge:lock")
+    r.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_purge_stale_images_redis_down_propagates_without_delete() -> None:
+    """If the lock SET itself fails (Redis down) the error propagates; no DEL; client closed."""
+    r = _mock_redis()
+    r.set = AsyncMock(side_effect=ConnectionError("redis down"))
+    purge = AsyncMock(return_value=0)
+
+    with (
+        patch("jidou.workers.image_cache_tasks.image_cache_backend.purge_older_than", purge),
+        patch("redis.asyncio.from_url", return_value=r),
+        pytest.raises(ConnectionError, match="redis down"),
+    ):
+        await _purge_stale_images()
+
+    purge.assert_not_awaited()
+    r.delete.assert_not_awaited()
+    r.aclose.assert_awaited_once()

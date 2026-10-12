@@ -4,11 +4,11 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-import redis.asyncio as aioredis
 from celery import shared_task
 
 from jidou.config import settings
 from jidou.services.image_cache import image_cache_backend
+from jidou.services.redis_conn import redis_try_lock
 
 logger = logging.getLogger(__name__)
 
@@ -44,24 +44,19 @@ async def _purge_stale_images(dry_run: bool = False) -> dict[str, int]:
         logger.warning("Image cache backend not configured; skipping purge")
         return {"purged": 0}
 
-    r = aioredis.from_url(settings.redis_url)
-    try:
-        acquired = await r.set(_PURGE_LOCK_KEY, "1", nx=True, ex=_PURGE_LOCK_TTL_SECONDS)
+    async with redis_try_lock(
+        settings.redis_url, _PURGE_LOCK_KEY, _PURGE_LOCK_TTL_SECONDS
+    ) as acquired:
         if not acquired:
             logger.info("Image cache purge already in progress; skipping this run")
             return {"purged": 0}
-        try:
-            cutoff = datetime.now(UTC) - timedelta(days=settings.image_cache_retention_days)
-            purged = await image_cache_backend.purge_older_than(cutoff, dry_run=dry_run)
-            logger.info(
-                "Image cache purge%s: %s %d file(s) older than %s",
-                " (dry run)" if dry_run else "",
-                "would remove" if dry_run else "removed",
-                purged,
-                cutoff.isoformat(),
-            )
-            return {"purged": purged}
-        finally:
-            await r.delete(_PURGE_LOCK_KEY)
-    finally:
-        await r.aclose()
+        cutoff = datetime.now(UTC) - timedelta(days=settings.image_cache_retention_days)
+        purged = await image_cache_backend.purge_older_than(cutoff, dry_run=dry_run)
+        logger.info(
+            "Image cache purge%s: %s %d file(s) older than %s",
+            " (dry run)" if dry_run else "",
+            "would remove" if dry_run else "removed",
+            purged,
+            cutoff.isoformat(),
+        )
+        return {"purged": purged}

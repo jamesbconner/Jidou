@@ -1,6 +1,7 @@
 """Celery application for background task processing."""
 
 import logging
+from typing import Final
 
 from celery import Celery
 from celery.schedules import crontab
@@ -8,6 +9,21 @@ from celery.schedules import crontab
 from jidou.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Time limits for the two tasks that legitimately run for hours, overriding the
+# app-wide 50min/60min defaults below (hard 7h, soft 6h).
+# - sync_all_task chains scan, download, match and route sequentially in one
+#   execution. Scan is fast after the first run, download is bandwidth-bound,
+#   match is sequential per-file LLM parsing. On any real backlog the combined
+#   time exceeds the default meant for a single phase, so sync would hit
+#   SoftTimeLimitExceeded well before it is actually stuck.
+# - path_import_task can span hundreds of previously-unseen shows, each needing
+#   several sequential TMDB calls (search, details, external IDs, episode groups,
+#   per-season episode sync, alias generation) serialized behind the TMDB rate
+#   limit (1 call/2s). A few hundred new shows can take multiple hours.
+# broker_transport_options["visibility_timeout"] below must stay comfortably
+# above time_limit here.
+LONG_TASK_LIMITS: Final[dict[str, int]] = {"time_limit": 25200, "soft_time_limit": 21600}
 
 # Create Celery application
 celery_app = Celery(
@@ -34,7 +50,7 @@ celery_app.conf.update(
     # isn't acked within that window, Redis assumes the worker died and
     # redelivers it to another worker, even if the original is still running.
     # path_import_task and sync_all_task both override their time_limit to
-    # 25200s (7h; see import_tasks.py / sync_tasks.py), which is far longer
+    # 25200s (7h; see LONG_TASK_LIMITS), which is far longer
     # than the 3600s default, so a single legitimate run would get
     # redelivered and re-executed from scratch roughly every hour, racing
     # against itself on the same DB rows.

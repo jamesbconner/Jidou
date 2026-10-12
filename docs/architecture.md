@@ -78,7 +78,7 @@ This means:
 - The API and worker can be on different machines (they share only the database and Redis).
 - Progress is not lost if a browser disconnects — the event log is stored in the database and replayed on reconnect.
 
-**Time limits are sized per task, not one blanket default.** Most Celery tasks inherit the app-wide 50-minute soft / 60-minute hard `SoftTimeLimitExceeded` limit, which is fine for a single-phase task. Multi-phase tasks that chain several I/O- or LLM-bound stages together — `sync_all_task` (scan → download → match → route) and `path_import_task` — get an explicit 6h soft / 7h hard override instead, since a real backlog routinely exceeds the default window well before it's actually stuck.
+**Time limits are sized per task, not one blanket default.** Most Celery tasks inherit the app-wide 50-minute soft / 60-minute hard `SoftTimeLimitExceeded` limit, which is fine for a single-phase task. Multi-phase tasks that chain several I/O- or LLM-bound stages together — `sync_all_task` (scan → download → match → route) and `path_import_task` — get an explicit 6h soft / 7h hard override instead (defined once as `LONG_TASK_LIMITS` in `src/jidou/workers/celery_app.py` and applied to both tasks, with the broker `visibility_timeout` kept above it), since a real backlog routinely exceeds the default window well before it's actually stuck.
 
 ---
 
@@ -133,7 +133,7 @@ Frontend components never link to `image.tmdb.org` directly — every poster/bac
 - **Backend abstraction:** storage sits behind an `ImageCacheBackend` protocol; `DiskImageCacheBackend` is the only implementation today, selected via a factory reading `IMAGE_CACHE_BACKEND`. A future self-hosted S3-compatible backend is a drop-in swap without touching the route handler.
 - **Unauthenticated by design:** this route is registered without the `X-API-Key` dependency, alongside `/api/health` — a plain `<img src>` tag can't send custom headers, and TMDB images aren't sensitive data.
 - **In-flight deduplication:** concurrent requests for the same never-cached image share one upstream fetch rather than each independently fetching and writing the same bytes — the same "waiter waits on the owner's event, falls through to its own attempt if the owner failed" shape `TMDBService._request` already uses for metadata calls.
-- **Retention:** a daily Celery beat task purges cached files past `IMAGE_CACHE_RETENTION_DAYS` (default 180), gated by `IMAGE_CACHE_EXPIRATION_ENABLED` so retention can be disabled to keep images indefinitely.
+- **Retention:** a daily Celery beat task purges cached files past `IMAGE_CACHE_RETENTION_DAYS` (default 180), gated by `IMAGE_CACHE_EXPIRATION_ENABLED` so retention can be disabled to keep images indefinitely. Overlapping purge runs are skipped via a Redis try-lock (`redis_try_lock` in `services/redis_conn.py`).
 
 ---
 
