@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 import httpx2 as httpx
 from cachetools import TTLCache
 
+from jidou.services.single_flight import ElectedSingleFlight
+
 if TYPE_CHECKING:
     from jidou.config import Settings
 
@@ -51,6 +53,21 @@ _DEFAULT_BASE_URLS: dict[LLMProvider, str] = {
     LLMProvider.OLLAMA: "http://localhost:11434",
     LLMProvider.LMSTUDIO: "http://localhost:1234",
 }
+
+
+def _strip_thinking(content: str) -> str:
+    """Strip chain-of-thought blocks that reasoning models emit in their content.
+
+    DeepSeek-R1, Qwen3 and similar models emit ``<think>``/``<thinking>`` blocks when
+    ``/no_think`` is not honoured or thinking is explicitly enabled.
+
+    Args:
+        content: Raw model output.
+
+    Returns:
+        The output with thinking blocks removed and surrounding whitespace trimmed.
+    """
+    return re.sub(r"<think(?:ing)?>.*?</think(?:ing)?>", "", content, flags=re.DOTALL).strip()
 
 
 @dataclass
@@ -112,9 +129,12 @@ class LLMService:
         self._timeout = timeout
         self._cache: TTLCache[str, str] = TTLCache(maxsize=500, ttl=cache_ttl)
         self._cache_lock = asyncio.Lock()
-        # Per-instance in-flight deduplication state (mirrors TMDBService._request).
-        self._in_flight: dict[str, asyncio.Event] = {}
-        self._flight_lock = asyncio.Lock()
+        # Per-instance in-flight deduplication (mirrors TMDBService._request). Unbounded
+        # election rounds: a failed owner returns None rather than raising, so there is
+        # no stored error to fail fast with.
+        self._flight: ElectedSingleFlight[LLMResponse | None] = ElectedSingleFlight(
+            max_rounds=None, label="LLM"
+        )
 
     def is_available(self) -> bool:
         """Return ``True`` when a real provider and model are configured.
@@ -175,6 +195,9 @@ class LLMService:
                 max_tokens=5,
             )
         else:
+            # Kept (unlike the dispatch in _call_provider): an existing test pins this
+            # RuntimeError for an unrecognised provider, and test_connection must not
+            # silently ping the OpenAI endpoint with one.
             raise RuntimeError(f"Unsupported LLM provider: {self._provider!r}")
 
         return time.monotonic() - start, self._model
@@ -233,148 +256,150 @@ class LLMService:
             self._provider, effective_model, system, prompt, max_tokens, response_format
         )
 
-        is_owner = False
-        event: asyncio.Event | None = None
-
-        if not bypass_cache:
-            cached_content = await self._get_cached(cache_key)
-            if cached_content is not None:
-                logger.debug("LLM cache hit (key=%s…)", cache_key[:8])
-                return LLMResponse(
-                    content=cached_content,
-                    model=effective_model,
-                    provider=self._provider,
-                    cached=True,
-                )
-
-            # --- In-flight deduplication ---
-            async with self._flight_lock:
-                if cache_key in self._in_flight:
-                    event = self._in_flight[cache_key]
-                else:
-                    event = asyncio.Event()
-                    self._in_flight[cache_key] = event
-                    is_owner = True
-
-            if not is_owner:
-                logger.debug(
-                    "LLM in-flight dedup: waiting for concurrent call (key=%s…)", cache_key[:8]
-                )
-                while True:
-                    await event.wait()
-                    refreshed = await self._get_cached(cache_key)
-                    if refreshed is not None:
-                        return LLMResponse(
-                            content=refreshed,
-                            model=effective_model,
-                            provider=self._provider,
-                            cached=True,
-                        )
-                    # Owner's call failed (returned None) or produced a truncated
-                    # response that is intentionally left uncached. Elect one
-                    # waiter as the new owner so the rest don't all fire their
-                    # own independent calls.
-                    async with self._flight_lock:
-                        if cache_key in self._in_flight:
-                            # Another waiter won the election — wait on their attempt.
-                            event = self._in_flight[cache_key]
-                            continue
-                        event = asyncio.Event()
-                        self._in_flight[cache_key] = event
-                        is_owner = True
-                        break
-                logger.warning(
-                    "LLM in-flight dedup: owner call did not populate cache for "
-                    "key=%s…; this coroutine retrying",
-                    cache_key[:8],
-                )
-
-        try:
-            start = time.monotonic()
-            try:
-                if self._provider in _OPENAI_COMPATIBLE:
-                    (
-                        content,
-                        prompt_tokens,
-                        completion_tokens,
-                        finish_reason,
-                    ) = await self._call_openai_compatible(
-                        system=system,
-                        prompt=prompt,
-                        model=effective_model,
-                        max_tokens=max_tokens,
-                        response_format=response_format,
-                    )
-                elif self._provider == LLMProvider.ANTHROPIC:
-                    (
-                        content,
-                        prompt_tokens,
-                        completion_tokens,
-                        finish_reason,
-                    ) = await self._call_anthropic(
-                        system=system,
-                        prompt=prompt,
-                        model=effective_model,
-                        max_tokens=max_tokens,
-                    )
-                else:
-                    logger.warning("Unsupported LLM provider: %r", self._provider)
-                    return None
-            except Exception as exc:
-                logger.warning(
-                    "LLM call failed (provider=%s model=%s): %s",
-                    self._provider,
-                    effective_model,
-                    exc,
-                )
-                return None
-
-            elapsed = time.monotonic() - start
-
-            # Strip chain-of-thought blocks that reasoning models (DeepSeek-R1, Qwen3, etc.)
-            # emit in content when /no_think is not honoured or thinking is explicitly enabled.
-            content = re.sub(
-                r"<think(?:ing)?>.*?</think(?:ing)?>", "", content, flags=re.DOTALL
-            ).strip()
-
-            if finish_reason == "length":
-                logger.warning(
-                    "LLM response truncated at max_tokens=%d (provider=%s model=%s) — "
-                    "increase max_tokens or use a model with a larger context window",
-                    max_tokens,
-                    self._provider,
-                    effective_model,
-                )
-            else:
-                # Only cache complete (non-truncated) responses
-                async with self._cache_lock:
-                    self._cache[cache_key] = content
-
-            logger.info(
-                "LLM %s/%s: %d+%d tokens in %.2fs (finish_reason=%r)",
-                self._provider,
-                effective_model,
-                prompt_tokens,
-                completion_tokens,
-                elapsed,
-                finish_reason,
+        if bypass_cache:
+            # Bypass callers want a live answer each time, so they are not deduplicated.
+            return await self._complete_uncached(
+                cache_key, system, prompt, effective_model, max_tokens, response_format
             )
 
+        async def lookup() -> LLMResponse | None:
+            cached_content = await self._get_cached(cache_key)
+            if cached_content is None:
+                return None
+            logger.debug("LLM cache hit (key=%s…)", cache_key[:8])
             return LLMResponse(
-                content=content,
+                content=cached_content,
                 model=effective_model,
                 provider=self._provider,
-                cached=False,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                latency_seconds=elapsed,
-                finish_reason=finish_reason,
+                cached=True,
             )
-        finally:
-            if is_owner and event is not None:
-                async with self._flight_lock:
-                    self._in_flight.pop(cache_key, None)
-                event.set()
+
+        # Fast path: a cache hit never needs to enter the single-flight machinery.
+        hit = await lookup()
+        if hit is not None:
+            return hit
+        return await self._flight.run(
+            cache_key,
+            lookup=lookup,
+            produce=lambda: self._complete_uncached(
+                cache_key, system, prompt, effective_model, max_tokens, response_format
+            ),
+        )
+
+    async def _complete_uncached(
+        self,
+        cache_key: str,
+        system: str | None,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        response_format: dict[str, Any] | None,
+    ) -> LLMResponse | None:
+        """Call the provider, clean the output, and cache it if it is complete.
+
+        Args:
+            cache_key: Response-cache key to store a complete response under.
+            system: Optional system message.
+            prompt: User-facing prompt text.
+            model: Effective model identifier for this call.
+            max_tokens: Maximum tokens the model may generate.
+            response_format: Optional structured-output spec.
+
+        Returns:
+            :class:`LLMResponse`, or ``None`` if the provider call failed.
+        """
+        start = time.monotonic()
+        try:
+            content, prompt_tokens, completion_tokens, finish_reason = await self._call_provider(
+                system=system,
+                prompt=prompt,
+                model=model,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+        except Exception as exc:
+            logger.warning(
+                "LLM call failed (provider=%s model=%s): %s",
+                self._provider,
+                model,
+                exc,
+            )
+            return None
+
+        elapsed = time.monotonic() - start
+        content = _strip_thinking(content)
+
+        if finish_reason == "length":
+            logger.warning(
+                "LLM response truncated at max_tokens=%d (provider=%s model=%s) — "
+                "increase max_tokens or use a model with a larger context window",
+                max_tokens,
+                self._provider,
+                model,
+            )
+        else:
+            # Only cache complete (non-truncated) responses
+            async with self._cache_lock:
+                self._cache[cache_key] = content
+
+        logger.info(
+            "LLM %s/%s: %d+%d tokens in %.2fs (finish_reason=%r)",
+            self._provider,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            elapsed,
+            finish_reason,
+        )
+
+        return LLMResponse(
+            content=content,
+            model=model,
+            provider=self._provider,
+            cached=False,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_seconds=elapsed,
+            finish_reason=finish_reason,
+        )
+
+    async def _call_provider(
+        self,
+        *,
+        system: str | None,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        response_format: dict[str, Any] | None,
+    ) -> tuple[str, int, int, str]:
+        """Dispatch one completion to the configured provider's wire format.
+
+        Args:
+            system: Optional system message.
+            prompt: User message.
+            model: Model identifier.
+            max_tokens: Maximum tokens the model may generate.
+            response_format: Structured-output spec (ignored by Anthropic).
+
+        Returns:
+            Tuple of ``(content, prompt_tokens, completion_tokens, finish_reason)``.
+        """
+        if self._provider == LLMProvider.ANTHROPIC:
+            return await self._call_anthropic(
+                system=system, prompt=prompt, model=model, max_tokens=max_tokens
+            )
+        # complete() only runs when is_available() is true, which already excludes NONE.
+        if self._provider not in _OPENAI_COMPATIBLE:
+            # Unrecognised provider: raise (caught by the caller, which returns None) so
+            # no network call is ever made with a provider we don't understand.
+            raise ValueError(f"Unsupported LLM provider: {self._provider!r}")
+        return await self._call_openai_compatible(
+            system=system,
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
 
     async def _call_openai_compatible(
         self,
