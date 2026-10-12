@@ -41,6 +41,9 @@ export default [
       // detection (ambient types, JSX namespace, etc.) — no-undef produces
       // false positives on TS-only constructs that tsc already catches.
       'no-undef': 'off',
+      // Complexity ratchet (frontend simplification plan, Task 1): pinned at
+      // the measured maximum (Settings = 92). It may only ever be lowered.
+      complexity: ['error', 92],
     },
   },
   {
@@ -51,6 +54,11 @@ export default [
       // from a displayName.
       'react/display-name': 'off',
     },
+  },
+  {
+    // Test bodies are long linear scripts; the ratchet targets production code.
+    files: ['src/tests/**'],
+    rules: { complexity: 'off' },
   },
   {
     ignores: ['dist/**', 'node_modules/**', 'src/types/api-generated.ts'],
