@@ -99,13 +99,7 @@ export type FileRead = Omit<
 
 export type ContentType = components['schemas']['ContentType']
 
-export type FileMatchRequest = Omit<
-  components['schemas']['FileMatchRequest'],
-  'tmdb_media_type' | 'content_type'
-> & {
-  tmdb_media_type?: 'tv' | 'movie' | null
-  content_type?: ContentType | null
-}
+export type FileMatchRequest = components['schemas']['FileMatchRequest']
 
 export interface TmdbSuggestion {
   tmdb_id: number
@@ -427,12 +421,7 @@ export type WatchlistPositionItem = components['schemas']['WatchlistPositionItem
 
 // ─── Orphaned Tracking Records ────────────────────────────────────────────
 
-export type OrphanedTrackingRecord = Omit<
-  components['schemas']['OrphanRead'],
-  'tracked_source'
-> & {
-  tracked_source: 'match' | 'import'
-}
+export type OrphanedTrackingRecord = components['schemas']['OrphanRead']
 
 // ─── File PATCH ───────────────────────────────────────────────────────────
 
