@@ -37,6 +37,7 @@ from jidou.services.filename_parser import parse_filename
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry, group_by_show
 from jidou.services.path_resolution import resolve_show_local_path
+from jidou.services.path_transport import basename_any
 from jidou.services.show_lookup import find_show_by_name
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.sys_name import sanitize_sys_name
@@ -348,7 +349,7 @@ class PathImportOrchestrator:
                 # and produce a false-positive split.
                 matched.append(entry)
                 continue
-            filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+            filename = basename_any(entry.raw_path)
             try:
                 parsed = await parse_filename(filename, self.llm)
             except Exception:
@@ -631,7 +632,7 @@ class PathImportOrchestrator:
                 on_event=self.on_event,
             )
             if ep is not None and ep.id in matched_episode_ids:
-                filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+                filename = basename_any(entry.raw_path)
                 show_result.episodes_already_tracked += 1
                 show_result.already_tracked_paths.append(entry.raw_path)
                 await self._emit(
@@ -668,7 +669,7 @@ class PathImportOrchestrator:
                 if newly_tracked:
                     show_result.episodes_tracked += 1
             else:
-                filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+                filename = basename_any(entry.raw_path)
                 # resolved_season/resolved_episode reflect any LLM adjustment made
                 # inside match_entry_to_episode — entry.season/entry.episode would
                 # only ever show the pre-LLM regex output, hiding whether an LLM

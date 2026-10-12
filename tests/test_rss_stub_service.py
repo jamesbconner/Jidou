@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from jidou.models.rss import RssSubscription
 from jidou.services.rss_config import YARSS2_SUBSCRIPTION_DEFAULTS
-from jidou.services.rss_stub import ensure_rss_stub
+from jidou.services.rss_stub import ensure_rss_stub, pick_unlinked_subscription
 
 
 def _make_begin_nested() -> MagicMock:
@@ -45,3 +46,33 @@ async def test_create_stub_backfills_yarss2_defaults() -> None:
     for field, default in YARSS2_SUBSCRIPTION_DEFAULTS.items():
         assert stub.extra_config[field] == default
     session.add.assert_called_once_with(stub)
+
+
+def _subs(*names: str) -> list[RssSubscription]:
+    return [RssSubscription(name=n) for n in names]
+
+
+def test_pick_exact_name_wins_even_after_a_higher_scoring_fuzzy_match() -> None:
+    subs = _subs("Example Show Extra", "example show")  # fuzzy 100 (subset) first, exact second
+
+    assert pick_unlinked_subscription(subs, "Example Show") is subs[1]
+
+
+def test_pick_tie_at_best_fuzzy_score_is_ambiguous() -> None:
+    subs = _subs("Example Show A", "Example Show B")
+
+    assert pick_unlinked_subscription(subs, "Example Show") is None
+
+
+def test_pick_best_score_below_threshold_is_none() -> None:
+    assert pick_unlinked_subscription(_subs("Completely Different"), "Example Show") is None
+
+
+def test_pick_unique_best_fuzzy_match_is_returned() -> None:
+    subs = _subs("Unrelated", "Example Show 2026")
+
+    assert pick_unlinked_subscription(subs, "Example Show") is subs[1]
+
+
+def test_pick_empty_candidates_is_none() -> None:
+    assert pick_unlinked_subscription([], "Example Show") is None

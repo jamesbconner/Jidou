@@ -24,7 +24,7 @@ from jidou.services.file_reconciliation import reconcile_local_file_existence
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
-from jidou.services.synthetic_file import create_synthetic_import_file
+from jidou.services.synthetic_file import create_synthetic_import_file, synthetic_remote_path
 
 logger = logging.getLogger(__name__)
 
@@ -361,9 +361,9 @@ async def link_movie_file(
     # unlinked from) would report success while leaving the movie unlinked,
     # and that row would stay permanently un-relinkable since a null show_id
     # sorts as "linked to some other show" for scan-local-movie-file too.
-    synthetic_remote_path = f"synthetic-import://{payload.path}"
+    remote_path = synthetic_remote_path(payload.path)
     orphaned_synthetic = next(
-        (f for f in matches if f.remote_path == synthetic_remote_path and f.show_id is None),
+        (f for f in matches if f.remote_path == remote_path and f.show_id is None),
         None,
     )
     if orphaned_synthetic is not None:
@@ -378,7 +378,7 @@ async def link_movie_file(
     refreshed = (
         await db_session.execute(
             select(DownloadedFile)
-            .where(DownloadedFile.remote_path == synthetic_remote_path)
+            .where(DownloadedFile.remote_path == remote_path)
             .options(selectinload(DownloadedFile.show), selectinload(DownloadedFile.episode))
         )
     ).scalar_one()

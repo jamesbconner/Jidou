@@ -110,3 +110,26 @@ def decode_path_bytes_for_display(path: str) -> str:
         return raw.decode("cp1252")
     except UnicodeDecodeError:
         return raw.decode("utf-8", errors="replace")
+
+
+def basename_any(path: str) -> str:
+    """Return the last segment of a POSIX- or Windows-style path.
+
+    Normalizes ``\\`` to ``/`` first so a Windows path (a host path pasted by
+    the user, or one stored by a Windows-hosted scan) yields the same filename
+    regardless of the platform Jidou itself runs on. A trailing separator yields
+    an empty string, as with ``rsplit``.
+
+    Args:
+        path: A path using ``/`` and/or ``\\`` separators.
+
+    Returns:
+        The final path segment.
+
+    Examples:
+        >>> basename_any("C:\\a\\b.mkv")
+        'b.mkv'
+        >>> basename_any("/x/y.mkv")
+        'y.mkv'
+    """
+    return path.replace("\\", "/").rsplit("/", 1)[-1]

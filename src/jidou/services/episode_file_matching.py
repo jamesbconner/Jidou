@@ -15,6 +15,7 @@ from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode, llm_parse_episode
 from jidou.services.llm_service import LLMService
 from jidou.services.path_parser import ParsedPathEntry
+from jidou.services.path_transport import basename_any
 
 
 async def _llm_list_fallback(
@@ -167,7 +168,7 @@ async def match_entry_to_episode(
     """
     season = entry.season
     episode = entry.episode
-    filename = entry.raw_path.replace("\\", "/").rsplit("/", 1)[-1]
+    filename = basename_any(entry.raw_path)
 
     if episode is None:
         llm_season, llm_episode = await llm_parse_episode(llm, filename, season, on_event=on_event)
