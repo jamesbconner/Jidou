@@ -1444,7 +1444,7 @@ def test_publish_endpoint_422_when_path_not_configured() -> None:
     app.dependency_overrides[get_session] = _mock_session
 
     with (
-        patch("jidou.api.routes.rss.settings") as mock_settings,
+        patch("jidou.api.routes.rss_publish.settings") as mock_settings,
         TestClient(app) as client,
     ):
         mock_settings.rss_config_remote_path = None
@@ -1487,7 +1487,7 @@ def test_publish_endpoint_202_when_path_configured() -> None:
     app.dependency_overrides[get_session] = _mock_session
 
     with (
-        patch("jidou.api.routes.rss.settings") as mock_settings,
+        patch("jidou.api.routes.rss_publish.settings") as mock_settings,
         patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
         patch("jidou.workers.rss_tasks.rss_publish_task") as mock_task,
         TestClient(app) as client,
@@ -1521,7 +1521,7 @@ def test_publish_endpoint_503_when_broker_unavailable() -> None:
     app.dependency_overrides[get_session] = _mock_session
 
     with (
-        patch("jidou.api.routes.rss.settings") as mock_settings,
+        patch("jidou.api.routes.rss_publish.settings") as mock_settings,
         patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
         patch("jidou.workers.rss_tasks.rss_publish_task") as mock_task,
         TestClient(app) as client,

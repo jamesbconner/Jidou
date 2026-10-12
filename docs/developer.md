@@ -129,7 +129,7 @@ jidou/
 
 ### Conventions
 
-- **One route handler file per resource** — `shows.py`, `files.py`, `watchlist.py`, etc.
+- **One route handler file per resource** — `files.py`, `watchlist.py`, etc. Large resources are split into sub-resource modules that share a router prefix: `shows.py`, `tmdb_proxy.py`, `show_episodes.py`, `show_local_files.py` under `/shows`, and `rss_feeds.py`, `rss_subscriptions.py`, `rss_publish.py` under `/rss`. Registration order in `main.py` matters for literal-versus-parameter paths (`tmdb_proxy` before `shows`).
 - **Orchestrators coordinate, services execute** — orchestrators hold workflow logic; services hold external I/O.
 - **CLI commands are thin** — parse args, build context, delegate to orchestrators.
 - **No global state** — configuration and services flow through a context object or FastAPI dependency injection.

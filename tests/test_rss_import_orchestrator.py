@@ -883,7 +883,7 @@ def test_import_endpoint_422_when_path_not_configured() -> None:
 
     app.dependency_overrides[get_session] = _mock_session
     try:
-        with patch("jidou.api.routes.rss.settings") as mock_settings:
+        with patch("jidou.api.routes.rss_publish.settings") as mock_settings:
             mock_settings.rss_config_remote_path = None
             r = TestClient(app).post("/api/rss/import")
         assert r.status_code == 422
@@ -925,7 +925,7 @@ def test_import_endpoint_202_when_path_configured() -> None:
     app.dependency_overrides[get_session] = _mock_session
     try:
         with (
-            patch("jidou.api.routes.rss.settings") as mock_settings,
+            patch("jidou.api.routes.rss_publish.settings") as mock_settings,
             patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):
@@ -960,7 +960,7 @@ def test_import_endpoint_503_when_broker_unavailable() -> None:
     app.dependency_overrides[get_session] = _mock_session
     try:
         with (
-            patch("jidou.api.routes.rss.settings") as mock_settings,
+            patch("jidou.api.routes.rss_publish.settings") as mock_settings,
             patch("jidou.services.task_dispatch.enqueue_task", _fake_enqueue(task)),
             patch("jidou.workers.rss_tasks.rss_import_task") as mock_task,
         ):

@@ -17,7 +17,7 @@ from jidou.orchestrators.feed_onboarding_orchestrator import (
     OnboardingOutcome,
 )
 
-ORCH = "jidou.api.routes.rss.FeedOnboardingOrchestrator"
+ORCH = "jidou.api.routes.rss_feeds.FeedOnboardingOrchestrator"
 URL = "/api/rss/feeds/7/add-show"
 
 
