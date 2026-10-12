@@ -1637,7 +1637,7 @@ def test_rematch_show_returns_200_on_success() -> None:
     app.dependency_overrides[get_session] = _rematch_session(show)
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             response = TestClient(app).post(
                 "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
@@ -1806,7 +1806,7 @@ def test_rematch_show_migrates_tracking_to_new_episodes() -> None:
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             response = TestClient(app).post(
                 "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
@@ -1847,7 +1847,7 @@ def test_rematch_show_relinks_orphaned_downloaded_files() -> None:
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             response = TestClient(app).post(
                 "/api/shows/1/rematch", json={"tmdb_id": 200, "media_type": "tv"}
@@ -1890,7 +1890,7 @@ def test_rematch_show_logs_warning_for_unrecoverable_episodes(caplog: object) ->
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             with patch("jidou.orchestrators.show_rematch_orchestrator.logger") as mock_logger:
                 response = TestClient(app).post(
@@ -1921,7 +1921,7 @@ def test_rematch_show_preserve_tracking_false_skips_migration() -> None:
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             response = TestClient(app).post(
                 "/api/shows/1/rematch",
@@ -1952,7 +1952,7 @@ def test_rematch_show_preserve_tracking_false_purges_orphan_rows() -> None:
     app.dependency_overrides[get_session] = _capturing
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             response = TestClient(app).post(
                 "/api/shows/1/rematch",
@@ -2081,7 +2081,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_import() -> None:
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with _patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             # Intercept session.add to capture OrphanedTrackingRecord instances.
             original_session_override = app.dependency_overrides[get_session]
@@ -2151,7 +2151,7 @@ def test_rematch_creates_orphan_record_for_unresolvable_downloaded_file() -> Non
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with _patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             original_session_override = app.dependency_overrides[get_session]
 
@@ -2218,7 +2218,7 @@ def test_rematch_phase3_orphan_uses_local_path_when_set() -> None:
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with _patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             original_session_override = app.dependency_overrides[get_session]
 
@@ -2290,7 +2290,7 @@ def test_rematch_creates_orphan_for_match_source_not_found_by_file_query() -> No
     )
     app.dependency_overrides[get_tmdb] = lambda: tmdb_mock
     try:
-        with _patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+        with _patch("jidou.orchestrators.show_rematch_orchestrator.TMDBOrchestrator") as mock_orch:
             mock_orch.return_value.sync_show_episodes = AsyncMock()
             original_session_override = app.dependency_overrides[get_session]
 
