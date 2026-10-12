@@ -84,6 +84,58 @@ _COMPACT_QUALITY = frozenset({"480", "576", "720", "1080", "2160", "4320"})
 _YEAR_EXCLUSION_MIN = 1900
 _YEAR_EXCLUSION_HEADROOM_YEARS = 2
 
+
+@dataclass(frozen=True)
+class _EpisodeRule:
+    """One filename pattern in the ordered episode-extraction table.
+
+    Attributes:
+        pattern: Regex searched against the filename stem.
+        has_season: True when group 1 is the season and group 2 the episode;
+            False when group 1 is the episode alone.
+        blocked_by: When set and it matches the stem, this rule is skipped.
+    """
+
+    pattern: re.Pattern[str]
+    has_season: bool
+    blocked_by: re.Pattern[str] | None = None
+
+    def match(self, stem: str) -> tuple[int | None, int, None] | None:
+        """Apply this rule to *stem*.
+
+        Args:
+            stem: Filename without extension.
+
+        Returns:
+            ``(season, episode, None)`` on a match (season is None for
+            episode-only rules), or None when the rule is blocked or doesn't match.
+        """
+        # A blocked rule is skipped (not terminal): later rules and the compact
+        # guess still get their chance, exactly as the old inline `if` did.
+        if self.blocked_by is not None and self.blocked_by.search(stem):
+            return None
+        m = self.pattern.search(stem)
+        if m is None:
+            return None
+        if self.has_season:
+            return int(m.group(1)), int(m.group(2)), None
+        return None, int(m.group(1)), None
+
+
+# Ordered, first match wins; the compact SEEE guess runs after all of these.
+_EPISODE_RULES: tuple[_EpisodeRule, ...] = (
+    _EpisodeRule(_SE_PATTERN, has_season=True),
+    _EpisodeRule(_SxE_PATTERN, has_season=True),
+    _EpisodeRule(_SEASON_EPISODE_WORD, has_season=True),
+    _EpisodeRule(_EPISODE_WORD, has_season=False),
+    _EpisodeRule(_EP_WORD, has_season=False),
+    _EpisodeRule(_DASH_EP, has_season=False),
+    _EpisodeRule(_PREDASH_EP, has_season=False),
+    _EpisodeRule(_LEADING_EP, has_season=False),
+    # Bonus-content markers mean a trailing number is a clip index, not an episode.
+    _EpisodeRule(_BARE_TRAILING_EP, has_season=False, blocked_by=_NON_EPISODE_ASSET_WORD),
+)
+
 _MEDIA_EXTENSIONS = frozenset(
     {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".flv", ".ts", ".m2ts"}
 )
@@ -343,21 +395,12 @@ def parse_line(
             show_dir = parts[-2]
             show_root = str(path.parent)
 
-    stem = path.stem
-    fn_season, episode, absolute_candidate = _parse_episode(stem, dir_season=dir_season)
-
-    # Season from directory takes precedence over season from filename.
-    season = dir_season if dir_season is not None else fn_season
-    is_absolute = season is None and episode is not None
-
-    return ParsedPathEntry(
+    return _build_entry(
         raw_path=encode_path_bytes(line),
         show_dir=show_dir,
         show_root=show_root,
-        season=season,
-        episode=episode,
-        is_absolute=is_absolute,
-        absolute_candidate=absolute_candidate,
+        stem=path.stem,
+        dir_season=dir_season,
     )
 
 
@@ -427,6 +470,120 @@ def _resolve_show_root(show_root: str) -> Path | None:
     return None
 
 
+def _unvisited_valid_dirs(
+    current_dir: Path, dirnames: list[str], visited_dirs: set[tuple[int, int]]
+) -> list[str]:
+    """Filter *dirnames* to those ``os.walk`` should descend into, recording each.
+
+    Args:
+        current_dir: Directory the names were listed from.
+        dirnames: Child directory names from ``os.walk``.
+        visited_dirs: Real ``(st_dev, st_ino)`` identities already seen;
+            mutated to include every kept child.
+
+    Returns:
+        The kept names, in their original order.
+    """
+    kept_dirnames: list[str] = []
+    for name in dirnames:
+        # Prune invalid directories (e.g. "Sample") before os.walk
+        # descends into them, mirroring the SFTP walker's
+        # skip-before-recursing rule in file_filters.is_valid_directory.
+        if not is_valid_directory(name):
+            continue
+        try:
+            child_stat = (current_dir / name).stat()
+        except OSError:
+            continue
+        identity = (child_stat.st_dev, child_stat.st_ino)
+        if identity in visited_dirs:
+            continue
+        visited_dirs.add(identity)
+        kept_dirnames.append(name)
+    return kept_dirnames
+
+
+def _iter_media_files(root: Path, recursive: bool) -> list[Path] | None:
+    """Collect valid media files under *root*.
+
+    Args:
+        root: Resolved show directory.
+        recursive: When False, list only files directly in *root*; otherwise
+            walk subdirectories, following symlinks.
+
+    Returns:
+        Unsorted media file paths, or None when *root* itself can't be read
+        (OSError), which callers treat as "nothing to scan".
+    """
+    file_paths: list[Path] = []
+    if not recursive:
+        try:
+            for entry in root.iterdir():
+                if entry.is_file() and is_valid_media_file(entry.name):
+                    file_paths.append(entry)
+        except OSError:
+            return None
+        return file_paths
+
+    # followlinks=True has no built-in cycle guard, so a symlink pointing
+    # at an ancestor (or any symlink cycle) would otherwise make os.walk
+    # recurse forever. Track each directory's real (device, inode)
+    # identity the first time it's visited and prune any child that
+    # resolves back to an already-seen identity before os.walk descends
+    # into it again.
+    visited_dirs: set[tuple[int, int]] = set()
+    try:
+        root_stat = root.stat()
+    except OSError:
+        return None
+    visited_dirs.add((root_stat.st_dev, root_stat.st_ino))
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        current_dir = Path(dirpath)
+        dirnames[:] = _unvisited_valid_dirs(current_dir, dirnames, visited_dirs)
+        for filename in filenames:
+            if is_valid_media_file(filename):
+                file_paths.append(current_dir / filename)
+    return file_paths
+
+
+def _build_entry(
+    *,
+    raw_path: str,
+    show_dir: str,
+    show_root: str,
+    stem: str,
+    dir_season: int | None,
+) -> ParsedPathEntry:
+    """Build an episode entry from already-resolved location data and a filename stem.
+
+    Shared by :func:`parse_line` and :func:`scan_show_directory` so both apply
+    the same season-precedence and absolute-numbering rules.
+
+    Args:
+        raw_path: Encoded source path, stored as-is.
+        show_dir: Show directory name, stored as-is.
+        show_root: Show root path, stored as-is.
+        stem: Filename without extension, passed to :func:`_parse_episode`.
+        dir_season: Season from a ``Season N`` directory, if any.
+
+    Returns:
+        The populated :class:`ParsedPathEntry`.
+    """
+    fn_season, episode, absolute_candidate = _parse_episode(stem, dir_season=dir_season)
+    # Season from directory takes precedence over season from filename.
+    season = dir_season if dir_season is not None else fn_season
+    return ParsedPathEntry(
+        raw_path=raw_path,
+        show_dir=show_dir,
+        show_root=show_root,
+        season=season,
+        episode=episode,
+        is_absolute=season is None and episode is not None,
+        absolute_candidate=absolute_candidate,
+    )
+
+
 def scan_show_directory(show_root: str, recursive: bool = True) -> list[ParsedPathEntry]:
     """Walk an already-known show's own local directory and parse every media file.
 
@@ -492,74 +649,20 @@ def scan_show_directory(show_root: str, recursive: bool = True) -> list[ParsedPa
     encoded_show_dir = encode_path_bytes(root.name)
     encoded_show_root = encode_path_bytes(str(root))
 
-    file_paths: list[Path] = []
-    if not recursive:
-        try:
-            for entry in root.iterdir():
-                if entry.is_file() and is_valid_media_file(entry.name):
-                    file_paths.append(entry)
-        except OSError:
-            return []
-    else:
-        # followlinks=True has no built-in cycle guard, so a symlink pointing
-        # at an ancestor (or any symlink cycle) would otherwise make os.walk
-        # recurse forever. Track each directory's real (device, inode)
-        # identity the first time it's visited and prune any child that
-        # resolves back to an already-seen identity before os.walk descends
-        # into it again.
-        visited_dirs: set[tuple[int, int]] = set()
-        try:
-            root_stat = root.stat()
-        except OSError:
-            return []
-        visited_dirs.add((root_stat.st_dev, root_stat.st_ino))
+    file_paths = _iter_media_files(root, recursive)
+    if file_paths is None:
+        return []
 
-        for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
-            current_dir = Path(dirpath)
-            kept_dirnames = []
-            for name in dirnames:
-                # Prune invalid directories (e.g. "Sample") before os.walk
-                # descends into them, mirroring the SFTP walker's
-                # skip-before-recursing rule in file_filters.is_valid_directory.
-                if not is_valid_directory(name):
-                    continue
-                try:
-                    child_stat = (current_dir / name).stat()
-                except OSError:
-                    continue
-                identity = (child_stat.st_dev, child_stat.st_ino)
-                if identity in visited_dirs:
-                    continue
-                visited_dirs.add(identity)
-                kept_dirnames.append(name)
-            dirnames[:] = kept_dirnames
-            for filename in filenames:
-                if is_valid_media_file(filename):
-                    file_paths.append(current_dir / filename)
-
-    entries: list[ParsedPathEntry] = []
-    for file_path in sorted(file_paths):
-        rel_parts = file_path.relative_to(root).parts
-        dir_season = _detect_season_from_segments(rel_parts[:-1])
-
-        fn_season, episode, absolute_candidate = _parse_episode(
-            file_path.stem, dir_season=dir_season
+    return [
+        _build_entry(
+            raw_path=encode_path_bytes(str(file_path)),
+            show_dir=encoded_show_dir,
+            show_root=encoded_show_root,
+            stem=file_path.stem,
+            dir_season=_detect_season_from_segments(file_path.relative_to(root).parts[:-1]),
         )
-        season = dir_season if dir_season is not None else fn_season
-        is_absolute = season is None and episode is not None
-
-        entries.append(
-            ParsedPathEntry(
-                raw_path=encode_path_bytes(str(file_path)),
-                show_dir=encoded_show_dir,
-                show_root=encoded_show_root,
-                season=season,
-                episode=episode,
-                is_absolute=is_absolute,
-                absolute_candidate=absolute_candidate,
-            )
-        )
-    return entries
+        for file_path in sorted(file_paths)
+    ]
 
 
 def group_by_show(
@@ -583,6 +686,36 @@ def group_by_show(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _compact_guess(stem: str, dir_season: int | None) -> tuple[int, int, int] | None:
+    """Guess ``(season, episode, absolute_candidate)`` from a compact SEEE/SSEEE token.
+
+    Quality tags and year-like tokens are skipped, as are tokens whose encoded
+    season disagrees with ``dir_season`` (so ``924`` under ``Season 10`` stays
+    unmatched instead of yielding S10E24).
+
+    Args:
+        stem: Filename without extension.
+        dir_season: Season already known from the directory name, if any.
+
+    Returns:
+        The guess, or None when no token qualifies.
+    """
+    for cm in _COMPACT_EP.finditer(stem):
+        raw = cm.group(1)
+        if raw in _COMPACT_QUALITY:
+            continue
+        n = int(raw)
+        if _YEAR_EXCLUSION_MIN <= n <= date.today().year + _YEAR_EXCLUSION_HEADROOM_YEARS:
+            continue
+        s_num = int(raw[:-2])
+        e_num = int(raw[-2:])
+        if s_num >= 1 and e_num >= 1:
+            if dir_season is not None and s_num != dir_season:
+                continue
+            return s_num, e_num, n
+    return None
 
 
 def _parse_episode(
@@ -622,55 +755,12 @@ def _parse_episode(
         ``(season, episode, absolute_candidate)``. ``absolute_candidate`` is
         non-None only when the compact heuristic produced the guess.
     """
-    m = _SE_PATTERN.search(stem)
-    if m:
-        return int(m.group(1)), int(m.group(2)), None
+    for rule in _EPISODE_RULES:
+        found = rule.match(stem)
+        if found is not None:
+            return found
 
-    m = _SxE_PATTERN.search(stem)
-    if m:
-        return int(m.group(1)), int(m.group(2)), None
-
-    m = _SEASON_EPISODE_WORD.search(stem)
-    if m:
-        return int(m.group(1)), int(m.group(2)), None
-
-    m = _EPISODE_WORD.search(stem)
-    if m:
-        return None, int(m.group(1)), None
-
-    m = _EP_WORD.search(stem)
-    if m:
-        return None, int(m.group(1)), None
-
-    m = _DASH_EP.search(stem)
-    if m:
-        return None, int(m.group(1)), None
-
-    m = _PREDASH_EP.search(stem)
-    if m:
-        return None, int(m.group(1)), None
-
-    m = _LEADING_EP.search(stem)
-    if m:
-        return None, int(m.group(1)), None
-
-    if not _NON_EPISODE_ASSET_WORD.search(stem):
-        m = _BARE_TRAILING_EP.search(stem)
-        if m:
-            return None, int(m.group(1)), None
-
-    for cm in _COMPACT_EP.finditer(stem):
-        raw = cm.group(1)
-        if raw in _COMPACT_QUALITY:
-            continue
-        n = int(raw)
-        if _YEAR_EXCLUSION_MIN <= n <= date.today().year + _YEAR_EXCLUSION_HEADROOM_YEARS:
-            continue
-        s_num = int(raw[:-2])
-        e_num = int(raw[-2:])
-        if s_num >= 1 and e_num >= 1:
-            if dir_season is not None and s_num != dir_season:
-                continue
-            return s_num, e_num, n
-
+    compact = _compact_guess(stem, dir_season)
+    if compact is not None:
+        return compact[0], compact[1], compact[2]
     return None, None, None
