@@ -111,6 +111,12 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      # Build the production bundle exactly as the frontend Dockerfile does
+      # (`npm run build` = `tsc -b && vite build`), so a broken vite config or a
+      # dependency mismatch fails CI instead of the container build.
+      - name: Build
+        run: npm run build
+
   # ---------- Integration smoke test ----------
   integration:
     runs-on: ubuntu-latest
