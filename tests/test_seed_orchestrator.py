@@ -547,7 +547,7 @@ class TestSeedRemoteTask:
                 new_callable=AsyncMock,
                 side_effect=SoftTimeLimitExceeded(),
             ),
-            patch("jidou.workers.seed_tasks.mark_task_timed_out", side_effect=fake_mark),
+            patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
             pytest.raises(SoftTimeLimitExceeded),
         ):
             seed_remote_task()  # type: ignore[call-arg]

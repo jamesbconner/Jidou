@@ -1,18 +1,21 @@
 """Celery task for backfilling incomplete TMDB metadata on existing shows."""
 
-import asyncio
 import logging
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.orchestrators.show_metadata_backfill_orchestrator import (
     ShowMetadataBackfillOrchestrator,
 )
-from jidou.services.progress import mark_task_timed_out
 from jidou.services.tmdb import TMDBService
-from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
+from jidou.workers._harness import (
+    EventFn,
+    ProgressFn,
+    WorkflowResult,
+    run_harnessed,
+    run_task_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,7 @@ def backfill_show_metadata_task(self, dry_run: bool = False) -> str:  # type: ig
     Returns:
         The celery task ID.
     """
-    try:
-        return asyncio.run(_backfill(self.request.id, dry_run))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _backfill(self.request.id, dry_run))
 
 
 async def _backfill(celery_task_id: str, dry_run: bool = False) -> str:

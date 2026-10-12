@@ -336,37 +336,3 @@ async def enqueue_task(
         )
         raise TaskDispatchError(str(exc)) from exc
     return new_task
-
-
-async def mark_task_timed_out(celery_task_id: str) -> None:
-    """Mark a task FAILED after a Celery soft time limit fires.
-
-    Called from the synchronous task wrapper (outside the main async coroutine)
-    so it manages its own engine and session lifecycle.
-
-    Args:
-        celery_task_id: The Celery task identifier.
-    """
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    try:
-        async with session_factory() as session:
-            await update_task_status(
-                session,
-                celery_task_id,
-                TaskStatus.FAILED,
-                progress_message="Task exceeded soft time limit",
-            )
-            await emit_progress(
-                {
-                    "celery_task_id": celery_task_id,
-                    "type": "error",
-                    "data": {"error": "Soft time limit exceeded"},
-                }
-            )
-    except Exception:
-        logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
-    finally:
-        await engine.dispose()

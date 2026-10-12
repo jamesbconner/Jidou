@@ -1,19 +1,22 @@
 """Celery tasks for running full sync pipelines."""
 
-import asyncio
 import logging
 
 from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
 from jidou.orchestrators.sync_orchestrator import SyncOrchestrator
 from jidou.services.llm_service import create_llm_service
-from jidou.services.progress import mark_task_timed_out
 from jidou.services.sftp_service import SFTPService
 from jidou.services.tmdb import TMDBService
-from jidou.workers._harness import EventFn, ProgressFn, WorkflowResult, run_task_workflow
+from jidou.workers._harness import (
+    EventFn,
+    ProgressFn,
+    WorkflowResult,
+    run_harnessed,
+    run_task_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +44,7 @@ def sync_all_task(  # type: ignore[no-untyped-def]
     Returns:
         The celery task ID.
     """
-    try:
-        return asyncio.run(_sync_all(self.request.id, dry_run))
-    except SoftTimeLimitExceeded:
-        asyncio.run(mark_task_timed_out(self.request.id))
-        raise
+    return run_harnessed(self.request.id, lambda: _sync_all(self.request.id, dry_run))
 
 
 async def _sync_all(

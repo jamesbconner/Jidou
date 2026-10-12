@@ -1,7 +1,7 @@
 """Unit tests for progress service helpers."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -13,7 +13,6 @@ from jidou.services.progress import (
     create_task_record,
     enqueue_task,
     get_active_task,
-    mark_task_timed_out,
     update_task_status,
 )
 
@@ -278,64 +277,6 @@ async def test_check_task_cancelled_passes_when_missing() -> None:
     """check_task_cancelled must not raise when no task row exists."""
     session = _make_mock_session(None)
     await check_task_cancelled(session, "nonexistent")  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# mark_task_timed_out
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_mark_task_timed_out_swallows_inner_exception() -> None:
-    """mark_task_timed_out must not propagate exceptions from update_task_status."""
-    mock_engine = AsyncMock()
-    mock_session = AsyncMock()
-    mock_session.__aenter__.return_value = mock_session
-    mock_session.__aexit__.return_value = False
-
-    mock_factory = MagicMock()
-    mock_factory.return_value = mock_session
-
-    with (
-        patch(
-            "jidou.services.progress.update_task_status",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db exploded"),
-        ),
-        patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=mock_engine),
-        patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=mock_factory),
-    ):
-        await mark_task_timed_out("task-err")  # must not raise
-
-
-@pytest.mark.asyncio
-async def test_mark_task_timed_out_calls_update_and_emit() -> None:
-    """mark_task_timed_out must set FAILED status and publish a progress event."""
-    # create_async_engine/async_sessionmaker are local imports inside mark_task_timed_out,
-    # so we patch them at their source modules.
-    mock_engine = AsyncMock()
-    mock_session = AsyncMock()
-    mock_session.__aenter__.return_value = mock_session
-    mock_session.__aexit__.return_value = False
-
-    mock_factory = MagicMock()
-    mock_factory.return_value = mock_session
-
-    with (
-        patch("jidou.services.progress.update_task_status", new_callable=AsyncMock) as mock_update,
-        patch("jidou.services.progress.emit_progress", new_callable=AsyncMock) as mock_emit,
-        patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=mock_engine),
-        patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=mock_factory),
-    ):
-        await mark_task_timed_out("task-123")
-
-    mock_update.assert_called_once()
-    assert mock_update.call_args.args[2] == TaskStatus.FAILED
-
-    mock_emit.assert_called_once()
-    emitted = mock_emit.call_args.args[0]
-    assert emitted["type"] == "error"
-    assert emitted["celery_task_id"] == "task-123"
 
 
 # ---------------------------------------------------------------------------

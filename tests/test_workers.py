@@ -71,7 +71,7 @@ def test_download_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.download_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         # Celery bind=True tasks auto-inject self; do not pass mock as first arg.
@@ -95,7 +95,7 @@ def test_scan_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.scan_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         scan_remote_task(dry_run=False)
@@ -281,7 +281,7 @@ def test_route_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.route_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         route_files_task(dry_run=False)
@@ -351,7 +351,7 @@ def test_match_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.match_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         match_files_task(dry_run=False)
@@ -440,7 +440,7 @@ def test_sync_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.sync_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         sync_all_task(dry_run=False)
@@ -536,7 +536,7 @@ def test_path_import_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.import_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         path_import_task(file_content="/data/show/S01E01.mkv\n")
@@ -1035,7 +1035,7 @@ def test_seed_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.seed_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         seed_remote_task(dry_run=False)

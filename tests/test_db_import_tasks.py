@@ -1030,7 +1030,7 @@ def test_db_import_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.db_import_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         db_import_task(file_content="{}")

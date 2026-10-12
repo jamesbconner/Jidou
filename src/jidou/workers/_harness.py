@@ -1,13 +1,17 @@
 """Shared harness for Celery worker background-task lifecycle boilerplate."""
 
+import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from jidou.config import settings
 from jidou.models.task import TERMINAL_TASK_STATUSES, TaskStatus
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.progress import (
     TaskCancelledError,
     append_task_event,
@@ -19,8 +23,10 @@ from jidou.services.progress import (
 
 logger = logging.getLogger(__name__)
 
-ProgressFn = Callable[[int, int, str], Awaitable[None]]
-EventFn = Callable[[str, str, dict[str, object] | None], Awaitable[None]]
+# The callback vocabulary lives in services/callbacks; these aliases keep the
+# worker modules' existing names pointing at the single definition.
+ProgressFn = OnProgress
+EventFn = OnEvent
 
 
 @dataclass
@@ -191,3 +197,63 @@ async def run_task_workflow(
         raise RuntimeError(soft_failure)
 
     return celery_task_id
+
+
+async def mark_task_timed_out(celery_task_id: str) -> None:
+    """Mark a task FAILED after a Celery soft time limit fires.
+
+    Called from the synchronous task wrapper (outside the main async coroutine)
+    so it manages its own engine and session lifecycle.
+
+    Args:
+        celery_task_id: The Celery task identifier.
+    """
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await update_task_status(
+                session,
+                celery_task_id,
+                TaskStatus.FAILED,
+                progress_message="Task exceeded soft time limit",
+            )
+            await emit_progress(
+                {
+                    "celery_task_id": celery_task_id,
+                    "type": "error",
+                    "data": {"error": "Soft time limit exceeded"},
+                }
+            )
+    except Exception:
+        logger.exception("Failed to mark timed-out task %s as FAILED", celery_task_id)
+    finally:
+        await engine.dispose()
+
+
+def run_harnessed[T](celery_task_id: str, coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Run a task coroutine to completion, marking the row FAILED on a soft time limit.
+
+    Every Celery entrypoint wraps its async implementation in this helper so the
+    ``SoftTimeLimitExceeded`` handling exists in one place. A factory (not a
+    coroutine object) is taken so no coroutine is created, and left un-awaited,
+    if the caller never reaches ``asyncio.run``.
+
+    Args:
+        celery_task_id: The Celery task ID (also the BackgroundTask row's key).
+        coro_factory: Zero-argument callable returning the coroutine to run.
+
+    Returns:
+        Whatever the coroutine returned.
+
+    Raises:
+        SoftTimeLimitExceeded: After the row has been marked FAILED.
+        Exception: Anything else the coroutine raised, unchanged.
+    """
+    try:
+        return asyncio.run(coro_factory())
+    except SoftTimeLimitExceeded:
+        # The first event loop is already closed by the time the soft limit
+        # propagates here, so marking the row needs a fresh asyncio.run.
+        asyncio.run(mark_task_timed_out(celery_task_id))
+        raise

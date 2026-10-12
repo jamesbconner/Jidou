@@ -60,7 +60,7 @@ def test_rss_import_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.rss_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         rss_import_task(dry_run=False)
@@ -209,7 +209,7 @@ def test_rss_publish_task_soft_timeout_calls_mark_timed_out() -> None:
             new_callable=AsyncMock,
             side_effect=SoftTimeLimitExceeded(),
         ),
-        patch("jidou.workers.rss_tasks.mark_task_timed_out", side_effect=fake_mark),
+        patch("jidou.workers._harness.mark_task_timed_out", side_effect=fake_mark),
         pytest.raises(SoftTimeLimitExceeded),
     ):
         rss_publish_task(dry_run=False)
