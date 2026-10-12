@@ -10,6 +10,7 @@ import httpx2 as httpx
 from jidou.config import settings
 from jidou.services.cache import cache
 from jidou.services.rate_limiter import rate_limiter
+from jidou.services.single_flight import ElectedSingleFlight
 
 logger = logging.getLogger(__name__)
 
@@ -104,15 +105,11 @@ class TMDBService:
         """
         self.api_key = api_key or settings.tmdb_api_key
         self.base_url = base_url.rstrip("/")
-        # Per-instance in-flight deduplication state.
-        self._in_flight: dict[str, asyncio.Event] = {}
-        self._flight_lock = asyncio.Lock()
-        # How many owners have been elected so far for a given cache key
-        # (reset to 1 whenever a brand-new dedup batch starts), and the most
-        # recent owner's exception, so waiters that hit the election cap can
-        # fail fast with the real error instead of taking another serial turn.
-        self._in_flight_rounds: dict[str, int] = {}
-        self._in_flight_error: dict[str, BaseException] = {}
+        # Per-instance in-flight deduplication (bounded election rounds; see
+        # _MAX_DEDUP_ELECTION_ROUNDS above).
+        self._flight: ElectedSingleFlight[dict[str, Any]] = ElectedSingleFlight(
+            max_rounds=self._MAX_DEDUP_ELECTION_ROUNDS, label="TMDB"
+        )
 
     async def _request(
         self,
@@ -160,118 +157,77 @@ class TMDBService:
                 logger.debug("Cache hit for %s", endpoint)
                 return cached_result  # type: ignore[no-any-return]
 
-        # --- In-flight deduplication ---
-        async with self._flight_lock:
-            if cache_key in self._in_flight:
-                event = self._in_flight[cache_key]
-                is_owner = False
-            else:
-                event = asyncio.Event()
-                self._in_flight[cache_key] = event
-                self._in_flight_rounds[cache_key] = 1
-                is_owner = True
+        async def _on_owner_failure(_exc: BaseException) -> None:
+            if bypass_cache:
+                # A bypass owner never read the entry, so a stale-but-
+                # still-live one (from an earlier non-bypassing call, or
+                # left over from before this call started) is still
+                # sitting in the cache untouched. Without clearing it, a
+                # waiter's cache.get() would find that old value,
+                # mistake it for this attempt's result, and hand back
+                # exactly the stale response bypass_cache exists to avoid
+                # -- silently, with no error raised anywhere.
+                await cache.delete(cache_key)
 
-        if not is_owner:
-            logger.debug("In-flight dedup: waiting for concurrent request for %s", endpoint)
-            while True:
-                await event.wait()
-                refreshed = await cache.get(cache_key)
-                if refreshed is not None:
-                    return refreshed  # type: ignore[no-any-return]
-                # Owner's request failed.  Elect one waiter as new owner so the
-                # remaining waiters don't all make independent HTTP calls --
-                # unless the election cap is already reached, in which case
-                # this (and every remaining) waiter fails fast instead of
-                # taking its own serial turn against a demonstrably-down endpoint.
-                async with self._flight_lock:
-                    if cache_key in self._in_flight:
-                        # Another waiter won the election — wait on their attempt.
-                        event = self._in_flight[cache_key]
-                        continue
-                    round_number = self._in_flight_rounds.get(cache_key, 0) + 1
-                    if round_number > self._MAX_DEDUP_ELECTION_ROUNDS:
-                        # Deliberately not popped: every remaining sibling
-                        # waiter must see the same capped round count and the
-                        # same error so they all fail fast too, instead of the
-                        # first one clearing state and the next re-electing
-                        # itself as a "fresh" owner.
-                        error = self._in_flight_error.get(cache_key)
-                        logger.warning(
-                            "In-flight dedup: %s failed %d time(s) in a row; "
-                            "failing fast instead of electing another retry owner",
-                            endpoint,
-                            self._MAX_DEDUP_ELECTION_ROUNDS,
-                        )
-                        if error is not None:
-                            raise error
-                        raise RuntimeError(
-                            f"TMDB {endpoint} request failed (in-flight dedup fail-fast)"
-                        )
-                    self._in_flight_rounds[cache_key] = round_number
-                    event = asyncio.Event()
-                    self._in_flight[cache_key] = event
-                    is_owner = True
-                    break
-            logger.warning(
-                "In-flight dedup: owner request failed for %s; this coroutine retrying "
-                "(election round %d/%d)",
-                endpoint,
-                self._in_flight_rounds[cache_key],
-                self._MAX_DEDUP_ELECTION_ROUNDS,
-            )
+        return await self._flight.run(
+            cache_key,
+            lookup=lambda: cache.get(cache_key),
+            produce=lambda: self._fetch_and_cache(
+                endpoint, url, request_params, cache_key, bypass_cache
+            ),
+            on_owner_failure=_on_owner_failure,
+            fail_fast_message=f"TMDB {endpoint} request failed (in-flight dedup fail-fast)",
+        )
 
-        # --- Rate-limited HTTP request ---
-        try:
-            # One final cache check before acquiring the rate-limit slot.
-            # Covers two races:
-            # (a) elected-retry owner: a sibling may have populated the cache
-            #     between when this coroutine won the election and now.
-            # (b) cross-process: another worker may have completed an identical
-            #     request between the initial cache miss and this point.
-            # Skipped under bypass_cache for the same reason as the initial
-            # check above -- the caller wants a live result, not whatever a
-            # sibling request (possibly itself non-bypassing) just cached.
-            if not bypass_cache:
-                pre_request_cached = await cache.get(cache_key)
-                if pre_request_cached is not None:
-                    self._in_flight_rounds.pop(cache_key, None)
-                    self._in_flight_error.pop(cache_key, None)
-                    return pre_request_cached  # type: ignore[no-any-return]
+    async def _fetch_and_cache(
+        self,
+        endpoint: str,
+        url: str,
+        params: dict[str, Any],
+        cache_key: str,
+        bypass_cache: bool,
+    ) -> dict[str, Any]:
+        """Perform the rate-limited HTTP request as the elected owner and cache the result.
 
-            response = await self._get_with_retry(url, request_params, endpoint)
-            result: dict[str, Any] = response.json()
+        Args:
+            endpoint: API endpoint path, used for logging and the TTL decision.
+            url: Fully-qualified request URL.
+            params: Query parameters, including the API key.
+            cache_key: Cache key the result is stored under.
+            bypass_cache: Skip the pre-request cache re-check.
 
-            logger.info(
-                "TMDB %s → %s (%.1fs)",
-                endpoint,
-                response.status_code,
-                response.elapsed.total_seconds(),
-            )
-            await cache.set(
-                cache_key, result, label=endpoint, ttl=_ttl_for_response(endpoint, result)
-            )
-            self._in_flight_rounds.pop(cache_key, None)
-            self._in_flight_error.pop(cache_key, None)
-            return result
-        except Exception as exc:
-            if is_owner:
-                self._in_flight_error[cache_key] = exc
-                if bypass_cache:
-                    # A bypass owner never read the entry, so a stale-but-
-                    # still-live one (from an earlier non-bypassing call, or
-                    # left over from before this call started) is still
-                    # sitting in the cache untouched. Without clearing it, a
-                    # waiter's cache.get() below would find that old value,
-                    # mistake it for this attempt's result, and hand back
-                    # exactly the stale response bypass_cache exists to avoid
-                    # -- silently, with no error raised anywhere.
-                    await cache.delete(cache_key)
-            raise
-        finally:
-            if is_owner:
-                async with self._flight_lock:
-                    self._in_flight.pop(cache_key, None)
-                event.set()
+        Returns:
+            Parsed JSON response (or a sibling's freshly cached result).
+
+        Raises:
+            httpx.HTTPStatusError: If the API returns a non-2xx status.
+            httpx.TransportError: If every attempt fails to connect.
+        """
+        # One final cache check before acquiring the rate-limit slot.
+        # Covers two races:
+        # (a) elected-retry owner: a sibling may have populated the cache
+        #     between when this coroutine won the election and now.
+        # (b) cross-process: another worker may have completed an identical
+        #     request between the initial cache miss and this point.
+        # Skipped under bypass_cache for the same reason as the initial
+        # check in _request -- the caller wants a live result, not whatever a
+        # sibling request (possibly itself non-bypassing) just cached.
+        if not bypass_cache:
+            pre_request_cached = await cache.get(cache_key)
+            if pre_request_cached is not None:
+                return pre_request_cached  # type: ignore[no-any-return]
+
+        response = await self._get_with_retry(url, params, endpoint)
+        result: dict[str, Any] = response.json()
+
+        logger.info(
+            "TMDB %s → %s (%.1fs)",
+            endpoint,
+            response.status_code,
+            response.elapsed.total_seconds(),
+        )
+        await cache.set(cache_key, result, label=endpoint, ttl=_ttl_for_response(endpoint, result))
+        return result
 
     async def _get_with_retry(
         self, url: str, params: dict[str, Any], endpoint: str
