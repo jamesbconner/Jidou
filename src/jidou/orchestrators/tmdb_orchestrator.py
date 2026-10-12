@@ -295,6 +295,12 @@ class TMDBOrchestrator:
                     episodes_by_key[(season_num, episode_num)] = new_ep
                     episodes_upserted += 1
 
+            if season_episodes:
+                # The old per-episode lookups autoflushed, so a failing write
+                # raised before the next season's TMDB fetch / progress tick.
+                # Flush per batch to keep that ordering on the failure path.
+                await self.session.flush()
+
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
 
@@ -388,6 +394,11 @@ class TMDBOrchestrator:
                 by_tmdb_id[tmdb_ep_id] = new_ep
                 touched.append(new_ep)
                 episodes_upserted += 1
+
+        if group_episodes:
+            # Surface a failing write before the show-level updates, as the
+            # old per-episode autoflush did.
+            await self.session.flush()
 
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True

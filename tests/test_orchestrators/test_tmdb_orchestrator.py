@@ -34,6 +34,7 @@ class _ExistingEpisodeProxy:
 def _episode_lookup_result(stmt, existing_episode):
     """Result double for an Episode-by-tmdb_id lookup (batched IN query)."""
     result = MagicMock()
+    result.scalar_one_or_none.return_value = existing_episode  # pre-batching lookup shape
     rows = []
     if existing_episode is not None:
         (value,) = stmt.compile().params.values()
@@ -1388,7 +1389,8 @@ class TestUpsertCharacterization:
         assert created.overview is None
         assert created.air_date is None
         assert created.absolute_episode_number is None
-        session.flush.assert_awaited_once()
+        # one flush at the end of the (single) season batch + the final flush
+        assert session.flush.await_count == 2
         session.commit.assert_not_called()
 
     async def test_native_sync_existing_name_kept_when_payload_omits_name(self):
@@ -1437,7 +1439,9 @@ class TestUpsertCharacterization:
         assert len(session.added) == 6
         assert session.lookups == 2
 
-    async def test_native_sync_season_fetch_failure_keeps_earlier_adds_and_never_flushes(self):
+    async def test_native_sync_season_fetch_failure_keeps_earlier_adds_and_flushes_only_season_one(
+        self,
+    ):
         session = _StatefulEpisodeSession()
         tmdb = _make_tmdb(seasons=[{"season_number": 1}, {"season_number": 2}])
         tmdb.get_season_details = AsyncMock(
@@ -1451,7 +1455,7 @@ class TestUpsertCharacterization:
             await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
 
         assert len(session.added) == 2
-        session.flush.assert_not_awaited()
+        session.flush.assert_awaited_once()  # season 1's batch flush; no final flush
         assert show.cached is False  # set only after every season succeeded
 
     async def test_native_sync_lookup_failure_in_second_season_propagates(self):
@@ -1468,8 +1472,35 @@ class TestUpsertCharacterization:
         with pytest.raises(RuntimeError, match="lookup failed"):
             await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
 
-        session.flush.assert_not_awaited()
+        session.flush.assert_awaited_once()  # season 1's batch flush only
         assert show.cached is False
+
+    async def test_failed_season_write_raises_before_next_season_fetch_or_progress(self):
+        """Regression: a failing write in season 1 must surface before any season-2
+        TMDB fetch or "Fetching S02" tick (the old per-episode autoflush ordering).
+        """
+        session = _StatefulEpisodeSession()
+        session.flush = AsyncMock(side_effect=RuntimeError("insert failed"))
+        tmdb = _make_tmdb(seasons=[{"season_number": 1}, {"season_number": 2}])
+        tmdb.get_season_details = AsyncMock(
+            return_value={"episodes": [{"id": 1, "episode_number": 1, "name": None}]}
+        )
+        progress = AsyncMock()
+        show = _real_show()
+
+        with pytest.raises(RuntimeError, match="insert failed"):
+            await TMDBOrchestrator(session, tmdb).sync_show_episodes(show, on_progress=progress)
+
+        assert [c.args[:2] for c in tmdb.get_season_details.await_args_list] == [(12345, 1)]
+        assert [c.args[2] for c in progress.await_args_list] == ["Fetching S01 of Test Show"]
+        tmdb.get_episode_groups.assert_not_called()
+        assert show.cached is False
+
+    def test_detail_fields_are_real_episode_columns(self):
+        from jidou.orchestrators.tmdb_orchestrator import _EPISODE_DETAIL_FIELDS
+
+        assert _EPISODE_DETAIL_FIELDS
+        assert set(_EPISODE_DETAIL_FIELDS) <= set(Episode.__table__.c.keys())
 
     async def test_native_sync_with_only_idless_episodes_leaves_cached_untouched(self):
         session = _StatefulEpisodeSession()
