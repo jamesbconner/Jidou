@@ -76,6 +76,8 @@ graphify-out/
 PRODUCT.md
 DESIGN.md
 skills-lock.json
+.superpowers/
+docs/superpowers/
 
 # -----------------------------------------------------------
 # Local debug / scratch scripts (not for commit)
@@ -109,3 +111,7 @@ npm-debug.log*
 # SSH Configurations
 # -----------------------------------------------------------
 ssh/
+
+# Claude Code local nested instructions
+frontend/CLAUDE.md
+src/jidou/api/CLAUDE.md
