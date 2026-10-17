@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **The metadata refresh can be started from the Tasks page.** "Refresh Show Metadata" is now in the Task type selector (with Dry run), so a refresh batch can be run on demand as well as on its schedule.
+
 ## [0.4.12] — 2026-10-17
 
 Follow-up to 0.4.11: the metadata refresh log now says what changed inside nested and list columns, not just that something did.
