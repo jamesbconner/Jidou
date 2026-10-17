@@ -82,17 +82,17 @@ exports[`ServicesTab characterization: cache and schedules > cache card with ent
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -181,17 +181,17 @@ exports[`ServicesTab characterization: cache and schedules > cache with a single
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -275,17 +275,17 @@ exports[`ServicesTab characterization: cache and schedules > empty cache > empty
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -433,17 +433,17 @@ exports[`ServicesTab characterization: cache and schedules > schedule row with n
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: —</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -525,17 +525,17 @@ exports[`ServicesTab characterization: cache and schedules > schedule rows: enab
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 01:00, 02:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-05T01:00:00.000Z)</span>
 </div>
@@ -610,17 +610,17 @@ exports[`ServicesTab characterization: service rows > LLM row hidden when provid
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -702,17 +702,17 @@ exports[`ServicesTab characterization: service rows > degraded header and checki
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -790,17 +790,17 @@ exports[`ServicesTab characterization: service rows > healthy with latency, revi
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -885,17 +885,17 @@ exports[`ServicesTab characterization: service rows > indicator falls back to th
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -978,17 +978,17 @@ exports[`ServicesTab characterization: service rows > latency from the last LLM 
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -1070,17 +1070,17 @@ exports[`ServicesTab characterization: service rows > no health yet > dom 1`] = 
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>
@@ -1163,17 +1163,17 @@ exports[`ServicesTab characterization: service rows > test message without a lea
 </div>
 <div class="card p-4 space-y-3">
 <h2 class="font-semibold dark:text-gray-100">Schedules</h2>
-<p class="text-xs text-gray-500 dark:text-gray-400">Configured via environment variables; restart required to change. All times UTC.</p>
+<p class="text-xs text-gray-500 dark:text-gray-400">Full Sync and RSS Import are configured via environment variables; restart required to change. Metadata Refresh is edited below and applies from the next full hour, no restart. All times UTC.</p>
 <div class="space-y-2">
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Enabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">Full Sync</span>
 <span class="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at 03:00, 15:00, 99:00, 0x:00 UTC</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">Next: LOCAL(2026-03-04T15:00:00.000Z)</span>
 </div>
 <div class="flex items-center gap-3 text-sm">
 <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Disabled</span>
-<span class="w-24 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
+<span class="w-32 text-gray-700 dark:text-gray-300 shrink-0">RSS Import</span>
 <span class="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
 </div>
 </div>

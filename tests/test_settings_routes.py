@@ -2,14 +2,19 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
+from jidou.config import settings
 from jidou.database import get_session
 from jidou.main import app
 from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     DASHBOARD_PAGE_ENABLED,
     DISCOVER_ENABLED,
+    METADATA_REFRESH_ENABLED,
+    METADATA_REFRESH_HOURS,
+    METADATA_REFRESH_LIMIT,
     RECENT_EPISODES_ENABLED,
     RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
@@ -18,6 +23,13 @@ from jidou.services.settings_service import (
     SIMILAR_TITLES_ENABLED,
     SIMILAR_TITLES_INCLUDE_EXTERNAL,
 )
+
+# The metadata-refresh fields default to the SHOW_METADATA_REFRESH_* env settings.
+_REFRESH_DEFAULTS = {
+    "metadata_refresh_schedule_enabled": settings.show_metadata_refresh_schedule_enabled,
+    "metadata_refresh_schedule_hours": settings.show_metadata_refresh_schedule_hours,
+    "metadata_refresh_limit_per_run": settings.show_metadata_refresh_limit_per_run,
+}
 
 
 def _session_override(execute_return: object) -> "type[AsyncMock]":
@@ -56,6 +68,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -83,6 +96,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -110,6 +124,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -137,6 +152,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -164,6 +180,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -191,6 +208,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -218,6 +236,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -245,6 +264,7 @@ class TestGetSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
         finally:
             app.dependency_overrides.clear()
@@ -281,6 +301,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             # First execute() call is the upsert; second is the re-fetch in get_all_settings.
             assert session.execute.await_count == 2
@@ -317,6 +338,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -352,6 +374,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -387,6 +410,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -422,6 +446,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -457,6 +482,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -494,6 +520,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             assert session.execute.await_count == 2
         finally:
@@ -582,6 +609,7 @@ class TestUpdateSettings:
                 "similar_titles_enabled": True,
                 "similar_titles_count": 12,
                 "similar_titles_include_external": True,
+                **_REFRESH_DEFAULTS,
             }
             # Only the get_all_settings read — no upsert executed.
             assert session.execute.await_count == 1
@@ -694,6 +722,9 @@ class TestPatchCharacterization:
                 "discover_enabled": False,
                 "calendar_enabled": False,
                 "show_adult_content": True,
+                "metadata_refresh_limit_per_run": 25,
+                "metadata_refresh_schedule_hours": "16, 4",
+                "metadata_refresh_schedule_enabled": False,
             }
         )
         assert status == 200
@@ -708,6 +739,9 @@ class TestPatchCharacterization:
             (SIMILAR_TITLES_ENABLED, False),
             (SIMILAR_TITLES_COUNT, 5),
             (SIMILAR_TITLES_INCLUDE_EXTERNAL, False),
+            (METADATA_REFRESH_ENABLED, False),
+            (METADATA_REFRESH_HOURS, "4,16"),  # normalised before it is stored
+            (METADATA_REFRESH_LIMIT, 25),
         ]
 
     def test_partial_body_writes_only_present_fields(self) -> None:
@@ -729,6 +763,74 @@ class TestPatchCharacterization:
 
     def test_out_of_range_count_is_rejected_without_writes(self) -> None:
         status, calls, session = self._patch({"calendar_enabled": False, "similar_titles_count": 0})
+        assert status == 422
+        assert calls == []
+        session.flush.assert_not_awaited()
+
+
+class TestMetadataRefreshPatch:
+    """Validation and write plan for the metadata-refresh schedule fields."""
+
+    # The helper clears every dependency override when it finishes, so each test
+    # makes exactly one request.
+    _patch = staticmethod(TestPatchCharacterization._patch)
+
+    @pytest.mark.parametrize(
+        ("field", "value", "key", "stored"),
+        [
+            ("metadata_refresh_schedule_enabled", False, METADATA_REFRESH_ENABLED, False),
+            ("metadata_refresh_limit_per_run", 30, METADATA_REFRESH_LIMIT, 30),
+            ("metadata_refresh_limit_per_run", 1, METADATA_REFRESH_LIMIT, 1),
+            ("metadata_refresh_limit_per_run", 500, METADATA_REFRESH_LIMIT, 500),
+            # Hours are normalised before they are stored.
+            ("metadata_refresh_schedule_hours", " 16, 04 ,4", METADATA_REFRESH_HOURS, "4,16"),
+            ("metadata_refresh_schedule_hours", "4", METADATA_REFRESH_HOURS, "4"),
+        ],
+    )
+    def test_each_field_is_written_to_its_own_key(
+        self, field: str, value: object, key: str, stored: object
+    ) -> None:
+        status, calls, _ = self._patch({field: value})
+        assert (status, calls) == (200, [(key, stored)])
+
+    def test_response_reports_the_effective_hours_not_a_hand_edited_bad_value(self) -> None:
+        row = MagicMock()
+        row.key = METADATA_REFRESH_HOURS
+        row.value = "99,nonsense"
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            body = TestClient(app).get("/api/settings").json()
+        finally:
+            app.dependency_overrides.clear()
+        assert (
+            body["metadata_refresh_schedule_hours"] == settings.show_metadata_refresh_schedule_hours
+        )
+
+    def test_stored_hours_are_reflected_in_the_response(self) -> None:
+        row = MagicMock()
+        row.key = METADATA_REFRESH_HOURS
+        row.value = "6, 18"
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [row]
+        app.dependency_overrides[get_session] = _session_override(result)
+        try:
+            body = TestClient(app).get("/api/settings").json()
+        finally:
+            app.dependency_overrides.clear()
+        assert body["metadata_refresh_schedule_hours"] == "6,18"
+
+    @pytest.mark.parametrize("bad", ["", "   ", "25", "a", "4;16", "-1"])
+    def test_invalid_hours_are_rejected_without_writes(self, bad: str) -> None:
+        status, calls, session = self._patch({"metadata_refresh_schedule_hours": bad})
+        assert status == 422
+        assert calls == []
+        session.flush.assert_not_awaited()
+
+    @pytest.mark.parametrize("bad", [0, -1, 501, "many"])
+    def test_out_of_range_limit_is_rejected_without_writes(self, bad: object) -> None:
+        status, calls, session = self._patch({"metadata_refresh_limit_per_run": bad})
         assert status == 422
         assert calls == []
         session.flush.assert_not_awaited()

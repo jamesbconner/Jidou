@@ -106,17 +106,21 @@ if settings.rss_import_schedule_enabled:
         settings.rss_import_schedule_hours,
     )
 
-if settings.show_metadata_refresh_schedule_enabled:
-    _beat_schedule["scheduled-show-metadata-refresh"] = {
-        "task": "jidou.workers.scheduled_tasks.scheduled_show_metadata_refresh_task",
-        "schedule": crontab(hour=settings.show_metadata_refresh_schedule_hours, minute="0"),
-        "options": {"queue": "jidou"},
-    }
-    logger.info(
-        "Show metadata refresh beat schedule enabled: daily at hour(s) %s UTC (%d show(s) per run)",
-        settings.show_metadata_refresh_schedule_hours,
-        settings.show_metadata_refresh_limit_per_run,
-    )
+# Always registered and ticking hourly: the saved schedule (enabled flag and hours,
+# edited on the Settings page) is read by the task itself, because beat's crontab
+# can't change without a restart. A tick that isn't due does nothing.
+_beat_schedule["scheduled-show-metadata-refresh"] = {
+    "task": "jidou.workers.scheduled_tasks.scheduled_show_metadata_refresh_task",
+    "schedule": crontab(minute="0"),
+    "options": {"queue": "jidou"},
+}
+logger.info(
+    "Show metadata refresh beat tick: hourly; enabled flag, hours and per-run limit "
+    "are read from settings (env defaults: enabled=%s, hours=%s, limit=%d)",
+    settings.show_metadata_refresh_schedule_enabled,
+    settings.show_metadata_refresh_schedule_hours,
+    settings.show_metadata_refresh_limit_per_run,
+)
 
 if settings.image_cache_expiration_enabled:
     _beat_schedule["purge-stale-images"] = {

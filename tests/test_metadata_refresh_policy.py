@@ -207,3 +207,15 @@ def test_naive_now_is_rejected() -> None:
 def test_lookback_handles_leap_day() -> None:
     p = _policy(now=datetime(2028, 2, 29, tzinfo=UTC))
     assert is_in_lookback(_facts(last_air_date=date(2023, 3, 1)), p)
+
+
+def test_from_settings_takes_an_explicit_limit_override() -> None:
+    from jidou.config import settings
+
+    assert RefreshPolicy.from_settings(NOW).limit == settings.show_metadata_refresh_limit_per_run
+    assert RefreshPolicy.from_settings(NOW, limit=3).limit == 3
+    # Everything else still comes from settings.
+    assert (
+        RefreshPolicy.from_settings(NOW, limit=3).ended_days
+        == settings.show_metadata_refresh_ended_days
+    )

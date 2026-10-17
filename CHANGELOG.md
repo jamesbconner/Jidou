@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **The metadata refresh schedule is editable on the Settings page.** The Schedules card on Settings → Services now has a **Metadata Refresh** row (the same enabled badge, hours and next-run line as Full Sync and RSS Import) with controls for **Enabled**, **Run at (UTC hours)** and **Shows per run** (1–500). Changes apply from the next full hour with no restart. The `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED`, `_SCHEDULE_HOURS` and `_LIMIT_PER_RUN` environment variables are now only the starting values, used until something is saved; the interval and lookback variables stay environment-only. Full Sync and RSS Import are unchanged: environment variables, restart required.
+  - Beat can't change its crontab at runtime, so it now ticks **every hour** and the task checks the saved enabled flag and hours, skipping quietly (no task-history row) when not due.
+  - `GET`/`PATCH /api/settings` gain `metadata_refresh_schedule_enabled`, `metadata_refresh_schedule_hours` (validated, stored sorted and de-duplicated, e.g. `"16, 4"` becomes `"4,16"`) and `metadata_refresh_limit_per_run` (1–500). The response reports the value the job will actually use, so a hand-edited invalid value is not shown as if it worked.
+
 ## [0.4.9] — 2026-10-17
 
 Fixes show metadata going stale after a show is added: a show that ended or was renewed afterwards kept its old TMDB status and next/last episode, so the RSS subscription recommendations could suggest turning off a returning show's subscription.

@@ -186,8 +186,15 @@ def test_show_patch_validation_is_stable() -> None:
 )
 def test_similar_titles_count_bounds_are_stable(value: object, ok: bool) -> None:
     """Both settings schemas accept 1..40 inclusive (and coerce numeric strings)."""
+    # Every other field is a bool except the two metadata-refresh schedule values.
+    non_bool = {
+        "metadata_refresh_schedule_hours": "4",
+        "metadata_refresh_limit_per_run": 10,
+    }
     read_kwargs: dict[str, Any] = {
-        name: True for name in AppSettingsRead.model_fields if name != "similar_titles_count"
+        name: non_bool.get(name, True)
+        for name in AppSettingsRead.model_fields
+        if name != "similar_titles_count"
     }
     for build in (
         lambda: AppSettingsPatch.model_validate({"similar_titles_count": value}),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -244,12 +245,25 @@ class TestScheduledRssImportTask:
 # ---------------------------------------------------------------------------
 
 
+_EVERY_HOUR = "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23"
+
+
+def _schedule(enabled: bool = True, hours: str = _EVERY_HOUR):
+    """Patch the saved schedule (enabled flag, hours) the hourly tick reads."""
+    return patch(
+        "jidou.workers.scheduled_tasks._load_refresh_schedule",
+        new_callable=AsyncMock,
+        return_value=(enabled, hours),
+    )
+
+
 class TestScheduledShowMetadataRefresh:
     @pytest.mark.asyncio
     async def test_skips_without_dispatch_when_a_refresh_is_active(self) -> None:
         from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
 
         with (
+            _schedule(),
             patch(
                 "jidou.workers.scheduled_tasks._try_claim_task",
                 new_callable=AsyncMock,
@@ -271,6 +285,7 @@ class TestScheduledShowMetadataRefresh:
         from jidou.workers.show_metadata_refresh_tasks import refresh_show_metadata_task
 
         with (
+            _schedule(),
             patch(
                 "jidou.workers.scheduled_tasks._try_claim_task",
                 new_callable=AsyncMock,
@@ -288,6 +303,71 @@ class TestScheduledShowMetadataRefresh:
         dispatch.assert_awaited_once_with(
             "refresh_show_metadata", refresh_show_metadata_task, claim.await_args.args[1]
         )
+
+    @pytest.mark.asyncio
+    async def test_skips_quietly_without_claiming_when_switched_off(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
+
+        with (
+            _schedule(enabled=False),
+            patch("jidou.workers.scheduled_tasks._try_claim_task", new_callable=AsyncMock) as claim,
+        ):
+            assert await _scheduled_show_metadata_refresh() == "skipped"
+
+        claim.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_the_current_hour_is_not_a_scheduled_hour(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
+
+        other_hour = (datetime.now(UTC).hour + 12) % 24
+        with (
+            _schedule(hours=str(other_hour)),
+            patch("jidou.workers.scheduled_tasks._try_claim_task", new_callable=AsyncMock) as claim,
+        ):
+            assert await _scheduled_show_metadata_refresh() == "skipped"
+
+        claim.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_runs_when_the_current_hour_is_a_scheduled_hour(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
+
+        with (
+            _schedule(hours=str(datetime.now(UTC).hour)),
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled",
+                new_callable=AsyncMock,
+                return_value="the-id",
+            ),
+        ):
+            assert await _scheduled_show_metadata_refresh() == "the-id"
+
+    @pytest.mark.asyncio
+    async def test_load_refresh_schedule_reads_the_saved_settings(self) -> None:
+        from jidou.workers.scheduled_tasks import _load_refresh_schedule
+
+        p1, p2 = _patch_db()
+        with (
+            p1,
+            p2,
+            patch(
+                "jidou.workers.scheduled_tasks.get_metadata_refresh_schedule_enabled",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "jidou.workers.scheduled_tasks.get_metadata_refresh_schedule_hours",
+                new_callable=AsyncMock,
+                return_value="6,18",
+            ),
+        ):
+            assert await _load_refresh_schedule() == (False, "6,18")
 
     def test_celery_name_and_registration(self) -> None:
         from jidou.workers.celery_app import celery_app
@@ -317,12 +397,22 @@ class TestBeatScheduleWiring:
             expected_keys.add("scheduled-sync")
         if settings.rss_import_schedule_enabled:
             expected_keys.add("scheduled-rss-import")
-        if settings.show_metadata_refresh_schedule_enabled:
-            expected_keys.add("scheduled-show-metadata-refresh")
+        # Always registered: the hourly tick checks the saved Settings-page schedule.
+        expected_keys.add("scheduled-show-metadata-refresh")
         if settings.image_cache_expiration_enabled:
             expected_keys.add("purge-stale-images")
 
         assert set(celery_app.conf.beat_schedule.keys()) == expected_keys
+
+    def test_metadata_refresh_tick_runs_every_hour_regardless_of_the_saved_schedule(self) -> None:
+        """Beat can't be edited at runtime, so it ticks hourly and the task decides."""
+        from jidou.workers.celery_app import celery_app
+
+        entry = celery_app.conf.beat_schedule["scheduled-show-metadata-refresh"]
+
+        assert entry["task"] == "jidou.workers.scheduled_tasks.scheduled_show_metadata_refresh_task"
+        assert entry["schedule"].minute == {0}
+        assert entry["schedule"].hour == set(range(24))
 
     def test_scheduled_tasks_registered_in_celery(self) -> None:
         """Both scheduled wrapper tasks must be discoverable in the Celery registry."""

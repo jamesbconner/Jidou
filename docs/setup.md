@@ -200,13 +200,15 @@ Poster/backdrop images are proxied and cached to disk rather than the frontend h
 
 ### Scheduled tasks
 
-Beat-triggered jobs need the `jidou-beat` service; restart it to apply changes. The show metadata refresh is **on by default**, unlike the sync and RSS import schedules. It re-fetches TMDB metadata for a capped batch of the stalest or most suspect shows (never user-managed fields), which keeps the RSS subscription recommendations accurate.
+Beat-triggered jobs need the `jidou-beat` service; restart it to apply changes to the sync and RSS import schedules. The show metadata refresh is **on by default**, unlike the sync and RSS import schedules. It re-fetches TMDB metadata for a capped batch of the stalest or most suspect shows (never user-managed fields), which keeps the RSS subscription recommendations accurate.
+
+The refresh's **enabled flag, hours and per-run limit are editable on the Settings page** (Services tab, under Schedules) and apply to the next hourly check with no restart. The three variables below are only the starting values, used until something is saved there; the interval and lookback variables are environment-only. Beat checks every hour whether the refresh is due, so a change takes effect at the next top of the hour.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED` | `true` | Turn the scheduled refresh on or off |
-| `SHOW_METADATA_REFRESH_SCHEDULE_HOURS` | `4` | Comma-separated UTC hours to fire (e.g. `4,16`) |
-| `SHOW_METADATA_REFRESH_LIMIT_PER_RUN` | `10` | Max shows refreshed per run, 1–500 (per run, not per day). A TV show costs 3 TMDB calls |
+| `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED` | `true` | Turn the scheduled refresh on or off (starting value; editable in Settings) |
+| `SHOW_METADATA_REFRESH_SCHEDULE_HOURS` | `4` | Comma-separated UTC hours to fire, 0–23 (e.g. `4,16`) (starting value; editable in Settings) |
+| `SHOW_METADATA_REFRESH_LIMIT_PER_RUN` | `10` | Max shows refreshed per run, 1–500 (per run, not per day). A TV show costs 3 TMDB calls (starting value; editable in Settings) |
 | `SHOW_METADATA_REFRESH_STALE_DAYS` | `30` | Re-check interval for shows with an unknown status |
 | `SHOW_METADATA_REFRESH_AIRING_DAYS` | `7` | Re-check interval for shows still airing |
 | `SHOW_METADATA_REFRESH_ENDED_DAYS` | `90` | Re-check interval for ended, cancelled and released shows |

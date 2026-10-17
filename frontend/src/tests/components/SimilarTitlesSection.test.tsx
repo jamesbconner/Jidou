@@ -18,6 +18,9 @@ function makeAppSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     similar_titles_enabled: true,
     similar_titles_count: 12,
     similar_titles_include_external: true,
+    metadata_refresh_schedule_enabled: true,
+    metadata_refresh_schedule_hours: '4',
+    metadata_refresh_limit_per_run: 10,
     ...overrides,
   }
 }

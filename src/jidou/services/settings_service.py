@@ -10,7 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jidou.config import settings as env_settings
 from jidou.models.app_setting import AppSetting
+from jidou.services.schedule_hours import normalize_schedule_hours
 
 SHOW_ADULT_CONTENT = "dashboard.show_adult_content"
 CALENDAR_ENABLED = "dashboard.calendar_enabled"
@@ -22,12 +24,26 @@ RECENT_EPISODES_PREFER_POSTERS = "dashboard.recent_episodes_prefer_posters"
 SIMILAR_TITLES_ENABLED = "recommendations.similar_titles_enabled"
 SIMILAR_TITLES_COUNT = "recommendations.similar_titles_count"
 SIMILAR_TITLES_INCLUDE_EXTERNAL = "recommendations.similar_titles_include_external"
+METADATA_REFRESH_ENABLED = "metadata_refresh.schedule_enabled"
+METADATA_REFRESH_HOURS = "metadata_refresh.schedule_hours"
+METADATA_REFRESH_LIMIT = "metadata_refresh.limit_per_run"
 
 #: Inclusive bounds for :data:`SIMILAR_TITLES_COUNT`; enforced in the accessor and
 #: mirrored by the API schema's ``Field(ge=, le=)`` bounds.
 SIMILAR_TITLES_COUNT_MIN = 1
 SIMILAR_TITLES_COUNT_MAX = 40
 
+#: Inclusive bounds for :data:`METADATA_REFRESH_LIMIT`; mirrored by the API schema and
+#: ``Settings.show_metadata_refresh_limit_per_run``.
+METADATA_REFRESH_LIMIT_MIN = 1
+METADATA_REFRESH_LIMIT_MAX = 500
+
+#: Last-resort schedule hour if both the stored value and the env default are unusable.
+_FALLBACK_REFRESH_HOURS = "4"
+
+# The metadata-refresh values default to the SHOW_METADATA_REFRESH_* environment
+# settings, so an existing deployment keeps behaving the same until someone
+# changes them on the Settings page.
 _DEFAULTS: dict[str, Any] = {
     SHOW_ADULT_CONTENT: False,
     CALENDAR_ENABLED: True,
@@ -39,6 +55,9 @@ _DEFAULTS: dict[str, Any] = {
     SIMILAR_TITLES_ENABLED: True,
     SIMILAR_TITLES_COUNT: 12,
     SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
+    METADATA_REFRESH_ENABLED: env_settings.show_metadata_refresh_schedule_enabled,
+    METADATA_REFRESH_HOURS: env_settings.show_metadata_refresh_schedule_hours,
+    METADATA_REFRESH_LIMIT: env_settings.show_metadata_refresh_limit_per_run,
 }
 
 
@@ -137,6 +156,87 @@ async def get_similar_titles_include_external(session: AsyncSession) -> bool:
         action); ``True`` by default.
     """
     return await _get_bool(session, SIMILAR_TITLES_INCLUDE_EXTERNAL)
+
+
+async def get_metadata_refresh_schedule_enabled(session: AsyncSession) -> bool:
+    """Whether the scheduled show-metadata refresh is switched on.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        The stored value, or the ``SHOW_METADATA_REFRESH_SCHEDULE_ENABLED``
+        environment default (``True``) if it has never been set.
+    """
+    return await _get_bool(session, METADATA_REFRESH_ENABLED)
+
+
+def resolve_metadata_refresh_hours(stored: object) -> str:
+    """The canonical refresh hours to use for a stored (possibly invalid) value.
+
+    A stored value that is not a valid hour list (for example hand-edited in
+    the database) is ignored rather than stopping the job from ever running.
+
+    Args:
+        stored: Whatever is in the settings table, or the default if unset.
+
+    Returns:
+        Sorted, de-duplicated, comma-separated hours such as ``"4,16"``. Falls
+        back to the environment default, then to ``"4"``.
+    """
+    for candidate in (stored, _DEFAULTS[METADATA_REFRESH_HOURS], _FALLBACK_REFRESH_HOURS):
+        if not isinstance(candidate, str):
+            continue
+        try:
+            return normalize_schedule_hours(candidate)
+        except ValueError:
+            continue
+    return _FALLBACK_REFRESH_HOURS  # unreachable: the last candidate is always valid
+
+
+def resolve_metadata_refresh_limit(raw: object) -> int:
+    """The per-run refresh limit to use for a stored (possibly invalid) value.
+
+    Args:
+        raw: Whatever is in the settings table, or the default if unset.
+
+    Returns:
+        *raw* as an int clamped to
+        ``[METADATA_REFRESH_LIMIT_MIN, METADATA_REFRESH_LIMIT_MAX]``. Non-integer
+        values fall back to ``SHOW_METADATA_REFRESH_LIMIT_PER_RUN``.
+    """
+    value: int
+    try:
+        value = int(raw)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        value = int(_DEFAULTS[METADATA_REFRESH_LIMIT])
+    return max(METADATA_REFRESH_LIMIT_MIN, min(METADATA_REFRESH_LIMIT_MAX, value))
+
+
+async def get_metadata_refresh_schedule_hours(session: AsyncSession) -> str:
+    """The UTC hours at which the show-metadata refresh is due, canonicalised.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        See :func:`resolve_metadata_refresh_hours`.
+    """
+    stored = await get_setting(session, METADATA_REFRESH_HOURS, _DEFAULTS[METADATA_REFRESH_HOURS])
+    return resolve_metadata_refresh_hours(stored)
+
+
+async def get_metadata_refresh_limit(session: AsyncSession) -> int:
+    """How many shows one metadata-refresh run may refresh, clamped to a sane range.
+
+    Args:
+        session: Active async SQLAlchemy session.
+
+    Returns:
+        See :func:`resolve_metadata_refresh_limit`.
+    """
+    raw = await get_setting(session, METADATA_REFRESH_LIMIT, _DEFAULTS[METADATA_REFRESH_LIMIT])
+    return resolve_metadata_refresh_limit(raw)
 
 
 async def get_all_settings(session: AsyncSession) -> dict[str, Any]:

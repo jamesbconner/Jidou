@@ -1,5 +1,8 @@
 import clsx from 'clsx'
 import { Card } from '@/components/ui/Card'
+import type { useAppSettings, useUpdateAppSettings } from '@/hooks/useSettings'
+import { MetadataRefreshSchedule } from './MetadataRefreshSchedule'
+import { ScheduleRow } from './ScheduleRow'
 import type { useAdminHealth, useAdminCache, useFlushCache } from '@/hooks/useAdmin'
 import type { ConnectionService, useConnectionTest } from '@/hooks/useSettingsActions'
 import type { AppConfig, ConnectionTestResult, ServiceHealth } from '@/types/api'
@@ -11,10 +14,21 @@ export interface ServicesTabProps {
   flushCache: ReturnType<typeof useFlushCache>
   health: ReturnType<typeof useAdminHealth>
   tests: Record<ConnectionService, ReturnType<typeof useConnectionTest>>
+  /** Saved settings and their shared mutation; the Metadata Refresh schedule is edited here. */
+  appSettings: ReturnType<typeof useAppSettings>['data']
+  updateAppSettings: ReturnType<typeof useUpdateAppSettings>
 }
 
 /** Service health, on-demand connection tests, TMDB cache and schedules (the Settings "Services" tab). */
-export function ServicesTab({ config, cache, flushCache, health: healthQuery, tests }: ServicesTabProps) {
+export function ServicesTab({
+  config,
+  cache,
+  flushCache,
+  health: healthQuery,
+  tests,
+  appSettings,
+  updateAppSettings,
+}: ServicesTabProps) {
   const { tmdb: testTmdb, sftp: testSftp, redis: testRedis, llm: testLlm } = tests
   const { data: cacheStats, refetch: refetchCache, isFetching: cacheFetching } = cache
   const { data: health, refetch: refetchHealth, isFetching: healthFetching } = healthQuery
@@ -146,7 +160,9 @@ export function ServicesTab({ config, cache, flushCache, health: healthQuery, te
         <Card padding="md" className="space-y-3">
           <h2 className="font-semibold dark:text-gray-100">Schedules</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Configured via environment variables; restart required to change. All times UTC.
+            Full Sync and RSS Import are configured via environment variables; restart required to
+            change. Metadata Refresh is edited below and applies from the next full hour, no restart.
+            All times UTC.
           </p>
           <div className="space-y-2">
             <ScheduleRow
@@ -159,6 +175,7 @@ export function ServicesTab({ config, cache, flushCache, health: healthQuery, te
               enabled={config.rss_import_schedule_enabled}
               hours={config.rss_import_schedule_hours}
             />
+            <MetadataRefreshSchedule appSettings={appSettings} update={updateAppSettings} />
           </div>
         </Card>
       )}
@@ -247,60 +264,4 @@ function ServiceRow({
       {test && <TestControls test={test} />}
     </div>
   )
-}
-
-function ScheduleRow({ label, enabled, hours }: { label: string; enabled: boolean; hours: string }) {
-  const nextRun = enabled ? computeNextRun(hours) : null
-  const parsedHours = hours
-    .split(',')
-    .map((h) => h.trim())
-    .filter(Boolean)
-    .map((h) => `${h.padStart(2, '0')}:00`)
-    .join(', ')
-
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      <span
-        className={clsx(
-          'text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
-          enabled ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-        )}
-      >
-        {enabled ? 'Enabled' : 'Disabled'}
-      </span>
-      <span className="w-24 text-gray-700 dark:text-gray-300 shrink-0">{label}</span>
-      {enabled ? (
-        <>
-          <span className="text-xs text-gray-500 dark:text-gray-400 flex-1">Daily at {parsedHours} UTC</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-            Next: {nextRun ? nextRun.toLocaleString(undefined, { timeZoneName: 'short' }) : '—'}
-          </span>
-        </>
-      ) : (
-        <span className="text-xs text-gray-400 dark:text-gray-500 italic flex-1">not scheduled</span>
-      )}
-    </div>
-  )
-}
-
-function computeNextRun(hoursStr: string): Date | null {
-  const hours = hoursStr
-    .split(',')
-    .map((h) => parseInt(h.trim(), 10))
-    .filter((h) => !isNaN(h) && h >= 0 && h <= 23)
-    .sort((a, b) => a - b)
-  if (hours.length === 0) return null
-
-  const now = new Date()
-  const nowUtcHour = now.getUTCHours()
-
-  const nextHour = hours.find((h) => h > nowUtcHour)
-  const next = new Date()
-  if (nextHour !== undefined) {
-    next.setUTCHours(nextHour, 0, 0, 0)
-  } else {
-    next.setUTCDate(next.getUTCDate() + 1)
-    next.setUTCHours(hours[0], 0, 0, 0)
-  }
-  return next
 }

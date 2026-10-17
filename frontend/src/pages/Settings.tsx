@@ -72,7 +72,15 @@ export default function Settings() {
         />
       )}
       {tab === 'services' && (
-        <ServicesTab config={config} cache={cache} flushCache={flushCache} health={health} tests={tests} />
+        <ServicesTab
+          config={config}
+          cache={cache}
+          flushCache={flushCache}
+          health={health}
+          tests={tests}
+          appSettings={appSettings}
+          updateAppSettings={updateAppSettings}
+        />
       )}
       {tab === 'data' && <DataTab seed={seed} backfill={backfill} />}
     </div>

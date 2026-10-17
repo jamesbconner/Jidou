@@ -12,6 +12,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from typing import Any
 
 from celery import shared_task
@@ -21,6 +22,11 @@ from jidou.config import settings
 from jidou.database import task_sessionmaker
 from jidou.models.task import BackgroundTask
 from jidou.services.progress import create_task_record
+from jidou.services.schedule_hours import is_hour_due
+from jidou.services.settings_service import (
+    get_metadata_refresh_schedule_enabled,
+    get_metadata_refresh_schedule_hours,
+)
 from jidou.services.task_dispatch import get_active_task
 
 logger = logging.getLogger(__name__)
@@ -225,7 +231,33 @@ async def _scheduled_rss_import() -> str:
     )
 
 
+async def _load_refresh_schedule() -> tuple[bool, str]:
+    """Read the saved metadata-refresh schedule (the Settings page values).
+
+    Opens its own DB engine so it works outside a FastAPI request context.
+
+    Returns:
+        ``(enabled, hours)``: whether the refresh is switched on, and its
+        canonical comma-separated UTC hours.
+    """
+    async with task_sessionmaker() as session_factory, session_factory() as session:
+        return (
+            await get_metadata_refresh_schedule_enabled(session),
+            await get_metadata_refresh_schedule_hours(session),
+        )
+
+
 async def _scheduled_show_metadata_refresh() -> str:
+    # Beat's crontab is fixed at startup, so it ticks every hour and the saved
+    # schedule is checked here instead; that is what lets the Settings page
+    # change it without restarting anything. Not-due ticks are silent: no
+    # BackgroundTask row, so the task history isn't filled with 23 no-ops a day.
+    enabled, hours = await _load_refresh_schedule()
+    if not enabled or not is_hour_due(hours, datetime.now(UTC)):
+        logger.debug(
+            "Scheduled show metadata refresh not due (enabled=%s, hours=%s)", enabled, hours
+        )
+        return "skipped"
     return await _run_scheduled(
         "refresh_show_metadata",
         _load_show_metadata_refresh_task,
