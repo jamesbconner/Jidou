@@ -7,6 +7,7 @@ import { Pagination } from '@/components/Pagination'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import type { TaskList, TaskType } from '@/types/api'
+import { taskTypeLabel } from '@/utils/taskTypeLabel'
 
 function LiveTask({ taskId }: { taskId: number }) {
   const { data: task } = useTask(taskId)
@@ -135,7 +136,7 @@ export default function Tasks() {
               className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
               {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>{taskTypeLabel(t)}</option>
               ))}
             </select>
           </div>
@@ -168,7 +169,7 @@ export default function Tasks() {
             className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
           >
             {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t || 'All types'}</option>
+              <option key={t} value={t}>{t ? taskTypeLabel(t) : 'All types'}</option>
             ))}
           </select>
         </div>

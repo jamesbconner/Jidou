@@ -16,7 +16,8 @@ import httpx2 as httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show, show_columns
-from jidou.services.callbacks import OnProgress
+from jidou.orchestrators._events import EventSink
+from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.metadata_refresh_candidates import load_refresh_facts
 from jidou.services.metadata_refresh_policy import RefreshPolicy, select_candidates
 from jidou.services.settings_service import get_metadata_refresh_limit
@@ -29,7 +30,64 @@ logger = logging.getLogger(__name__)
 # poster overrides, the active episode group, ...) and derived ones (sys_name,
 # episode_group_map) are deliberately outside this mask, so a refresh can't
 # disturb local file organisation or manual choices.
-_WRITE_FIELDS = show_columns("tmdb") & frozenset(build_show_fields({}, 0, "tv"))
+_WRITE_FIELDS = (show_columns("tmdb") & frozenset(build_show_fields({}, 0, "tv"))) - {"title"}
+# ``title`` is TMDB-sourced but is what the library, file naming and aliases are
+# keyed on by eye; a TMDB retitle should only land through an explicit rematch.
+
+_MAX_VALUE_CHARS = 80
+
+FieldChange = tuple[Any, Any]
+
+
+def _describe_value(value: Any) -> str:
+    """Render one column value compactly for a task log line.
+
+    Args:
+        value: A column value (scalar, list or dict).
+
+    Returns:
+        ``S1E3`` for an episode dict, a count for a list, ``(set)`` for another
+        dict, else the truncated repr.
+    """
+    if value is None:
+        return "none"
+    if isinstance(value, dict):
+        season, episode = value.get("season_number"), value.get("episode_number")
+        if season is not None and episode is not None:
+            return f"S{season}E{episode}"
+        return "(set)"
+    if isinstance(value, list):
+        return f"{len(value)} item(s)"
+    text = repr(value)
+    return text if len(text) <= _MAX_VALUE_CHARS else text[: _MAX_VALUE_CHARS - 1] + "…"
+
+
+def _missing_active_group(show: Show, changes: dict[str, FieldChange]) -> str | None:
+    """The show's active episode group id, if TMDB no longer lists that group.
+
+    Read before the commit: a commit expires *show*. A list that was never fetched
+    (``None``) proves nothing, so it is not reported.
+
+    Args:
+        show: The refreshed show (changes applied, or merely planned in a dry run).
+        changes: The columns the refresh changed (or would change).
+
+    Returns:
+        The active group id when it is absent from the refreshed group list, else ``None``.
+    """
+    active = show.active_episode_group_id
+    groups = changes["episode_groups"][1] if "episode_groups" in changes else show.episode_groups
+    if active is None or groups is None:
+        return None
+    return None if any(g.get("id") == active for g in groups) else active
+
+
+def _describe_changes(changes: dict[str, FieldChange]) -> str:
+    """Join field changes into ``field: old → new`` text, in field-name order."""
+    return "; ".join(
+        f"{key}: {_describe_value(old)} → {_describe_value(new)}"
+        for key, (old, new) in sorted(changes.items())
+    )
 
 
 @dataclass
@@ -78,17 +136,19 @@ class ShowMetadataRefreshOrchestrator:
         self.tmdb = tmdb
         self._now = now
 
-    async def refresh_show(self, show: Show, *, dry_run: bool = False) -> dict[str, Any]:
+    async def refresh_show(self, show: Show, *, dry_run: bool = False) -> dict[str, FieldChange]:
         """Refetch one show live from TMDB and apply its TMDB-owned fields.
 
         Flushes but does not commit: the caller owns the transaction boundary.
 
         Args:
             show: Show to refresh.
-            dry_run: Fetch and map, but write nothing (no fields, no stamp).
+            dry_run: Fetch and diff, but write nothing (no fields, no stamp).
 
         Returns:
-            The full field map built from the TMDB response.
+            The columns whose value differs, as ``{column: (old, new)}``; empty
+            when TMDB agrees with what is stored. In a dry run these are the
+            changes that would have been made.
 
         Raises:
             Exception: Any TMDB fetch error propagates (``httpx.HTTPStatusError``
@@ -100,9 +160,8 @@ class ShowMetadataRefreshOrchestrator:
         fields = build_show_fields(
             data, show.tmdb_id, show.media_type, existing=show, title_fallback=show.title
         )
-        if dry_run:
-            return fields
 
+        changes: dict[str, FieldChange] = {}
         for key in _WRITE_FIELDS:
             value = fields[key]
             # None (episode_groups) or {} (external_ids) is how
@@ -111,16 +170,24 @@ class ShowMetadataRefreshOrchestrator:
             # unknown. Keep whatever is already known rather than erasing it.
             if (key == "episode_groups" and value is None) or (key == "external_ids" and not value):
                 continue
+            old = getattr(show, key)
+            if old != value:
+                changes[key] = (old, value)
+        if dry_run:
+            return changes
+
+        for key, (_, value) in changes.items():
             setattr(show, key, value)
         show.metadata_refreshed_at = self._now()
         await self.session.flush()
-        return fields
+        return changes
 
     async def run(
         self,
         *,
         dry_run: bool = False,
         on_progress: OnProgress | None = None,
+        on_event: OnEvent | None = None,
         policy: RefreshPolicy | None = None,
     ) -> MetadataRefreshResult:
         """Refresh the next batch of due shows.
@@ -128,6 +195,9 @@ class ShowMetadataRefreshOrchestrator:
         Args:
             dry_run: Select and fetch, but write and commit nothing.
             on_progress: Optional async callback(current, total, message).
+            on_event: Optional async callback(level, message, ctx) that receives
+                one log line per show: which columns changed (old → new), or why
+                the refresh failed.
             policy: Override the settings-derived policy (tests, one-off runs). By
                 default the per-run limit is the value saved in runtime settings.
 
@@ -140,6 +210,7 @@ class ShowMetadataRefreshOrchestrator:
             policy = RefreshPolicy.from_settings(
                 self._now(), limit=await get_metadata_refresh_limit(self.session)
             )
+        sink = EventSink(on_event, swallow_errors=True)
         picked = select_candidates(await load_refresh_facts(self.session, policy), policy)
 
         result = MetadataRefreshResult(shows_checked=len(picked), shows_updated=0, shows_failed=0)
@@ -164,24 +235,57 @@ class ShowMetadataRefreshOrchestrator:
                 reason.name,
                 dry_run,
             )
-            if await self._refresh_and_commit(show, facts.title, dry_run=dry_run):
-                result.shows_updated += 1
-                result.updated_titles.append(facts.title)
-            else:
+            changes = await self._refresh_and_commit(show, facts.title, dry_run=dry_run, sink=sink)
+            if changes is None:
                 result.shows_failed += 1
                 result.failed_titles.append(facts.title)
+                continue
+            result.shows_updated += 1
+            result.updated_titles.append(facts.title)
+            await self._report_changes(
+                sink, facts.show_id, facts.title, reason.name, changes, dry_run
+            )
         return result
 
-    async def _refresh_and_commit(self, show: Show, title: str, *, dry_run: bool) -> bool:
+    @staticmethod
+    async def _report_changes(
+        sink: EventSink,
+        show_id: int,
+        title: str,
+        reason: str,
+        changes: dict[str, FieldChange],
+        dry_run: bool,
+    ) -> None:
+        """Emit the per-show log line for a successful refresh."""
+        prefix = "[Dry run] Would refresh" if dry_run else "Refreshed"
+        detail = _describe_changes(changes) if changes else "no changes"
+        await sink(
+            "info",
+            f"{prefix} {title!r} ({reason}): {detail}",
+            {
+                "show_id": show_id,
+                "reason": reason,
+                "changes": {
+                    key: [_describe_value(old), _describe_value(new)]
+                    for key, (old, new) in changes.items()
+                },
+            },
+        )
+
+    async def _refresh_and_commit(
+        self, show: Show, title: str, *, dry_run: bool, sink: EventSink
+    ) -> dict[str, FieldChange] | None:
         """Refresh one show in its own SAVEPOINT and commit it.
 
         Args:
             show: Show to refresh.
             title: Title captured before any rollback could expire *show*.
             dry_run: Skip writes and the commit.
+            sink: Receives a warning when the refresh fails.
 
         Returns:
-            ``True`` on success, ``False`` if the fetch or save failed.
+            The changed columns on success (empty if nothing differed), or
+            ``None`` if the fetch or save failed.
         """
         # Captured up front: a rollback expires `show`, and a bare attribute
         # read in an except block would then lazy-load outside the greenlet
@@ -191,22 +295,43 @@ class ShowMetadataRefreshOrchestrator:
             # SAVEPOINT, not session.rollback(): a full rollback would expire
             # every other Show still pending in this run.
             async with self.session.begin_nested():
-                await self.refresh_show(show, dry_run=dry_run)
+                changes = await self.refresh_show(show, dry_run=dry_run)
+                missing_group = _missing_active_group(show, changes)
         except Exception as exc:
             logger.exception("Metadata refresh failed for show id=%d", show_id)
-            if _is_not_found(exc) and not dry_run:
+            gone = _is_not_found(exc)
+            await sink(
+                "warning",
+                f"Could not refresh {title!r}: "
+                + ("TMDB no longer has this id" if gone else f"{type(exc).__name__}: {exc}"),
+                {"show_id": show_id},
+            )
+            if gone and not dry_run:
                 await self._stamp_gone(show, show_id)
-            return False
+            return None
 
-        if dry_run:
-            return True
-        try:
-            await self.session.commit()
-        except Exception:
-            logger.exception("Failed to commit refreshed metadata for show id=%d", show_id)
-            await self.session.rollback()
-            return False
-        return True
+        if not dry_run:
+            try:
+                await self.session.commit()
+            except Exception as exc:
+                logger.exception("Failed to commit refreshed metadata for show id=%d", show_id)
+                await self.session.rollback()
+                await sink(
+                    "error",
+                    f"Could not save refreshed metadata for {title!r}: {type(exc).__name__}: {exc}",
+                    {"show_id": show_id},
+                )
+                return None
+        if missing_group is not None:
+            # Informational only: the user's choice is never cleared, but the next
+            # sync will fail to fetch the group, so say so where they will look.
+            await sink(
+                "warning",
+                f"{title!r}: its active episode group {missing_group} is no longer offered "
+                "by TMDB; episode syncs for this show may fail until another group is applied",
+                {"show_id": show_id, "episode_group_id": missing_group},
+            )
+        return changes
 
     async def _stamp_gone(self, show: Show, show_id: int) -> None:
         """Stamp a show TMDB no longer has, so it isn't retried on every run.

@@ -2,6 +2,7 @@ import type { TaskList } from '@/types/api'
 import { TaskStatusBadge } from './TaskStatusBadge'
 import { Badge } from '@/components/ui/Badge'
 import clsx from 'clsx'
+import { taskTypeLabel } from '@/utils/taskTypeLabel'
 
 interface Props {
   task: TaskList
@@ -90,7 +91,7 @@ export function TaskProgressBar({ task, onCancel, onDelete }: Props) {
     <div className="space-y-1">
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
-          <span className="font-medium capitalize text-gray-900 dark:text-gray-100">{task.task_type}</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">{taskTypeLabel(task.task_type)}</span>
           {task.dry_run && <Badge color="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">dry run</Badge>}
         </div>
         <div className="flex items-center gap-2">
