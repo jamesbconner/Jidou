@@ -52,14 +52,55 @@ def _describe_value(value: Any) -> str:
     if value is None:
         return "none"
     if isinstance(value, dict):
-        season, episode = value.get("season_number"), value.get("episode_number")
-        if season is not None and episode is not None:
-            return f"S{season}E{episode}"
-        return "(set)"
+        return _episode_label(value) or "(set)"
     if isinstance(value, list):
         return f"{len(value)} item(s)"
     text = repr(value)
     return text if len(text) <= _MAX_VALUE_CHARS else text[: _MAX_VALUE_CHARS - 1] + "…"
+
+
+def _episode_label(value: dict[str, Any]) -> str | None:
+    """``S1E3`` for an episode object, or ``None`` if it has no season/episode number."""
+    season, episode = value.get("season_number"), value.get("episode_number")
+    return f"S{season}E{episode}" if season is not None and episode is not None else None
+
+
+def _item_label(item: Any) -> str:
+    """Name a list entry (a TMDB genre, network, group, ...) for an added/removed list."""
+    if isinstance(item, dict):
+        label = item.get("name") or item.get("id")
+        return str(label) if label is not None else "(item)"
+    return str(item)
+
+
+def _describe_dict_change(old: dict[str, Any], new: dict[str, Any]) -> str:
+    """Name the keys that differ between two dicts, e.g. an episode's vote count."""
+    keys = sorted(k for k in old.keys() | new.keys() if old.get(k) != new.get(k))
+    inner = ", ".join(
+        f"{k}: {_describe_value(old.get(k))} → {_describe_value(new.get(k))}" for k in keys
+    )
+    old_label, new_label = _episode_label(old), _episode_label(new)
+    if old_label is not None and old_label == new_label:
+        return f"{old_label} ({inner})"  # same episode, different details
+    return f"{_describe_value(old)} → {_describe_value(new)} ({inner})"
+
+
+def _describe_list_change(old: list[Any], new: list[Any]) -> str:
+    """Name the entries added to and removed from a list, e.g. a new genre."""
+    added = [_item_label(i) for i in new if i not in old]
+    removed = [_item_label(i) for i in old if i not in new]
+    parts = [f"+{', '.join(added)}"] if added else []
+    parts += [f"-{', '.join(removed)}"] if removed else []
+    return " ".join(parts) if parts else "reordered"
+
+
+def _describe_change(old: Any, new: Any) -> str:
+    """Say what changed in one column: a diff for dicts and lists, else ``old → new``."""
+    if isinstance(old, dict) and isinstance(new, dict):
+        return _describe_dict_change(old, new)
+    if isinstance(old, list) and isinstance(new, list):
+        return _describe_list_change(old, new)
+    return f"{_describe_value(old)} → {_describe_value(new)}"
 
 
 def _missing_active_group(show: Show, changes: dict[str, FieldChange]) -> str | None:
@@ -83,11 +124,8 @@ def _missing_active_group(show: Show, changes: dict[str, FieldChange]) -> str | 
 
 
 def _describe_changes(changes: dict[str, FieldChange]) -> str:
-    """Join field changes into ``field: old → new`` text, in field-name order."""
-    return "; ".join(
-        f"{key}: {_describe_value(old)} → {_describe_value(new)}"
-        for key, (old, new) in sorted(changes.items())
-    )
+    """Join field changes into ``field: change`` text, in field-name order."""
+    return "; ".join(f"{key}: {_describe_change(*pair)}" for key, pair in sorted(changes.items()))
 
 
 @dataclass
@@ -265,10 +303,7 @@ class ShowMetadataRefreshOrchestrator:
             {
                 "show_id": show_id,
                 "reason": reason,
-                "changes": {
-                    key: [_describe_value(old), _describe_value(new)]
-                    for key, (old, new) in changes.items()
-                },
+                "changes": {key: _describe_change(old, new) for key, (old, new) in changes.items()},
             },
         )
 
