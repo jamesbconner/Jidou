@@ -62,6 +62,26 @@ def _describe_value(value: Any) -> str:
     return text if len(text) <= _MAX_VALUE_CHARS else text[: _MAX_VALUE_CHARS - 1] + "…"
 
 
+def _missing_active_group(show: Show, changes: dict[str, FieldChange]) -> str | None:
+    """The show's active episode group id, if TMDB no longer lists that group.
+
+    Read before the commit: a commit expires *show*. A list that was never fetched
+    (``None``) proves nothing, so it is not reported.
+
+    Args:
+        show: The refreshed show (changes applied, or merely planned in a dry run).
+        changes: The columns the refresh changed (or would change).
+
+    Returns:
+        The active group id when it is absent from the refreshed group list, else ``None``.
+    """
+    active = show.active_episode_group_id
+    groups = changes["episode_groups"][1] if "episode_groups" in changes else show.episode_groups
+    if active is None or groups is None:
+        return None
+    return None if any(g.get("id") == active for g in groups) else active
+
+
 def _describe_changes(changes: dict[str, FieldChange]) -> str:
     """Join field changes into ``field: old → new`` text, in field-name order."""
     return "; ".join(
@@ -276,6 +296,7 @@ class ShowMetadataRefreshOrchestrator:
             # every other Show still pending in this run.
             async with self.session.begin_nested():
                 changes = await self.refresh_show(show, dry_run=dry_run)
+                missing_group = _missing_active_group(show, changes)
         except Exception as exc:
             logger.exception("Metadata refresh failed for show id=%d", show_id)
             gone = _is_not_found(exc)
@@ -289,19 +310,27 @@ class ShowMetadataRefreshOrchestrator:
                 await self._stamp_gone(show, show_id)
             return None
 
-        if dry_run:
-            return changes
-        try:
-            await self.session.commit()
-        except Exception as exc:
-            logger.exception("Failed to commit refreshed metadata for show id=%d", show_id)
-            await self.session.rollback()
+        if not dry_run:
+            try:
+                await self.session.commit()
+            except Exception as exc:
+                logger.exception("Failed to commit refreshed metadata for show id=%d", show_id)
+                await self.session.rollback()
+                await sink(
+                    "error",
+                    f"Could not save refreshed metadata for {title!r}: {type(exc).__name__}: {exc}",
+                    {"show_id": show_id},
+                )
+                return None
+        if missing_group is not None:
+            # Informational only: the user's choice is never cleared, but the next
+            # sync will fail to fetch the group, so say so where they will look.
             await sink(
-                "error",
-                f"Could not save refreshed metadata for {title!r}: {type(exc).__name__}: {exc}",
-                {"show_id": show_id},
+                "warning",
+                f"{title!r}: its active episode group {missing_group} is no longer offered "
+                "by TMDB; episode syncs for this show may fail until another group is applied",
+                {"show_id": show_id, "episode_group_id": missing_group},
             )
-            return None
         return changes
 
     async def _stamp_gone(self, show: Show, show_id: int) -> None:

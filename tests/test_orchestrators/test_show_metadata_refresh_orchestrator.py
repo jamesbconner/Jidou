@@ -92,7 +92,7 @@ _ENDED_PAYLOAD = {
     "last_episode_to_air": {"air_date": "2026-09-05", "episode_number": 12},
     "vote_count": 10,
     "external_ids": {"imdb_id": "tt1"},
-    "episode_groups": [{"id": "new"}],
+    "episode_groups": [{"id": "new"}, {"id": "grp"}],
 }
 
 
@@ -537,3 +537,62 @@ def test_default_clock_is_timezone_aware() -> None:
     orch = ShowMetadataRefreshOrchestrator(MagicMock(), MagicMock())
     assert orch._now().tzinfo is not None
     assert abs(orch._now() - datetime.now(UTC)) < timedelta(seconds=5)
+
+
+@pytest.mark.parametrize(
+    ("active", "payload_groups", "warns"),
+    [
+        ("gone", [{"id": "other"}], True),
+        ("gone", [], True),
+        ("kept", [{"id": "kept"}], False),
+        (None, [{"id": "other"}], False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_run_warns_when_the_active_episode_group_is_no_longer_offered(
+    active: str | None, payload_groups: list[dict], warns: bool
+) -> None:
+    events = _Events()
+    show = _show(active_episode_group_id=active)
+    payload = {**_ENDED_PAYLOAD, "episode_groups": payload_groups}
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)),
+    ):
+        await _orch(_session([show])).run(policy=_policy(), on_event=events)
+
+    warnings = [e for e in events.events if e[0] == "warning"]
+    assert bool(warnings) is warns
+    assert show.active_episode_group_id == active  # never cleared
+    if warns:
+        assert "gone" in warnings[0][1]
+        assert warnings[0][2] == {"show_id": 1, "episode_group_id": "gone"}
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_warn_when_the_group_list_could_not_be_fetched() -> None:
+    """None means the groups fetch failed; absence from the old list proves nothing."""
+    events = _Events()
+    show = _show(active_episode_group_id="grp", episode_groups=None)
+    payload = {**_ENDED_PAYLOAD, "episode_groups": None}
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)),
+    ):
+        await _orch(_session([show])).run(policy=_policy(), on_event=events)
+
+    assert not [e for e in events.events if e[0] == "warning"]
+
+
+@pytest.mark.asyncio
+async def test_run_warns_about_a_missing_active_group_in_a_dry_run_too() -> None:
+    events = _Events()
+    show = _show(active_episode_group_id="gone")
+    payload = {**_ENDED_PAYLOAD, "episode_groups": [{"id": "other"}]}
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)),
+    ):
+        await _orch(_session([show])).run(dry_run=True, policy=_policy(), on_event=events)
+
+    assert [e[0] for e in events.events] == ["warning", "info"]
