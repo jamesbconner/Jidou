@@ -151,7 +151,7 @@ interface MaintenanceActionsProps {
 /**
  * Right-hand column of actions. Remove, RSS and Refresh Metadata stay visible;
  * the less common ones (fix match, type, aliases, images) are folded into a
- * single "More" menu so the column doesn't grow with every new action.
+ * single "Action" menu so the column doesn't grow with every new action.
  */
 export function MaintenanceActions({
   show,
@@ -196,7 +196,7 @@ export function MaintenanceActions({
         {refreshPending ? 'Refreshing…' : 'Refresh Metadata'}
       </Button>
       <Menu
-        label="More"
+        label="Action"
         variant="secondary"
         tone="light"
         size="sm"

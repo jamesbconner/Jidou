@@ -120,9 +120,9 @@ function mockShowDetail(
   })
 }
 
-/** The sidebar's less common actions live in a "More" menu; open it and pick one. */
+/** The sidebar's less common actions live in an "Action" menu; open it and pick one. */
 async function chooseFromMoreMenu(name: string) {
-  fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
   fireEvent.click(await screen.findByRole('menuitem', { name }))
 }
 
@@ -350,7 +350,7 @@ describe('ShowDetail — modal state machine', () => {
   test('fires the page-level queries in the original order on mount', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
-    await screen.findByRole('button', { name: /^More/ })
+    await screen.findByRole('button', { name: /^Action/ })
 
     const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
     const firstIndex = (needle: string) => urls.findIndex((u) => u.includes(needle))
@@ -501,26 +501,26 @@ describe('ShowDetail — modal state machine', () => {
   })
 })
 
-describe('ShowDetail — More menu and Refresh Metadata', () => {
-  test('keeps Remove, RSS and Refresh Metadata visible and folds the rest into a collapsed More menu', async () => {
+describe('ShowDetail — Action menu and Refresh Metadata', () => {
+  test('keeps Remove, RSS and Refresh Metadata visible and folds the rest into a collapsed Action menu', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
     expect(await screen.findByRole('button', { name: 'Remove Show' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add RSS' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh Metadata' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^More/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /^Action/ })).toHaveAttribute('aria-expanded', 'false')
     for (const name of ['Fix Match', 'Set Type', 'Manage Aliases', 'Change Images']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name })).not.toBeInTheDocument()
     }
   })
 
-  test('the More menu lists the four less common actions in order', async () => {
+  test('the Action menu lists the four less common actions in order', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
-    fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
 
     const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
     expect(items.map((i) => i.textContent)).toEqual([
@@ -535,7 +535,7 @@ describe('ShowDetail — More menu and Refresh Metadata', () => {
     mockShowDetail(baseShow({ content_type: 'anime' }))
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
-    fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
 
     expect(await screen.findByRole('menuitem', { name: 'Type: anime' })).toBeInTheDocument()
   })

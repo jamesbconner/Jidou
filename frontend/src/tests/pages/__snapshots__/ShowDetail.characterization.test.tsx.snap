@@ -23,7 +23,7 @@ exports[`ShowDetail characterization: movie > movie with files > dom 1`] = `
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -82,7 +82,7 @@ exports[`ShowDetail characterization: movie > movie with no file > dom 1`] = `
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -136,7 +136,7 @@ exports[`ShowDetail characterization: tv show > all watched shows Mark Unwatched
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -239,7 +239,7 @@ exports[`ShowDetail characterization: tv show > begin-rematch failure message un
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -389,7 +389,7 @@ exports[`ShowDetail characterization: tv show > empty tv page (no path, no episo
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -449,7 +449,7 @@ exports[`ShowDetail characterization: tv show > missing tab then back; DOM per t
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -608,7 +608,7 @@ exports[`ShowDetail characterization: tv show > missing tab then back; DOM per t
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -701,7 +701,7 @@ exports[`ShowDetail characterization: tv show > rich tv page DOM and mount reque
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40">Edit RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
@@ -875,7 +875,7 @@ exports[`ShowDetail characterization: tv show > rss stub failure message; path m
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 <span class="text-xs text-red-600 text-right max-w-[9rem]">stub boom</span>
@@ -1062,7 +1062,7 @@ exports[`ShowDetail characterization: tv show > rss stub failure message; path m
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 <span class="text-xs text-red-600 text-right max-w-[9rem]">stub boom</span>
@@ -1229,7 +1229,7 @@ exports[`ShowDetail characterization: tv show > sync failure surfaces inline and
 <button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
 <button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
 <div class="relative">
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">Action <span aria-hidden="true">▾</span>
 </button>
 </div>
 </div>
