@@ -372,6 +372,37 @@ async def test_refresh_replaces_external_ids_when_tmdb_returned_some() -> None:
     assert show.external_ids == {"imdb_id": "tt1"}
 
 
+@pytest.mark.asyncio
+async def test_run_uses_the_per_run_limit_from_runtime_settings() -> None:
+    """Without an explicit policy the cap comes from the Settings page value."""
+    shows = [_show(i, 100 + i) for i in range(1, 6)]
+    session = _session(shows)
+    fetch = AsyncMock(return_value=_ENDED_PAYLOAD)
+    with (
+        _patch_selection([1, 2, 3, 4, 5]),
+        patch(f"{_MOD}.get_metadata_refresh_limit", new=AsyncMock(return_value=2)) as limit,
+        patch(f"{_MOD}.fetch_show_metadata", new=fetch),
+    ):
+        result = await _orch(session).run()
+
+    limit.assert_awaited_once_with(session)
+    assert result.shows_checked == 2
+    assert fetch.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_policy_wins_over_runtime_settings() -> None:
+    session = _session([_show(1, 100)])
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.get_metadata_refresh_limit", new=AsyncMock()) as limit,
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        await _orch(session).run(policy=_policy())
+
+    limit.assert_not_awaited()
+
+
 def test_default_clock_is_timezone_aware() -> None:
     orch = ShowMetadataRefreshOrchestrator(MagicMock(), MagicMock())
     assert orch._now().tzinfo is not None

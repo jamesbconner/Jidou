@@ -4,10 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from jidou.config import settings
 from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     DASHBOARD_PAGE_ENABLED,
     DISCOVER_ENABLED,
+    METADATA_REFRESH_ENABLED,
+    METADATA_REFRESH_HOURS,
+    METADATA_REFRESH_LIMIT,
+    METADATA_REFRESH_LIMIT_MAX,
+    METADATA_REFRESH_LIMIT_MIN,
     RECENT_EPISODES_ENABLED,
     RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
@@ -16,6 +22,9 @@ from jidou.services.settings_service import (
     SIMILAR_TITLES_ENABLED,
     SIMILAR_TITLES_INCLUDE_EXTERNAL,
     get_all_settings,
+    get_metadata_refresh_limit,
+    get_metadata_refresh_schedule_enabled,
+    get_metadata_refresh_schedule_hours,
     get_setting,
     get_show_adult_content,
     get_similar_titles_count,
@@ -167,6 +176,9 @@ class TestGetAllSettings:
             SIMILAR_TITLES_ENABLED: True,
             SIMILAR_TITLES_COUNT: 12,
             SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
+            METADATA_REFRESH_ENABLED: settings.show_metadata_refresh_schedule_enabled,
+            METADATA_REFRESH_HOURS: settings.show_metadata_refresh_schedule_hours,
+            METADATA_REFRESH_LIMIT: settings.show_metadata_refresh_limit_per_run,
         }
 
     @pytest.mark.asyncio
@@ -193,4 +205,87 @@ class TestGetAllSettings:
             SIMILAR_TITLES_ENABLED: True,
             SIMILAR_TITLES_COUNT: 12,
             SIMILAR_TITLES_INCLUDE_EXTERNAL: True,
+            METADATA_REFRESH_ENABLED: settings.show_metadata_refresh_schedule_enabled,
+            METADATA_REFRESH_HOURS: settings.show_metadata_refresh_schedule_hours,
+            METADATA_REFRESH_LIMIT: settings.show_metadata_refresh_limit_per_run,
         }
+
+
+def _session_with(values: dict[str, object]) -> MagicMock:
+    """A session whose ``get(AppSetting, key)`` returns the given stored values."""
+    session = MagicMock()
+
+    async def _get(_model: object, key: str) -> MagicMock | None:
+        if key not in values:
+            return None
+        row = MagicMock()
+        row.value = values[key]
+        return row
+
+    session.get = AsyncMock(side_effect=_get)
+    return session
+
+
+class TestMetadataRefreshSettings:
+    @pytest.mark.asyncio
+    async def test_unset_values_fall_back_to_the_env_configured_defaults(self) -> None:
+        session = _session_with({})
+
+        assert (
+            await get_metadata_refresh_schedule_enabled(session)
+            is settings.show_metadata_refresh_schedule_enabled
+        )
+        assert await get_metadata_refresh_schedule_hours(session) == (
+            settings.show_metadata_refresh_schedule_hours
+        )
+        assert await get_metadata_refresh_limit(session) == (
+            settings.show_metadata_refresh_limit_per_run
+        )
+
+    @pytest.mark.asyncio
+    async def test_stored_values_override_the_defaults(self) -> None:
+        session = _session_with(
+            {
+                METADATA_REFRESH_ENABLED: False,
+                METADATA_REFRESH_HOURS: "16, 4",
+                METADATA_REFRESH_LIMIT: 25,
+            }
+        )
+
+        assert await get_metadata_refresh_schedule_enabled(session) is False
+        assert await get_metadata_refresh_schedule_hours(session) == "4,16"  # normalised
+        assert await get_metadata_refresh_limit(session) == 25
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stored", "expected"),
+        [
+            (0, METADATA_REFRESH_LIMIT_MIN),
+            (-5, METADATA_REFRESH_LIMIT_MIN),
+            (10_000, METADATA_REFRESH_LIMIT_MAX),
+            ("30", 30),
+        ],
+    )
+    async def test_limit_is_clamped_and_coerced(self, stored: object, expected: int) -> None:
+        session = _session_with({METADATA_REFRESH_LIMIT: stored})
+
+        assert await get_metadata_refresh_limit(session) == expected
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stored", ["not a number", None, [], {}])
+    async def test_unusable_limit_falls_back_to_the_default(self, stored: object) -> None:
+        session = _session_with({METADATA_REFRESH_LIMIT: stored})
+
+        assert await get_metadata_refresh_limit(session) == (
+            settings.show_metadata_refresh_limit_per_run
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stored", ["", "25", "a,b", None, 4, ["4"]])
+    async def test_invalid_stored_hours_fall_back_to_the_default(self, stored: object) -> None:
+        """A hand-edited bad value must not stop the job from ever running."""
+        session = _session_with({METADATA_REFRESH_HOURS: stored})
+
+        assert await get_metadata_refresh_schedule_hours(session) == (
+            settings.show_metadata_refresh_schedule_hours
+        )

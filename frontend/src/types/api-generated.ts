@@ -3351,6 +3351,12 @@ export interface components {
             similar_titles_count?: number | null;
             /** Similar Titles Include External */
             similar_titles_include_external?: boolean | null;
+            /** Metadata Refresh Schedule Enabled */
+            metadata_refresh_schedule_enabled?: boolean | null;
+            /** Metadata Refresh Schedule Hours */
+            metadata_refresh_schedule_hours?: string | null;
+            /** Metadata Refresh Limit Per Run */
+            metadata_refresh_limit_per_run?: number | null;
         };
         /**
          * AppSettingsRead
@@ -3407,6 +3413,21 @@ export interface components {
              * @description Whether similar titles not in the library are included in the carousel (with an Add action) alongside titles already tracked
              */
             similar_titles_include_external: boolean;
+            /**
+             * Metadata Refresh Schedule Enabled
+             * @description Whether the scheduled show-metadata refresh runs
+             */
+            metadata_refresh_schedule_enabled: boolean;
+            /**
+             * Metadata Refresh Schedule Hours
+             * @description UTC hours at which the show-metadata refresh runs, comma-separated (e.g. '4' or '4,16')
+             */
+            metadata_refresh_schedule_hours: string;
+            /**
+             * Metadata Refresh Limit Per Run
+             * @description Maximum number of shows one metadata-refresh run refreshes
+             */
+            metadata_refresh_limit_per_run: number;
         };
         /**
          * AssignImportRequest

@@ -19,6 +19,7 @@ from jidou.models.show import Show, show_columns
 from jidou.services.callbacks import OnProgress
 from jidou.services.metadata_refresh_candidates import load_refresh_facts
 from jidou.services.metadata_refresh_policy import RefreshPolicy, select_candidates
+from jidou.services.settings_service import get_metadata_refresh_limit
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
 
@@ -127,12 +128,18 @@ class ShowMetadataRefreshOrchestrator:
         Args:
             dry_run: Select and fetch, but write and commit nothing.
             on_progress: Optional async callback(current, total, message).
-            policy: Override the settings-derived policy (tests, one-off runs).
+            policy: Override the settings-derived policy (tests, one-off runs). By
+                default the per-run limit is the value saved in runtime settings.
 
         Returns:
             Aggregated :class:`MetadataRefreshResult`.
         """
-        policy = policy or RefreshPolicy.from_settings(self._now())
+        if policy is None:
+            # The per-run cap is editable on the Settings page, so it is read
+            # from the database on every run rather than fixed at startup.
+            policy = RefreshPolicy.from_settings(
+                self._now(), limit=await get_metadata_refresh_limit(self.session)
+            )
         picked = select_candidates(await load_refresh_facts(self.session, policy), policy)
 
         result = MetadataRefreshResult(shows_checked=len(picked), shows_updated=0, shows_failed=0)

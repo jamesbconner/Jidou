@@ -146,7 +146,9 @@ class Settings(BaseSettings):
     # Show metadata refresh: re-fetches TMDB-owned Show columns for a bounded
     # number of the stalest/most suspect shows per run (see
     # services/metadata_refresh_policy.py). On by default -- stale status
-    # drives wrong RSS subscription recommendations.
+    # drives wrong RSS subscription recommendations. The _ENABLED, _HOURS and
+    # _LIMIT_PER_RUN values are only the DEFAULTS: they can be changed on the
+    # Settings page (Services tab), which takes precedence and needs no restart.
     show_metadata_refresh_schedule_enabled: bool = True
     show_metadata_refresh_schedule_hours: str = "4"
     show_metadata_refresh_limit_per_run: int = Field(default=10, ge=1, le=500)

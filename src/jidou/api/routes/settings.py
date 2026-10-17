@@ -12,6 +12,9 @@ from jidou.services.settings_service import (
     CALENDAR_ENABLED,
     DASHBOARD_PAGE_ENABLED,
     DISCOVER_ENABLED,
+    METADATA_REFRESH_ENABLED,
+    METADATA_REFRESH_HOURS,
+    METADATA_REFRESH_LIMIT,
     RECENT_EPISODES_ENABLED,
     RECENT_EPISODES_PREFER_POSTERS,
     RECENT_MOVIES_ENABLED,
@@ -20,6 +23,8 @@ from jidou.services.settings_service import (
     SIMILAR_TITLES_ENABLED,
     SIMILAR_TITLES_INCLUDE_EXTERNAL,
     get_all_settings,
+    resolve_metadata_refresh_hours,
+    resolve_metadata_refresh_limit,
     set_setting,
 )
 
@@ -39,6 +44,9 @@ _PATCH_FIELD_TO_KEY: Final[dict[str, str]] = {
     "similar_titles_enabled": SIMILAR_TITLES_ENABLED,
     "similar_titles_count": SIMILAR_TITLES_COUNT,
     "similar_titles_include_external": SIMILAR_TITLES_INCLUDE_EXTERNAL,
+    "metadata_refresh_schedule_enabled": METADATA_REFRESH_ENABLED,
+    "metadata_refresh_schedule_hours": METADATA_REFRESH_HOURS,
+    "metadata_refresh_limit_per_run": METADATA_REFRESH_LIMIT,
 }
 
 
@@ -55,6 +63,14 @@ def _to_read_model(values: dict[str, Any]) -> AppSettingsRead:
         similar_titles_enabled=bool(values[SIMILAR_TITLES_ENABLED]),
         similar_titles_count=int(values[SIMILAR_TITLES_COUNT]),
         similar_titles_include_external=bool(values[SIMILAR_TITLES_INCLUDE_EXTERNAL]),
+        metadata_refresh_schedule_enabled=bool(values[METADATA_REFRESH_ENABLED]),
+        # Report what the job will actually use, not a hand-edited invalid value.
+        metadata_refresh_schedule_hours=resolve_metadata_refresh_hours(
+            values[METADATA_REFRESH_HOURS]
+        ),
+        metadata_refresh_limit_per_run=resolve_metadata_refresh_limit(
+            values[METADATA_REFRESH_LIMIT]
+        ),
     )
 
 

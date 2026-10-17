@@ -105,18 +105,20 @@ class RefreshPolicy:
         return self.now.astimezone(UTC).date()
 
     @classmethod
-    def from_settings(cls, now: datetime) -> "RefreshPolicy":
+    def from_settings(cls, now: datetime, *, limit: int | None = None) -> "RefreshPolicy":
         """Build a policy from application settings.
 
         Args:
             now: Timezone-aware current time.
+            limit: Per-run cap overriding the environment default, typically the
+                value saved on the Settings page.
 
         Returns:
             A policy using the ``show_metadata_refresh_*`` settings.
         """
         return cls(
             now=now,
-            limit=settings.show_metadata_refresh_limit_per_run,
+            limit=settings.show_metadata_refresh_limit_per_run if limit is None else limit,
             stale_days=settings.show_metadata_refresh_stale_days,
             airing_days=settings.show_metadata_refresh_airing_days,
             ended_days=settings.show_metadata_refresh_ended_days,

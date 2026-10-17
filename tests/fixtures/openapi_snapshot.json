@@ -38,6 +38,41 @@
             ],
             "title": "Discover Enabled"
           },
+          "metadata_refresh_limit_per_run": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Refresh Limit Per Run"
+          },
+          "metadata_refresh_schedule_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Refresh Schedule Enabled"
+          },
+          "metadata_refresh_schedule_hours": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Refresh Schedule Hours"
+          },
           "recent_episodes_enabled": {
             "anyOf": [
               {
@@ -139,6 +174,23 @@
             "title": "Discover Enabled",
             "type": "boolean"
           },
+          "metadata_refresh_limit_per_run": {
+            "description": "Maximum number of shows one metadata-refresh run refreshes",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Metadata Refresh Limit Per Run",
+            "type": "integer"
+          },
+          "metadata_refresh_schedule_enabled": {
+            "description": "Whether the scheduled show-metadata refresh runs",
+            "title": "Metadata Refresh Schedule Enabled",
+            "type": "boolean"
+          },
+          "metadata_refresh_schedule_hours": {
+            "description": "UTC hours at which the show-metadata refresh runs, comma-separated (e.g. '4' or '4,16')",
+            "title": "Metadata Refresh Schedule Hours",
+            "type": "string"
+          },
           "recent_episodes_enabled": {
             "description": "Whether the dashboard's Recently Added Episodes carousel is shown",
             "title": "Recent Episodes Enabled",
@@ -187,7 +239,10 @@
           "recent_episodes_prefer_posters",
           "similar_titles_enabled",
           "similar_titles_count",
-          "similar_titles_include_external"
+          "similar_titles_include_external",
+          "metadata_refresh_schedule_enabled",
+          "metadata_refresh_schedule_hours",
+          "metadata_refresh_limit_per_run"
         ],
         "title": "AppSettingsRead",
         "type": "object"

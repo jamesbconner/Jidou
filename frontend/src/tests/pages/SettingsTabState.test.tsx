@@ -44,6 +44,22 @@ const CONFIG = {
   rss_import_schedule_hours: '',
 }
 
+const APP_SETTINGS = {
+  show_adult_content: false,
+  calendar_enabled: true,
+  discover_enabled: true,
+  dashboard_page_enabled: true,
+  recent_episodes_enabled: true,
+  recent_movies_enabled: true,
+  recent_episodes_prefer_posters: false,
+  similar_titles_enabled: true,
+  similar_titles_count: 12,
+  similar_titles_include_external: true,
+  metadata_refresh_schedule_enabled: true,
+  metadata_refresh_schedule_hours: '4',
+  metadata_refresh_limit_per_run: 10,
+}
+
 function mockResponse(body: unknown = null): Response {
   return { ok: true, status: 200, statusText: '', json: async () => body } as Response
 }
@@ -60,6 +76,7 @@ beforeEach(() => {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.endsWith('/api/config')) return mockResponse(CONFIG)
+    if (url.endsWith('/api/settings')) return mockResponse(APP_SETTINGS)
     if (url.endsWith('/api/admin/cache')) {
       return mockResponse({ count: 0, maxsize: 100, ttl_seconds: 86400, entries: [] })
     }
