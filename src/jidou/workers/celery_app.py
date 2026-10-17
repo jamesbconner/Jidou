@@ -72,6 +72,7 @@ celery_app.conf.update(
         "jidou.workers.seed_tasks",
         "jidou.workers.scheduled_tasks",
         "jidou.workers.backfill_tasks",
+        "jidou.workers.show_metadata_refresh_tasks",
         "jidou.workers.image_cache_tasks",
     ],
 )
@@ -103,6 +104,18 @@ if settings.rss_import_schedule_enabled:
     logger.info(
         "RSS import beat schedule enabled: daily at hour(s) %s UTC",
         settings.rss_import_schedule_hours,
+    )
+
+if settings.show_metadata_refresh_schedule_enabled:
+    _beat_schedule["scheduled-show-metadata-refresh"] = {
+        "task": "jidou.workers.scheduled_tasks.scheduled_show_metadata_refresh_task",
+        "schedule": crontab(hour=settings.show_metadata_refresh_schedule_hours, minute="0"),
+        "options": {"queue": "jidou"},
+    }
+    logger.info(
+        "Show metadata refresh beat schedule enabled: daily at hour(s) %s UTC (%d show(s) per run)",
+        settings.show_metadata_refresh_schedule_hours,
+        settings.show_metadata_refresh_limit_per_run,
     )
 
 if settings.image_cache_expiration_enabled:

@@ -48,7 +48,7 @@ from jidou.services.path_transport import basename_any
 from jidou.services.show_lookup import find_show_by_name, find_show_by_tmdb_id
 from jidou.services.synthetic_file import create_synthetic_import_file
 from jidou.services.tmdb import TMDBService
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata, stamp_refreshed
 
 logger = logging.getLogger(__name__)
 
@@ -935,7 +935,7 @@ class PathImportOrchestrator:
 
         aliases, aliases_sources = _directory_alias_fields(show_dir, title)
 
-        fields = build_show_fields(data, tmdb_id, "tv", title_fallback=show_dir)
+        fields = stamp_refreshed(build_show_fields(data, tmdb_id, "tv", title_fallback=show_dir))
         show = Show(
             **fields,
             content_type=self.content_type,

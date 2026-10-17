@@ -169,7 +169,12 @@ def test_every_show_column_has_source() -> None:
 def test_show_column_provenance_tagging() -> None:
     """Pin the documented provenance of the non-TMDB columns."""
     assert show_columns("key") == {"id", "tmdb_id", "created_at", "updated_at"}
-    assert show_columns("derived") == {"sys_name", "cached", "episode_group_map"}
+    assert show_columns("derived") == {
+        "sys_name",
+        "cached",
+        "episode_group_map",
+        "metadata_refreshed_at",
+    }
     assert show_columns("user") == {
         "content_type",
         "local_path",

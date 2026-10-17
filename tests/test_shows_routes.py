@@ -6018,3 +6018,83 @@ def test_link_movie_file_rejects_a_path_already_linked_via_the_normal_pipeline(
         assert "already linked to a different show" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/shows/{show_id}/refresh-metadata
+# ---------------------------------------------------------------------------
+
+_REFRESH = "jidou.orchestrators.show_metadata_refresh_orchestrator.ShowMetadataRefreshOrchestrator"
+
+
+def _refresh_client(show: MagicMock | None):
+    """Override the DB session and TMDB service; return a TestClient."""
+    from jidou.api.dependencies import get_tmdb
+    from jidou.database import get_session
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
+    return TestClient(app), session
+
+
+def test_refresh_metadata_returns_the_updated_show() -> None:
+    show = _make_show(id=1)
+    client, session = _refresh_client(show)
+    try:
+        with (
+            patch("jidou.api.routes.shows.get_show_or_404", AsyncMock(return_value=show)),
+            patch(f"{_REFRESH}.refresh_show", new=AsyncMock()) as refresh,
+        ):
+            response = client.post("/api/shows/1/refresh-metadata")
+        assert response.status_code == 200
+        assert response.json()["id"] == 1
+        refresh.assert_awaited_once_with(show)
+        session.refresh.assert_awaited_once_with(show)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_refresh_metadata_unknown_show_is_404() -> None:
+    from fastapi import HTTPException
+
+    client, _ = _refresh_client(None)
+    try:
+        with patch(
+            "jidou.api.routes.shows.get_show_or_404",
+            AsyncMock(side_effect=HTTPException(status_code=404, detail="Show not found")),
+        ):
+            response = client.post("/api/shows/999/refresh-metadata")
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_refresh_metadata_tmdb_failure_is_502() -> None:
+    show = _make_show(id=1)
+    client, _ = _refresh_client(show)
+    try:
+        with (
+            patch("jidou.api.routes.shows.get_show_or_404", AsyncMock(return_value=show)),
+            patch(f"{_REFRESH}.refresh_show", new=AsyncMock(side_effect=RuntimeError("TMDB down"))),
+        ):
+            response = client.post("/api/shows/1/refresh-metadata")
+        assert response.status_code == 502
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_refresh_metadata_works_for_a_movie() -> None:
+    movie = _make_show(id=2, media_type="movie")
+    client, _ = _refresh_client(movie)
+    try:
+        with (
+            patch("jidou.api.routes.shows.get_show_or_404", AsyncMock(return_value=movie)),
+            patch(f"{_REFRESH}.refresh_show", new=AsyncMock()),
+        ):
+            response = client.post("/api/shows/2/refresh-metadata")
+        assert response.status_code == 200
+        assert response.json()["media_type"] == "movie"
+    finally:
+        app.dependency_overrides.clear()

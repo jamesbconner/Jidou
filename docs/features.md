@@ -21,6 +21,8 @@ New shows are classified as `tv`, `anime`, or `movie` using TMDB genre and langu
 **Syncing episodes:**
 Use **Sync Episodes** on the Show Detail page (or `POST /api/shows/{id}/sync-episodes`) to pull the latest episode data from TMDB. Useful when a show has aired new episodes since you added it.
 
+Show metadata (status, next/last episode, ratings) is also refreshed automatically: a daily job (04:00 UTC, enabled by default, requires the `jidou-beat` service) re-fetches TMDB details for up to 10 of the stalest or most suspect shows, so a show that ended or was renewed after you added it is picked up without a manual sync. Use `POST /api/shows/{id}/refresh-metadata` to refresh one show on demand. See [Scheduled tasks](setup.md#scheduled-tasks).
+
 ![Show Detail page](screenshots/show-details-page.png)
 
 **Show rematch:**
@@ -323,7 +325,7 @@ A library-wide list of episodes with no tracked file, on its own tab (Shows page
 
 ## Real-time progress
 
-Every background task streams progress to the browser via WebSocket. The Tasks page shows live progress bars, current file being processed, and a full per-item event log — every file or directory processed emits an event, success or failure, for every task type (scan, download, match, route, sync, import, backfill_show_metadata).
+Every background task streams progress to the browser via WebSocket. The Tasks page shows live progress bars, current file being processed, and a full per-item event log — every file or directory processed emits an event, success or failure, for every task type (scan, download, match, route, sync, import, backfill_show_metadata, refresh_show_metadata).
 
 The Tasks page list has two independent size controls: **Per page** controls how many task cards are fetched per page; **Max records** caps the total number of tasks reachable across all pages combined (useful for keeping a long-running instance's task history browsable without paging through everything ever run).
 

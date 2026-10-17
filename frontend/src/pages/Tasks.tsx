@@ -57,12 +57,13 @@ const TASK_DESCRIPTIONS: Record<TaskType, string> = {
   rss_publish: 'Composes the Jidou database state into a YaRSS2 config and uploads it to the remote server.',
   seed: 'One-time baseline: marks all pre-existing SFTP files as SEEDED so they are never re-downloaded.',
   backfill_show_metadata: 'One-time maintenance: refetches full TMDB details for shows with no genre data and reapplies genres/external_ids/etc.',
+  refresh_show_metadata: 'Refetches TMDB status, next/last episode and ratings for a capped batch of the stalest or most suspect shows. Runs on a schedule; user-managed fields are never changed.',
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 // 'seed' and 'backfill_show_metadata' are intentionally excluded — both are
 // one-time maintenance operations triggered from Settings, not here.
-const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish']
+const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish', 'refresh_show_metadata']
 
 export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('sync')

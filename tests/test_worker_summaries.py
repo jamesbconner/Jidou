@@ -19,6 +19,7 @@ from jidou.orchestrators.route_orchestrator import RouteResult
 from jidou.orchestrators.scan_orchestrator import ScanResult
 from jidou.orchestrators.seed_orchestrator import SeedResult
 from jidou.orchestrators.show_metadata_backfill_orchestrator import MetadataBackfillResult
+from jidou.orchestrators.show_metadata_refresh_orchestrator import MetadataRefreshResult
 from jidou.workers import (
     backfill_tasks,
     download_tasks,
@@ -27,6 +28,7 @@ from jidou.workers import (
     route_tasks,
     scan_tasks,
     seed_tasks,
+    show_metadata_refresh_tasks,
 )
 from jidou.workers._harness import WorkflowResult
 
@@ -223,6 +225,22 @@ GOLDEN: dict[str, dict[str, Any]] = {
         "complete_summary": None,
         "errors": [],
     },
+    "refresh_metadata": {
+        "progress_current": 3,
+        "progress_total": 3,
+        "message": "Refreshed 2 show(s), 1 failed",
+        "result_summary": {
+            "shows_checked": 3,
+            "shows_updated": 2,
+            "shows_failed": 1,
+            "updated_titles": ["A", "B"],
+            "failed_titles": ["C"],
+            "reasons": {"CONTRADICTORY": 1, "NEVER_REFRESHED": 2},
+            "dry_run": False,
+        },
+        "complete_summary": None,
+        "errors": [],
+    },
     "import_full": {
         "progress_current": 3,
         "progress_total": 3,
@@ -305,6 +323,19 @@ async def test_backfill_summary() -> None:
         extra_patches=("TMDBService",),
     )
     assert _snapshot(wr) == GOLDEN["backfill"]
+
+
+async def test_refresh_metadata_summary() -> None:
+    wr = await _run_work(
+        "show_metadata_refresh_tasks",
+        lambda: show_metadata_refresh_tasks._refresh(_TASK_ID, dry_run=False),
+        "ShowMetadataRefreshOrchestrator",
+        MetadataRefreshResult(
+            3, 2, 1, ["A", "B"], ["C"], {"CONTRADICTORY": 1, "NEVER_REFRESHED": 2}
+        ),
+        extra_patches=("TMDBService",),
+    )
+    assert _snapshot(wr) == GOLDEN["refresh_metadata"]
 
 
 @pytest.mark.parametrize("mode", ["full", "shows_only"])

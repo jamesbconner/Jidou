@@ -724,6 +724,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/refresh-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Show Metadata
+         * @description Refetch a show's TMDB-owned metadata live and return the updated show.
+         *
+         *     Refreshes status, next/last episode, ratings, networks and the like.
+         *     User-managed fields (``local_path``, ``content_type``, ``aliases``, poster
+         *     overrides) are untouched, and episodes are not synced -- use
+         *     ``sync-episodes`` for that.
+         *
+         *     Args:
+         *         show_id: Database primary key of the show to refresh.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Show` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         *         UpstreamError: (mapped to 502) if the TMDB fetch fails.
+         */
+        post: operations["refresh_show_metadata_api_shows__show_id__refresh_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/sync-episodes": {
         parameters: {
             query?: never;
@@ -1839,7 +1876,7 @@ export interface paths {
          * @description Trigger a new background task.
          *
          *     Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,
-         *     ``seed``, ``backfill_show_metadata``.
+         *     ``seed``, ``backfill_show_metadata``, ``refresh_show_metadata``.
          */
         post: operations["trigger_task_api_tasks_trigger_post"];
         delete?: never;
@@ -5251,7 +5288,7 @@ export interface components {
              * Task Type
              * @enum {string}
              */
-            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata";
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata" | "refresh_show_metadata";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;
@@ -5284,7 +5321,7 @@ export interface components {
              * Task Type
              * @enum {string}
              */
-            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata";
+            task_type: "download" | "scan" | "match" | "route" | "sync" | "seed" | "import" | "db_import" | "rss_import" | "rss_publish" | "backfill_show_metadata" | "refresh_show_metadata";
             status: components["schemas"]["TaskStatus"];
             /** Progress Current */
             progress_current: number;
@@ -6295,6 +6332,39 @@ export interface operations {
                 "application/json": components["schemas"]["RematchRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_show_metadata_api_shows__show_id__refresh_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

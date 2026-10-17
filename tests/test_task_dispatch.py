@@ -44,15 +44,19 @@ def test_registry_lists_exactly_the_supported_task_types() -> None:
         "sync",
         "seed",
         "backfill_show_metadata",
+        "refresh_show_metadata",
     }
 
 
-def test_only_route_reuses_an_active_task() -> None:
-    assert {k for k, v in TASK_REGISTRY.items() if v.reuse_active} == {"route"}
+def test_only_route_and_refresh_reuse_an_active_task() -> None:
+    assert {k for k, v in TASK_REGISTRY.items() if v.reuse_active} == {
+        "route",
+        "refresh_show_metadata",
+    }
 
 
 def test_every_registry_ref_resolves_to_an_object_with_apply_async() -> None:
-    assert len(TASK_REGISTRY) >= 7
+    assert len(TASK_REGISTRY) >= 8
     for task_type, registered in TASK_REGISTRY.items():
         assert hasattr(registered.ref.resolve(), "apply_async"), task_type
 

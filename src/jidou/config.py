@@ -143,6 +143,17 @@ class Settings(BaseSettings):
     sync_schedule_hours: str = "2"
     rss_import_schedule_enabled: bool = False
     rss_import_schedule_hours: str = "2"
+    # Show metadata refresh: re-fetches TMDB-owned Show columns for a bounded
+    # number of the stalest/most suspect shows per run (see
+    # services/metadata_refresh_policy.py). On by default -- stale status
+    # drives wrong RSS subscription recommendations.
+    show_metadata_refresh_schedule_enabled: bool = True
+    show_metadata_refresh_schedule_hours: str = "4"
+    show_metadata_refresh_limit_per_run: int = Field(default=10, ge=1, le=500)
+    show_metadata_refresh_stale_days: int = Field(default=30, ge=1)
+    show_metadata_refresh_airing_days: int = Field(default=7, ge=1)
+    show_metadata_refresh_ended_days: int = Field(default=90, ge=1)
+    show_metadata_refresh_lookback_years: int = Field(default=5, ge=1)
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]

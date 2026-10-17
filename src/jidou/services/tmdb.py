@@ -459,12 +459,15 @@ class TMDBService:
         _require_media_type(media_type, _TITLE_MEDIA)
         return await self._request(f"/{media_type}/{tmdb_id}/alternative_titles")
 
-    async def get_external_ids(self, tmdb_id: int, media_type: str = "tv") -> dict[str, Any]:
+    async def get_external_ids(
+        self, tmdb_id: int, media_type: str = "tv", bypass_cache: bool = False
+    ) -> dict[str, Any]:
         """Get external IDs (IMDb, TVDB, etc.) for a show or movie.
 
         Args:
             tmdb_id: The TMDB identifier.
             media_type: Either ``"movie"`` or ``"tv"``.
+            bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary with keys like ``imdb_id``, ``tvdb_id``, ``wikidata_id``, etc.
@@ -473,9 +476,11 @@ class TMDBService:
             ValueError: If *media_type* is invalid.
         """
         _require_media_type(media_type, _TITLE_MEDIA)
-        return await self._request(f"/{media_type}/{tmdb_id}/external_ids")
+        return await self._request(
+            f"/{media_type}/{tmdb_id}/external_ids", bypass_cache=bypass_cache
+        )
 
-    async def get_episode_groups(self, tmdb_id: int) -> dict[str, Any]:
+    async def get_episode_groups(self, tmdb_id: int, bypass_cache: bool = False) -> dict[str, Any]:
         """Get episode groups for a TV show.
 
         Episode groups (especially type 6 — Production) provide correct
@@ -483,11 +488,12 @@ class TMDBService:
 
         Args:
             tmdb_id: TMDB identifier of the TV show.
+            bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary containing ``results`` list of episode group objects.
         """
-        return await self._request(f"/tv/{tmdb_id}/episode_groups")
+        return await self._request(f"/tv/{tmdb_id}/episode_groups", bypass_cache=bypass_cache)
 
     async def get_episode_group(self, group_id: str, bypass_cache: bool = False) -> dict[str, Any]:
         """Get the full per-episode breakdown for one episode group.

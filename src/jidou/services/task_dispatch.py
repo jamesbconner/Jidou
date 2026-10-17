@@ -172,6 +172,12 @@ TASK_REGISTRY: Final[dict[str, RegisteredTask]] = {
     "backfill_show_metadata": RegisteredTask(
         CeleryTaskRef("jidou.workers.backfill_tasks", "backfill_show_metadata_task")
     ),
+    # A refresh selects its own capped batch; an overlapping run would just
+    # re-pick the same never-refreshed shows and double the TMDB calls.
+    "refresh_show_metadata": RegisteredTask(
+        CeleryTaskRef("jidou.workers.show_metadata_refresh_tasks", "refresh_show_metadata_task"),
+        reuse_active=True,
+    ),
 }
 
 

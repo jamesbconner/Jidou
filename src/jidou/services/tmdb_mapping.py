@@ -6,6 +6,7 @@ mapping step, so the three no longer drift out of sync with each other.
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from jidou.models.show import Show
@@ -15,7 +16,9 @@ from jidou.services.tmdb import TMDBService
 logger = logging.getLogger(__name__)
 
 
-async def fetch_episode_groups_list(tmdb: TMDBService, tmdb_id: int) -> list[dict[str, Any]]:
+async def fetch_episode_groups_list(
+    tmdb: TMDBService, tmdb_id: int, *, bypass_cache: bool = False
+) -> list[dict[str, Any]]:
     """Fetch and unwrap the episode_groups summary for a TV show.
 
     Encapsulates the ``get_episode_groups`` → ``results`` unwrap so the
@@ -25,6 +28,7 @@ async def fetch_episode_groups_list(tmdb: TMDBService, tmdb_id: int) -> list[dic
     Args:
         tmdb: Configured TMDBService instance.
         tmdb_id: The TMDB identifier of the TV show.
+        bypass_cache: Force a live request (forwarded only when true).
 
     Returns:
         List of episode group summary dicts, or empty list on failure.
@@ -33,11 +37,14 @@ async def fetch_episode_groups_list(tmdb: TMDBService, tmdb_id: int) -> list[dic
         Exception: Propagates any TMDB fetch error to the caller (the caller
             decides whether to swallow or re-raise).
     """
-    groups_response = await tmdb.get_episode_groups(tmdb_id)
+    bypass: dict[str, bool] = {"bypass_cache": True} if bypass_cache else {}
+    groups_response = await tmdb.get_episode_groups(tmdb_id, **bypass)
     return list(groups_response.get("results") or [])
 
 
-async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) -> dict[str, Any]:
+async def fetch_show_metadata(
+    tmdb: TMDBService, tmdb_id: int, media_type: str, *, bypass_cache: bool = False
+) -> dict[str, Any]:
     """Fetch TMDB show details plus supplemental external_ids and episode_groups.
 
     ``get_details()`` alone never returns ``external_ids`` or
@@ -51,17 +58,21 @@ async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) 
         tmdb_id: The TMDB identifier to fetch.
         media_type: ``"tv"`` or ``"movie"``. ``episode_groups`` is only
             fetched for TV — movies have no episode groups.
+        bypass_cache: Force live requests on every endpoint. The flag is only
+            forwarded when true, so default-path callers issue the same calls
+            as before.
 
     Returns:
         The ``get_details()`` response dict, with ``"external_ids"`` and
         ``"episode_groups"`` always present (populated from their own
         endpoints, not left absent as in the raw response).
     """
-    data = await tmdb.get_details(tmdb_id, media_type=media_type)
+    bypass: dict[str, bool] = {"bypass_cache": True} if bypass_cache else {}
+    data = await tmdb.get_details(tmdb_id, media_type=media_type, **bypass)
 
     external_ids: dict[str, Any] = {}
     try:
-        external_ids = await tmdb.get_external_ids(tmdb_id, media_type=media_type)
+        external_ids = await tmdb.get_external_ids(tmdb_id, media_type=media_type, **bypass)
     except Exception:
         logger.debug("get_external_ids failed for tmdb_id=%d", tmdb_id)
 
@@ -73,7 +84,9 @@ async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) 
     episode_groups: list[dict[str, Any]] | None
     if media_type == "tv":
         try:
-            episode_groups = await fetch_episode_groups_list(tmdb, tmdb_id)
+            episode_groups = await fetch_episode_groups_list(
+                tmdb, tmdb_id, bypass_cache=bypass_cache
+            )
         except Exception:
             logger.warning(
                 "get_episode_groups failed for tmdb_id=%d; leaving episode_groups "
@@ -87,6 +100,22 @@ async def fetch_show_metadata(tmdb: TMDBService, tmdb_id: int, media_type: str) 
         episode_groups = []
 
     return {**data, "external_ids": external_ids, "episode_groups": episode_groups}
+
+
+def stamp_refreshed(fields: dict[str, Any]) -> dict[str, Any]:
+    """Return *fields* plus a ``metadata_refreshed_at`` stamp of the current UTC time.
+
+    Kept out of :func:`build_show_fields` so that mapper stays a pure function
+    of its inputs. Callers that applied a *full* TMDB fetch use this so the
+    scheduled refresh job doesn't immediately re-pick a show they just fetched.
+
+    Args:
+        fields: Field map from :func:`build_show_fields`.
+
+    Returns:
+        A new dict; *fields* is not mutated.
+    """
+    return {**fields, "metadata_refreshed_at": datetime.now(UTC)}
 
 
 def build_show_fields(

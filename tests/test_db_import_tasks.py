@@ -1415,6 +1415,19 @@ def test_column_tables_equal_legacy_handled_sets() -> None:
     assert len(_EPISODE_COLUMNS) == len(_LEGACY_EPISODE_HANDLED_COLUMNS)
 
 
+def test_restore_leaves_metadata_refreshed_at_null_so_restored_shows_refresh_first() -> None:
+    from jidou.workers.db_import_tasks import (
+        _SHOW_COLUMNS,
+        _build_show,
+        check_restore_field_coverage,
+    )
+
+    assert "metadata_refreshed_at" not in {c.name for c in _SHOW_COLUMNS}
+    assert check_restore_field_coverage()["Show"] == set()
+    row = {"tmdb_id": 1, "title": "T", "metadata_refreshed_at": "2026-01-01T00:00:00+00:00"}
+    assert _build_show(row).metadata_refreshed_at is None
+
+
 def test_column_defaults_and_update_exclusions() -> None:
     """Build defaults and the insert-only / special-update sets match the documented rules."""
     from jidou.workers.db_import_tasks import (

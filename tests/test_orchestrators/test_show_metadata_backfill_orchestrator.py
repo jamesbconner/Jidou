@@ -330,3 +330,14 @@ async def test_reports_progress_per_candidate() -> None:
 def test_skip_fields_is_exactly_sys_name() -> None:
     """Deriving _SKIP_FIELDS from column provenance must not change the skipped set."""
     assert frozenset({"sys_name"}) == _SKIP_FIELDS
+
+
+@pytest.mark.asyncio
+async def test_backfill_stamps_metadata_refreshed_at() -> None:
+    """A backfilled show counts as freshly refreshed, so the refresh job skips it."""
+    show = _make_show(genres=None)
+    show.metadata_refreshed_at = None
+
+    await ShowMetadataBackfillOrchestrator(_session_with_shows([show]), _make_tmdb()).run()
+
+    assert show.metadata_refreshed_at is not None

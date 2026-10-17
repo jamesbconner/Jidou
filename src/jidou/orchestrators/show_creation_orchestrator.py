@@ -27,7 +27,7 @@ from jidou.services.path_resolution import auto_local_path_for
 from jidou.services.show_creation import infer_content_type
 from jidou.services.sys_name import sanitize_sys_name
 from jidou.services.tmdb import TMDBService
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata, stamp_refreshed
 
 logger = logging.getLogger(__name__)
 
@@ -260,8 +260,10 @@ async def get_or_create_show_from_tmdb(
 
     try:
         tmdb_data = await fetch_show_metadata(tmdb, payload.tmdb_id, payload.media_type)
-        fields = build_show_fields(
-            tmdb_data, payload.tmdb_id, payload.media_type, title_fallback=payload.title
+        fields = stamp_refreshed(
+            build_show_fields(
+                tmdb_data, payload.tmdb_id, payload.media_type, title_fallback=payload.title
+            )
         )
     except Exception:
         logger.warning(

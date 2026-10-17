@@ -71,6 +71,17 @@ def scheduled_rss_import_task() -> str:
     return asyncio.run(_scheduled_rss_import())
 
 
+@shared_task  # type: ignore[untyped-decorator]
+def scheduled_show_metadata_refresh_task() -> str:
+    """Beat-triggered show metadata refresh — skips if one is already active.
+
+    Returns:
+        ``"skipped"`` when an overlap is detected, otherwise the dispatched
+        Celery task ID.
+    """
+    return asyncio.run(_scheduled_show_metadata_refresh())
+
+
 async def _dispatch_scheduled(task_type: str, celery_task: Any, task_id: str) -> str:
     """Claim a pending slot then dispatch the Celery task.
 
@@ -184,6 +195,12 @@ def _load_rss_import_task() -> Any:
     return rss_import_task
 
 
+def _load_show_metadata_refresh_task() -> Any:
+    from jidou.workers.show_metadata_refresh_tasks import refresh_show_metadata_task
+
+    return refresh_show_metadata_task
+
+
 def _rss_skip_reason() -> str | None:
     """Return a skip message when the RSS config path is not configured."""
     if not settings.rss_config_remote_path:
@@ -205,4 +222,15 @@ async def _scheduled_rss_import() -> str:
         _load_rss_import_task,
         claim_skipped_message="Scheduled RSS import skipped: an rss_import task is already active",
         skip_reason=_rss_skip_reason,
+    )
+
+
+async def _scheduled_show_metadata_refresh() -> str:
+    return await _run_scheduled(
+        "refresh_show_metadata",
+        _load_show_metadata_refresh_task,
+        claim_skipped_message=(
+            "Scheduled show metadata refresh skipped: "
+            "a refresh_show_metadata task is already active"
+        ),
     )

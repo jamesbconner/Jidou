@@ -137,7 +137,7 @@ async def trigger_task(
     """Trigger a new background task.
 
     Supported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,
-    ``seed``, ``backfill_show_metadata``.
+    ``seed``, ``backfill_show_metadata``, ``refresh_show_metadata``.
     """
     try:
         return await dispatch_registered_task(

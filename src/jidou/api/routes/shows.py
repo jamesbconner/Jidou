@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.api.dependencies import get_llm_service, get_tmdb
 from jidou.api.lookups import get_show_or_404
 from jidou.database import get_session
+from jidou.errors import UpstreamError
 from jidou.models.downloaded_file import DownloadedFile
 from jidou.models.episode import Episode
 from jidou.models.rss import RssSubscription
@@ -964,6 +965,45 @@ async def rematch_show(
             )
 
     return await ShowRematchOrchestrator(db_session, tmdb, llm=llm).rematch(show, payload)
+
+
+@router.post("/{show_id}/refresh-metadata", response_model=ShowRead)
+async def refresh_show_metadata(
+    show_id: int,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> Show:
+    """Refetch a show's TMDB-owned metadata live and return the updated show.
+
+    Refreshes status, next/last episode, ratings, networks and the like.
+    User-managed fields (``local_path``, ``content_type``, ``aliases``, poster
+    overrides) are untouched, and episodes are not synced -- use
+    ``sync-episodes`` for that.
+
+    Args:
+        show_id: Database primary key of the show to refresh.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+        UpstreamError: (mapped to 502) if the TMDB fetch fails.
+    """
+    from jidou.orchestrators.show_metadata_refresh_orchestrator import (
+        ShowMetadataRefreshOrchestrator,
+    )
+
+    show = await get_show_or_404(db_session, show_id)
+    try:
+        await ShowMetadataRefreshOrchestrator(db_session, tmdb).refresh_show(show)
+    except Exception as exc:
+        logger.exception("Metadata refresh failed for show id=%d", show_id)
+        raise UpstreamError("Failed to refresh show metadata from TMDB") from exc
+    await db_session.refresh(show)
+    return show
 
 
 @router.post("/{show_id}/sync-episodes", response_model=list[EpisodeList])
