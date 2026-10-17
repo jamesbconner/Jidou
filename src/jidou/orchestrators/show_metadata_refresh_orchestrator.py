@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx2 as httpx
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show, show_columns
@@ -105,9 +104,11 @@ class ShowMetadataRefreshOrchestrator:
 
         for key in _WRITE_FIELDS:
             value = fields[key]
-            # None means the episode-groups fetch failed, not "confirmed empty";
-            # keep whatever is already known rather than erasing it.
-            if key == "episode_groups" and value is None:
+            # None (episode_groups) or {} (external_ids) is how
+            # fetch_show_metadata reports a failed supplemental fetch; TMDB
+            # itself always returns the external_ids keys, null-valued if
+            # unknown. Keep whatever is already known rather than erasing it.
+            if (key == "episode_groups" and value is None) or (key == "external_ids" and not value):
                 continue
             setattr(show, key, value)
         show.metadata_refreshed_at = self._now()
@@ -140,16 +141,12 @@ class ShowMetadataRefreshOrchestrator:
         for _, reason in picked:
             result.reasons[reason.name] = result.reasons.get(reason.name, 0) + 1
 
-        ids = [facts.show_id for facts, _ in picked]
-        by_id = {
-            s.id: s
-            for s in (await self.session.execute(select(Show).where(Show.id.in_(ids))))
-            .scalars()
-            .all()
-        }
-
         for idx, (facts, reason) in enumerate(picked, 1):
-            show = by_id.get(facts.show_id)
+            # Loaded one at a time, not prefetched: a rollback expires every
+            # Show already in the session, and touching an expired instance
+            # outside the greenlet bridge raises MissingGreenlet. A show loaded
+            # after the previous one finished can't have been expired by it.
+            show = await self.session.get(Show, facts.show_id)
             if show is None:  # deleted between the facts query and now
                 continue
             if on_progress:

@@ -45,6 +45,10 @@ class ShowRefreshFacts:
         last_air_date: Last air date (movies fall back to their release date).
         latest_season_fully_aired: Whether every episode of the highest
             non-special season has aired; ``None`` when there are no episodes.
+        latest_season_last_air: Air date of the last episode of that season,
+            taken from the episode rows (``None`` when there are none). Used
+            instead of ``Show.last_air_date``, which only moves when a sync
+            happens to run.
         has_rss_subscription: Whether any RSS subscription links to the show.
     """
 
@@ -57,6 +61,7 @@ class ShowRefreshFacts:
     next_air_date: date | None
     last_air_date: date | None
     latest_season_fully_aired: bool | None
+    latest_season_last_air: date | None
     has_rss_subscription: bool
 
 
@@ -176,8 +181,8 @@ def _season_fully_aired(facts: ShowRefreshFacts, policy: RefreshPolicy) -> bool:
         _past_min_recheck(facts, policy)
         and refreshed is not None
         and bool(facts.latest_season_fully_aired)
-        and facts.last_air_date is not None
-        and facts.last_air_date >= refreshed.astimezone(UTC).date()
+        and facts.latest_season_last_air is not None
+        and facts.latest_season_last_air >= refreshed.astimezone(UTC).date()
     )
 
 

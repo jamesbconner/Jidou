@@ -83,6 +83,7 @@ async def test_fully_aired_signal_uses_only_the_latest_season(session: AsyncSess
     facts = {f.show_id: f for f in await load_refresh_facts(session, _policy())}
 
     assert facts[show.id].latest_season_fully_aired is False
+    assert facts[show.id].latest_season_last_air == TODAY + timedelta(days=7)
 
 
 async def test_fully_aired_true_and_none_without_episodes(session: AsyncSession) -> None:
@@ -93,7 +94,9 @@ async def test_fully_aired_true_and_none_without_episodes(session: AsyncSession)
     facts = {f.show_id: f for f in await load_refresh_facts(session, _policy())}
 
     assert facts[done.id].latest_season_fully_aired is True
+    assert facts[done.id].latest_season_last_air == TODAY - timedelta(days=5)
     assert facts[bare.id].latest_season_fully_aired is None
+    assert facts[bare.id].latest_season_last_air is None
 
 
 async def test_json_null_and_missing_next_episode_are_none(session: AsyncSession) -> None:

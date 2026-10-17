@@ -73,6 +73,7 @@ async def load_refresh_facts(
             func.bool_and(and_(Episode.air_date.is_not(None), Episode.air_date <= today)).label(
                 "fully_aired"
             ),
+            func.max(Episode.air_date).label("season_last_air"),
         )
         .join(
             latest,
@@ -94,6 +95,7 @@ async def load_refresh_facts(
             Show.next_episode_to_air["air_date"].as_string().label("next_air"),
             last_air.label("last_air"),
             aired.c.fully_aired,
+            aired.c.season_last_air,
             exists().where(RssSubscription.show_id == Show.id).label("has_rss"),
         )
         .outerjoin(aired, aired.c.show_id == Show.id)
@@ -114,6 +116,7 @@ async def load_refresh_facts(
             next_air_date=_parse_iso_date(row.next_air),
             last_air_date=_parse_iso_date(row.last_air),
             latest_season_fully_aired=row.fully_aired,
+            latest_season_last_air=row.season_last_air,
             has_rss_subscription=bool(row.has_rss),
         )
         for row in rows

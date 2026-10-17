@@ -63,6 +63,7 @@ def _facts(show_id: int) -> ShowRefreshFacts:
         next_air_date=None,
         last_air_date=None,
         latest_season_fully_aired=None,
+        latest_season_last_air=None,
         has_rss_subscription=False,
     )
 
@@ -72,6 +73,8 @@ def _session(shows: list[Show]) -> AsyncMock:
     result = MagicMock()
     result.scalars.return_value.all.return_value = shows
     session.execute = AsyncMock(return_value=result)
+    by_id = {s.id: s for s in shows}
+    session.get = AsyncMock(side_effect=lambda _model, pk: by_id.get(pk))
     session.flush = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -294,7 +297,7 @@ async def test_run_with_no_candidates_does_nothing() -> None:
         result = await _orch(session).run(policy=_policy())
 
     assert result.shows_checked == 0
-    session.execute.assert_not_awaited()
+    session.get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -308,6 +311,65 @@ async def test_run_reports_progress() -> None:
         await _orch(session).run(policy=_policy(), on_progress=progress)
 
     progress.assert_awaited_once_with(1, 1, "Refreshing Show 1")
+
+
+@pytest.mark.asyncio
+async def test_run_loads_each_show_after_the_previous_one_finishes() -> None:
+    """A rollback expires every loaded Show, so shows must not be prefetched.
+
+    Regression: with all selected shows loaded up front, one failed commit's
+    session.rollback() expired the rest, and their next attribute access
+    raised MissingGreenlet instead of isolating the bad show.
+    """
+    a, b = _show(1, 100), _show(2, 200)
+    session = _session([a, b])
+    order: list[str] = []
+    real_get = session.get.side_effect
+    session.get = AsyncMock(
+        side_effect=lambda model, pk: (order.append(f"get:{pk}"), real_get(model, pk))[1]
+    )
+    session.commit = AsyncMock(side_effect=[RuntimeError("db down"), None])
+    session.rollback = AsyncMock(side_effect=lambda: order.append("rollback"))
+
+    with (
+        _patch_selection([1, 2]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        result = await _orch(session).run(policy=_policy())
+
+    assert order == ["get:1", "rollback", "get:2"]
+    assert (result.shows_updated, result.shows_failed) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_run_skips_a_show_deleted_after_selection() -> None:
+    session = _session([_show(1, 100)])
+    session.get = AsyncMock(return_value=None)
+    with _patch_selection([1]), patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock()) as fetch:
+        result = await _orch(session).run(policy=_policy())
+
+    fetch.assert_not_awaited()
+    assert result.shows_updated == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_existing_external_ids_when_the_fetch_came_back_empty() -> None:
+    """fetch_show_metadata turns a failed external_ids call into {}; don't wipe known IDs."""
+    show = _show(external_ids={"imdb_id": "tt1", "tvdb_id": 5})
+    payload = {**_ENDED_PAYLOAD, "external_ids": {}}
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.external_ids == {"imdb_id": "tt1", "tvdb_id": 5}
+
+
+@pytest.mark.asyncio
+async def test_refresh_replaces_external_ids_when_tmdb_returned_some() -> None:
+    show = _show(external_ids={"imdb_id": "tt1"})
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.external_ids == {"imdb_id": "tt1"}
 
 
 def test_default_clock_is_timezone_aware() -> None:

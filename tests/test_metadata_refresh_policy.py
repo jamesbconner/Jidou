@@ -42,6 +42,7 @@ def _facts(show_id: int = 1, **overrides: object) -> ShowRefreshFacts:
         next_air_date=TODAY + timedelta(days=3),
         last_air_date=TODAY - timedelta(days=4),
         latest_season_fully_aired=False,
+        latest_season_last_air=None,
         has_rss_subscription=False,
     )
     return replace(base, **overrides)
@@ -110,7 +111,7 @@ def test_zero_votes_selected_once_stale() -> None:
 def test_season_finished_since_last_refresh_selected() -> None:
     f = _facts(
         metadata_refreshed_at=NOW - timedelta(days=3),
-        last_air_date=TODAY - timedelta(days=1),
+        latest_season_last_air=TODAY - timedelta(days=1),
         latest_season_fully_aired=True,
         next_air_date=None,
     )
@@ -120,11 +121,28 @@ def test_season_finished_since_last_refresh_selected() -> None:
 def test_season_finished_before_last_refresh_is_not_reselected() -> None:
     f = _facts(
         metadata_refreshed_at=NOW - timedelta(days=3),
-        last_air_date=TODAY - timedelta(days=20),
+        latest_season_last_air=TODAY - timedelta(days=20),
         latest_season_fully_aired=True,
         next_air_date=None,
     )
     assert classify(f, _policy()) is None
+
+
+def test_season_rule_ignores_a_stale_show_level_last_air_date() -> None:
+    """The finish date comes from the episode rows, not Show.last_air_date.
+
+    Show.last_air_date only moves when metadata or episodes are synced, so a
+    season that finished after the last refresh must still match when the
+    show-level value is old.
+    """
+    f = _facts(
+        metadata_refreshed_at=NOW - timedelta(days=3),
+        last_air_date=TODAY - timedelta(days=30),
+        latest_season_last_air=TODAY - timedelta(days=1),
+        latest_season_fully_aired=True,
+        next_air_date=None,
+    )
+    assert classify(f, _policy()) is RefreshReason.SEASON_FULLY_AIRED
 
 
 def test_lookback_excludes_last_air_older_than_five_years() -> None:
