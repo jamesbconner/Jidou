@@ -66,6 +66,10 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 // one-time maintenance operations triggered from Settings, not here.
 const TYPE_OPTIONS: (TaskType | '')[] = ['', 'scan', 'download', 'match', 'route', 'sync', 'import', 'db_import', 'rss_import', 'rss_publish', 'refresh_show_metadata']
 
+// Task types a user can start by hand; the rest are scheduled, one-time (Settings)
+// or started from other pages.
+const TRIGGER_OPTIONS: TaskType[] = ['scan', 'download', 'match', 'route', 'sync', 'refresh_show_metadata']
+
 export default function Tasks() {
   const [taskType, setTaskType] = useState<TaskType>('sync')
   const [dryRun, setDryRun] = useState(false)
@@ -135,7 +139,7 @@ export default function Tasks() {
               onChange={(e) => setTaskType(e.target.value as TaskType)}
               className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
             >
-              {(['scan', 'download', 'match', 'route', 'sync'] as TaskType[]).map((t) => (
+              {TRIGGER_OPTIONS.map((t) => (
                 <option key={t} value={t}>{taskTypeLabel(t)}</option>
               ))}
             </select>

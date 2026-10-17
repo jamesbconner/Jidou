@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createElement } from 'react'
@@ -113,5 +113,17 @@ describe('Tasks page — Max records control', () => {
     await waitFor(() => {
       expect(screen.getByText('5 of 50 tasks')).toBeInTheDocument()
     })
+  })
+})
+
+describe('Tasks page — trigger panel', () => {
+  test('offers Refresh Show Metadata as a manually runnable task type', async () => {
+    mockTasks(0)
+    render(<Tasks />, { wrapper: makeWrapper() })
+
+    const typeSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement
+    const values = Array.from(typeSelect.options).map((o) => o.value)
+    expect(values).toContain('refresh_show_metadata')
+    expect(within(typeSelect).getByRole('option', { name: 'Refresh Show Metadata' })).toBeInTheDocument()
   })
 })
