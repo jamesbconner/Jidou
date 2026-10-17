@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.11] — 2026-10-17
+
+Makes the show metadata refresh easier to trust: it keeps your show titles, and its task log now says what it changed.
+
 ### Fixed
 - **Task types read as names, not identifiers.** The Tasks page and progress bars showed `Refresh_show_metadata`; they now show `Refresh Show Metadata` (and `RSS Import`, `DB Import`, ...), including in the type filter.
 - **The metadata refresh no longer rewrites a show's title.** `title` was among the TMDB-owned columns the refresh overwrote, so a TMDB retitle silently renamed library shows. It is now left alone by both the scheduled job and the Refresh Metadata button; a rematch still sets it.
