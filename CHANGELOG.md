@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.10] — 2026-10-17
+
+Finishes the show metadata refresh from 0.4.9: its schedule and per-run limit can now be changed on the Settings page instead of through environment variables and a restart.
+
 ### Changed
 - **The metadata refresh schedule is editable on the Settings page.** The Schedules card on Settings → Services now has a **Metadata Refresh** row (the same enabled badge, hours and next-run line as Full Sync and RSS Import) with controls for **Enabled**, **Run at (UTC hours)** and **Shows per run** (1–500). Changes apply from the next full hour with no restart. The `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED`, `_SCHEDULE_HOURS` and `_LIMIT_PER_RUN` environment variables are now only the starting values, used until something is saved; the interval and lookback variables stay environment-only. Full Sync and RSS Import are unchanged: environment variables, restart required.
   - Beat can't change its crontab at runtime, so it now ticks **every hour** and the task checks the saved enabled flag and hours, skipping quietly (no task-history row) when not due.
