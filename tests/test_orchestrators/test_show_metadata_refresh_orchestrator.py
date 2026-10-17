@@ -252,7 +252,7 @@ async def test_run_logs_each_shows_changed_columns() -> None:
     assert "next_episode_to_air: (set) → none" in msg
     assert ctx["show_id"] == 1
     assert ctx["reason"] == "NEVER_REFRESHED"
-    assert ctx["changes"]["status"] == ["'Returning Series'", "'Ended'"]
+    assert ctx["changes"]["status"] == "'Returning Series' → 'Ended'"
 
 
 @pytest.mark.asyncio
@@ -596,3 +596,45 @@ async def test_run_warns_about_a_missing_active_group_in_a_dry_run_too() -> None
         await _orch(_session([show])).run(dry_run=True, policy=_policy(), on_event=events)
 
     assert [e[0] for e in events.events] == ["warning", "info"]
+
+
+_EP = {"season_number": 2, "episode_number": 14, "vote_average": 7.0, "vote_count": 3}
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        # Same episode, its own rating moved: say what moved, not "S2E14 → S2E14".
+        (_EP, {**_EP, "vote_count": 4}, "S2E14 (vote_count: 3 → 4)"),
+        (
+            _EP,
+            {**_EP, "vote_average": 7.5, "vote_count": 4},
+            "S2E14 (vote_average: 7.0 → 7.5, vote_count: 3 → 4)",
+        ),
+        # A genuinely new latest episode.
+        (
+            _EP,
+            {**_EP, "episode_number": 15},
+            "S2E14 → S2E15 (episode_number: 14 → 15)",
+        ),
+        (
+            [{"id": 1, "name": "Drama"}],
+            [{"id": 1, "name": "Drama"}, {"id": 2, "name": "Anime"}],
+            "+Anime",
+        ),
+        (
+            [{"id": 1, "name": "Drama"}, {"id": 2, "name": "Anime"}],
+            [{"id": 2, "name": "Anime"}],
+            "-Drama",
+        ),
+        ([{"id": 1, "name": "A"}], [{"id": 2, "name": "B"}], "+B -A"),
+        (["JP"], ["JP", "US"], "+US"),
+        ([{"id": 1}, {"id": 2}], [{"id": 2}, {"id": 1}], "reordered"),
+        (7.6, 7.5, "7.6 → 7.5"),
+        (None, {"a": 1}, "none → (set)"),
+    ],
+)
+def test_describe_change_names_what_differs(old, new, expected) -> None:
+    from jidou.orchestrators.show_metadata_refresh_orchestrator import _describe_change
+
+    assert _describe_change(old, new) == expected
