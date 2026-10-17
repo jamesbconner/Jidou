@@ -1,6 +1,6 @@
 [project]
 name = "jidou"
-version = "0.4.11"
+version = "0.4.12"
 description = "Jidou project"
 readme = "README.md"
 license = { text = "MIT" }

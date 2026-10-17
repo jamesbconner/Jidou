@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.12] — 2026-10-17
+
+Follow-up to 0.4.11: the metadata refresh log now says what changed inside nested and list columns, not just that something did.
+
 ### Fixed
 - **The metadata refresh log says what changed inside a column.** A show's last/next episode is a whole TMDB object, so a change to the episode's own rating was logged as `last_episode_to_air: S2E14 → S2E14`. It now logs `S2E14 (vote_count: 15 → 16)`, and list columns such as genres log what was added and removed (`+Anime -Drama`) instead of an item count.
 
