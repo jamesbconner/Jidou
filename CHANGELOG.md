@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.13] — 2026-10-17
+
+Follow-up to 0.4.9: the show metadata refresh can now be started by hand from the Tasks page.
+
 ### Fixed
 - **The metadata refresh can be started from the Tasks page.** "Refresh Show Metadata" is now in the Task type selector (with Dry run), so a refresh batch can be run on demand as well as on its schedule.
 
