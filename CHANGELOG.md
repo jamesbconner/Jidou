@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - A show TMDB no longer has (404) is stamped as refreshed and reported as failed, so it does not crowd out other shows on every run.
 
 ### Changed
-- **Show Detail sidebar is less cluttered.** Remove Show, Add/Edit RSS and Refresh Metadata stay visible. Fix Match, Set Type, Manage Aliases and Change Images moved into a single **More** menu. Sidebar buttons are `w-36` (was `w-28`) so "Refresh Metadata" fits.
+- **Show Detail sidebar is less cluttered.** Remove Show, Add/Edit RSS and Refresh Metadata stay visible. Fix Match, Set Type, Manage Aliases and Change Images moved into a single **Action** menu. Sidebar buttons are `w-36` (was `w-28`) so "Refresh Metadata" fits.
 - `Button` accepts a `ref` in its prop type (React 19 already passed it through at runtime).
 - `TMDBService.get_external_ids`, `get_episode_groups` and `fetch_show_metadata` accept `bypass_cache`.
 - Shows created or rematched from a full TMDB fetch, and shows backfilled, are stamped with `metadata_refreshed_at`. A show created from search-card fields only (TMDB details failed) is left unstamped so the job picks it up first.

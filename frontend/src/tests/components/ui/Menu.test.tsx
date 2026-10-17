@@ -125,6 +125,38 @@ describe('Menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  test('hovering an item moves focus to it, so only one item is highlighted at a time', async () => {
+    const { user } = setup()
+    await user.click(trigger())
+    // The first enabled item takes focus on open; it must not stay highlighted
+    // once the pointer is over a different item.
+    expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+
+    await user.hover(screen.getByRole('menuitem', { name: 'Third' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Third' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'First' })).not.toHaveFocus()
+  })
+
+  test('hovering a disabled item does not take focus', async () => {
+    const { user } = setup()
+    await user.click(trigger())
+
+    await user.hover(screen.getByRole('menuitem', { name: 'Second' }))
+
+    expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+  })
+
+  test('keyboard navigation continues from the hovered item', async () => {
+    const { user } = setup()
+    await user.click(trigger())
+    await user.hover(screen.getByRole('menuitem', { name: 'Third' }))
+
+    await user.keyboard('{ArrowDown}')
+
+    expect(screen.getByRole('menuitem', { name: 'First' })).toHaveFocus()
+  })
+
   test('the menu is named after the trigger label', async () => {
     const { user } = setup()
     await user.click(trigger())

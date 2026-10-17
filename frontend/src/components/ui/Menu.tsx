@@ -138,9 +138,12 @@ export function Menu({ label, items, variant = 'secondary', tone, size = 'sm', c
               tabIndex={-1}
               disabled={item.disabled}
               onClick={() => select(item)}
+              // Focus follows the pointer, so the highlight (a focus style) tracks
+              // the hovered item instead of staying on the one focused on open.
+              onMouseEnter={() => itemRefs.current[i]?.focus()}
               className={clsx(
                 'block w-full whitespace-nowrap px-3 py-1.5 text-left text-xs text-gray-700 dark:text-gray-200',
-                'hover:bg-gray-50 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-800 dark:focus:bg-gray-800',
+                'focus:bg-gray-100 focus:outline-none dark:focus:bg-gray-800',
                 'disabled:cursor-not-allowed disabled:opacity-50',
               )}
             >
