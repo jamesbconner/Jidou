@@ -46,7 +46,7 @@ async def _refresh(celery_task_id: str, dry_run: bool = False) -> str:
     ) -> WorkflowResult:
         tmdb_svc = TMDBService()
         result = await ShowMetadataRefreshOrchestrator(session, tmdb_svc).run(
-            dry_run=dry_run, on_progress=on_progress
+            dry_run=dry_run, on_progress=on_progress, on_event=on_event
         )
 
         return WorkflowResult(

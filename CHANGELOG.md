@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **The metadata refresh no longer rewrites a show's title.** `title` was among the TMDB-owned columns the refresh overwrote, so a TMDB retitle silently renamed library shows. It is now left alone by both the scheduled job and the Refresh Metadata button; a rematch still sets it.
+- **The metadata refresh task now logs what it changed.** The task's log shows one line per show with the refresh reason and each changed column as `old → new` (for example `status: 'Returning Series' → 'Ended'`, `next_episode_to_air: S1E4 → none`), `no changes` when TMDB agreed with the stored data, and a warning when a show could not be refreshed or TMDB no longer has it. A dry run logs what it would change.
+
 ## [0.4.10] — 2026-10-17
 
 Finishes the show metadata refresh from 0.4.9: its schedule and per-run limit can now be changed on the Settings page instead of through environment variables and a restart.

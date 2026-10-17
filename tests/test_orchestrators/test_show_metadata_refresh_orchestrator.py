@@ -183,9 +183,139 @@ async def test_refresh_movie_succeeds() -> None:
     assert movie.status == "Released"
 
 
+@pytest.mark.asyncio
+async def test_refresh_never_rewrites_the_title() -> None:
+    """A TMDB retitle must not rename a library show; only an explicit rematch does."""
+    show = _show(title="My Title")
+    payload = {**_ENDED_PAYLOAD, "name": "Retitled On TMDB"}
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)):
+        changes = await _orch(_session([show])).refresh_show(show)
+
+    assert show.title == "My Title"
+    assert "title" not in changes
+
+
+@pytest.mark.asyncio
+async def test_refresh_returns_old_and_new_values_of_only_the_changed_columns() -> None:
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        changes = await _orch(_session([show])).refresh_show(show)
+
+    assert changes["status"] == ("Returning Series", "Ended")
+    assert changes["next_episode_to_air"] == (
+        {"air_date": "2026-08-30", "episode_number": 4},
+        None,
+    )
+    assert "local_path" not in changes
+    assert "metadata_refreshed_at" not in changes
+
+
+@pytest.mark.asyncio
+async def test_refresh_dry_run_reports_the_changes_it_would_make() -> None:
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        changes = await _orch(_session([show])).refresh_show(show, dry_run=True)
+
+    assert changes["status"] == ("Returning Series", "Ended")
+    assert show.status == "Returning Series"
+
+
 # ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
+
+
+class _Events:
+    """Collects (level, message, ctx) events from a run."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, dict | None]] = []
+
+    async def __call__(self, level: str, msg: str, ctx: dict | None = None) -> None:
+        self.events.append((level, msg, ctx))
+
+
+@pytest.mark.asyncio
+async def test_run_logs_each_shows_changed_columns() -> None:
+    events = _Events()
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        await _orch(_session([_show()])).run(policy=_policy(), on_event=events)
+
+    ((level, msg, ctx),) = events.events
+    assert level == "info"
+    assert msg.startswith("Refreshed 'Show 1' (NEVER_REFRESHED): ")
+    assert "status: 'Returning Series' → 'Ended'" in msg
+    assert "next_episode_to_air: S" not in msg  # the fixture dicts carry no season number
+    assert "next_episode_to_air: (set) → none" in msg
+    assert ctx["show_id"] == 1
+    assert ctx["reason"] == "NEVER_REFRESHED"
+    assert ctx["changes"]["status"] == ["'Returning Series'", "'Ended'"]
+
+
+@pytest.mark.asyncio
+async def test_run_logs_when_nothing_changed() -> None:
+    events = _Events()
+    show = _show()
+    with _patch_selection([1]), patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock()) as fetch:
+        orch = _orch(_session([show]))
+        fetch.return_value = _ENDED_PAYLOAD
+        await orch.run(policy=_policy())  # bring the show in line with TMDB
+        fetch.return_value = _ENDED_PAYLOAD
+        await orch.run(policy=_policy(), on_event=events)
+
+    ((_, msg, ctx),) = events.events
+    assert msg.endswith("no changes")
+    assert ctx["changes"] == {}
+
+
+@pytest.mark.asyncio
+async def test_run_dry_run_logs_what_it_would_change() -> None:
+    events = _Events()
+    show = _show()
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        await _orch(_session([show])).run(dry_run=True, policy=_policy(), on_event=events)
+
+    ((_, msg, _ctx),) = events.events
+    assert msg.startswith("[Dry run] Would refresh 'Show 1'")
+    assert show.status == "Returning Series"
+
+
+@pytest.mark.asyncio
+async def test_run_logs_a_warning_for_a_failed_show() -> None:
+    events = _Events()
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(side_effect=RuntimeError("boom"))),
+    ):
+        await _orch(_session([_show()])).run(policy=_policy(), on_event=events)
+
+    ((level, msg, ctx),) = events.events
+    assert level == "warning"
+    assert "Could not refresh 'Show 1'" in msg
+    assert "RuntimeError: boom" in msg
+    assert ctx == {"show_id": 1}
+
+
+@pytest.mark.asyncio
+async def test_run_logs_that_tmdb_no_longer_has_a_missing_show() -> None:
+    events = _Events()
+    response = httpx.Response(404, request=httpx.Request("GET", "https://x/tv/100"))
+    err = httpx.HTTPStatusError("not found", request=response.request, response=response)
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(side_effect=err)),
+    ):
+        await _orch(_session([_show()])).run(policy=_policy(), on_event=events)
+
+    ((level, msg, _ctx),) = events.events
+    assert level == "warning"
+    assert "TMDB no longer has this id" in msg
 
 
 def _patch_selection(ids: list[int]):
