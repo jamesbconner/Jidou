@@ -96,6 +96,32 @@ async def test_new_tv_show_is_created_synced_committed_then_aliased(externals) -
     assert order == ["sync", "commit", "aliases"]  # commit isolates sync from alias failures
 
 
+async def test_full_tmdb_fetch_stamps_metadata_refreshed_at(externals) -> None:
+    result = await get_or_create_show_from_tmdb(
+        _session(None),
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="Brand New Show")),
+        llm=MagicMock(),
+    )
+
+    assert result.show.metadata_refreshed_at is not None
+
+
+async def test_search_card_fallback_is_left_unstamped_so_the_refresh_job_picks_it_up(
+    externals,
+) -> None:
+    externals["fetch"].side_effect = RuntimeError("TMDB down")
+
+    result = await get_or_create_show_from_tmdb(
+        _session(None),
+        MagicMock(),
+        ShowSeed.from_create(ShowCreate(tmdb_id=1396, title="Brand New Show")),
+        llm=MagicMock(),
+    )
+
+    assert result.show.metadata_refreshed_at is None
+
+
 async def test_new_movie_skips_episode_sync(externals) -> None:
     session = _session(None)
 

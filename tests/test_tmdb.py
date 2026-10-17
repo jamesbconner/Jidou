@@ -540,6 +540,20 @@ class TestTMDBPublicMethodsCoverage:
         assert result == expected
         assert mock_req.call_args.args[0] == "/tv/1398/episode_groups"
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [("get_external_ids", (7, "tv")), ("get_episode_groups", (7,))],
+    )
+    async def test_supplemental_endpoints_forward_bypass_cache(
+        self, tmdb_service: TMDBService, method: str, args: tuple[object, ...]
+    ) -> None:
+        """get_external_ids()/get_episode_groups() pass bypass_cache through to _request."""
+        with patch.object(tmdb_service, "_request", new_callable=AsyncMock) as mock_req:
+            mock_req.return_value = {}
+            await getattr(tmdb_service, method)(*args, bypass_cache=True)
+        assert mock_req.call_args.kwargs["bypass_cache"] is True
+
 
 class TestTMDBRequestHTTPLayer:
     """Test _request behaviour at the HTTP transport level."""

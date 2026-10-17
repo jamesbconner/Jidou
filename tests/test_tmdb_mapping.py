@@ -3,7 +3,11 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from jidou.models.show import show_columns
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import (
+    build_show_fields,
+    fetch_show_metadata,
+    stamp_refreshed,
+)
 
 # ---------------------------------------------------------------------------
 # fetch_show_metadata
@@ -25,6 +29,33 @@ async def test_fetch_show_metadata_tv_calls_all_three_endpoints() -> None:
     assert data["name"] == "Show"
     assert data["external_ids"] == {"imdb_id": "tt123"}
     assert data["episode_groups"] == [{"id": "g1"}]
+
+
+async def test_fetch_show_metadata_bypass_cache_forwards_to_every_tv_endpoint() -> None:
+    """bypass_cache=True reaches details, external_ids and episode_groups for TV."""
+    tmdb = AsyncMock()
+    tmdb.get_details = AsyncMock(return_value={"name": "Show"})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+    tmdb.get_episode_groups = AsyncMock(return_value={"results": []})
+
+    await fetch_show_metadata(tmdb, 42, "tv", bypass_cache=True)
+
+    tmdb.get_details.assert_awaited_once_with(42, media_type="tv", bypass_cache=True)
+    tmdb.get_external_ids.assert_awaited_once_with(42, media_type="tv", bypass_cache=True)
+    tmdb.get_episode_groups.assert_awaited_once_with(42, bypass_cache=True)
+
+
+async def test_fetch_show_metadata_bypass_cache_movie_makes_two_calls() -> None:
+    """A bypassed movie fetch forwards the flag and still skips episode_groups."""
+    tmdb = AsyncMock()
+    tmdb.get_details = AsyncMock(return_value={"title": "Movie"})
+    tmdb.get_external_ids = AsyncMock(return_value={})
+
+    await fetch_show_metadata(tmdb, 42, "movie", bypass_cache=True)
+
+    tmdb.get_details.assert_awaited_once_with(42, media_type="movie", bypass_cache=True)
+    tmdb.get_external_ids.assert_awaited_once_with(42, media_type="movie", bypass_cache=True)
+    tmdb.get_episode_groups.assert_not_awaited()
 
 
 async def test_fetch_show_metadata_movie_skips_episode_groups() -> None:
@@ -297,3 +328,20 @@ def test_build_show_fields_writes_exactly_tmdb_columns() -> None:
 
     assert len(fields) > 20
     assert set(fields) == show_columns("tmdb") | {"tmdb_id", "sys_name"}
+
+
+def test_stamp_refreshed_adds_an_aware_utc_timestamp_without_mutating_input() -> None:
+    from datetime import UTC, datetime
+
+    fields = {"title": "X"}
+
+    stamped = stamp_refreshed(fields)
+
+    assert "metadata_refreshed_at" not in fields
+    assert stamped["title"] == "X"
+    assert stamped["metadata_refreshed_at"].tzinfo is UTC
+    assert abs(stamped["metadata_refreshed_at"] - datetime.now(UTC)).total_seconds() < 5
+
+
+def test_build_show_fields_stays_pure_and_never_emits_the_stamp() -> None:
+    assert "metadata_refreshed_at" not in build_show_fields({}, 1, "tv")

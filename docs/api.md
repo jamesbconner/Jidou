@@ -86,6 +86,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | GET | `/api/shows/tmdb/{tmdb_id}` | Fetch TMDB detail for a specific ID |
 | POST | `/api/shows/{id}/rematch` | Re-link show to a different TMDB entry |
 | POST | `/api/shows/{id}/sync-episodes` | Sync episode metadata from TMDB |
+| POST | `/api/shows/{id}/refresh-metadata` | Refresh one show's TMDB-owned metadata (status, next/last episode, counts, ratings) live, bypassing the response cache; never touches `local_path`, aliases, poster overrides or the active episode group |
 | POST | `/api/shows/{id}/aliases/regenerate` | Rebuild TMDB + LLM alias sources; preserves user-added aliases |
 | POST | `/api/shows/{id}/rss-stub` | Link (or create) an RSS subscription for this show |
 | GET | `/api/shows/calendar` | Episodes airing in a date range, across all shows, with computed `tracked`/`missing`/`upcoming` status |
@@ -255,9 +256,9 @@ Replaces every `Episode` row for the show with the chosen grouping's episodes. P
 }
 ```
 
-**Task types:** `scan`, `download`, `match`, `route`, `sync`, `seed`, `backfill_show_metadata`, `import`, `db_import`, `rss_import`, `rss_publish`
+**Task types:** `scan`, `download`, `match`, `route`, `sync`, `seed`, `backfill_show_metadata`, `refresh_show_metadata`, `import`, `db_import`, `rss_import`, `rss_publish`
 
-`POST /api/tasks/trigger` accepts `scan`, `download`, `match`, `route`, `sync`, `seed`, and `backfill_show_metadata` directly. `import`/`db_import`/`rss_import`/`rss_publish` are launched from their own endpoints (`POST /api/import/text`, `POST /api/import/database`, `POST /api/rss/import`, `POST /api/rss/publish`) but still create the same `BackgroundTask` records, tracked and streamed identically.
+`POST /api/tasks/trigger` accepts `scan`, `download`, `match`, `route`, `sync`, `seed`, `backfill_show_metadata`, and `refresh_show_metadata` directly. `import`/`db_import`/`rss_import`/`rss_publish` are launched from their own endpoints (`POST /api/import/text`, `POST /api/import/database`, `POST /api/rss/import`, `POST /api/rss/publish`) but still create the same `BackgroundTask` records, tracked and streamed identically.
 
 All task types support `dry_run: true` — validation and planning runs but no files are moved and no tracking data is written. `seed` is triggered from the Settings page, not the Tasks trigger panel.
 

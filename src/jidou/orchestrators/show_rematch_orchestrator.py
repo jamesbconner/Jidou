@@ -18,7 +18,7 @@ from jidou.schemas.show_schema import RematchRequest
 from jidou.services.episode_tracking import mark_episode_tracked
 from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata, stamp_refreshed
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,9 @@ class ShowRematchOrchestrator:
             payload: Rematch request (provides tmdb_id and media_type).
             data: TMDB detail response, ideally from _fetch_tmdb_details.
         """
-        fields = build_show_fields(data, payload.tmdb_id, payload.media_type, existing=show)
+        fields = stamp_refreshed(
+            build_show_fields(data, payload.tmdb_id, payload.media_type, existing=show)
+        )
         for key, value in fields.items():
             setattr(show, key, value)
         # The episode set is about to be purged and rebuilt against a

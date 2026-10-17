@@ -219,6 +219,17 @@ async def test_fetch_tmdb_details_includes_external_ids_and_episode_groups() -> 
 # ---------------------------------------------------------------------------
 
 
+def test_apply_tmdb_metadata_stamps_metadata_refreshed_at() -> None:
+    show = _make_show()
+    show.metadata_refreshed_at = None
+
+    ShowRematchOrchestrator(MagicMock(), MagicMock())._apply_tmdb_metadata(
+        show, _make_payload(tmdb_id=200), _make_tmdb_data()
+    )
+
+    assert show.metadata_refreshed_at is not None
+
+
 def test_apply_tmdb_metadata_updates_show_fields() -> None:
     """_apply_tmdb_metadata writes TMDB-sourced fields and derives sys_name."""
     session = MagicMock()

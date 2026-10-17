@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 
 # Columns intentionally left out of restore: primary keys and server-managed
 # timestamps that should reflect the moment of import, not the backup's.
-_SHOW_EXCLUDED_COLUMNS = frozenset({"id", "created_at", "updated_at"})
+# metadata_refreshed_at is also excluded: restored rows come back "never
+# refreshed" so the scheduled refresh job re-fetches them first, backup data
+# being stale by definition.
+_SHOW_EXCLUDED_COLUMNS = frozenset({"id", "created_at", "updated_at", "metadata_refreshed_at"})
 _EPISODE_EXCLUDED_COLUMNS = frozenset({"id", "created_at", "updated_at"})
 
 
@@ -98,7 +101,9 @@ _SHOW_REQUIRED = frozenset({"tmdb_id", "title"})
 # ``tmdb_id`` is restored. Sorted so constructor order is deterministic.
 _SHOW_COLUMNS: tuple[_Column, ...] = tuple(
     _Column(name, default=_SHOW_DEFAULTS.get(name), required=name in _SHOW_REQUIRED)
-    for name in sorted(show_columns("tmdb", "user", "derived") | {"tmdb_id"})
+    for name in sorted(
+        (show_columns("tmdb", "user", "derived") | {"tmdb_id"}) - _SHOW_EXCLUDED_COLUMNS
+    )
 )
 
 # Never touched on update: tmdb_id is the upsert key and cached is local state.

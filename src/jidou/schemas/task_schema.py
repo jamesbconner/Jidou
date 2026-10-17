@@ -23,6 +23,7 @@ TaskType = Literal[
     "rss_import",
     "rss_publish",
     "backfill_show_metadata",
+    "refresh_show_metadata",
 ]
 
 

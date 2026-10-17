@@ -27,7 +27,7 @@ from jidou.services.episode_tracking import (
 from jidou.services.filename_parser import heuristic_se
 from jidou.services.llm_service import LLMService
 from jidou.services.tmdb import TMDBService
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata, stamp_refreshed
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class ManualMatchOrchestrator:
         except Exception as exc:
             raise NotFoundError(f"TMDB lookup failed: {exc}") from exc
 
-        fields = build_show_fields(data, tmdb_id, media_type)
+        fields = stamp_refreshed(build_show_fields(data, tmdb_id, media_type))
         new_show = Show(
             **fields,
             content_type=payload.content_type,

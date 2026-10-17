@@ -506,6 +506,10 @@ def test_trigger_task_broker_failure_marks_task_failed() -> None:
         ("sync", "jidou.workers.sync_tasks.sync_all_task"),
         ("seed", "jidou.workers.seed_tasks.seed_remote_task"),
         ("backfill_show_metadata", "jidou.workers.backfill_tasks.backfill_show_metadata_task"),
+        (
+            "refresh_show_metadata",
+            "jidou.workers.show_metadata_refresh_tasks.refresh_show_metadata_task",
+        ),
     ],
 )
 def test_trigger_task_dispatches_the_matching_worker(task_type: str, target: str) -> None:

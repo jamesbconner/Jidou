@@ -240,6 +240,68 @@ class TestScheduledRssImportTask:
 
 
 # ---------------------------------------------------------------------------
+# scheduled_show_metadata_refresh_task
+# ---------------------------------------------------------------------------
+
+
+class TestScheduledShowMetadataRefresh:
+    @pytest.mark.asyncio
+    async def test_skips_without_dispatch_when_a_refresh_is_active(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
+
+        with (
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled", new_callable=AsyncMock
+            ) as dispatch,
+        ):
+            assert await _scheduled_show_metadata_refresh() == "skipped"
+
+        assert claim.await_args is not None
+        assert claim.await_args.args[0] == "refresh_show_metadata"
+        dispatch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dispatches_refresh_task_with_claimed_id(self) -> None:
+        from jidou.workers.scheduled_tasks import _scheduled_show_metadata_refresh
+        from jidou.workers.show_metadata_refresh_tasks import refresh_show_metadata_task
+
+        with (
+            patch(
+                "jidou.workers.scheduled_tasks._try_claim_task",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as claim,
+            patch(
+                "jidou.workers.scheduled_tasks._dispatch_scheduled",
+                new_callable=AsyncMock,
+                return_value="the-id",
+            ) as dispatch,
+        ):
+            assert await _scheduled_show_metadata_refresh() == "the-id"
+
+        assert claim.await_args is not None
+        dispatch.assert_awaited_once_with(
+            "refresh_show_metadata", refresh_show_metadata_task, claim.await_args.args[1]
+        )
+
+    def test_celery_name_and_registration(self) -> None:
+        from jidou.workers.celery_app import celery_app
+        from jidou.workers.scheduled_tasks import scheduled_show_metadata_refresh_task
+
+        name = "jidou.workers.scheduled_tasks.scheduled_show_metadata_refresh_task"
+        assert scheduled_show_metadata_refresh_task.name == name
+        assert name in celery_app.tasks
+        assert "jidou.workers.show_metadata_refresh_tasks.refresh_show_metadata_task" in (
+            celery_app.tasks
+        )
+
+
+# ---------------------------------------------------------------------------
 # Beat schedule wiring
 # ---------------------------------------------------------------------------
 
@@ -255,6 +317,8 @@ class TestBeatScheduleWiring:
             expected_keys.add("scheduled-sync")
         if settings.rss_import_schedule_enabled:
             expected_keys.add("scheduled-rss-import")
+        if settings.show_metadata_refresh_schedule_enabled:
+            expected_keys.add("scheduled-show-metadata-refresh")
         if settings.image_cache_expiration_enabled:
             expected_keys.add("purge-stale-images")
 

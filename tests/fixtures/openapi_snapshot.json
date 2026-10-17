@@ -5165,7 +5165,8 @@
               "db_import",
               "rss_import",
               "rss_publish",
-              "backfill_show_metadata"
+              "backfill_show_metadata",
+              "refresh_show_metadata"
             ],
             "title": "Task Type",
             "type": "string"
@@ -5273,7 +5274,8 @@
               "db_import",
               "rss_import",
               "rss_publish",
-              "backfill_show_metadata"
+              "backfill_show_metadata",
+              "refresh_show_metadata"
             ],
             "title": "Task Type",
             "type": "string"
@@ -11584,6 +11586,65 @@
         ]
       }
     },
+    "/api/shows/{show_id}/refresh-metadata": {
+      "post": {
+        "description": "Refetch a show's TMDB-owned metadata live and return the updated show.\n\nRefreshes status, next/last episode, ratings, networks and the like.\nUser-managed fields (``local_path``, ``content_type``, ``aliases``, poster\noverrides) are untouched, and episodes are not synced -- use\n``sync-episodes`` for that.\n\nArgs:\n    show_id: Database primary key of the show to refresh.\n    db_session: DB session (injected).\n    tmdb: TMDB service (injected).\n\nReturns:\n    The updated :class:`Show` record.\n\nRaises:\n    HTTPException: 404 if the show is not found.\n    UpstreamError: (mapped to 502) if the TMDB fetch fails.",
+        "operationId": "refresh_show_metadata_api_shows__show_id__refresh_metadata_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "in": "path",
+            "name": "show_id",
+            "required": true,
+            "schema": {
+              "title": "Show Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Show Metadata",
+        "tags": [
+          "shows"
+        ]
+      }
+    },
     "/api/shows/{show_id}/rematch": {
       "post": {
         "description": "Re-match a show to a different TMDB entry.\n\nReplaces all TMDB-sourced metadata on the show row, purges every episode\nthat was synced from the old entry, and syncs fresh episodes from the new\nTMDB ID.  User-managed fields (``local_path``, ``content_type``, ``aliases``)\nare preserved.\n\nArgs:\n    show_id: Database primary key of the show to re-match.\n    payload: ``{ \"tmdb_id\": <new_tmdb_id> }``\n    db_session: DB session (injected).\n    tmdb: TMDB service (injected).\n\nReturns:\n    The updated :class:`Show` record.\n\nRaises:\n    HTTPException: 404 if the show is not found.\n    HTTPException: 409 if the target TMDB ID is already tracked as a\n        different show.\n    HTTPException: 502 if TMDB details or episode sync fails.",
@@ -12158,7 +12219,7 @@
     },
     "/api/tasks/trigger": {
       "post": {
-        "description": "Trigger a new background task.\n\nSupported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,\n``seed``, ``backfill_show_metadata``.",
+        "description": "Trigger a new background task.\n\nSupported task types: ``download``, ``scan``, ``match``, ``route``, ``sync``,\n``seed``, ``backfill_show_metadata``, ``refresh_show_metadata``.",
         "operationId": "trigger_task_api_tasks_trigger_post",
         "parameters": [
           {

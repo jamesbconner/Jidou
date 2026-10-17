@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Scheduled show metadata refresh.** Show metadata (`status`, `in_production`, `next_episode_to_air`, `last_episode_to_air`, season/episode counts, ratings and the other TMDB-owned columns) used to be written only when a show was created, matched or rematched, so a show that ended or was renewed afterwards kept a stale status. That made `GET /api/rss/subscriptions/recommendations` suggest turning off the subscription of a show TMDB now reports as "Returning Series". A new job refreshes a capped batch of the most suspect shows live from TMDB, bypassing the response cache, and writes only TMDB-owned columns: `local_path`, aliases, poster overrides and the active episode group are never touched.
+  - Migration `f6a7b8c9d0e1` adds `shows.metadata_refreshed_at` (nullable). Existing shows start as "never refreshed" and are picked first. A database restore also leaves it NULL.
+  - Shows are chosen by priority: contradictory data (a stored "next episode" already in the past), never refreshed, the latest season finished since the last refresh, zero votes, airing shows due (7 days), unknown status (30 days), then ended/cancelled/released shows (90 days). RSS-subscribed shows rank first within each group. Shows whose last air date is older than 5 years are skipped, and a show is never refreshed twice within 24 hours.
+  - New task type `refresh_show_metadata` (`POST /api/tasks/trigger`), scheduled daily at 04:00 UTC, **enabled by default**. Settings: `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED`, `_SCHEDULE_HOURS`, `_LIMIT_PER_RUN` (default 10), `_STALE_DAYS` (30), `_AIRING_DAYS` (7), `_ENDED_DAYS` (90), `_LOOKBACK_YEARS` (5). The limit is per run, not per day.
+  - `POST /api/shows/{show_id}/refresh-metadata` refreshes one show on demand.
+  - A show TMDB no longer has (404) is stamped as refreshed and reported as failed, so it does not crowd out other shows on every run.
+
+### Changed
+- `TMDBService.get_external_ids`, `get_episode_groups` and `fetch_show_metadata` accept `bypass_cache`.
+- Shows created or rematched from a full TMDB fetch, and shows backfilled, are stamped with `metadata_refreshed_at`. A show created from search-card fields only (TMDB details failed) is left unstamped so the job picks it up first.
+
 ## [0.4.8] — 2026-10-12
 
 Wave 5 completes the simplification roadmap. It carries out the 20 approved decision follow-ups (DF-1 … DF-20), which change behaviour on purpose, and closes the program with a documentation and verification pass (XL-3). Each DF item first added a test pinning the new behaviour and showed it failing on the old code; every existing assertion that encoded the old behaviour is named in its PR. Items touching the database were also checked against a real PostgreSQL 16 database.

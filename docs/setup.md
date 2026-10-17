@@ -198,6 +198,20 @@ Poster/backdrop images are proxied and cached to disk rather than the frontend h
 | `IMAGE_CACHE_EXPIRATION_ENABLED` | `true` | Whether the daily purge task runs at all; `false` keeps cached images indefinitely |
 | `IMAGE_CACHE_RETENTION_DAYS` | `180` | How long a cached image is kept before the purge task deletes it (ignored if expiration is disabled) |
 
+### Scheduled tasks
+
+Beat-triggered jobs need the `jidou-beat` service; restart it to apply changes. The show metadata refresh is **on by default**, unlike the sync and RSS import schedules. It re-fetches TMDB metadata for a capped batch of the stalest or most suspect shows (never user-managed fields), which keeps the RSS subscription recommendations accurate.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHOW_METADATA_REFRESH_SCHEDULE_ENABLED` | `true` | Turn the scheduled refresh on or off |
+| `SHOW_METADATA_REFRESH_SCHEDULE_HOURS` | `4` | Comma-separated UTC hours to fire (e.g. `4,16`) |
+| `SHOW_METADATA_REFRESH_LIMIT_PER_RUN` | `10` | Max shows refreshed per run, 1–500 (per run, not per day). A TV show costs 3 TMDB calls |
+| `SHOW_METADATA_REFRESH_STALE_DAYS` | `30` | Re-check interval for shows with an unknown status |
+| `SHOW_METADATA_REFRESH_AIRING_DAYS` | `7` | Re-check interval for shows still airing |
+| `SHOW_METADATA_REFRESH_ENDED_DAYS` | `90` | Re-check interval for ended, cancelled and released shows |
+| `SHOW_METADATA_REFRESH_LOOKBACK_YEARS` | `5` | Skip shows whose last air date is older than this |
+
 ### RSS feed browsing
 
 The RSS page's **Browse** action fetches feed URLs from the backend — see [RSS feed integration](features.md#rss-feed-integration).

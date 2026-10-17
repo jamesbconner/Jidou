@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.show import Show, show_columns
 from jidou.services.callbacks import OnProgress
 from jidou.services.tmdb import TMDBService
-from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata
+from jidou.services.tmdb_mapping import build_show_fields, fetch_show_metadata, stamp_refreshed
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +98,14 @@ class ShowMetadataBackfillOrchestrator:
 
             try:
                 data = await fetch_show_metadata(self.tmdb, show.tmdb_id, show.media_type)
-                fields = build_show_fields(
-                    data, show.tmdb_id, show.media_type, existing=show, title_fallback=show_title
+                fields = stamp_refreshed(
+                    build_show_fields(
+                        data,
+                        show.tmdb_id,
+                        show.media_type,
+                        existing=show,
+                        title_fallback=show_title,
+                    )
                 )
             except Exception:
                 logger.exception(

@@ -1,0 +1,316 @@
+"""Tests for ShowMetadataRefreshOrchestrator."""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx2 as httpx
+import pytest
+
+from jidou.models.show import Show
+from jidou.orchestrators.show_metadata_refresh_orchestrator import (
+    ShowMetadataRefreshOrchestrator,
+)
+from jidou.services.metadata_refresh_policy import RefreshPolicy, ShowRefreshFacts
+
+_MOD = "jidou.orchestrators.show_metadata_refresh_orchestrator"
+NOW = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
+
+
+class _FakeNestedTransaction:
+    """Mimics AsyncSession.begin_nested()'s async context manager."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _policy(limit: int = 10) -> RefreshPolicy:
+    return RefreshPolicy(
+        now=NOW, limit=limit, stale_days=30, airing_days=7, ended_days=90, lookback_years=5
+    )
+
+
+def _show(show_id: int = 1, tmdb_id: int = 100, **fields: object) -> Show:
+    """A transient (never persisted) Show with sensible defaults."""
+    defaults: dict[str, object] = {
+        "id": show_id,
+        "tmdb_id": tmdb_id,
+        "title": f"Show {show_id}",
+        "media_type": "tv",
+        "sys_name": f"Show {show_id}",
+        "status": "Returning Series",
+        "next_episode_to_air": {"air_date": "2026-08-30", "episode_number": 4},
+        "last_episode_to_air": {"air_date": "2026-08-23", "episode_number": 3},
+        "episode_groups": [{"id": "old"}],
+        "local_path": "/library/Show",
+        "aliases": ["alias"],
+        "active_episode_group_id": "grp",
+        "list_poster_path": "/mine.jpg",
+    }
+    return Show(**{**defaults, **fields})
+
+
+def _facts(show_id: int) -> ShowRefreshFacts:
+    return ShowRefreshFacts(
+        show_id=show_id,
+        title=f"Show {show_id}",
+        media_type="tv",
+        status="Returning Series",
+        metadata_refreshed_at=None,
+        vote_count=1,
+        next_air_date=None,
+        last_air_date=None,
+        latest_season_fully_aired=None,
+        has_rss_subscription=False,
+    )
+
+
+def _session(shows: list[Show]) -> AsyncMock:
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = shows
+    session.execute = AsyncMock(return_value=result)
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(side_effect=lambda: _FakeNestedTransaction())
+    return session
+
+
+_ENDED_PAYLOAD = {
+    "name": "Show 1",
+    "status": "Ended",
+    "in_production": False,
+    "number_of_seasons": 1,
+    "number_of_episodes": 12,
+    "next_episode_to_air": None,
+    "last_episode_to_air": {"air_date": "2026-09-05", "episode_number": 12},
+    "vote_count": 10,
+    "external_ids": {"imdb_id": "tt1"},
+    "episode_groups": [{"id": "new"}],
+}
+
+
+def _orch(session: AsyncMock) -> ShowMetadataRefreshOrchestrator:
+    return ShowMetadataRefreshOrchestrator(session, MagicMock(), now=lambda: NOW)
+
+
+# ---------------------------------------------------------------------------
+# refresh_show
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_replaces_stale_status_and_clears_past_next_episode() -> None:
+    """Regression: a show that ended after being added loses its stale 'next' episode."""
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.status == "Ended"
+    assert show.next_episode_to_air is None
+    assert show.last_episode_to_air == {"air_date": "2026-09-05", "episode_number": 12}
+    assert show.number_of_episodes == 12
+
+
+@pytest.mark.asyncio
+async def test_refresh_never_touches_user_or_derived_columns() -> None:
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.local_path == "/library/Show"
+    assert show.aliases == ["alias"]
+    assert show.active_episode_group_id == "grp"
+    assert show.list_poster_path == "/mine.jpg"
+    assert show.sys_name == "Show 1"
+    assert show.tmdb_id == 100
+
+
+@pytest.mark.asyncio
+async def test_refresh_stamps_metadata_refreshed_at() -> None:
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.metadata_refreshed_at == NOW
+
+
+@pytest.mark.asyncio
+async def test_refresh_uses_live_fetch_bypassing_the_cache() -> None:
+    show = _show()
+    fetch = AsyncMock(return_value=_ENDED_PAYLOAD)
+    with patch(f"{_MOD}.fetch_show_metadata", new=fetch):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert fetch.await_args.kwargs == {"bypass_cache": True}
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_existing_episode_groups_when_fetch_failed() -> None:
+    """None means the groups fetch failed; it must not overwrite known groups."""
+    show = _show()
+    payload = {**_ENDED_PAYLOAD, "episode_groups": None}
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)):
+        await _orch(_session([show])).refresh_show(show)
+
+    assert show.episode_groups == [{"id": "old"}]
+
+
+@pytest.mark.asyncio
+async def test_refresh_dry_run_writes_nothing_and_does_not_stamp() -> None:
+    show = _show()
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)):
+        await _orch(_session([show])).refresh_show(show, dry_run=True)
+
+    assert show.status == "Returning Series"
+    assert show.metadata_refreshed_at is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_movie_succeeds() -> None:
+    movie = _show(media_type="movie", status="Released", next_episode_to_air=None)
+    payload = {"title": "Show 1", "status": "Released", "external_ids": {}, "episode_groups": []}
+    with patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=payload)):
+        await _orch(_session([movie])).refresh_show(movie)
+
+    assert movie.metadata_refreshed_at == NOW
+    assert movie.status == "Released"
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+
+def _patch_selection(ids: list[int]):
+    return patch(f"{_MOD}.load_refresh_facts", new=AsyncMock(return_value=[_facts(i) for i in ids]))
+
+
+@pytest.mark.asyncio
+async def test_run_refreshes_each_selected_show_and_commits_per_show() -> None:
+    shows = [_show(1, 100), _show(2, 200)]
+    session = _session(shows)
+    with (
+        _patch_selection([1, 2]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        result = await _orch(session).run(policy=_policy())
+
+    assert (result.shows_checked, result.shows_updated, result.shows_failed) == (2, 2, 0)
+    assert result.updated_titles == ["Show 1", "Show 2"]
+    assert session.commit.await_count == 2
+    assert result.reasons == {"NEVER_REFRESHED": 2}
+
+
+@pytest.mark.asyncio
+async def test_run_respects_the_per_run_limit() -> None:
+    shows = [_show(i, 100 + i) for i in range(1, 6)]
+    session = _session(shows)
+    fetch = AsyncMock(return_value=_ENDED_PAYLOAD)
+    with _patch_selection([1, 2, 3, 4, 5]), patch(f"{_MOD}.fetch_show_metadata", new=fetch):
+        result = await _orch(session).run(policy=_policy(limit=2))
+
+    assert result.shows_checked == 2
+    assert fetch.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_isolates_a_transient_failure_and_does_not_stamp_that_show() -> None:
+    good, bad = _show(1, 100), _show(2, 200)
+    session = _session([good, bad])
+
+    async def fetch(_tmdb, tmdb_id, _media, **_kw):
+        if tmdb_id == 200:
+            raise RuntimeError("boom")
+        return _ENDED_PAYLOAD
+
+    with _patch_selection([1, 2]), patch(f"{_MOD}.fetch_show_metadata", new=fetch):
+        result = await _orch(session).run(policy=_policy())
+
+    assert result.shows_updated == 1
+    assert result.failed_titles == ["Show 2"]
+    assert bad.metadata_refreshed_at is None
+    assert good.metadata_refreshed_at == NOW
+
+
+@pytest.mark.asyncio
+async def test_run_stamps_a_show_tmdb_reports_gone_so_it_is_not_retried_every_run() -> None:
+    dead = _show(1, 100)
+    session = _session([dead])
+    response = httpx.Response(404, request=httpx.Request("GET", "https://x/tv/100"))
+    err = httpx.HTTPStatusError("not found", request=response.request, response=response)
+
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(side_effect=err)),
+    ):
+        result = await _orch(session).run(policy=_policy())
+
+    assert result.shows_failed == 1
+    assert dead.metadata_refreshed_at == NOW
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_rolls_back_a_failed_commit_and_continues() -> None:
+    a, b = _show(1, 100), _show(2, 200)
+    session = _session([a, b])
+    session.commit = AsyncMock(side_effect=[RuntimeError("db down"), None])
+
+    with (
+        _patch_selection([1, 2]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        result = await _orch(session).run(policy=_policy())
+
+    session.rollback.assert_awaited_once()
+    assert result.shows_failed == 1
+    assert result.shows_updated == 1
+
+
+@pytest.mark.asyncio
+async def test_run_dry_run_commits_nothing_and_stamps_nothing() -> None:
+    show = _show()
+    session = _session([show])
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        result = await _orch(session).run(dry_run=True, policy=_policy())
+
+    assert result.shows_updated == 1
+    session.commit.assert_not_awaited()
+    assert show.metadata_refreshed_at is None
+    assert show.status == "Returning Series"
+
+
+@pytest.mark.asyncio
+async def test_run_with_no_candidates_does_nothing() -> None:
+    session = _session([])
+    with _patch_selection([]):
+        result = await _orch(session).run(policy=_policy())
+
+    assert result.shows_checked == 0
+    session.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_reports_progress() -> None:
+    session = _session([_show()])
+    progress = AsyncMock()
+    with (
+        _patch_selection([1]),
+        patch(f"{_MOD}.fetch_show_metadata", new=AsyncMock(return_value=_ENDED_PAYLOAD)),
+    ):
+        await _orch(session).run(policy=_policy(), on_progress=progress)
+
+    progress.assert_awaited_once_with(1, 1, "Refreshing Show 1")
+
+
+def test_default_clock_is_timezone_aware() -> None:
+    orch = ShowMetadataRefreshOrchestrator(MagicMock(), MagicMock())
+    assert orch._now().tzinfo is not None
+    assert abs(orch._now() - datetime.now(UTC)) < timedelta(seconds=5)
