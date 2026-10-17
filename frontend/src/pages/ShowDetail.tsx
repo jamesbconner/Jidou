@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router'
 import {
   useUpdateShowPaths,
   useSyncEpisodes,
+  useRefreshShowMetadata,
   useDeleteShow,
   usePatchShow,
   useSetEpisodeWatched,
@@ -50,6 +51,7 @@ export default function ShowDetail() {
   } = useShowDetailData(showId)
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
+  const refreshMetadata = useRefreshShowMetadata()
   const deleteShow = useDeleteShow()
   const beginRematch = useBeginEpisodeRematch()
   const patchShow = usePatchShow()
@@ -64,7 +66,7 @@ export default function ShowDetail() {
   const [episodesTab, setEpisodesTab] = useState<EpisodesTab>('episodes')
   const [bannerStyle] = useBannerStyle()
 
-  // Resets the modal selection, the tab and other local UI state plus 4 react-query
+  // Resets the modal selection, the tab and other local UI state plus 5 react-query
   // mutation .reset() calls when navigating to a different show — React
   // Router doesn't remount this component on a :id-only route change, so
   // there's no single call site to fold this into. The documented
@@ -77,6 +79,7 @@ export default function ShowDetail() {
     setModal(null)
     setEpisodesTab('episodes')
     syncEpisodes.reset()
+    refreshMetadata.reset()
     updatePaths.reset()
     patchShow.reset()
     ensureRssStub.reset()
@@ -230,8 +233,11 @@ export default function ShowDetail() {
       hasRssSubscription={existingRssSub != null}
       rssPending={ensureRssStub.isPending}
       rssError={ensureRssStub.isError ? (ensureRssStub.error as Error) : null}
+      refreshPending={refreshMetadata.isPending}
+      refreshError={refreshMetadata.isError ? (refreshMetadata.error as Error) : null}
       onRemove={() => setModal({ kind: 'deleteConfirm' })}
       onRss={handleRssButtonClick}
+      onRefreshMetadata={() => refreshMetadata.mutate(showId)}
       onFixMatch={() => setModal({ kind: 'rematch' })}
       onContentType={() => setModal({ kind: 'contentType' })}
       onAliases={() => setModal({ kind: 'aliases' })}

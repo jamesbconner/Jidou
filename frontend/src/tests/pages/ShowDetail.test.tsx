@@ -120,6 +120,12 @@ function mockShowDetail(
   })
 }
 
+/** The sidebar's less common actions live in a "More" menu; open it and pick one. */
+async function chooseFromMoreMenu(name: string) {
+  fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+  fireEvent.click(await screen.findByRole('menuitem', { name }))
+}
+
 describe('ShowDetail — Ignore Missing Eps toggle', () => {
   test('shows "Ignore Missing Eps" for a tracked show and toggles it off on click', async () => {
     mockShowDetail(baseShow({ track_missing_episodes: true }))
@@ -152,8 +158,7 @@ describe('ShowDetail — Change Images modal', () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
-    const button = await screen.findByRole('button', { name: 'Change Images' })
-    fireEvent.click(button)
+    await chooseFromMoreMenu('Change Images')
 
     expect(await screen.findByText('Change Images — Test Show')).toBeInTheDocument()
   })
@@ -345,7 +350,7 @@ describe('ShowDetail — modal state machine', () => {
   test('fires the page-level queries in the original order on mount', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
-    await screen.findByRole('button', { name: 'Change Images' })
+    await screen.findByRole('button', { name: /^More/ })
 
     const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
     const firstIndex = (needle: string) => urls.findIndex((u) => u.includes(needle))
@@ -370,7 +375,7 @@ describe('ShowDetail — modal state machine', () => {
     })
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Set Type' }))
+    await chooseFromMoreMenu('Set Type')
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
     expect(await screen.findByText('nope')).toBeInTheDocument()
     expect(screen.getByText('Set Content Type')).toBeInTheDocument()
@@ -379,7 +384,7 @@ describe('ShowDetail — modal state machine', () => {
     await waitFor(() => {
       expect(screen.queryByText('Set Content Type')).not.toBeInTheDocument()
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Set Type' }))
+    await chooseFromMoreMenu('Set Type')
     expect(await screen.findByText('Set Content Type')).toBeInTheDocument()
     expect(screen.queryByText('nope')).not.toBeInTheDocument()
   })
@@ -420,7 +425,7 @@ describe('ShowDetail — modal state machine', () => {
       })
 
     async function openAliasesAndType(text: string) {
-      fireEvent.click(await screen.findByRole('button', { name: 'Manage Aliases' }))
+      await chooseFromMoreMenu('Manage Aliases')
       const input = await screen.findByPlaceholderText('Add alias…')
       fireEvent.change(input, { target: { value: text } })
       return input
@@ -493,5 +498,116 @@ describe('ShowDetail — modal state machine', () => {
       release()
       expect(await screen.findByText('Fix show assignment')).toBeInTheDocument()
     })
+  })
+})
+
+describe('ShowDetail — More menu and Refresh Metadata', () => {
+  test('keeps Remove, RSS and Refresh Metadata visible and folds the rest into a collapsed More menu', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    expect(await screen.findByRole('button', { name: 'Remove Show' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add RSS' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh Metadata' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^More/ })).toHaveAttribute('aria-expanded', 'false')
+    for (const name of ['Fix Match', 'Set Type', 'Manage Aliases', 'Change Images']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name })).not.toBeInTheDocument()
+    }
+  })
+
+  test('the More menu lists the four less common actions in order', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+
+    const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
+    expect(items.map((i) => i.textContent)).toEqual([
+      'Fix Match',
+      'Set Type',
+      'Manage Aliases',
+      'Change Images',
+    ])
+  })
+
+  test('the Set Type item shows the current content type', async () => {
+    mockShowDetail(baseShow({ content_type: 'anime' }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: /^More/ }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Type: anime' })).toBeInTheDocument()
+  })
+
+  test.each([
+    ['Fix Match', 'Change TMDB Match'],
+    ['Set Type', 'Set Content Type'],
+    ['Change Images', 'Change Images — Test Show'],
+  ])('choosing %s opens its modal', async (item, heading) => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await chooseFromMoreMenu(item)
+
+    expect(await screen.findByText(heading)).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  test('Refresh Metadata POSTs for this show', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh Metadata' }))
+
+    await waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input).includes('/shows/1/refresh-metadata') && init?.method === 'POST',
+        )
+      expect(call).toBeDefined()
+    })
+  })
+
+  test('Refresh Metadata is disabled and relabelled while the request is in flight', async () => {
+    mockShowDetail(baseShow())
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const base = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).includes('/refresh-metadata')) {
+        await gate
+        return mockResponse(baseShow())
+      }
+      return base(input, init)
+    })
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh Metadata' }))
+
+    const pending = await screen.findByRole('button', { name: 'Refreshing…' })
+    expect(pending).toBeDisabled()
+    release()
+    expect(await screen.findByRole('button', { name: 'Refresh Metadata' })).toBeEnabled()
+  })
+
+  test('a failed refresh shows the error next to the button', async () => {
+    mockShowDetail(baseShow())
+    const base = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input, init) =>
+      String(input).includes('/refresh-metadata')
+        ? mockResponse({ detail: 'Failed to refresh show metadata from TMDB' }, 502)
+        : base(input, init),
+    )
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh Metadata' }))
+
+    expect(await screen.findByText('Failed to refresh show metadata from TMDB')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh Metadata' })).toBeEnabled()
   })
 })

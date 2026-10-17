@@ -19,12 +19,13 @@ exports[`ShowDetail characterization: movie > movie with files > dom 1`] = `
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">File linked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: movie</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -77,12 +78,13 @@ exports[`ShowDetail characterization: movie > movie with no file > dom 1`] = `
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">No file linked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Set Type</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -130,12 +132,13 @@ exports[`ShowDetail characterization: tv show > all watched shows Mark Unwatched
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">0 / 2 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -232,12 +235,13 @@ exports[`ShowDetail characterization: tv show > begin-rematch failure message un
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -381,12 +385,13 @@ exports[`ShowDetail characterization: tv show > empty tv page (no path, no episo
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">0 / 0 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Set Type</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -440,12 +445,13 @@ exports[`ShowDetail characterization: tv show > missing tab then back; DOM per t
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -598,12 +604,13 @@ exports[`ShowDetail characterization: tv show > missing tab then back; DOM per t
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -690,12 +697,13 @@ exports[`ShowDetail characterization: tv show > rich tv page DOM and mount reque
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40">Edit RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40">Edit RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>
@@ -863,13 +871,14 @@ exports[`ShowDetail characterization: tv show > rss stub failure message; path m
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
-<span class="text-xs text-red-600 text-right max-w-[10rem]">stub boom</span>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
+<span class="text-xs text-red-600 text-right max-w-[9rem]">stub boom</span>
 </div>
 </div>
 </div>
@@ -1049,13 +1058,14 @@ exports[`ShowDetail characterization: tv show > rss stub failure message; path m
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
-<span class="text-xs text-red-600 text-right max-w-[10rem]">stub boom</span>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
+<span class="text-xs text-red-600 text-right max-w-[9rem]">stub boom</span>
 </div>
 </div>
 </div>
@@ -1215,12 +1225,13 @@ exports[`ShowDetail characterization: tv show > sync failure surfaces inline and
 <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">2 / 4 episodes tracked</p>
 </div>
 <div class="flex-shrink-0 flex flex-col items-end gap-1.5">
-<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-28">Remove Show</button>
-<button class="w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Fix Match</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Type: anime</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Manage Aliases</button>
-<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-28">Change Images</button>
+<button class="btn px-3 py-1.5 text-xs border border-[var(--color-ember-300)] text-[var(--color-ember-600)] hover:bg-[var(--color-ember-50)] dark:border-[var(--color-ember-800)] dark:text-[var(--color-ember-400)] dark:hover:bg-[var(--color-ember-950)]/40 w-36">Remove Show</button>
+<button class="w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-800">Add RSS</button>
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36 whitespace-nowrap disabled:opacity-50">Refresh Metadata</button>
+<div class="relative">
+<button class="btn px-3 py-1.5 text-xs border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 w-36" type="button" aria-haspopup="menu" aria-expanded="false">More <span aria-hidden="true">▾</span>
+</button>
+</div>
 </div>
 </div>
 </div>

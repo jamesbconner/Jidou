@@ -21,7 +21,7 @@ New shows are classified as `tv`, `anime`, or `movie` using TMDB genre and langu
 **Syncing episodes:**
 Use **Sync Episodes** on the Show Detail page (or `POST /api/shows/{id}/sync-episodes`) to pull the latest episode data from TMDB. Useful when a show has aired new episodes since you added it.
 
-Show metadata (status, next/last episode, ratings) is also refreshed automatically: a daily job (04:00 UTC, enabled by default, requires the `jidou-beat` service) re-fetches TMDB details for up to 10 of the stalest or most suspect shows, so a show that ended or was renewed after you added it is picked up without a manual sync. Use `POST /api/shows/{id}/refresh-metadata` to refresh one show on demand. See [Scheduled tasks](setup.md#scheduled-tasks).
+Show metadata (status, next/last episode, ratings) is also refreshed automatically: a daily job (04:00 UTC, enabled by default, requires the `jidou-beat` service) re-fetches TMDB details for up to 10 of the stalest or most suspect shows, so a show that ended or was renewed after you added it is picked up without a manual sync. Use **Refresh Metadata** on the Show Detail page (or `POST /api/shows/{id}/refresh-metadata`) to refresh one show on demand. See [Scheduled tasks](setup.md#scheduled-tasks).
 
 ![Show Detail page](screenshots/show-details-page.png)
 

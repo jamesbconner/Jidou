@@ -1,13 +1,14 @@
 import clsx from 'clsx'
 import { useContext } from 'react'
-import type { ButtonHTMLAttributes } from 'react'
+import type { ComponentPropsWithRef } from 'react'
 import { ModalToneContext } from '@/components/ui/Modal'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger'
 export type ButtonTone = 'light' | 'dark'
 export type ButtonSize = 'sm' | 'md'
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+// React 19 passes `ref` as an ordinary prop, so it only needs to be in the type.
+interface Props extends ComponentPropsWithRef<'button'> {
   variant?: ButtonVariant
   /** Defaults to the enclosing Modal's tone, then falls back to 'light'. */
   tone?: ButtonTone

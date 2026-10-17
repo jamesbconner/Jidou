@@ -291,6 +291,24 @@ export function useSyncEpisodes() {
   })
 }
 
+/**
+ * Refetch one show's TMDB-owned metadata (status, next/last episode, ratings).
+ *
+ * Unlike episode sync this can change the title, poster and status shown on
+ * cards, so the Dashboard cache is invalidated too -- the same gap
+ * useRematchShow closes.
+ */
+export function useRefreshShowMetadata() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (showId: number) => api.post<ShowRead>(`/shows/${showId}/refresh-metadata`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.all })
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
+  })
+}
+
 export function usePatchShow() {
   const qc = useQueryClient()
   return useMutation({

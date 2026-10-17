@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Refresh Metadata button on Show Detail.** Calls `POST /api/shows/{id}/refresh-metadata` and shows a pending state and any error next to the button. It invalidates the show and Dashboard caches, since a refresh can change the title, poster and status shown on cards.
+- **`Menu` UI component** (`components/ui/Menu.tsx`): an accessible menu button (arrow keys, Home/End, Escape returns focus, closes on outside click or Tab).
 - **Scheduled show metadata refresh.** Show metadata (`status`, `in_production`, `next_episode_to_air`, `last_episode_to_air`, season/episode counts, ratings and the other TMDB-owned columns) used to be written only when a show was created, matched or rematched, so a show that ended or was renewed afterwards kept a stale status. That made `GET /api/rss/subscriptions/recommendations` suggest turning off the subscription of a show TMDB now reports as "Returning Series". A new job refreshes a capped batch of the most suspect shows live from TMDB, bypassing the response cache, and writes only TMDB-owned columns: `local_path`, aliases, poster overrides and the active episode group are never touched.
   - Migration `f6a7b8c9d0e1` adds `shows.metadata_refreshed_at` (nullable). Existing shows start as "never refreshed" and are picked first. A database restore also leaves it NULL.
   - Shows are chosen by priority: contradictory data (a stored "next episode" already in the past), never refreshed, the latest season finished since the last refresh, zero votes, airing shows due (7 days), unknown status (30 days), then ended/cancelled/released shows (90 days). RSS-subscribed shows rank first within each group. Shows whose last air date is older than 5 years are skipped, and a show is never refreshed twice within 24 hours.
@@ -15,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - A show TMDB no longer has (404) is stamped as refreshed and reported as failed, so it does not crowd out other shows on every run.
 
 ### Changed
+- **Show Detail sidebar is less cluttered.** Remove Show, Add/Edit RSS and Refresh Metadata stay visible. Fix Match, Set Type, Manage Aliases and Change Images moved into a single **More** menu. Sidebar buttons are `w-36` (was `w-28`) so "Refresh Metadata" fits.
+- `Button` accepts a `ref` in its prop type (React 19 already passed it through at runtime).
 - `TMDBService.get_external_ids`, `get_episode_groups` and `fetch_show_metadata` accept `bypass_cache`.
 - Shows created or rematched from a full TMDB fetch, and shows backfilled, are stamped with `metadata_refreshed_at`. A show created from search-card fields only (TMDB details failed) is left unstamped so the job picks it up first.
 
