@@ -10,6 +10,7 @@ import {
   useCreateShow,
   useDeleteShow,
   useRematchShow,
+  useRefreshShowMetadata,
   showKeys,
 } from '@/hooks/useShows'
 import { dashboardKeys, type RecentQueryParams } from '@/hooks/useDashboard'
@@ -241,5 +242,46 @@ describe('useRematchShow', () => {
     expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
     expect(qc.getQueryState(showKeys.detail(1))?.isInvalidated).toBe(true)
     expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
+  })
+})
+
+describe('useRefreshShowMetadata', () => {
+  test('POSTs to the refresh-metadata endpoint for the given show', async () => {
+    const { wrapper } = makeWrapperWithClient()
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(makeShow()))
+
+    const { result } = renderHook(() => useRefreshShowMetadata(), { wrapper })
+    result.current.mutate(7)
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toContain('/shows/7/refresh-metadata')
+    expect(init?.method).toBe('POST')
+  })
+
+  test('invalidates show and dashboard queries, since title/poster/status can change', async () => {
+    const { wrapper, qc } = makeWrapperWithClient()
+    qc.setQueryData(showKeys.all, [])
+    qc.setQueryData(showKeys.detail(1), makeShow())
+    qc.setQueryData(dashboardKeys.recentShows(RECENT_PARAMS), [])
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse(makeShow()))
+
+    const { result } = renderHook(() => useRefreshShowMetadata(), { wrapper })
+    result.current.mutate(1)
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(qc.getQueryState(showKeys.all)?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(showKeys.detail(1))?.isInvalidated).toBe(true)
+    expect(qc.getQueryState(dashboardKeys.recentShows(RECENT_PARAMS))?.isInvalidated).toBe(true)
+  })
+
+  test('surfaces a failed refresh as an error', async () => {
+    const { wrapper } = makeWrapperWithClient()
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ detail: 'Failed to refresh' }, 502))
+
+    const { result } = renderHook(() => useRefreshShowMetadata(), { wrapper })
+    result.current.mutate(1)
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
   })
 })

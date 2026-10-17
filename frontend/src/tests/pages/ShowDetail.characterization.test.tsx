@@ -149,7 +149,7 @@ function mockApi(opts: Opts = {}): string[] {
 
 async function renderPage() {
   render(createElement(ShowDetail), { wrapper: makeWrapper() })
-  await screen.findByRole('button', { name: 'Change Images' })
+  await screen.findByRole('button', { name: /^More/ })
 }
 
 describe('ShowDetail characterization: tv show', () => {
@@ -238,7 +238,9 @@ describe('ShowDetail characterization: tv show', () => {
       return base(input, init)
     })
     await renderPage()
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Fix Match' }))[1])
+    // The sidebar's Fix Match now lives in the closed More menu, so the only
+    // Fix Match button on the page is the episode row's.
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Fix Match' }))[0])
     await screen.findByText('rematch boom')
     expect(domSnapshot()).toMatchSnapshot('rematch error')
   })

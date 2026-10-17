@@ -3,6 +3,7 @@ import { QueuePositionSelect, WatchlistToggleButton } from '@/pages/showDetail/W
 import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Menu } from '@/components/ui/Menu'
 import { toHostPath } from '@/utils/paths'
 import type { FileRead, MediaPaths, ShowRead, WatchlistRead } from '@/types/api'
 
@@ -136,23 +137,33 @@ interface MaintenanceActionsProps {
   hasRssSubscription: boolean
   rssPending: boolean
   rssError: Error | null
+  refreshPending: boolean
+  refreshError: Error | null
   onRemove: () => void
   onRss: () => void
+  onRefreshMetadata: () => void
   onFixMatch: () => void
   onContentType: () => void
   onAliases: () => void
   onImages: () => void
 }
 
-/** Right-hand column of remove / RSS / rematch / type / alias / image buttons. */
+/**
+ * Right-hand column of actions. Remove, RSS and Refresh Metadata stay visible;
+ * the less common ones (fix match, type, aliases, images) are folded into a
+ * single "More" menu so the column doesn't grow with every new action.
+ */
 export function MaintenanceActions({
   show,
   isDeleting,
   hasRssSubscription,
   rssPending,
   rssError,
+  refreshPending,
+  refreshError,
   onRemove,
   onRss,
+  onRefreshMetadata,
   onFixMatch,
   onContentType,
   onAliases,
@@ -160,13 +171,13 @@ export function MaintenanceActions({
 }: MaintenanceActionsProps) {
   return (
     <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-      <Button onClick={onRemove} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-28">
+      <Button onClick={onRemove} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-36">
         {isDeleting ? 'Removing…' : 'Remove Show'}
       </Button>
       <button
         onClick={onRss}
         disabled={rssPending}
-        className={`w-28 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
+        className={`w-36 px-3 py-1.5 text-xs border rounded disabled:opacity-50 whitespace-nowrap ${
           hasRssSubscription
             ? 'border-green-300 text-green-700 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-950/40'
             : 'hover:bg-gray-50 dark:hover:bg-gray-800'
@@ -174,20 +185,34 @@ export function MaintenanceActions({
       >
         {rssPending ? 'Loading…' : hasRssSubscription ? 'Edit RSS' : 'Add RSS'}
       </button>
-      <Button onClick={onFixMatch} variant="secondary" tone="light" size="sm" className="w-28">
-        Fix Match
+      <Button
+        onClick={onRefreshMetadata}
+        disabled={refreshPending}
+        variant="secondary"
+        tone="light"
+        size="sm"
+        className="w-36 whitespace-nowrap disabled:opacity-50"
+      >
+        {refreshPending ? 'Refreshing…' : 'Refresh Metadata'}
       </Button>
-      <Button onClick={onContentType} variant="secondary" tone="light" size="sm" className="w-28">
-        {show.content_type ? `Type: ${show.content_type}` : 'Set Type'}
-      </Button>
-      <Button onClick={onAliases} variant="secondary" tone="light" size="sm" className="w-28">
-        Manage Aliases
-      </Button>
-      <Button onClick={onImages} variant="secondary" tone="light" size="sm" className="w-28">
-        Change Images
-      </Button>
+      <Menu
+        label="More"
+        variant="secondary"
+        tone="light"
+        size="sm"
+        className="w-36"
+        items={[
+          { label: 'Fix Match', onSelect: onFixMatch },
+          { label: show.content_type ? `Type: ${show.content_type}` : 'Set Type', onSelect: onContentType },
+          { label: 'Manage Aliases', onSelect: onAliases },
+          { label: 'Change Images', onSelect: onImages },
+        ]}
+      />
       {rssError && (
-        <span className="text-xs text-red-600 text-right max-w-[10rem]">{rssError.message}</span>
+        <span className="text-xs text-red-600 text-right max-w-[9rem]">{rssError.message}</span>
+      )}
+      {refreshError && (
+        <span className="text-xs text-red-600 text-right max-w-[9rem]">{refreshError.message}</span>
       )}
     </div>
   )
