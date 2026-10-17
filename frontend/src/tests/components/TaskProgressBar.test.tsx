@@ -19,7 +19,7 @@ const baseTask: TaskList = {
 describe('TaskProgressBar', () => {
   test('renders task type and status', () => {
     render(<TaskProgressBar task={baseTask} />)
-    expect(screen.getByText('scan')).toBeInTheDocument()
+    expect(screen.getByText('Scan')).toBeInTheDocument()
     expect(screen.getByText('running')).toBeInTheDocument()
   })
 
