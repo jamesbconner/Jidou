@@ -10,7 +10,7 @@ import type { TaskRead } from '@/types/api'
  */
 export function LiveImportTask({ task }: { task: TaskRead }) {
   const { data: live } = useTask(task.id)
-  useTaskProgress(task.celery_task_id)
+  useTaskProgress(task.celery_task_id, task.id)
   const t = live ?? task
   return (
     <div className="mt-4 space-y-2">
