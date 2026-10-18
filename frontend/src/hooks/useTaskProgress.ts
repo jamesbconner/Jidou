@@ -8,7 +8,7 @@ import type { WsMessage, TaskRead, TaskList, TaskStatus } from '@/types/api'
 // Track active WebSocket connections globally to avoid premature badge clearance
 let activeConnections = 0
 
-export function useTaskProgress(celeryTaskId: string | null) {
+export function useTaskProgress(celeryTaskId: string | null, taskId: number | null) {
   const qc = useQueryClient()
   const { setState } = useWsConnectionState()
   const socketRef = useRef<ReturnType<typeof connectTaskProgress> | null>(null)
@@ -24,9 +24,9 @@ export function useTaskProgress(celeryTaskId: string | null) {
         (oldList: unknown) => {
           if (!Array.isArray(oldList)) return oldList
           return oldList.map((item: TaskList) => {
-            // Only update if this is the task we're listening to
-            if ('celery_task_id' in item && (item as TaskRead).celery_task_id === celeryTaskId) {
-              const task = item as TaskRead
+            // List rows carry no celery_task_id, so match on the numeric row id.
+            if (taskId !== null && item.id === taskId) {
+              const task = item
               if (msg.type === 'progress') {
                 return {
                   ...task,
@@ -74,7 +74,7 @@ export function useTaskProgress(celeryTaskId: string | null) {
         qc.invalidateQueries({ queryKey: [taskKeys.all[0], 'detail'] })
       }
     },
-    [celeryTaskId, qc],
+    [celeryTaskId, taskId, qc],
   )
 
   useEffect(() => {

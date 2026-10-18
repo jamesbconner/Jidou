@@ -11,7 +11,7 @@ import { taskTypeLabel } from '@/utils/taskTypeLabel'
 
 function LiveTask({ taskId }: { taskId: number }) {
   const { data: task } = useTask(taskId)
-  useTaskProgress(task?.celery_task_id ?? null)
+  useTaskProgress(task?.celery_task_id ?? null, taskId)
   return null
 }
 

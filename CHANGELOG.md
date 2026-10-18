@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.14] — 2026-10-17
+
+Live task progress now reaches the Tasks page as it happens instead of only on the next poll.
+
+### Fixed
+- **Task progress bars move while a task runs.** Live progress pushed over the WebSocket never reached the Tasks page list (its rows have no Celery id to match on), so the bar only caught up on the next 5-second poll, or jumped from pending to complete on a short run. Updates are now matched on the task row id.
+
 ## [0.4.13] — 2026-10-17
 
 Follow-up to 0.4.9: the show metadata refresh can now be started by hand from the Tasks page.
