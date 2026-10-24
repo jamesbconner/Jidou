@@ -180,6 +180,7 @@ def test_show_column_provenance_tagging() -> None:
         "local_path",
         "aliases",
         "aliases_sources",
+        "season_aliases",
         "active_episode_group_id",
         "active_episode_group_name",
         "list_poster_path",

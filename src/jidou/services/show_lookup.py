@@ -1,6 +1,6 @@
 """Resolve a show name (directory name or LLM-parsed title) to a Show row."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,8 @@ async def find_show_by_name(
 
     1. GIN-indexed alias containment — fastest path, and the one hit on
        every re-import once a name has been added via ``alias_handling.add_alias``.
+       The same query also matches a key of ``Show.season_aliases``, so a
+       season name finds its show without being copied into ``aliases``.
     2. Title match. Exact case-insensitive equality when *fuzzy* is False;
        a substring match (``ILIKE '%name%'``) when *fuzzy* is True. These
        are alternatives, not stacked tiers — a substring match already
@@ -47,7 +49,12 @@ async def find_show_by_name(
 
     alias_stmt = (
         select(Show)
-        .where(Show.aliases.cast(JSONB).contains([normalised]))
+        .where(
+            or_(
+                Show.aliases.cast(JSONB).contains([normalised]),
+                Show.season_aliases.cast(JSONB).has_key(normalised),
+            )
+        )
         .order_by(Show.id)
         .limit(1)
     )

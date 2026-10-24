@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from sqlalchemy.dialects import postgresql
+
 from jidou.services.show_lookup import find_show_by_name
 
 
@@ -20,6 +22,20 @@ async def test_alias_containment_hit_short_circuits() -> None:
     result = await find_show_by_name(session, "Attack on Titan")
 
     assert result is show
+    session.execute.assert_awaited_once()
+
+
+async def test_alias_query_also_matches_season_alias_keys() -> None:
+    """The one alias query covers flat aliases and season-alias keys."""
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_mock_result(MagicMock()))
+
+    await find_show_by_name(session, "Tougen Anki - Nikko Kegon no Taki-hen")
+
+    stmt = session.execute.await_args.args[0]
+    sql = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "season_aliases" in sql
+    assert " ? " in sql  # JSONB has_key
     session.execute.assert_awaited_once()
 
 

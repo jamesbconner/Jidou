@@ -4873,6 +4873,20 @@
             ],
             "title": "Runtime"
           },
+          "season_aliases": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Aliases"
+          },
           "show_type": {
             "anyOf": [
               {

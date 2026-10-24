@@ -191,6 +191,7 @@ class ShowRead(ORMModel):
     sys_name: str | None = None
     aliases: list[str] | None = None
     aliases_sources: dict[str, list[str]] | None = None
+    season_aliases: dict[str, int] | None = None
     genres: list[TmdbGenre] | None = None
     origin_country: list[str] | None = None
     last_air_date: str | None = None
