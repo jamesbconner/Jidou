@@ -112,8 +112,15 @@ def add_alias(show: Show, alias: str) -> None:
         show.aliases_sources = sources
 
 
-def _arc_splits(name: str) -> Iterator[tuple[str, str]]:
-    """Yield every ``(prefix, label)`` split of *name* at ``ARC_SEPARATOR``, left to right."""
+def arc_splits(name: str) -> Iterator[tuple[str, str]]:
+    """Yield every ``(prefix, label)`` split of *name* at ``ARC_SEPARATOR``, left to right.
+
+    Args:
+        name: Parsed show name, for example ``"Example Show - Example Arc-hen"``.
+
+    Yields:
+        ``(prefix, label)`` pairs, unstripped; none when *name* has no separator.
+    """
     start = 0
     while (idx := name.find(ARC_SEPARATOR, start)) != -1:
         yield name[:idx], name[idx + len(ARC_SEPARATOR) :]
@@ -130,7 +137,7 @@ def _arc_label(name: str, show: Show) -> str | None:
     Returns:
         The stripped label, or None when no prefix names *show* or the label is empty.
     """
-    for prefix, label in _arc_splits(name):
+    for prefix, label in arc_splits(name):
         label = label.strip()
         if label and names_agree(prefix, show):
             return label

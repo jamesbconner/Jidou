@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
-from jidou.services.alias_handling import sanitize_alias
+from jidou.services.alias_handling import arc_splits, sanitize_alias, season_for_name
 from jidou.services.show_search import escape_like
 
 
@@ -27,6 +27,10 @@ async def find_show_by_name(
        a substring match (``ILIKE '%name%'``) when *fuzzy* is True. These
        are alternatives, not stacked tiers — a substring match already
        covers the exact case, so running both would be a wasted query.
+    3. Season-name prefix. A ``"<show> - <label>"`` name whose label is a
+       season name stored as just the arc title: each ``" - "`` prefix is
+       looked up exactly, and its show is returned only when the label is
+       one of that show's season names.
 
     *fuzzy* defaults to False because substring matching can false-positive
     on franchise titles that share a prefix — "Daredevil" would otherwise
@@ -81,7 +85,32 @@ async def find_show_by_name(
         title_stmt = (
             select(Show).where(func.lower(Show.title) == normalised).order_by(Show.id).limit(1)
         )
-    return (await session.execute(title_stmt)).scalars().first()
+    show = (await session.execute(title_stmt)).scalars().first()
+    if show is not None:
+        return show
+    return await _find_show_by_season_name(session, name)
+
+
+async def _find_show_by_season_name(session: AsyncSession, name: str) -> Show | None:
+    """Find the show a ``"<show> - <season name>"`` name belongs to.
+
+    A season name is usually stored as just the arc title, so the full parsed
+    name matches neither an alias key nor a title. Each ``" - "`` prefix is
+    looked up exactly (never by substring), and its show is accepted only
+    when the rest of the name is one of that show's season names.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        name: The full name that missed the alias and title lookups.
+
+    Returns:
+        The show whose season names cover *name*, or None.
+    """
+    for prefix, _label in arc_splits(name):
+        show = await find_show_by_name(session, prefix)
+        if show is not None and season_for_name(name, show) is not None:
+            return show
+    return None
 
 
 async def find_show_by_tmdb_id(session: AsyncSession, tmdb_id: int) -> Show | None:
