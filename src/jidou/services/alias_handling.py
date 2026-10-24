@@ -180,8 +180,8 @@ def season_for_name(name: str, show: Show) -> int | None:
 def unmapped_arc_label(name: str, show: Show) -> str | None:
     """Return the label of a ``"<show> - <label>"`` name that has no season set.
 
-    Such a name almost always means a season or arc release (SubsPlease names
-    later seasons this way), so guessing Season 1 would misfile it. A name
+    Such a name almost always means a season or arc release (some release
+    groups name later seasons this way), so guessing Season 1 would misfile it. A name
     equal to the show's title, or to a TMDB/LLM-generated alias (those are
     whole-show alternative titles), is never treated as an arc.
 
