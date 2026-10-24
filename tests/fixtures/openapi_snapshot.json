@@ -5075,7 +5075,7 @@
       },
       "ShowSeasonAliasesUpdate": {
         "additionalProperties": false,
-        "description": "Payload for replacing a show's season names.\n\nEach entry maps a release name that means one season (for example an arc\ntitle such as \"Nikko Kegon no Taki-hen\") to that season's number; 0 is\nSpecials. The whole map is replaced, and an empty map clears it.",
+        "description": "Payload for replacing a show's season names.\n\nEach entry maps a release name that means one season (for example an arc\ntitle such as \"Example Arc-hen\") to that season's number; 0 is\nSpecials. The whole map is replaced, and an empty map clears it.",
         "properties": {
           "season_aliases": {
             "additionalProperties": {

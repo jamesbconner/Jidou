@@ -32,7 +32,7 @@ function makeShow(overrides: Partial<ShowRead> = {}): ShowRead {
   return {
     id: 1,
     tmdb_id: 100,
-    title: 'Tougen Anki',
+    title: 'Example Show',
     media_type: 'tv',
     vote_count: 0,
     cached: false,
@@ -56,11 +56,11 @@ function seasonAliasesPut(): unknown {
 describe('AliasModal season names', () => {
   test('lists the show’s existing season names', () => {
     render(
-      <AliasModal show={makeShow({ season_aliases: { 'nikko kegon no taki-hen': 2 } })} onClose={vi.fn()} />,
+      <AliasModal show={makeShow({ season_aliases: { 'example arc-hen': 2 } })} onClose={vi.fn()} />,
       { wrapper: makeWrapper() },
     )
 
-    expect(screen.getByText('nikko kegon no taki-hen')).toBeInTheDocument()
+    expect(screen.getByText('example arc-hen')).toBeInTheDocument()
     expect(screen.getByText('Season 2')).toBeInTheDocument()
   })
 
@@ -68,21 +68,21 @@ describe('AliasModal season names', () => {
     render(<AliasModal show={makeShow()} onClose={vi.fn()} />, { wrapper: makeWrapper() })
 
     fireEvent.change(screen.getByPlaceholderText('Add season name…'), {
-      target: { value: 'Nikko Kegon no Taki-hen' },
+      target: { value: 'Example Arc-hen' },
     })
     fireEvent.change(screen.getByLabelText('Season number'), { target: { value: '2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add season name' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() =>
-      expect(seasonAliasesPut()).toEqual({ season_aliases: { 'nikko kegon no taki-hen': 2 } }),
+      expect(seasonAliasesPut()).toEqual({ season_aliases: { 'example arc-hen': 2 } }),
     )
   })
 
   test('removing a season name and saving sends the map without it', async () => {
     render(
       <AliasModal
-        show={makeShow({ season_aliases: { 'nikko kegon no taki-hen': 2, 'other arc': 3 } })}
+        show={makeShow({ season_aliases: { 'example arc-hen': 2, 'other arc': 3 } })}
         onClose={vi.fn()}
       />,
       { wrapper: makeWrapper() },
@@ -92,7 +92,7 @@ describe('AliasModal season names', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() =>
-      expect(seasonAliasesPut()).toEqual({ season_aliases: { 'nikko kegon no taki-hen': 2 } }),
+      expect(seasonAliasesPut()).toEqual({ season_aliases: { 'example arc-hen': 2 } }),
     )
   })
 })

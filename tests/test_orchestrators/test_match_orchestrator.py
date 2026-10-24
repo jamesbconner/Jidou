@@ -1554,8 +1554,8 @@ async def test_characterize_flush_failure_counts_decided_outcome_and_failed(
 # Season aliases — arc-named releases ("<show> - <arc> - 01")
 # ---------------------------------------------------------------------------
 
-_ARC_FILE = "[SubsPlease] Tougen Anki - Nikko Kegon no Taki-hen - 01 (1080p) [E8DAF239].mkv"
-_ARC_NAME = "Tougen Anki - Nikko Kegon no Taki-hen"
+_ARC_FILE = "[SubsPlease] Example Show - Example Arc-hen - 01 (1080p) [E8DAF239].mkv"
+_ARC_NAME = "Example Show - Example Arc-hen"
 _ARC_ALIAS = sanitize_alias(_ARC_NAME)
 
 
@@ -1583,7 +1583,7 @@ async def _run_arc(show, parsed, *, dry_run=False, on_event=None, **mocks):
 
 async def test_run_season_alias_sets_season_and_resolves_s2():
     """A season name supplies the season the filename lacks; S02E01 is linked."""
-    show = _make_show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
+    show = _make_show(title="Example Show", season_aliases={"example arc-hen": 2})
     ep = MagicMock(id=99, season_number=2, episode_number=1)
     with_season = AsyncMock(return_value=(ep, 2, 1))
 
@@ -1600,7 +1600,7 @@ async def test_run_season_alias_sets_season_and_resolves_s2():
 
 async def test_run_season_alias_miss_keeps_alias_season_for_routing():
     """No S02E01 in the catalog: the file stays matched with season 2 for routing."""
-    show = _make_show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
+    show = _make_show(title="Example Show", season_aliases={"example arc-hen": 2})
 
     file1, _, _ = await _run_arc(show, _parsed(show_name=_ARC_NAME, season=None, episode=1))
 
@@ -1612,7 +1612,7 @@ async def test_run_season_alias_miss_keeps_alias_season_for_routing():
 async def test_run_unmapped_arc_flags_unmatched_instead_of_season_1():
     """Regression: an arc alias with no season must not resolve to S01E01."""
     show = _make_show(
-        title="Tougen Anki",
+        title="Example Show",
         aliases=[_ARC_ALIAS],
         aliases_sources={"user": [_ARC_ALIAS]},
     )
@@ -1624,14 +1624,14 @@ async def test_run_unmapped_arc_flags_unmatched_instead_of_season_1():
 
     assert result.files_unmatched == 1
     assert file1.status == FileStatus.UNMATCHED
-    assert "Nikko Kegon no Taki-hen" in file1.error_message
+    assert "Example Arc-hen" in file1.error_message
     assert file1.show_id is None
     by_number.assert_not_awaited()
 
 
 async def test_run_explicit_season_ignores_season_alias():
     """An explicit season marker wins over a season name."""
-    show = _make_show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
+    show = _make_show(title="Example Show", season_aliases={"example arc-hen": 2})
     with_season = AsyncMock(return_value=None)
 
     file1, _, _ = await _run_arc(
@@ -1644,7 +1644,7 @@ async def test_run_explicit_season_ignores_season_alias():
 
 async def test_dry_run_reports_unmapped_arc():
     """The dry-run preview flags an unmapped arc the same way a real run would."""
-    show = _make_show(title="Tougen Anki", aliases=[_ARC_ALIAS])
+    show = _make_show(title="Example Show", aliases=[_ARC_ALIAS])
     on_event = AsyncMock()
 
     file1, _, result = await _run_arc(
@@ -1662,7 +1662,7 @@ async def test_dry_run_reports_unmapped_arc():
 
 async def test_run_season_alias_rejects_llm_episode_from_another_season(_stub_llm_match_episode):
     """The LLM title fallback cannot move a season-named file back into Season 1."""
-    show = _make_show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
+    show = _make_show(title="Example Show", season_aliases={"example arc-hen": 2})
     _stub_llm_match_episode.return_value = (MagicMock(id=7, season_number=1), 1, 1)
 
     file1, _, _ = await _run_arc(show, _parsed(show_name=_ARC_NAME, season=None, episode=1))

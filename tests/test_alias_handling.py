@@ -171,8 +171,8 @@ def _seasoned(
     )
 
 
-_ARC = "Tougen Anki - Nikko Kegon no Taki-hen"
-_ARC_ALIAS = "tougen anki - nikko kegon no taki-hen"
+_ARC = "Example Show - Example Arc-hen"
+_ARC_ALIAS = "example show - example arc-hen"
 _ALT = "show - alt title"
 
 
@@ -180,10 +180,10 @@ _ALT = "show - alt title"
     ("name", "season_aliases", "expected"),
     [
         (_ARC, {_ARC_ALIAS: 2}, 2),
-        (_ARC, {"nikko kegon no taki-hen": 2}, 2),
-        ("TOUGEN ANKI - Nikko Kegon no Taki hen", {"nikko kegon no taki-hen": 2}, 2),
-        ("Tougen Anki - Some Other Arc", {"nikko kegon no taki-hen": 2}, None),
-        ("Tougen Anki", {"nikko kegon no taki-hen": 2}, None),
+        (_ARC, {"example arc-hen": 2}, 2),
+        ("EXAMPLE SHOW - Example Arc hen", {"example arc-hen": 2}, 2),
+        ("Example Show - Some Other Arc", {"example arc-hen": 2}, None),
+        ("Example Show", {"example arc-hen": 2}, None),
         (_ARC, None, None),
         ("Specials Name", {"specials name": 0}, 0),
     ],
@@ -191,7 +191,7 @@ _ALT = "show - alt title"
 def test_season_for_name(
     name: str, season_aliases: dict[str, int] | None, expected: int | None
 ) -> None:
-    show = _seasoned("Tougen Anki", season_aliases=season_aliases)
+    show = _seasoned("Example Show", season_aliases=season_aliases)
     assert season_for_name(name, show) == expected
 
 
@@ -201,14 +201,14 @@ def test_season_for_name(
         # A flat user alias with no season (the state before season names existed).
         (
             _ARC,
-            "Tougen Anki",
+            "Example Show",
             [_ARC_ALIAS],
             {"user": [_ARC_ALIAS]},
             None,
-            "Nikko Kegon no Taki-hen",
+            "Example Arc-hen",
         ),
-        (_ARC, "Tougen Anki", None, None, {"nikko kegon no taki-hen": 2}, None),
-        ("Tougen Anki", "Tougen Anki", None, None, None, None),
+        (_ARC, "Example Show", None, None, {"example arc-hen": 2}, None),
+        ("Example Show", "Example Show", None, None, None, None),
         # The title itself contains the separator.
         ("Re:Zero - Starting Life", "Re:Zero - Starting Life", None, None, None, None),
         ("Re:Zero - Starting Life - Arc X", "Re:Zero - Starting Life", None, None, None, "Arc X"),
@@ -232,8 +232,8 @@ def test_season_for_name(
         # The prefix does not name this show.
         ("Other - Arc", "Show", None, None, None, None),
         # A hyphen inside a word is not a separator.
-        ("Tougen Anki-hen", "Tougen Anki", None, None, None, None),
-        ("Tougen Anki - ", "Tougen Anki", None, None, None, None),
+        ("Example Show-hen", "Example Show", None, None, None, None),
+        ("Example Show - ", "Example Show", None, None, None, None),
     ],
 )
 def test_unmapped_arc_label(

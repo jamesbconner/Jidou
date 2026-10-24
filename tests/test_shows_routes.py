@@ -1530,11 +1530,11 @@ def test_update_season_aliases_replaces_map() -> None:
     try:
         response = TestClient(app).put(
             "/api/shows/1/season-aliases",
-            json={"season_aliases": {"  Nikko Kegon no Taki-hen ": 2}},
+            json={"season_aliases": {"  Example Arc-hen ": 2}},
         )
         assert response.status_code == 200
-        assert show.season_aliases == {"nikko kegon no taki-hen": 2}
-        assert response.json()["season_aliases"] == {"nikko kegon no taki-hen": 2}
+        assert show.season_aliases == {"example arc-hen": 2}
+        assert response.json()["season_aliases"] == {"example arc-hen": 2}
     finally:
         app.dependency_overrides.clear()
 

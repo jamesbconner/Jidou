@@ -182,7 +182,7 @@ class ShowSeasonAliasesUpdate(RequestModel):
     """Payload for replacing a show's season names.
 
     Each entry maps a release name that means one season (for example an arc
-    title such as "Nikko Kegon no Taki-hen") to that season's number; 0 is
+    title such as "Example Arc-hen") to that season's number; 0 is
     Specials. The whole map is replaced, and an empty map clears it.
     """
 

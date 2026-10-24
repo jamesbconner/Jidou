@@ -10,7 +10,7 @@ from jidou.models.show import Show
 _PUNCT = re.compile(r"[^\w\s]")
 
 # Separates a show name from a season or arc label in release names such as
-# "Tougen Anki - Nikko Kegon no Taki-hen - 01". A hyphen inside a word
+# "Example Show - Example Arc-hen - 01". A hyphen inside a word
 # ("Taki-hen") is never a separator.
 ARC_SEPARATOR = " - "
 
@@ -124,7 +124,7 @@ def _arc_label(name: str, show: Show) -> str | None:
     """Return the label after the first ``"<show name> - "`` prefix of *name*, if any.
 
     Args:
-        name: Parsed show name, for example ``"Tougen Anki - Nikko Kegon no Taki-hen"``.
+        name: Parsed show name, for example ``"Example Show - Example Arc-hen"``.
         show: The show the prefix must name (title or alias, per :func:`names_agree`).
 
     Returns:
@@ -142,7 +142,7 @@ def season_for_name(name: str, show: Show) -> int | None:
 
     The full name is checked first; failing that, the label after a
     ``"<show title or alias> - "`` prefix, so storing just an arc title
-    ("nikko kegon no taki-hen") covers "Tougen Anki - Nikko Kegon no Taki-hen".
+    ("example arc-hen") covers "Example Show - Example Arc-hen".
     Keys are compared with :func:`normalize_name`.
 
     Args:
@@ -153,8 +153,8 @@ def season_for_name(name: str, show: Show) -> int | None:
         The season number, or None when no season name matches.
 
     Examples:
-        >>> show = Show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
-        >>> season_for_name("Tougen Anki - Nikko Kegon no Taki-hen", show)
+        >>> show = Show(title="Example Show", season_aliases={"example arc-hen": 2})
+        >>> season_for_name("Example Show - Example Arc-hen", show)
         2
     """
     if not show.season_aliases:

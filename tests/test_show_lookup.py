@@ -30,7 +30,7 @@ async def test_alias_query_also_matches_season_alias_keys() -> None:
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_mock_result(MagicMock()))
 
-    await find_show_by_name(session, "Tougen Anki - Nikko Kegon no Taki-hen")
+    await find_show_by_name(session, "Example Show - Example Arc-hen")
 
     stmt = session.execute.await_args.args[0]
     sql = str(stmt.compile(dialect=postgresql.dialect()))
