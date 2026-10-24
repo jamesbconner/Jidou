@@ -219,6 +219,17 @@ class ParseOrchestrator:
                 file.original_filename,
                 on_event=sink,
             )
+            if ep is not None and remap_groups and ep.season_number != season:
+                # A season name fixes the season; a title guess from another
+                # season would misfile the arc all over again.
+                logger.info(
+                    "Ignoring LLM episode match S%sE%s for %s: season name says season %s",
+                    llm_ep_season,
+                    llm_ep_num,
+                    file.original_filename,
+                    season,
+                )
+                ep = None
             if ep is not None:
                 season = llm_ep_season if llm_ep_season is not None else season
                 episode = llm_ep_num if llm_ep_num is not None else episode

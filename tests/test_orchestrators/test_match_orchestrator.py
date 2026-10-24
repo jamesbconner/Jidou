@@ -1658,3 +1658,15 @@ async def test_dry_run_reports_unmapped_arc():
     messages = [c.args[1] for c in on_event.await_args_list]
     assert any("unmapped arc" in m for m in messages)
     assert file1.status == FileStatus.DOWNLOADED
+
+
+async def test_run_season_alias_rejects_llm_episode_from_another_season(_stub_llm_match_episode):
+    """The LLM title fallback cannot move a season-named file back into Season 1."""
+    show = _make_show(title="Tougen Anki", season_aliases={"nikko kegon no taki-hen": 2})
+    _stub_llm_match_episode.return_value = (MagicMock(id=7, season_number=1), 1, 1)
+
+    file1, _, _ = await _run_arc(show, _parsed(show_name=_ARC_NAME, season=None, episode=1))
+
+    assert file1.status == FileStatus.MATCHED
+    assert file1.parsed_season == 2
+    assert file1.episode_id is None
