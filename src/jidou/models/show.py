@@ -85,6 +85,10 @@ class Show(TimestampMixin, Base):
     aliases_sources: Mapped[dict[str, list[str]] | None] = mapped_column(
         JSONB, info=_source("user")
     )
+    # Names that mean one specific season, e.g. an arc title released as
+    # "<show> - <arc> - 01": {sanitized name: season_number}. Keys match a
+    # parsed name in full or the label after "<show> - " (alias_handling).
+    season_aliases: Mapped[dict[str, int] | None] = mapped_column(JSONB, info=_source("user"))
     # TMDB genres array: [{"id": 16, "name": "Animation"}, ...]
     genres: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, info=_source("tmdb"))
     # TMDB "adult" flag. NULL means unknown (never populated from a TMDB

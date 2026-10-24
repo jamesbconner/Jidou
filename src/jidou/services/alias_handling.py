@@ -1,12 +1,18 @@
 """Normalise aliases, compare names to shows, and add aliases to a show record."""
 
 import re
+from collections.abc import Iterator
 
 from jidou.models.show import Show
 
 # Anything that is neither a word character nor whitespace. ``\w`` is Unicode-aware,
 # so accented and full-width letters and digits (and ``_``) are kept.
 _PUNCT = re.compile(r"[^\w\s]")
+
+# Separates a show name from a season or arc label in release names such as
+# "Example Show - Example Arc-hen - 01". A hyphen inside a word
+# ("Taki-hen") is never a separator.
+ARC_SEPARATOR = " - "
 
 
 def sanitize_alias(name: str) -> str:
@@ -104,3 +110,93 @@ def add_alias(show: Show, alias: str) -> None:
     if norm not in user_aliases:
         sources["user"] = [*user_aliases, norm]
         show.aliases_sources = sources
+
+
+def arc_splits(name: str) -> Iterator[tuple[str, str]]:
+    """Yield every ``(prefix, label)`` split of *name* at ``ARC_SEPARATOR``, left to right.
+
+    Args:
+        name: Parsed show name, for example ``"Example Show - Example Arc-hen"``.
+
+    Yields:
+        ``(prefix, label)`` pairs, unstripped; none when *name* has no separator.
+    """
+    start = 0
+    while (idx := name.find(ARC_SEPARATOR, start)) != -1:
+        yield name[:idx], name[idx + len(ARC_SEPARATOR) :]
+        start = idx + 1
+
+
+def _arc_label(name: str, show: Show) -> str | None:
+    """Return the label after the first ``"<show name> - "`` prefix of *name*, if any.
+
+    Args:
+        name: Parsed show name, for example ``"Example Show - Example Arc-hen"``.
+        show: The show the prefix must name (title or alias, per :func:`names_agree`).
+
+    Returns:
+        The stripped label, or None when no prefix names *show* or the label is empty.
+    """
+    for prefix, label in arc_splits(name):
+        label = label.strip()
+        if label and names_agree(prefix, show):
+            return label
+    return None
+
+
+def season_for_name(name: str, show: Show) -> int | None:
+    """Return the season a parsed name means, from ``show.season_aliases``.
+
+    The full name is checked first; failing that, the label after a
+    ``"<show title or alias> - "`` prefix, so storing just an arc title
+    ("example arc-hen") covers "Example Show - Example Arc-hen".
+    Keys are compared with :func:`normalize_name`.
+
+    Args:
+        name: Parsed show name.
+        show: The matched show.
+
+    Returns:
+        The season number, or None when no season name matches.
+
+    Examples:
+        >>> show = Show(title="Example Show", season_aliases={"example arc-hen": 2})
+        >>> season_for_name("Example Show - Example Arc-hen", show)
+        2
+    """
+    if not show.season_aliases:
+        return None
+    seasons = {
+        key: season
+        for alias, season in show.season_aliases.items()
+        if (key := normalize_name(alias))
+    }
+    if (season := seasons.get(normalize_name(name))) is not None:
+        return season
+    label = _arc_label(name, show)
+    return seasons.get(normalize_name(label)) if label is not None else None
+
+
+def unmapped_arc_label(name: str, show: Show) -> str | None:
+    """Return the label of a ``"<show> - <label>"`` name that has no season set.
+
+    Such a name almost always means a season or arc release (some release
+    groups name later seasons this way), so guessing Season 1 would misfile it. A name
+    equal to the show's title, or to a TMDB/LLM-generated alias (those are
+    whole-show alternative titles), is never treated as an arc.
+
+    Args:
+        name: Parsed show name.
+        show: The matched show.
+
+    Returns:
+        The label text, or None when *name* is not an unmapped arc name.
+    """
+    if season_for_name(name, show) is not None:
+        return None
+    key = normalize_name(name)
+    sources = show.aliases_sources or {}
+    generated = [*(sources.get("tmdb") or []), *(sources.get("llm") or [])]
+    if key == normalize_name(show.title) or any(normalize_name(a) == key for a in generated):
+        return None
+    return _arc_label(name, show)

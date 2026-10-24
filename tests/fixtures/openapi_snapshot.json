@@ -4873,6 +4873,20 @@
             ],
             "title": "Runtime"
           },
+          "season_aliases": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Aliases"
+          },
           "show_type": {
             "anyOf": [
               {
@@ -5057,6 +5071,27 @@
           "matched_on"
         ],
         "title": "ShowSearchResult",
+        "type": "object"
+      },
+      "ShowSeasonAliasesUpdate": {
+        "additionalProperties": false,
+        "description": "Payload for replacing a show's season names.\n\nEach entry maps a release name that means one season (for example an arc\ntitle such as \"Example Arc-hen\") to that season's number; 0 is\nSpecials. The whole map is replaced, and an empty map clears it.",
+        "properties": {
+          "season_aliases": {
+            "additionalProperties": {
+              "maximum": 999.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "maxLength": 500,
+              "minLength": 1
+            },
+            "title": "Season Aliases",
+            "type": "object"
+          }
+        },
+        "title": "ShowSeasonAliasesUpdate",
         "type": "object"
       },
       "SnapshotType": {
@@ -11961,6 +11996,75 @@
           }
         },
         "summary": "Scan Show Local Movie File",
+        "tags": [
+          "shows"
+        ]
+      }
+    },
+    "/api/shows/{show_id}/season-aliases": {
+      "put": {
+        "description": "Replace the season names for a show.\n\nNames are normalised to lowercase before storage, matching flat aliases.\nThe parse pipeline uses them to give a season to files named\n``\"<show> - <season name> - 01\"`` (see ``alias_handling.season_for_name``).\n\nArgs:\n    show_id: Database primary key.\n    payload: New name-to-season map; empty clears it.\n    db_session: DB session (injected).\n\nReturns:\n    The updated :class:`Show` record.\n\nRaises:\n    HTTPException: 404 if the show is not found.",
+        "operationId": "update_show_season_aliases_api_shows__show_id__season_aliases_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "in": "path",
+            "name": "show_id",
+            "required": true,
+            "schema": {
+              "title": "Show Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSeasonAliasesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Show Season Aliases",
         "tags": [
           "shows"
         ]
