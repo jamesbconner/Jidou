@@ -35,7 +35,9 @@ from jidou.schemas.show_schema import (
     ShowPaths,
     ShowRead,
     ShowSearchResult,
+    ShowSeasonAliasesUpdate,
 )
+from jidou.services.alias_handling import sanitize_alias
 from jidou.services.cache import cache
 from jidou.services.discover_feed import to_discover_result
 from jidou.services.llm_service import LLMService
@@ -826,6 +828,40 @@ async def update_show_aliases(
     await db_session.flush()
     await db_session.refresh(show)
     logger.info("Updated user aliases for show id=%d: %r", show_id, normalised)
+    return show
+
+
+@router.put("/{show_id}/season-aliases", response_model=ShowRead)
+async def update_show_season_aliases(
+    show_id: int,
+    payload: ShowSeasonAliasesUpdate,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Show:
+    """Replace the season names for a show.
+
+    Names are normalised to lowercase before storage, matching flat aliases.
+    The parse pipeline uses them to give a season to files named
+    ``"<show> - <season name> - 01"`` (see ``alias_handling.season_for_name``).
+
+    Args:
+        show_id: Database primary key.
+        payload: New name-to-season map; empty clears it.
+        db_session: DB session (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found.
+    """
+    show = await get_show_or_404(db_session, show_id)
+    season_aliases = {
+        sanitize_alias(name): season for name, season in payload.season_aliases.items()
+    }
+    show.season_aliases = season_aliases or None
+    await db_session.flush()
+    await db_session.refresh(show)
+    logger.info("Updated season aliases for show id=%d: %r", show_id, season_aliases)
     return show
 
 

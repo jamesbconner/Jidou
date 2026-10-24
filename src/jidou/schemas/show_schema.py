@@ -1,9 +1,9 @@
 """Pydantic schemas for Show API request/response validation."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from jidou.models.show import ContentType
 from jidou.schemas._base import (
@@ -170,6 +170,23 @@ class ShowAliasesUpdate(RequestModel):
     """
 
     aliases: list[str] = Field(default_factory=list)
+
+
+SeasonAliasName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
+]
+SeasonNumber = Annotated[int, Field(ge=0, le=999)]
+
+
+class ShowSeasonAliasesUpdate(RequestModel):
+    """Payload for replacing a show's season names.
+
+    Each entry maps a release name that means one season (for example an arc
+    title such as "Nikko Kegon no Taki-hen") to that season's number; 0 is
+    Specials. The whole map is replaced, and an empty map clears it.
+    """
+
+    season_aliases: dict[SeasonAliasName, SeasonNumber] = Field(default_factory=dict)
 
 
 class ShowRead(ORMModel):

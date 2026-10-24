@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from jidou.main import app
@@ -61,6 +62,7 @@ def _make_show(
     s.sys_name = None
     s.aliases = None
     s.aliases_sources = None
+    s.season_aliases = None
     s.genres = None
     s.origin_country = None
     s.last_air_date = None
@@ -1514,6 +1516,80 @@ def test_update_aliases_returns_404_for_missing_show() -> None:
 
 
 # ---------------------------------------------------------------------------
+# PUT /api/shows/{show_id}/season-aliases
+# ---------------------------------------------------------------------------
+
+
+def test_update_season_aliases_replaces_map() -> None:
+    """PUT /api/shows/{id}/season-aliases stores sanitized names and returns them."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    show.season_aliases = {"old arc": 3}
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).put(
+            "/api/shows/1/season-aliases",
+            json={"season_aliases": {"  Nikko Kegon no Taki-hen ": 2}},
+        )
+        assert response.status_code == 200
+        assert show.season_aliases == {"nikko kegon no taki-hen": 2}
+        assert response.json()["season_aliases"] == {"nikko kegon no taki-hen": 2}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_season_aliases_empty_map_stores_none() -> None:
+    """An empty map clears the column to NULL."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)
+    show.season_aliases = {"old arc": 3}
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    try:
+        response = TestClient(app).put("/api/shows/1/season-aliases", json={"season_aliases": {}})
+        assert response.status_code == 200
+        assert show.season_aliases is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"season_aliases": {"arc": -1}},
+        {"season_aliases": {"arc": 1000}},
+        {"season_aliases": {"   ": 2}},
+        {"season_aliases": {"x" * 501: 2}},
+    ],
+)
+def test_update_season_aliases_rejects_invalid_entries(body: dict[str, object]) -> None:
+    """Out-of-range seasons and blank or overlong names are a 422."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=_make_show(id=1))
+    try:
+        response = TestClient(app).put("/api/shows/1/season-aliases", json=body)
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_season_aliases_returns_404_for_missing_show() -> None:
+    """PUT /api/shows/{id}/season-aliases returns 404 when the show doesn't exist."""
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=None)
+    try:
+        response = TestClient(app).put(
+            "/api/shows/9999/season-aliases", json={"season_aliases": {}}
+        )
+        assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
 # POST /api/shows/{show_id}/rematch
 # ---------------------------------------------------------------------------
 
@@ -2565,8 +2641,6 @@ def test_apply_episode_group_returns_422_for_movie() -> None:
 # ---------------------------------------------------------------------------
 # _infer_content_type helper
 # ---------------------------------------------------------------------------
-
-import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize(

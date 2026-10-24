@@ -51,6 +51,7 @@ _MINIMAL_BODIES: dict[str, dict[str, Any]] = {
     "RssSubscriptionCreate": {"name": "Sub"},
     "RssSubscriptionUpdate": {},
     "ShowAliasesUpdate": {},
+    "ShowSeasonAliasesUpdate": {},
     "ShowCreate": {"tmdb_id": 1, "title": "Show"},
     "ShowPatch": {},
     "ShowPaths": {},
