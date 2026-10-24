@@ -648,6 +648,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/season-aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Show Season Aliases
+         * @description Replace the season names for a show.
+         *
+         *     Names are normalised to lowercase before storage, matching flat aliases.
+         *     The parse pipeline uses them to give a season to files named
+         *     ``"<show> - <season name> - 01"`` (see ``alias_handling.season_for_name``).
+         *
+         *     Args:
+         *         show_id: Database primary key.
+         *         payload: New name-to-season map; empty clears it.
+         *         db_session: DB session (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Show` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found.
+         */
+        put: operations["update_show_season_aliases_api_shows__show_id__season_aliases_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/aliases/regenerate": {
         parameters: {
             query?: never;
@@ -5116,6 +5151,10 @@ export interface components {
             aliases_sources?: {
                 [key: string]: string[];
             } | null;
+            /** Season Aliases */
+            season_aliases?: {
+                [key: string]: number;
+            } | null;
             /** Genres */
             genres?: components["schemas"]["TmdbGenre"][] | null;
             /** Origin Country */
@@ -5212,6 +5251,20 @@ export interface components {
              * @enum {string}
              */
             matched_on: "title" | "alias" | "sys_name" | "path";
+        };
+        /**
+         * ShowSeasonAliasesUpdate
+         * @description Payload for replacing a show's season names.
+         *
+         *     Each entry maps a release name that means one season (for example an arc
+         *     title such as "Example Arc-hen") to that season's number; 0 is
+         *     Specials. The whole map is replaced, and an empty map clears it.
+         */
+        ShowSeasonAliasesUpdate: {
+            /** Season Aliases */
+            season_aliases?: {
+                [key: string]: number;
+            };
         };
         /**
          * SnapshotType
@@ -6281,6 +6334,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ShowAliasesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_show_season_aliases_api_shows__show_id__season_aliases_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowSeasonAliasesUpdate"];
             };
         };
         responses: {

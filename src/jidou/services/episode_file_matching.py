@@ -87,7 +87,7 @@ async def _resolve_via_group_remap(
     return remapped_ep, real_season, real_episode
 
 
-async def _resolve_with_season(
+async def resolve_with_season(
     session: AsyncSession,
     show_id: int,
     episode_group_map: dict[str, object] | None,
@@ -196,9 +196,7 @@ async def match_entry_to_episode(
     absolute_guess = entry.absolute_candidate if entry.absolute_candidate is not None else episode
 
     if season is not None:
-        season_hit = await _resolve_with_season(
-            session, show_id, episode_group_map, season, episode
-        )
+        season_hit = await resolve_with_season(session, show_id, episode_group_map, season, episode)
         if season_hit is not None:
             return season_hit
         # Season 1 directory (or a season>1 miss the remap could not rescue): the

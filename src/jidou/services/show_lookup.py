@@ -1,11 +1,11 @@
 """Resolve a show name (directory name or LLM-parsed title) to a Show row."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.models.show import Show
-from jidou.services.alias_handling import sanitize_alias
+from jidou.services.alias_handling import arc_splits, sanitize_alias, season_for_name
 from jidou.services.show_search import escape_like
 
 
@@ -21,10 +21,16 @@ async def find_show_by_name(
 
     1. GIN-indexed alias containment — fastest path, and the one hit on
        every re-import once a name has been added via ``alias_handling.add_alias``.
+       The same query also matches a key of ``Show.season_aliases``, so a
+       season name finds its show without being copied into ``aliases``.
     2. Title match. Exact case-insensitive equality when *fuzzy* is False;
        a substring match (``ILIKE '%name%'``) when *fuzzy* is True. These
        are alternatives, not stacked tiers — a substring match already
        covers the exact case, so running both would be a wasted query.
+    3. Season-name prefix. A ``"<show> - <label>"`` name whose label is a
+       season name stored as just the arc title: each ``" - "`` prefix is
+       looked up exactly, and its show is returned only when the label is
+       one of that show's season names.
 
     *fuzzy* defaults to False because substring matching can false-positive
     on franchise titles that share a prefix — "Daredevil" would otherwise
@@ -47,7 +53,12 @@ async def find_show_by_name(
 
     alias_stmt = (
         select(Show)
-        .where(Show.aliases.cast(JSONB).contains([normalised]))
+        .where(
+            or_(
+                Show.aliases.cast(JSONB).contains([normalised]),
+                Show.season_aliases.cast(JSONB).has_key(normalised),
+            )
+        )
         .order_by(Show.id)
         .limit(1)
     )
@@ -74,7 +85,32 @@ async def find_show_by_name(
         title_stmt = (
             select(Show).where(func.lower(Show.title) == normalised).order_by(Show.id).limit(1)
         )
-    return (await session.execute(title_stmt)).scalars().first()
+    show = (await session.execute(title_stmt)).scalars().first()
+    if show is not None:
+        return show
+    return await _find_show_by_season_name(session, name)
+
+
+async def _find_show_by_season_name(session: AsyncSession, name: str) -> Show | None:
+    """Find the show a ``"<show> - <season name>"`` name belongs to.
+
+    A season name is usually stored as just the arc title, so the full parsed
+    name matches neither an alias key nor a title. Each ``" - "`` prefix is
+    looked up exactly (never by substring), and its show is accepted only
+    when the rest of the name is one of that show's season names.
+
+    Args:
+        session: Active async SQLAlchemy session.
+        name: The full name that missed the alias and title lookups.
+
+    Returns:
+        The show whose season names cover *name*, or None.
+    """
+    for prefix, _label in arc_splits(name):
+        show = await find_show_by_name(session, prefix)
+        if show is not None and season_for_name(name, show) is not None:
+            return show
+    return None
 
 
 async def find_show_by_tmdb_id(session: AsyncSession, tmdb_id: int) -> Show | None:

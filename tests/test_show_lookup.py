@@ -2,6 +2,9 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from sqlalchemy.dialects import postgresql
+
+from jidou.models.show import Show
 from jidou.services.show_lookup import find_show_by_name
 
 
@@ -20,6 +23,20 @@ async def test_alias_containment_hit_short_circuits() -> None:
     result = await find_show_by_name(session, "Attack on Titan")
 
     assert result is show
+    session.execute.assert_awaited_once()
+
+
+async def test_alias_query_also_matches_season_alias_keys() -> None:
+    """The one alias query covers flat aliases and season-alias keys."""
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_mock_result(MagicMock()))
+
+    await find_show_by_name(session, "Example Show - Example Arc-hen")
+
+    stmt = session.execute.await_args.args[0]
+    sql = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "season_aliases" in sql
+    assert " ? " in sql  # JSONB has_key
     session.execute.assert_awaited_once()
 
 
@@ -140,3 +157,51 @@ async def test_find_show_by_tmdb_id_filters_on_tmdb_id() -> None:
     stmt = session.execute.await_args.args[0]
     assert "shows.tmdb_id" in str(stmt.whereclause)
     assert stmt.whereclause.right.value == 42
+
+
+def _arc_show(season_aliases: dict[str, int] | None) -> Show:
+    return Show(tmdb_id=1, title="Example Show", media_type="tv", season_aliases=season_aliases)
+
+
+async def test_arc_only_season_name_finds_show_through_its_prefix() -> None:
+    """Regression: a season name stored as just the arc title still finds the show.
+
+    Full-name alias and title queries miss; the "<prefix> - " split then looks the
+    prefix up exactly and accepts the show because the label is one of its season names.
+    """
+    show = _arc_show({"example arc-hen": 2})
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            _mock_result(None),  # full name: alias / season-name key
+            _mock_result(None),  # full name: title (fuzzy)
+            _mock_result(None),  # prefix: alias / season-name key
+            _mock_result(show),  # prefix: exact title
+        ]
+    )
+
+    result = await find_show_by_name(session, "Example Show - Example Arc-hen", fuzzy=True)
+
+    assert result is show
+
+
+async def test_prefix_show_without_that_season_name_is_not_returned() -> None:
+    """A prefix hit alone is not enough; the label must be one of the show's season names."""
+    show = _arc_show({"another arc": 3})
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[_mock_result(None), _mock_result(None), _mock_result(None), _mock_result(show)]
+    )
+
+    result = await find_show_by_name(session, "Example Show - Example Arc-hen", fuzzy=True)
+
+    assert result is None
+
+
+async def test_name_without_separator_issues_no_prefix_queries() -> None:
+    """A plain name that misses costs exactly the two queries it always did."""
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=[_mock_result(None), _mock_result(None)])
+
+    assert await find_show_by_name(session, "Example Show", fuzzy=True) is None
+    assert session.execute.await_count == 2

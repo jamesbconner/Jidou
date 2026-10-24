@@ -3,7 +3,12 @@
 import pytest
 
 from jidou.models.show import Show
-from jidou.services.alias_handling import add_alias, sanitize_alias
+from jidou.services.alias_handling import (
+    add_alias,
+    sanitize_alias,
+    season_for_name,
+    unmapped_arc_label,
+)
 
 
 def _show(
@@ -147,3 +152,97 @@ def test_names_agree_rule_table(
     assert names_agree(name, _titled(title, aliases)) is new
     # The old results document which rule changes outcome; no further oracle.
     assert isinstance(old_parse, bool) and isinstance(old_path, bool)
+
+
+def _seasoned(
+    title: str,
+    *,
+    aliases: list[str] | None = None,
+    sources: dict[str, list[str]] | None = None,
+    season_aliases: dict[str, int] | None = None,
+) -> Show:
+    return Show(
+        tmdb_id=1,
+        title=title,
+        media_type="tv",
+        aliases=aliases,
+        aliases_sources=sources,
+        season_aliases=season_aliases,
+    )
+
+
+_ARC = "Example Show - Example Arc-hen"
+_ARC_ALIAS = "example show - example arc-hen"
+_ALT = "show - alt title"
+
+
+@pytest.mark.parametrize(
+    ("name", "season_aliases", "expected"),
+    [
+        (_ARC, {_ARC_ALIAS: 2}, 2),
+        (_ARC, {"example arc-hen": 2}, 2),
+        ("EXAMPLE SHOW - Example Arc hen", {"example arc-hen": 2}, 2),
+        ("Example Show - Some Other Arc", {"example arc-hen": 2}, None),
+        ("Example Show", {"example arc-hen": 2}, None),
+        (_ARC, None, None),
+        ("Specials Name", {"specials name": 0}, 0),
+    ],
+)
+def test_season_for_name(
+    name: str, season_aliases: dict[str, int] | None, expected: int | None
+) -> None:
+    show = _seasoned("Example Show", season_aliases=season_aliases)
+    assert season_for_name(name, show) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "title", "aliases", "sources", "season_aliases", "expected"),
+    [
+        # A flat user alias with no season (the state before season names existed).
+        (
+            _ARC,
+            "Example Show",
+            [_ARC_ALIAS],
+            {"user": [_ARC_ALIAS]},
+            None,
+            "Example Arc-hen",
+        ),
+        (_ARC, "Example Show", None, None, {"example arc-hen": 2}, None),
+        ("Example Show", "Example Show", None, None, None, None),
+        # The title itself contains the separator.
+        ("Re:Zero - Starting Life", "Re:Zero - Starting Life", None, None, None, None),
+        ("Re:Zero - Starting Life - Arc X", "Re:Zero - Starting Life", None, None, None, "Arc X"),
+        # Generated alternative titles are whole-show names, never arcs.
+        (
+            "Show - Alt Title",
+            "Show",
+            ["show - alt title"],
+            {"tmdb": ["show - alt title"]},
+            None,
+            None,
+        ),
+        (
+            "Show - Alt Title",
+            "Show",
+            ["show - alt title"],
+            {"llm": ["show - alt title"]},
+            None,
+            None,
+        ),
+        # The prefix does not name this show.
+        ("Other - Arc", "Show", None, None, None, None),
+        # A hyphen inside a word is not a separator.
+        ("Example Show-hen", "Example Show", None, None, None, None),
+        ("Example Show - ", "Example Show", None, None, None, None),
+    ],
+)
+def test_unmapped_arc_label(
+    name: str,
+    title: str,
+    aliases: list[str] | None,
+    sources: dict[str, list[str]] | None,
+    season_aliases: dict[str, int] | None,
+    expected: str | None,
+) -> None:
+    show = _seasoned(title, aliases=aliases, sources=sources, season_aliases=season_aliases)
+    assert unmapped_arc_label(name, show) == expected
