@@ -345,6 +345,18 @@ export function useUpdateShowAliases(showId: number) {
   })
 }
 
+/** Replace a show's season names (release name -> season number). */
+export function useUpdateSeasonAliases(showId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (seasonAliases: Record<string, number>) =>
+      api.put<ShowRead>(`/shows/${showId}/season-aliases`, { season_aliases: seasonAliases }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.detail(showId) })
+    },
+  })
+}
+
 export function useRegenerateShowAliases(showId: number) {
   const qc = useQueryClient()
   return useMutation({
