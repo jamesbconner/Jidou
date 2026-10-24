@@ -58,15 +58,20 @@ If the LLM is unavailable, returns no response, or returns unparseable JSON, thi
 **Stage 2 — confidence gate.** Only applies when the LLM actually ran (`llm_ok=True`) and the result isn't a movie (movies legitimately have `episode=null`, which would otherwise trigger the same penalty as a genuinely low-confidence parse). If `confidence < 0.7`, the file is set to `UNMATCHED` with an explanatory `error_message` and the pipeline moves on — no show/episode lookup is even attempted. Heuristic-only results skip this gate entirely and always proceed to lookup, regardless of their fixed 0.6/0.1 confidence.
 
 **Stage 3 — show lookup (`_find_show`).** Thin wrapper around the shared `services/show_lookup.find_show_by_name(session, name, fuzzy=True)`, also used by Pipeline B (see below):
-1. `show.aliases` (GIN-indexed JSONB array) contains the case-folded parsed name — exact containment, not substring.
+1. `show.aliases` (GIN-indexed JSONB array) contains the case-folded parsed name — exact containment, not substring. The same query also matches a key of `show.season_aliases` (see Stage 3b), so a season name finds its show without being copied into `aliases`.
 2. `fuzzy=True` here → case-insensitive `ILIKE '%name%'` against `show.title` (with `%`/`_`/`\` escaped so a parsed name containing those doesn't act as a wildcard).
+
+**Stage 3b — season names (`alias_handling.season_for_name` / `unmapped_arc_label`).** Only when the parsed season is `None`. Some releases name a later season by an arc title instead of a number (`[SubsPlease] Tougen Anki - Nikko Kegon no Taki-hen - 01 (1080p)`), so the parser returns `show_name="Tougen Anki - Nikko Kegon no Taki-hen"`, `season=None`, `episode=1`. Without this step the absolute/Season-1 fallback below would link S01E01.
+- If the full parsed name, or the label after a `"<show title or alias> - "` prefix, is a key of `show.season_aliases`, that season is used: `file.parsed_season` is set and the episode is resolved with `episode_file_matching.resolve_with_season` (direct `(season, episode)` lookup, then the `episode_group_map` remap for season > 1 — TMDB may number the arc as a continuation of an earlier season). If neither hits, the file stays `MATCHED` with no episode but keeps the season, so Route still puts it in the right `Season NN` directory.
+- Otherwise, if the name is `"<show title or alias> - <label>"` (split on the literal `" - "`, so a hyphen inside a word like `Taki-hen` never counts) and is neither the show's own title nor a TMDB/LLM-generated alias, the file is set to `UNMATCHED` with an `error_message` naming the label and telling the user to add it under **Season names** in the show's aliases. This is a deliberate stop instead of a Season 1 guess.
+- Season names are edited in the Manage Aliases modal (`PUT /api/shows/{id}/season-aliases`). The dry-run preview reports both outcomes.
 
 **Stage 4 — episode lookup.** Calls the shared `services/episode_lookup.resolve_episode(session, show_id, season, episode)`, also used by Pipeline B (see below):
 1. `season` known → `(show_id, season_number, episode_number)` exact match, no fallback on a miss.
 2. `season` unknown → `absolute_episode_number == episode` (see [Episode.absolute_episode_number](#episodeabsolute_episode_number-is-now-populated-via-tmdb-episode_groups) below for how this column gets populated).
 3. Still nothing → assume `season=1, episode_number=episode` — correct for the common case of anime distributed with no season marker at all.
 
-Unlike Pipeline B, this pipeline never attempts the `episode_group_map` cour/season remap (below) — a season mismatch here just falls through to `UNMATCHED` rather than being reinterpreted.
+Unlike Pipeline B, this pipeline attempts the `episode_group_map` cour/season remap (below) only for a season taken from a season name (Stage 3b) — a season mismatch on an explicit `S02`-style marker still falls through rather than being reinterpreted.
 
 **Side effects on a successful match:**
 - The parsed name is added to `show.aliases` / `show.aliases_sources["user"]` (`services/alias_handling.add_alias`) — every subsequent file with that exact name skips the LLM entirely and resolves via the GIN index.
@@ -185,7 +190,7 @@ There is no single "decide content type" function; each entry point does it diff
 
 ## Data model reference
 
-**`Show`** — fields relevant to matching/routing: `content_type` (see above), `media_type` (TMDB's own `tv`/`movie`, never user-editable), `sys_name` (filesystem-safe directory name, derived from title), `local_path`, `aliases` (flat, GIN-indexed `list[str]`, lower-cased), `aliases_sources` (`{"tmdb": [...], "llm": [...], "user": [...]}` — the provenance map the UI reads/writes; `aliases` is always the deduplicated union).
+**`Show`** — fields relevant to matching/routing: `content_type` (see above), `media_type` (TMDB's own `tv`/`movie`, never user-editable), `sys_name` (filesystem-safe directory name, derived from title), `local_path`, `aliases` (flat, GIN-indexed `list[str]`, lower-cased), `aliases_sources` (`{"tmdb": [...], "llm": [...], "user": [...]}` — the provenance map the UI reads/writes; `aliases` is always the deduplicated union), `season_aliases` (`{lower-cased name: season_number}` — user-entered season names such as arc titles; separate from `aliases`, see Stage 3b).
 
 **`Episode`** — `season_number`, `episode_number`, `absolute_episode_number` (see [below](#episodeabsolute_episode_number-is-now-populated-via-tmdb-episode_groups)), `file_tracked` / `file_tracked_at` / `tracked_filename` / `tracked_source` (set by `mark_episode_tracked`, `tracked_source` is `"match"` or `"import"` depending on which pipeline tracked it).
 

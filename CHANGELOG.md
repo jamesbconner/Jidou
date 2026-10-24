@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Season names for shows.** The Manage Aliases modal has a new Season names section that maps a release name, such as an arc title, to a season number (`PUT /api/shows/{id}/season-aliases`). A file named `Tougen Anki - Nikko Kegon no Taki-hen - 01` then matches Season 2, episode 1.
+
+### Fixed
+- **Arc-named releases no longer land in Season 01 or the show folder.** A release that names its season by an arc title (`<show> - <arc> - 01`) used to match episode 1 of Season 1 and route there, or end up in the show's root folder. If the arc has a season name it now goes to that season; if it has none, the file is left unmatched with a message saying which name to add, instead of being misfiled.
+
 ## [0.4.14] — 2026-10-17
 
 Live task progress now reaches the Tasks page as it happens instead of only on the next poll.

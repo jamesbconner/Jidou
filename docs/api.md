@@ -79,6 +79,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | PATCH | `/api/shows/{id}` | Update user-managed fields (`content_type`, `local_path`, `list_poster_path`, `detail_poster_path`, etc.) |
 | PUT | `/api/shows/{id}/paths` | Set local filesystem path |
 | PUT | `/api/shows/{id}/aliases` | Replace show aliases list |
+| PUT | `/api/shows/{id}/season-aliases` | Replace the show's season names (`{"season_aliases": {name: season}}`, seasons 0–999; names lower-cased; empty map clears) |
 | DELETE | `/api/shows/{id}` | Remove show and all its data |
 | GET | `/api/shows/search` | Search the local library by title, alias, `sys_name`, or folder name (final `local_path` component); ranked exact > prefix > substring, each hit tagged with `matched_on` (`title`/`alias`/`sys_name`/`path`) |
 | GET | `/api/shows/tmdb/trending` | Trending TV or movie results from TMDB |
