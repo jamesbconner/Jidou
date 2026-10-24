@@ -12,9 +12,15 @@ from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import ContentType, Show
 from jidou.orchestrators._events import EventSink
-from jidou.services.alias_handling import add_alias, names_agree
+from jidou.services.alias_handling import (
+    add_alias,
+    names_agree,
+    season_for_name,
+    unmapped_arc_label,
+)
 from jidou.services.callbacks import OnEvent, OnProgress
 from jidou.services.duplicate_files import find_duplicate_original
+from jidou.services.episode_file_matching import resolve_with_season
 from jidou.services.episode_lookup import resolve_episode
 from jidou.services.episode_match_llm import llm_match_episode
 from jidou.services.episode_tracking import dismiss_orphans_for_file, link_file_to_episode
@@ -170,6 +176,7 @@ class ParseOrchestrator:
         *,
         llm_active: bool,
         sink: EventSink,
+        remap_groups: bool = False,
     ) -> tuple[Episode | None, int | None, int | None]:
         """Find the episode row for a matched show, falling back to an LLM title match.
 
@@ -180,12 +187,26 @@ class ParseOrchestrator:
             episode: Parsed episode number, if any.
             llm_active: Whether an LLM is configured and available for this run.
             sink: Event sink forwarded to the LLM matcher.
+            remap_groups: Try the show's episode-group remap when the direct
+                ``(season, episode)`` lookup misses. Set for a season taken
+                from a season name, since TMDB may number that arc as a
+                continuation of an earlier season.
 
         Returns:
-            ``(episode_row, season, episode)``; the numbers are the LLM's when the
-            title fallback supplied them.
+            ``(episode_row, season, episode)``; the numbers are the remapped or
+            LLM ones when either supplied them.
         """
-        ep = await resolve_episode(self.session, show.id, season, episode)
+        if remap_groups and season is not None and episode is not None:
+            hit = await resolve_with_season(
+                self.session, show.id, show.episode_group_map, season, episode
+            )
+            ep = None
+            if hit is not None:
+                ep, season, episode = hit
+                file.parsed_season = season
+                file.parsed_episode = episode
+        else:
+            ep = await resolve_episode(self.session, show.id, season, episode)
         if ep is None and llm_active:
             # No number matched a known episode (or none was found
             # at all) -- last resort: match by title against the
@@ -275,6 +296,7 @@ class ParseOrchestrator:
         content_type: str | None,
         llm_active: bool,
         sink: EventSink,
+        remap_groups: bool = False,
     ) -> None:
         """Link *file* to *show*, resolve its episode and mark it MATCHED.
 
@@ -287,10 +309,17 @@ class ParseOrchestrator:
             content_type: Raw parsed content type, used for the show backfill.
             llm_active: Whether an LLM is configured and available for this run.
             sink: Event sink.
+            remap_groups: Forwarded to :meth:`_resolve_matched_episode`.
         """
         file.show_id = show.id
         ep, season, episode = await self._resolve_matched_episode(
-            file, show, season, episode, llm_active=llm_active, sink=sink
+            file,
+            show,
+            season,
+            episode,
+            llm_active=llm_active,
+            sink=sink,
+            remap_groups=remap_groups,
         )
         if ep is None:
             file.episode_id = None
@@ -363,9 +392,23 @@ class ParseOrchestrator:
         )
         gate_passes = not apply_gate or parsed.confidence >= _CONFIDENCE_THRESHOLD
         if dry_show is not None and gate_passes:
+            suffix = ""
+            if season is None and show_name:
+                label = unmapped_arc_label(show_name, dry_show)
+                if label is not None:
+                    await sink(
+                        "info",
+                        f"[Dry run] Would leave unmatched (unmapped arc {label!r}): "
+                        f"{file.original_filename!r}",
+                        {"file_id": file.id, "show_id": dry_show.id, "arc_label": label},
+                    )
+                    return ParseOutcome.UNMATCHED
+                alias_season = season_for_name(show_name, dry_show)
+                if alias_season is not None:
+                    suffix = f" (Season {alias_season} from season name)"
             await sink(
                 "info",
-                f"[Dry run] Would match {file.original_filename!r} → {dry_show.title!r}",
+                f"[Dry run] Would match {file.original_filename!r} → {dry_show.title!r}{suffix}",
                 {"file_id": file.id, "show_id": dry_show.id},
             )
             return ParseOutcome.MATCHED
@@ -403,6 +446,74 @@ class ParseOrchestrator:
             "warn",
             f"Low confidence ({confidence:.2f}) for {file.original_filename!r}, flagging UNMATCHED",
             {"file_id": file.id, "confidence": confidence},
+        )
+        return ParseOutcome.UNMATCHED
+
+    async def _season_from_alias(
+        self, file: DownloadedFile, show: Show, show_name: str, sink: EventSink
+    ) -> int | None:
+        """Take the season from a season name on *show*, recording it on *file*.
+
+        Args:
+            file: The file being matched; ``parsed_season`` is set on a hit.
+            show: The matched show.
+            show_name: The parsed show name.
+            sink: Event sink.
+
+        Returns:
+            The season number, or None when *show_name* is not a season name.
+        """
+        season = season_for_name(show_name, show)
+        if season is None:
+            return None
+        file.parsed_season = season
+        logger.info(
+            "Season %d from season name %r for %s (show id=%d)",
+            season,
+            show_name,
+            file.original_filename,
+            show.id,
+        )
+        await sink(
+            "info",
+            f"Season {season} from season name {show_name!r} for {show.title!r}",
+            {"file_id": file.id, "show_id": show.id, "season": season},
+        )
+        return season
+
+    async def _flag_unmapped_arc(
+        self, file: DownloadedFile, show: Show, label: str, sink: EventSink
+    ) -> ParseOutcome:
+        """Mark *file* UNMATCHED because its arc label has no season set.
+
+        Guessing Season 1 (the absolute-number fallback) would link the wrong
+        episode and route the file into the wrong season directory.
+
+        Args:
+            file: The file to flag.
+            show: The show the name's prefix matched.
+            label: The arc label from the parsed name.
+            sink: Event sink.
+
+        Returns:
+            Always ``UNMATCHED``.
+        """
+        file.status = FileStatus.UNMATCHED
+        file.error_message = (
+            f"{label!r} looks like a season or arc name for {show.title!r} but has no "
+            "season set; add it under Season names in the show's aliases, then re-run Parse"
+        )
+        logger.info(
+            "Unmapped arc %r for %s (show id=%d), flagging UNMATCHED",
+            label,
+            file.original_filename,
+            show.id,
+        )
+        await sink(
+            "warn",
+            f"Unmapped arc {label!r} for {file.original_filename!r} ({show.title!r}), "
+            "flagging UNMATCHED",
+            {"file_id": file.id, "show_id": show.id, "arc_label": label},
         )
         return ParseOutcome.UNMATCHED
 
@@ -499,6 +610,16 @@ class ParseOrchestrator:
 
             # Stage 3: DB lookup
             show = await self._find_show(parsed.show_name) if parsed.show_name else None
+            remap_groups = False
+            if show is not None and season is None and parsed.show_name:
+                # "<show> - <arc>" names a season the filename does not number.
+                label = unmapped_arc_label(parsed.show_name, show)
+                if label is not None:
+                    decided = await self._flag_unmapped_arc(file, show, label, sink)
+                    await self.session.flush()
+                    return decided
+                season = await self._season_from_alias(file, show, parsed.show_name, sink)
+                remap_groups = season is not None
             if show is not None:
                 await self._apply_match(
                     file,
@@ -509,6 +630,7 @@ class ParseOrchestrator:
                     content_type=parsed.content_type,
                     llm_active=llm_active,
                     sink=sink,
+                    remap_groups=remap_groups,
                 )
                 decided = ParseOutcome.MATCHED
             else:

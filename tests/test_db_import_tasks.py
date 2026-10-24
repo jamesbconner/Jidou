@@ -1353,6 +1353,7 @@ _LEGACY_SHOW_HANDLED_COLUMNS = frozenset(
         "sys_name",
         "aliases",
         "aliases_sources",
+        "season_aliases",
         "genres",
         "origin_country",
         "last_air_date",
@@ -1408,7 +1409,7 @@ def test_column_tables_equal_legacy_handled_sets() -> None:
     """The derived column tables restore exactly the columns the old literals listed."""
     from jidou.workers.db_import_tasks import _EPISODE_COLUMNS, _SHOW_COLUMNS
 
-    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 40
+    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 41
     assert {c.name for c in _SHOW_COLUMNS} == _LEGACY_SHOW_HANDLED_COLUMNS
     assert len(_SHOW_COLUMNS) == len(_LEGACY_SHOW_HANDLED_COLUMNS)
     assert {c.name for c in _EPISODE_COLUMNS} == _LEGACY_EPISODE_HANDLED_COLUMNS
