@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.16] — 2026-10-24
+
+Dependency updates only.
+
+### Changed
+- **Dependencies.** Minor and patch updates to the Python (6 packages) and frontend npm (7 packages) dependency groups.
+
 ## [0.4.15] — 2026-10-24
 
 Releases that name a season by its arc title now match the right season instead of Season 1.
