@@ -259,3 +259,52 @@ async def test_dry_run_never_refreshes(added):
         await ParseOrchestrator(session, llm=None, episode_refresher=refresher).run(dry_run=True)
 
     refresher.refresh_episodes.assert_not_awaited()
+
+
+async def _dry_run(show, parsed, *, resolve_result, on_event=None):
+    file1 = _make_file(filename="Show.S03E01.mkv")
+    session, _ = _recording_parse_session([file1])
+    resolve = AsyncMock(return_value=resolve_result)
+    with (
+        patch(f"{_MOD}.parse_filename", AsyncMock(return_value=parsed)),
+        patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
+        patch(f"{_MOD}.resolve_episode", resolve),
+    ):
+        result = await ParseOrchestrator(session, llm=None).run(dry_run=True, on_event=on_event)
+    return result, file1, resolve
+
+
+async def test_dry_run_reports_unmatched_when_the_episode_is_missing():
+    """Bugbot: the preview must show the new UNMATCHED outcome, not count a match."""
+    show = _make_show()
+    show.media_type = "tv"
+    on_event = AsyncMock()
+
+    result, file1, _ = await _dry_run(
+        show, _parsed(season=3, episode=1), resolve_result=None, on_event=on_event
+    )
+
+    assert (result.files_matched, result.files_unmatched) == (0, 1)
+    assert file1.status == FileStatus.DOWNLOADED  # a dry run never modifies the file
+    assert any("Would leave unmatched" in call.args[1] for call in on_event.await_args_list)
+
+
+async def test_dry_run_reports_match_when_the_episode_exists():
+    show = _make_show()
+    show.media_type = "tv"
+
+    result, _, _ = await _dry_run(show, _parsed(season=3, episode=1), resolve_result=_episode())
+
+    assert (result.files_matched, result.files_unmatched) == (1, 0)
+
+
+async def test_dry_run_movie_skips_the_episode_lookup():
+    show = _make_show()
+    show.media_type = "movie"
+
+    result, _, resolve = await _dry_run(
+        show, _parsed(season=None, episode=None, content_type="movie"), resolve_result=None
+    )
+
+    resolve.assert_not_awaited()
+    assert result.files_matched == 1

@@ -54,26 +54,28 @@ class TMDBEpisodeRefresher:
         Returns:
             True when the sync upserted at least one new episode row.
         """
+        # Read before the sync: a rolled-back savepoint can expire the show, and
+        # reading an expired attribute in an async session raises MissingGreenlet.
+        show_id, title = show.id, show.title
         try:
             async with self.session.begin_nested():
                 result = await TMDBOrchestrator(self.session, self.tmdb).sync_show_episodes(
                     show, bypass_cache=True
                 )
         except Exception:
+            # Reload first so the caller can keep reading the show's attributes.
+            await self.session.refresh(show)
             logger.warning(
                 "Episode refresh failed for show id=%s (%r); continuing with existing episodes",
-                show.id,
-                show.title,
+                show_id,
+                title,
                 exc_info=True,
             )
-            # The rolled-back savepoint may have expired the show; reload it so
-            # the caller can keep reading its attributes.
-            await self.session.refresh(show)
             return False
         logger.info(
             "Episode refresh for show id=%s (%r): %d new episode(s)",
-            show.id,
-            show.title,
+            show_id,
+            title,
             result.episodes_upserted,
         )
         return result.episodes_upserted > 0

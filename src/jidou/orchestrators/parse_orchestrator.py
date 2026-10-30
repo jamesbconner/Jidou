@@ -550,32 +550,91 @@ class ParseOrchestrator:
         )
         gate_passes = not apply_gate or parsed.confidence >= _CONFIDENCE_THRESHOLD
         if dry_show is not None and gate_passes:
-            suffix = ""
-            if season is None and show_name:
-                label = unmapped_arc_label(show_name, dry_show)
-                if label is not None:
-                    await sink(
-                        "info",
-                        f"[Dry run] Would leave unmatched (unmapped arc {label!r}): "
-                        f"{file.original_filename!r}",
-                        {"file_id": file.id, "show_id": dry_show.id, "arc_label": label},
-                    )
-                    return ParseOutcome.UNMATCHED
-                alias_season = season_for_name(show_name, dry_show)
-                if alias_season is not None:
-                    suffix = f" (Season {alias_season} from season name)"
-            await sink(
-                "info",
-                f"[Dry run] Would match {file.original_filename!r} → {dry_show.title!r}{suffix}",
-                {"file_id": file.id, "show_id": dry_show.id},
+            return await self._preview_matched_show(
+                file, dry_show, show_name, season, episode, sink
             )
-            return ParseOutcome.MATCHED
         await sink(
             "info",
             f"[Dry run] Would leave unmatched: {file.original_filename!r}",
             {"file_id": file.id},
         )
         return ParseOutcome.UNMATCHED
+
+    async def _preview_matched_show(
+        self,
+        file: DownloadedFile,
+        show: Show,
+        show_name: str | None,
+        season: int | None,
+        episode: int | None,
+        sink: EventSink,
+    ) -> ParseOutcome:
+        """Dry-run a file whose show was found: unmapped arc, episode lookup, then match.
+
+        Args:
+            file: The file being previewed (never modified).
+            show: The show the parsed name matched.
+            show_name: The parsed show name, if any.
+            season: Merged season number, if any.
+            episode: Merged episode number, if any.
+            sink: Event sink.
+
+        Returns:
+            ``MATCHED`` if a real run would match the file, otherwise ``UNMATCHED``.
+        """
+        alias_season: int | None = None
+        if season is None and show_name:
+            label = unmapped_arc_label(show_name, show)
+            if label is not None:
+                await sink(
+                    "info",
+                    f"[Dry run] Would leave unmatched (unmapped arc {label!r}): "
+                    f"{file.original_filename!r}",
+                    {"file_id": file.id, "show_id": show.id, "arc_label": label},
+                )
+                return ParseOutcome.UNMATCHED
+            alias_season = season_for_name(show_name, show)
+        if not await self._preview_episode_exists(show, alias_season or season, episode):
+            await sink(
+                "info",
+                f"[Dry run] Would leave unmatched unless the episode refresh finds it: "
+                f"{file.original_filename!r} → {show.title!r}",
+                {"file_id": file.id, "show_id": show.id},
+            )
+            return ParseOutcome.UNMATCHED
+        suffix = f" (Season {alias_season} from season name)" if alias_season is not None else ""
+        await sink(
+            "info",
+            f"[Dry run] Would match {file.original_filename!r} → {show.title!r}{suffix}",
+            {"file_id": file.id, "show_id": show.id},
+        )
+        return ParseOutcome.MATCHED
+
+    async def _preview_episode_exists(
+        self, show: Show, season: int | None, episode: int | None
+    ) -> bool:
+        """Read-only check that a real run would find the file's episode without a refresh.
+
+        A dry run cannot refresh or call the LLM, so a miss here is reported as
+        "unmatched unless the refresh finds it". Movies have no episode rows.
+
+        Args:
+            show: The matched show.
+            season: Season to look up (a season-name season takes precedence).
+            episode: Episode number to look up.
+
+        Returns:
+            True for a movie or when the episode row exists.
+        """
+        if show.media_type == "movie":
+            return True
+        if episode is not None and season is not None and show.episode_group_map is not None:
+            hit = await resolve_with_season(
+                self.session, show.id, show.episode_group_map, season, episode
+            )
+            if hit is not None:
+                return True
+        return await resolve_episode(self.session, show.id, season, episode) is not None
 
     async def _flag_low_confidence(
         self, file: DownloadedFile, confidence: float, sink: EventSink

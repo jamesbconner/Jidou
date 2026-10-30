@@ -75,3 +75,38 @@ async def test_failure_is_swallowed_rolled_back_and_reported_as_nothing_new(capl
     assert state["failed"]  # the savepoint block saw the error, so it rolls back
     session.refresh.assert_awaited_once_with(show)
     assert "Episode refresh failed" in caplog.text
+
+
+async def test_failure_does_not_read_the_show_until_it_is_reloaded():
+    """Bugbot: a rolled-back savepoint can expire the show, so nothing may touch its
+    attributes between the failure and ``session.refresh`` (async lazy-load would raise)."""
+    from unittest.mock import PropertyMock
+
+    session, _ = _session()
+    expired = {"now": False}
+
+    def _guarded(value):
+        def _get(_self):
+            if expired["now"]:
+                raise RuntimeError("MissingGreenlet: expired attribute read")
+            return value
+
+        return PropertyMock(side_effect=lambda: _get(None))
+
+    show = MagicMock()
+    type(show).id = _guarded(7)
+    type(show).title = _guarded("Test Show")
+
+    async def _fail(*_args, **_kwargs):
+        expired["now"] = True  # the savepoint rollback expires the show
+        raise RuntimeError("tmdb down")
+
+    async def _reload(_show):
+        expired["now"] = False
+
+    session.refresh = AsyncMock(side_effect=_reload)
+
+    with patch(_SYNC, AsyncMock(side_effect=_fail)):
+        refreshed = await TMDBEpisodeRefresher(session, MagicMock()).refresh_episodes(show)
+
+    assert refreshed is False
