@@ -4,8 +4,10 @@ from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jidou.config import settings
+from jidou.orchestrators._episode_refresh import TMDBEpisodeRefresher
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
 from jidou.services.llm_service import create_llm_service
+from jidou.services.tmdb import TMDBService
 from jidou.workers._harness import (
     EventFn,
     ProgressFn,
@@ -54,6 +56,7 @@ async def _match_files(
             local_tv_path=settings.local_tv_path,
             local_anime_path=settings.local_anime_path,
             local_movie_path=settings.local_movie_path,
+            episode_refresher=TMDBEpisodeRefresher(session, TMDBService()),
         ).run(dry_run=dry_run, on_progress=on_progress, on_event=on_event)
 
         total_processed = result.files_processed

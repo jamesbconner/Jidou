@@ -75,6 +75,8 @@ After a file is downloaded to staging, the match task attempts to link it to the
 
 If both fail, the file is marked `unmatched` for manual review.
 
+If the show is found but the file's episode is not in the database yet (typically a brand-new season), Jidou refreshes that show's episodes from TMDB once per run and retries. If the episode is still missing, the file is left `unmatched`, with the show already linked, instead of being moved into the show's root folder.
+
 **Manual match:** Use the **Resolve** button on the Files page to pick the correct show manually. Shows already in your library (matched by title, alias, system name, or folder name) are listed first and reuse their existing folder; a TMDB result whose show is already tracked is assigned to that existing show and folder instead of deriving a new folder name from the TMDB title. The file's parsed name is also saved as an alias of the chosen show, so later files with the same name match it automatically.
 
 **Season names (arc titles):** Some releases name a later season by its arc instead of a number, for example `[Group] Example Show - Example Arc-hen - 01 (1080p).mkv` for Season 2. Open the show's **Manage Aliases** modal and add the arc under **Season names** with its season number (`example arc-hen` → 2); those files then match and route to that season. A file named `<show> - <name> - 01` whose name has no season set is left unmatched with a message naming it, rather than being guessed as Season 1.

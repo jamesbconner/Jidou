@@ -1025,3 +1025,33 @@ def test_dry_run_suffix():
     assert _dry_run_suffix(False, tmdb=True) == ""
     assert _dry_run_suffix(True) == " (dry run)"
     assert _dry_run_suffix(True, tmdb=True) == " (skipped — dry run)"
+
+
+async def test_run_gives_parse_orchestrator_a_tmdb_episode_refresher():
+    """Parse can refresh a show's episodes from TMDB when a file's episode is missing."""
+    from jidou.orchestrators._episode_refresh import TMDBEpisodeRefresher
+
+    session = _make_session()
+    sftp = MagicMock()
+    sftp.max_workers = 4
+    tmdb = MagicMock()
+
+    with (
+        patch("jidou.orchestrators.sync_orchestrator.TMDBOrchestrator") as mock_tmdb_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ScanOrchestrator") as mock_scan_cls,
+        patch("jidou.orchestrators.sync_orchestrator.DownloadOrchestrator") as mock_dl_cls,
+        patch("jidou.orchestrators.sync_orchestrator.ParseOrchestrator") as mock_parse_cls,
+        patch("jidou.orchestrators.sync_orchestrator.RouteOrchestrator") as mock_route_cls,
+    ):
+        mock_tmdb_cls.return_value.sync_all_shows = AsyncMock(return_value=_make_tmdb_result())
+        mock_scan_cls.return_value.run = AsyncMock(return_value=_make_scan_result())
+        mock_dl_cls.return_value.run = AsyncMock(return_value=_make_download_result())
+        mock_parse_cls.return_value.run = AsyncMock(return_value=_make_parse_result())
+        mock_route_cls.return_value.run = AsyncMock(return_value=_make_route_result())
+
+        await SyncOrchestrator(session, sftp, tmdb).run()
+
+    refresher = mock_parse_cls.call_args.kwargs["episode_refresher"]
+    assert isinstance(refresher, TMDBEpisodeRefresher)
+    assert refresher.session is session
+    assert refresher.tmdb is tmdb

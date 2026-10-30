@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **A file whose episode isn't in the database is no longer routed to the show folder.** When Parse finds the show but not the episode (a new season whose episodes aren't synced yet), it now refreshes that show's episodes from TMDB once per run and retries. If the episode is still missing, the file is left `unmatched` with the show already linked and a message saying what wasn't found, instead of being marked `matched` and moved to the show's root folder where it had to be fixed by hand. Movies are unaffected.
+
 ## [0.4.16] — 2026-10-24
 
 Dependency updates only.

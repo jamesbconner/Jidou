@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus
 from jidou.models.episode import Episode
 from jidou.models.show import Show
+from jidou.orchestrators._episode_refresh import TMDBEpisodeRefresher
 from jidou.orchestrators._events import EventSink
 from jidou.orchestrators.download_orchestrator import DownloadOrchestrator, DownloadResult
 from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, ParseResult
@@ -316,6 +317,7 @@ class SyncOrchestrator:
             local_tv_path=self.local_tv_path,
             local_anime_path=self.local_anime_path,
             local_movie_path=self.local_movie_path,
+            episode_refresher=TMDBEpisodeRefresher(self.session, self.tmdb),
         ).run(dry_run=dry_run, on_event=on_event)
         await _summary(
             on_event,

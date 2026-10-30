@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jidou.models.downloaded_file import DownloadedFile, FileStatus, MatchedBy
 from jidou.models.episode import Episode
 from jidou.models.show import ContentType, Show
+from jidou.orchestrators._episode_refresh import EpisodeRefresher
 from jidou.orchestrators._events import EventSink
 from jidou.services.alias_handling import (
     add_alias,
@@ -64,6 +65,30 @@ _FAILED_AFTER: dict[ParseOutcome | None, ParseOutcome] = {
 }
 
 
+def _missing_episode_reason(show: Show, season: int | None, episode: int | None) -> str:
+    """Explain why no episode row was found, for ``DownloadedFile.error_message``.
+
+    Args:
+        show: The matched show.
+        season: Parsed season number, if any.
+        episode: Parsed episode number, if any.
+
+    Returns:
+        A message naming what was looked up and what the user can do.
+    """
+    if episode is None:
+        return f"No episode number detected for {show.title!r}; resolve it manually"
+    if season is None:
+        return (
+            f"Season not detected, and episode {episode} of {show.title!r} matches neither an "
+            "absolute episode number nor a Season 1 episode; resolve it manually"
+        )
+    return (
+        f"Episode S{season:02d}E{episode:02d} of {show.title!r} not found in the "
+        "database; resolve it manually or re-run Parse once the show's episodes are current"
+    )
+
+
 class ParseOrchestrator:
     """Parse DOWNLOADED/UNMATCHED filenames and match to shows via alias lookup + LLM.
 
@@ -86,6 +111,10 @@ class ParseOrchestrator:
         local_tv_path: Base directory for live-action TV series.
         local_anime_path: Base directory for anime series.
         local_movie_path: Base directory for movies.
+        episode_refresher: Optional refresher used when a matched show has no
+            episode row for the parsed numbers (typically a new season whose
+            episodes are not synced yet). Without it the miss goes straight to
+            UNMATCHED.
     """
 
     def __init__(
@@ -95,12 +124,17 @@ class ParseOrchestrator:
         local_tv_path: str = "/data/media/tv",
         local_anime_path: str = "/data/media/anime",
         local_movie_path: str = "/data/media/movies",
+        episode_refresher: EpisodeRefresher | None = None,
     ) -> None:
         self.session = session
         self.llm = llm
         self.local_tv_path = local_tv_path
         self.local_anime_path = local_anime_path
         self.local_movie_path = local_movie_path
+        self.episode_refresher = episode_refresher
+        # Shows already refreshed in this orchestrator's lifetime (one run): a
+        # second miss for the same show cannot be cured by refreshing again.
+        self._refreshed_show_ids: set[int] = set()
 
     def _resolve_local_path(self, show: Show) -> str | None:
         """Compute ``show.local_path`` from this run's library roots.
@@ -308,8 +342,12 @@ class ParseOrchestrator:
         llm_active: bool,
         sink: EventSink,
         remap_groups: bool = False,
-    ) -> None:
+    ) -> ParseOutcome:
         """Link *file* to *show*, resolve its episode and mark it MATCHED.
+
+        A non-movie file whose episode cannot be resolved (even after a
+        metadata refresh) keeps its show link but is marked UNMATCHED, so it
+        is not routed into the show root before its episode data exists.
 
         Args:
             file: The file being matched.
@@ -321,9 +359,13 @@ class ParseOrchestrator:
             llm_active: Whether an LLM is configured and available for this run.
             sink: Event sink.
             remap_groups: Forwarded to :meth:`_resolve_matched_episode`.
+
+        Returns:
+            ``UNMATCHED`` when a non-movie episode could not be resolved,
+            otherwise ``MATCHED``.
         """
         file.show_id = show.id
-        ep, season, episode = await self._resolve_matched_episode(
+        ep, season, episode = await self._resolve_with_refresh(
             file,
             show,
             season,
@@ -332,6 +374,7 @@ class ParseOrchestrator:
             sink=sink,
             remap_groups=remap_groups,
         )
+        unresolved = ep is None and show.media_type != "movie"
         if ep is None:
             file.episode_id = None
             file.duplicate_of_file_id = None
@@ -342,9 +385,9 @@ class ParseOrchestrator:
             link_file_to_episode(file, ep)
             await dismiss_orphans_for_file(self.session, file.id)
         file.matched_by = MatchedBy.LLM if llm_active else MatchedBy.HEURISTIC
-        file.status = FileStatus.MATCHED
-        # Clear any stale reason from a prior UNMATCHED attempt.
-        file.error_message = None
+        file.status = FileStatus.UNMATCHED if unresolved else FileStatus.MATCHED
+        # Replaces any stale reason from a prior attempt (None when matched).
+        file.error_message = _missing_episode_reason(show, season, episode) if unresolved else None
         # Add the alias so future matches skip LLM — but only
         # when show_name is already known to name this show exactly.
         # A fuzzy substring hit from _find_show must never be
@@ -353,6 +396,9 @@ class ParseOrchestrator:
             add_alias(show, show_name)
         self._backfill_content_type(file, show, content_type)
         self._ensure_show_local_path(show)
+        if unresolved:
+            await self._report_missing_episode(file, show, sink)
+            return ParseOutcome.UNMATCHED
         logger.info(
             "Matched %s → show_id=%d %s",
             file.original_filename,
@@ -366,6 +412,107 @@ class ParseOrchestrator:
         )
         if ep is not None:
             await self._flag_duplicate(file, show, ep, sink)
+        return ParseOutcome.MATCHED
+
+    async def _resolve_with_refresh(
+        self,
+        file: DownloadedFile,
+        show: Show,
+        season: int | None,
+        episode: int | None,
+        *,
+        llm_active: bool,
+        sink: EventSink,
+        remap_groups: bool,
+    ) -> tuple[Episode | None, int | None, int | None]:
+        """Resolve the episode, refreshing the show's episodes once on a miss.
+
+        A miss on a non-movie show usually means TMDB data for a new season or
+        episode has not been synced yet. The refresh runs at most once per show
+        per run, and the lookup is retried only if it brought in new episodes.
+
+        Args:
+            file: The file being matched.
+            show: The matched show.
+            season: Parsed season number, if any.
+            episode: Parsed episode number, if any.
+            llm_active: Whether an LLM is configured and available for this run.
+            sink: Event sink.
+            remap_groups: Forwarded to :meth:`_resolve_matched_episode`.
+
+        Returns:
+            ``(episode_row, season, episode)`` as :meth:`_resolve_matched_episode`.
+        """
+        resolved = await self._resolve_matched_episode(
+            file,
+            show,
+            season,
+            episode,
+            llm_active=llm_active,
+            sink=sink,
+            remap_groups=remap_groups,
+        )
+        if resolved[0] is not None or not await self._refresh_for_miss(file, show, sink):
+            return resolved
+        return await self._resolve_matched_episode(
+            file,
+            show,
+            resolved[1],
+            resolved[2],
+            llm_active=llm_active,
+            sink=sink,
+            remap_groups=remap_groups,
+        )
+
+    async def _refresh_for_miss(self, file: DownloadedFile, show: Show, sink: EventSink) -> bool:
+        """Refresh *show*'s episodes after a lookup miss, if that is allowed and useful.
+
+        Args:
+            file: The file whose episode was not found.
+            show: The matched show.
+            sink: Event sink.
+
+        Returns:
+            True when the refresh added episodes, so a retry may now succeed.
+            False for movies, a missing refresher, an already-refreshed show,
+            or a refresh that added nothing.
+        """
+        if (
+            self.episode_refresher is None
+            or show.media_type == "movie"
+            or show.id in self._refreshed_show_ids
+        ):
+            return False
+        self._refreshed_show_ids.add(show.id)
+        await sink(
+            "info",
+            f"Episode not found for {file.original_filename!r}; "
+            f"refreshing episodes for {show.title!r}",
+            {"file_id": file.id, "show_id": show.id},
+        )
+        return await self.episode_refresher.refresh_episodes(show)
+
+    async def _report_missing_episode(
+        self, file: DownloadedFile, show: Show, sink: EventSink
+    ) -> None:
+        """Log and emit the warning for a file left UNMATCHED by a missing episode.
+
+        Args:
+            file: The file left UNMATCHED; ``error_message`` carries the reason.
+            show: The show it was matched to.
+            sink: Event sink.
+        """
+        logger.info(
+            "No episode for %s (show id=%d), flagging UNMATCHED: %s",
+            file.original_filename,
+            show.id,
+            file.error_message,
+        )
+        await sink(
+            "warn",
+            f"{file.original_filename!r} → {show.title!r}: {file.error_message}",
+            {"file_id": file.id, "show_id": show.id},
+        )
 
     async def _preview_one(
         self,
@@ -632,7 +779,7 @@ class ParseOrchestrator:
                 season = await self._season_from_alias(file, show, parsed.show_name, sink)
                 remap_groups = season is not None
             if show is not None:
-                await self._apply_match(
+                decided = await self._apply_match(
                     file,
                     show,
                     season,
@@ -643,7 +790,6 @@ class ParseOrchestrator:
                     sink=sink,
                     remap_groups=remap_groups,
                 )
-                decided = ParseOutcome.MATCHED
             else:
                 await self._mark_unmatched(file, parsed.show_name, sink)
                 decided = ParseOutcome.UNMATCHED
@@ -680,8 +826,10 @@ class ParseOrchestrator:
         - Heuristic regex extracts S/E numbers as a fast path.
         - LLM parses the full show name, season, episode, and content type.
         - DB alias/title lookup finds the show.
-        - Episode lookup uses parsed season/episode numbers.
-        - Status is set to MATCHED (show found) or UNMATCHED (no show found).
+        - Episode lookup uses parsed season/episode numbers; a miss refreshes the
+          show's episodes once per run and retries.
+        - Status is set to MATCHED (show and, for non-movies, episode found) or
+          UNMATCHED (no show found, or no episode even after the refresh).
 
         Args:
             dry_run: Log results without modifying the DB.

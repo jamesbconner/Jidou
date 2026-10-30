@@ -1097,3 +1097,32 @@ def test_long_running_tasks_pin_exact_time_limits() -> None:
     for task in (sync_all_task, path_import_task):
         assert task.time_limit == 25200
         assert task.soft_time_limit == 21600
+
+
+@pytest.mark.asyncio
+async def test_match_files_gives_parse_orchestrator_a_tmdb_episode_refresher() -> None:
+    """The standalone match task can refresh a show's episodes when an episode is missing."""
+    from jidou.orchestrators._episode_refresh import TMDBEpisodeRefresher
+    from jidou.orchestrators.parse_orchestrator import ParseResult
+    from jidou.workers.match_tasks import _match_files
+
+    patcher, captured = _capture_run_task_workflow("jidou.workers.match_tasks")
+    with patcher:
+        await _match_files("tid-m2")
+
+    parse_result = ParseResult(
+        files_processed=0, files_matched=0, files_unmatched=0, files_failed=0, dry_run=False
+    )
+    session = AsyncMock()
+    with (
+        patch("jidou.workers.match_tasks.create_llm_service"),
+        patch("jidou.workers.match_tasks.TMDBService") as mock_tmdb_cls,
+        patch("jidou.workers.match_tasks.ParseOrchestrator") as mock_parse_cls,
+    ):
+        mock_parse_cls.return_value.run = AsyncMock(return_value=parse_result)
+        await captured["work"](session, AsyncMock(), AsyncMock(), AsyncMock())  # type: ignore[operator]
+
+    refresher = mock_parse_cls.call_args.kwargs["episode_refresher"]
+    assert isinstance(refresher, TMDBEpisodeRefresher)
+    assert refresher.session is session
+    assert refresher.tmdb is mock_tmdb_cls.return_value

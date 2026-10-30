@@ -495,7 +495,7 @@ async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
     fuzzy_hit.scalars.return_value.first.return_value = show
 
     ep_result = MagicMock()
-    ep_result.scalar_one_or_none.return_value = None
+    ep_result.scalar_one_or_none.return_value = MagicMock(id=5, season_number=1)
 
     session = MagicMock()
     session.flush = AsyncMock()
@@ -506,6 +506,7 @@ async def test_run_fuzzy_show_match_does_not_alias_franchise_prefix():
             alias_miss,  # alias containment miss
             fuzzy_hit,  # substring title fallback hit
             ep_result,  # episode lookup
+            MagicMock(),  # dismiss_orphans_for_file
         ]
     )
 
@@ -543,7 +544,7 @@ async def test_run_exact_show_match_still_gets_aliased():
     exact_hit.scalars.return_value.first.return_value = show
 
     ep_result = MagicMock()
-    ep_result.scalar_one_or_none.return_value = None
+    ep_result.scalar_one_or_none.return_value = MagicMock(id=5, season_number=1)
 
     session = MagicMock()
     session.flush = AsyncMock()
@@ -554,6 +555,7 @@ async def test_run_exact_show_match_still_gets_aliased():
             alias_miss,  # alias containment miss
             exact_hit,  # substring title fallback -- but the title matches exactly
             ep_result,  # episode lookup
+            MagicMock(),  # dismiss_orphans_for_file
         ]
     )
 
@@ -723,6 +725,7 @@ async def test_run_persists_crc32_declared_from_heuristic():
 async def test_run_movie_bypasses_confidence_gate():
     """Movie files reach DB lookup even though null-episode scores confidence ~0.1."""
     show = _make_show(title="Spirited Away")
+    show.media_type = "movie"  # movies have no episode rows, so a miss is expected
     file1 = _make_file(filename="Spirited.Away.2001.1080p.BluRay.mkv")
 
     file_result = MagicMock()
@@ -1399,7 +1402,8 @@ async def test_characterize_exception_marks_error_and_continues():
             AsyncMock(side_effect=[RuntimeError("boom"), _parsed()]),
         ),
         patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
-        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=MagicMock(id=5, season_number=1))),
+        patch(f"{_MOD}.dismiss_orphans_for_file", AsyncMock()),
     ):
         result = await ParseOrchestrator(session, llm=_llm()).run(on_event=on_event)
 
@@ -1482,7 +1486,8 @@ async def test_characterize_heuristic_match_without_llm():
             AsyncMock(return_value=_parsed(confidence=0.1, llm_ok=False, content_type=None)),
         ),
         patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
-        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=MagicMock(id=5, season_number=1))),
+        patch(f"{_MOD}.dismiss_orphans_for_file", AsyncMock()),
         patch(f"{_MOD}.llm_match_episode", AsyncMock()) as llm_ep,
     ):
         result = await ParseOrchestrator(session, llm=None).run()
@@ -1491,7 +1496,7 @@ async def test_characterize_heuristic_match_without_llm():
     assert result.files_matched == 1
     assert file.matched_by == MatchedBy.HEURISTIC
     assert file.status == FileStatus.MATCHED
-    assert file.episode_id is None
+    assert file.episode_id == 5
 
 
 @pytest.mark.asyncio
@@ -1507,7 +1512,8 @@ async def test_matched_by_uses_run_level_llm_availability():
     with (
         patch(f"{_MOD}.parse_filename", AsyncMock(return_value=_parsed())),
         patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show)),
-        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=MagicMock(id=5, season_number=1))),
+        patch(f"{_MOD}.dismiss_orphans_for_file", AsyncMock()),
         patch(f"{_MOD}.llm_match_episode", AsyncMock(return_value=(None, None, None))),
     ):
         result = await ParseOrchestrator(session, llm=llm).run()
@@ -1541,7 +1547,8 @@ async def test_characterize_flush_failure_counts_decided_outcome_and_failed(
     with (
         patch(f"{_MOD}.parse_filename", AsyncMock(return_value=parsed)),
         patch(f"{_MOD}.find_show_by_name", AsyncMock(return_value=show if found_show else None)),
-        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=None)),
+        patch(f"{_MOD}.resolve_episode", AsyncMock(return_value=MagicMock(id=5, season_number=1))),
+        patch(f"{_MOD}.dismiss_orphans_for_file", AsyncMock()),
     ):
         result = await ParseOrchestrator(session, llm=_llm()).run()
 
@@ -1598,13 +1605,14 @@ async def test_run_season_alias_sets_season_and_resolves_s2():
     with_season.assert_awaited_once_with(session, show.id, show.episode_group_map, 2, 1)
 
 
-async def test_run_season_alias_miss_keeps_alias_season_for_routing():
-    """No S02E01 in the catalog: the file stays matched with season 2 for routing."""
+async def test_run_season_alias_miss_is_unmatched_with_alias_season_kept():
+    """No S02E01 in the catalog: the file is left UNMATCHED, season 2 kept for manual resolve."""
     show = _make_show(title="Example Show", season_aliases={"example arc-hen": 2})
 
     file1, _, _ = await _run_arc(show, _parsed(show_name=_ARC_NAME, season=None, episode=1))
 
-    assert file1.status == FileStatus.MATCHED
+    assert file1.status == FileStatus.UNMATCHED
+    assert file1.show_id == show.id
     assert file1.parsed_season == 2
     assert file1.episode_id is None
 
@@ -1667,6 +1675,6 @@ async def test_run_season_alias_rejects_llm_episode_from_another_season(_stub_ll
 
     file1, _, _ = await _run_arc(show, _parsed(show_name=_ARC_NAME, season=None, episode=1))
 
-    assert file1.status == FileStatus.MATCHED
+    assert file1.status == FileStatus.UNMATCHED
     assert file1.parsed_season == 2
     assert file1.episode_id is None
