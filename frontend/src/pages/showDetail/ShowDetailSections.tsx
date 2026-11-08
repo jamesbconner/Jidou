@@ -171,9 +171,9 @@ function specialsMenuItem(
 }
 
 /**
- * Right-hand column of actions. Remove, RSS and Refresh Metadata stay visible;
- * the less common ones (fix match, type, aliases, images) are folded into a
- * single "Action" menu so the column doesn't grow with every new action.
+ * Right-hand column of actions. RSS, Refresh Metadata and Manage Aliases stay
+ * visible; the less common ones (fix match, type, images, remove) are folded
+ * into a single "Action" menu so the column doesn't grow with every new action.
  */
 export function MaintenanceActions({
   show,
@@ -196,9 +196,6 @@ export function MaintenanceActions({
 }: MaintenanceActionsProps) {
   return (
     <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-      <Button onClick={onRemove} disabled={isDeleting} variant="danger" tone="light" size="sm" className="w-36">
-        {isDeleting ? 'Removing…' : 'Remove Show'}
-      </Button>
       <button
         onClick={onRss}
         disabled={rssPending}
@@ -220,6 +217,15 @@ export function MaintenanceActions({
       >
         {refreshPending ? 'Refreshing…' : 'Refresh Metadata'}
       </Button>
+      <Button
+        onClick={onAliases}
+        variant="secondary"
+        tone="light"
+        size="sm"
+        className="w-36 whitespace-nowrap"
+      >
+        Manage Aliases
+      </Button>
       <Menu
         label="Action"
         variant="secondary"
@@ -229,13 +235,18 @@ export function MaintenanceActions({
         items={[
           { label: 'Fix Match', onSelect: onFixMatch },
           { label: show.content_type ? `Type: ${show.content_type}` : 'Set Type', onSelect: onContentType },
-          { label: 'Manage Aliases', onSelect: onAliases },
           ...(show.media_type === 'movie'
             ? []
             : [
                 specialsMenuItem(show, specialsPending, onToggleSpecials),
               ]),
           { label: 'Change Images', onSelect: onImages },
+          {
+            label: isDeleting ? 'Removing…' : 'Remove Show',
+            onSelect: onRemove,
+            disabled: isDeleting,
+            danger: true,
+          },
         ]}
       />
       {rssError && (
