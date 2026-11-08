@@ -36,6 +36,7 @@ from jidou.schemas.show_schema import (
     ShowRead,
     ShowSearchResult,
     ShowSeasonAliasesUpdate,
+    ShowSpecialsUpdate,
 )
 from jidou.services.alias_handling import sanitize_alias
 from jidou.services.cache import cache
@@ -1088,6 +1089,47 @@ async def sync_episodes(
     )
     result = await db_session.execute(ep_stmt)
     return list(result.scalars().all())
+
+
+@router.put("/{show_id}/specials", response_model=ShowRead)
+async def set_show_specials(
+    show_id: int,
+    payload: ShowSpecialsUpdate,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> Show:
+    """Turn TMDB Specials (season 0) syncing on or off for a show.
+
+    Enabling stores the opt-in and syncs the show's episodes right away, so the
+    specials exist before the next Parse. Disabling only stops future syncs:
+    season 0 episodes already stored (and any files matched to them) are kept.
+
+    Args:
+        show_id: Database primary key.
+        payload: ``enabled`` flag.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found; 422 if it is a movie.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    show = await get_show_or_404(db_session, show_id)
+    if show.media_type == "movie":
+        raise HTTPException(status_code=422, detail="Movies have no specials season")
+
+    show.sync_specials = payload.enabled
+    if payload.enabled:
+        # Live fetch: a special TMDB added recently must not be masked by a cached response.
+        await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show, bypass_cache=True)
+    await db_session.flush()
+    await db_session.refresh(show)
+    logger.info("Set specials sync for show id=%d enabled=%s", show_id, payload.enabled)
+    return show
 
 
 @router.get("/{show_id}/episode-groups", response_model=list[EpisodeGroupSummary])

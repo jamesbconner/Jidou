@@ -3,6 +3,7 @@
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6173,3 +6174,85 @@ def test_refresh_metadata_works_for_a_movie() -> None:
         assert response.json()["media_type"] == "movie"
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/shows/{show_id}/specials
+# ---------------------------------------------------------------------------
+
+
+def _put_specials(show: MagicMock | None, enabled: bool) -> tuple[Any, MagicMock]:
+    """PUT the specials toggle with the show lookup and the TMDB orchestrator mocked.
+
+    Returns:
+        The response and the patched ``TMDBOrchestrator`` class mock.
+    """
+    from jidou.api.dependencies import get_tmdb
+    from jidou.database import get_session
+
+    app.dependency_overrides[get_session] = _session_override(single=show)
+    app.dependency_overrides[get_tmdb] = lambda: _make_tmdb_mock()
+    try:
+        with patch("jidou.orchestrators.tmdb_orchestrator.TMDBOrchestrator") as mock_orch:
+            mock_orch.return_value.sync_show_episodes = AsyncMock()
+            response = TestClient(app).put("/api/shows/1/specials", json={"enabled": enabled})
+        return response, mock_orch
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_enable_specials_sets_flag_and_syncs_live() -> None:
+    """Enabling sets sync_specials and immediately syncs, bypassing the TMDB cache."""
+    show = _make_show(id=1)
+    show.sync_specials = False
+
+    response, mock_orch = _put_specials(show, True)
+
+    assert response.status_code == 200
+    assert response.json()["sync_specials"] is True
+    assert show.sync_specials is True
+    mock_orch.return_value.sync_show_episodes.assert_awaited_once_with(show, bypass_cache=True)
+
+
+def test_disable_specials_clears_flag_without_syncing() -> None:
+    """Disabling only clears the flag: no TMDB sync, no episode deletion."""
+    show = _make_show(id=1)
+    show.sync_specials = True
+
+    response, mock_orch = _put_specials(show, False)
+
+    assert response.status_code == 200
+    assert response.json()["sync_specials"] is False
+    mock_orch.return_value.sync_show_episodes.assert_not_awaited()
+
+
+def test_specials_toggle_rejects_a_movie() -> None:
+    """Movies have no seasons, so the toggle is a 422 and the flag is untouched."""
+    show = _make_show(id=1)
+    show.media_type = "movie"
+    show.sync_specials = False
+
+    response, mock_orch = _put_specials(show, True)
+
+    assert response.status_code == 422
+    assert show.sync_specials is False
+    mock_orch.return_value.sync_show_episodes.assert_not_awaited()
+
+
+def test_specials_toggle_returns_404_when_show_not_found() -> None:
+    """An unknown show is a 404."""
+    response, _ = _put_specials(None, True)
+
+    assert response.status_code == 404
+
+
+def test_enable_specials_on_show_with_active_episode_group_still_succeeds() -> None:
+    """The flag is stored even though an active group keeps specials out of the sync."""
+    show = _make_show(id=1)
+    show.sync_specials = False
+    show.active_episode_group_id = "group-1"
+
+    response, _ = _put_specials(show, True)
+
+    assert response.status_code == 200
+    assert show.sync_specials is True
