@@ -79,6 +79,7 @@ Adult-flagged shows/episodes are excluded from all three carousels unless the `s
 | PATCH | `/api/shows/{id}` | Update user-managed fields (`content_type`, `local_path`, `list_poster_path`, `detail_poster_path`, etc.) |
 | PUT | `/api/shows/{id}/paths` | Set local filesystem path |
 | PUT | `/api/shows/{id}/aliases` | Replace show aliases list |
+| PUT | `/api/shows/{id}/specials` | Turn TMDB Specials (season 0) syncing on or off (`{"enabled": bool}`). Enabling syncs the show's episodes immediately; disabling keeps stored season 0 episodes. 422 for movies |
 | PUT | `/api/shows/{id}/season-aliases` | Replace the show's season names (`{"season_aliases": {name: season}}`, seasons 0–999; names lower-cased; empty map clears) |
 | DELETE | `/api/shows/{id}` | Remove show and all its data |
 | GET | `/api/shows/search` | Search the local library by title, alias, `sys_name`, or folder name (final `local_path` component); ranked exact > prefix > substring, each hit tagged with `matched_on` (`title`/`alias`/`sys_name`/`path`) |
@@ -162,7 +163,7 @@ Omit `season_number` (or pass `null`) to apply the change to every episode in th
 | `end` | date | Last date to include (inclusive) |
 | `today` | date | Caller's local "today", used to compute `tracked`/`missing`/`upcoming`; the frontend always passes the browser's own date |
 
-`sync-missing` re-syncs any show with an episode in range that the calendar currently marks `missing` (aired on/before *today*, no file tracked) — the common cause is TMDB's schedule moving after the episode's `air_date` was already stored. Shows with `track_missing_episodes=false` or with no active, published RSS subscription are skipped, since neither will ever auto-download the episode. Response:
+`sync-missing` re-syncs any show with an episode in range that the calendar currently marks `missing` (aired on/before *today*, no file tracked) — the common cause is TMDB's schedule moving after the episode's `air_date` was already stored. Shows with `track_missing_episodes=false` or with no active, published RSS subscription are skipped, since neither will ever auto-download the episode. Response: Season 0 (Specials) episodes are never counted as missing and never trigger a sync.
 ```json
 { "shows_synced": 3, "shows_failed": 0, "episodes_upserted": 5 }
 ```
