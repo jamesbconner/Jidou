@@ -83,6 +83,7 @@ function baseShow(overrides: Partial<ShowRead> = {}): ShowRead {
     list_poster_path: null,
     detail_poster_path: null,
     track_missing_episodes: true,
+    sync_specials: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -97,6 +98,11 @@ function mockShowDetail(
   vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
+    if (method === 'PUT' && url.includes('/shows/1/specials')) {
+      const { enabled } = JSON.parse(String(init?.body)) as { enabled: boolean }
+      show = { ...show, sync_specials: enabled }
+      return mockResponse(show)
+    }
     if (method === 'PATCH' && url.includes('/shows/1')) {
       const patch = JSON.parse(String(init?.body)) as Partial<ShowRead>
       show = { ...show, ...patch }
@@ -125,6 +131,44 @@ async function chooseFromMoreMenu(name: string) {
   fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
   fireEvent.click(await screen.findByRole('menuitem', { name }))
 }
+
+function putSpecialsBody(): unknown {
+  const call = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PUT')
+  expect(call).toBeDefined()
+  expect(String(call?.[0])).toContain('/shows/1/specials')
+  return JSON.parse(String(call?.[1]?.body))
+}
+
+describe('ShowDetail — Specials toggle', () => {
+  test('"Enable Specials" turns specials sync on and flips to "Disable Specials"', async () => {
+    mockShowDetail(baseShow({ sync_specials: false }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await chooseFromMoreMenu('Enable Specials')
+
+    await waitFor(() => expect(putSpecialsBody()).toEqual({ enabled: true }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
+    expect(await screen.findByRole('menuitem', { name: 'Disable Specials' })).toBeInTheDocument()
+  })
+
+  test('"Disable Specials" turns specials sync off', async () => {
+    mockShowDetail(baseShow({ sync_specials: true }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await chooseFromMoreMenu('Disable Specials')
+
+    await waitFor(() => expect(putSpecialsBody()).toEqual({ enabled: false }))
+  })
+
+  test('a movie has no specials action', async () => {
+    mockShowDetail(baseShow({ media_type: 'movie' }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
+    await screen.findByRole('menuitem', { name: 'Manage Aliases' })
+    expect(screen.queryByRole('menuitem', { name: /Specials/ })).not.toBeInTheDocument()
+  })
+})
 
 describe('ShowDetail — Ignore Missing Eps toggle', () => {
   test('shows "Ignore Missing Eps" for a tracked show and toggles it off on click', async () => {
@@ -516,7 +560,7 @@ describe('ShowDetail — Action menu and Refresh Metadata', () => {
     }
   })
 
-  test('the Action menu lists the four less common actions in order', async () => {
+  test('the Action menu lists the less common actions in order', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
@@ -527,6 +571,7 @@ describe('ShowDetail — Action menu and Refresh Metadata', () => {
       'Fix Match',
       'Set Type',
       'Manage Aliases',
+      'Enable Specials',
       'Change Images',
     ])
   })

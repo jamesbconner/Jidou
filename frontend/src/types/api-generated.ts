@@ -827,6 +827,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shows/{show_id}/specials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Show Specials
+         * @description Turn TMDB Specials (season 0) syncing on or off for a show.
+         *
+         *     Enabling stores the opt-in and syncs the show's episodes right away, so the
+         *     specials exist before the next Parse. Disabling only stops future syncs:
+         *     season 0 episodes already stored (and any files matched to them) are kept.
+         *
+         *     Args:
+         *         show_id: Database primary key.
+         *         payload: ``enabled`` flag.
+         *         db_session: DB session (injected).
+         *         tmdb: TMDB service (injected).
+         *
+         *     Returns:
+         *         The updated :class:`Show` record.
+         *
+         *     Raises:
+         *         HTTPException: 404 if the show is not found; 422 if it is a movie.
+         */
+        put: operations["set_show_specials_api_shows__show_id__specials_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shows/{show_id}/episode-groups": {
         parameters: {
             query?: never;
@@ -5213,6 +5249,11 @@ export interface components {
              */
             track_missing_episodes: boolean;
             /**
+             * Sync Specials
+             * @default false
+             */
+            sync_specials: boolean;
+            /**
              * Created At
              * Format: date-time
              */
@@ -5265,6 +5306,17 @@ export interface components {
             season_aliases?: {
                 [key: string]: number;
             };
+        };
+        /**
+         * ShowSpecialsUpdate
+         * @description Payload for turning TMDB Specials (season 0) syncing on or off for a show.
+         */
+        ShowSpecialsUpdate: {
+            /**
+             * Enabled
+             * @description True to sync season 0 episodes for this show
+             */
+            enabled: boolean;
         };
         /**
          * SnapshotType
@@ -6517,6 +6569,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EpisodeList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_show_specials_api_shows__show_id__specials_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                show_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShowSpecialsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShowRead"];
                 };
             };
             /** @description Validation Error */

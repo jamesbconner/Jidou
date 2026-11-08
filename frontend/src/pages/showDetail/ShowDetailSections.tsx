@@ -145,6 +145,7 @@ interface MaintenanceActionsProps {
   onFixMatch: () => void
   onContentType: () => void
   onAliases: () => void
+  onToggleSpecials: () => void
   onImages: () => void
 }
 
@@ -167,6 +168,7 @@ export function MaintenanceActions({
   onFixMatch,
   onContentType,
   onAliases,
+  onToggleSpecials,
   onImages,
 }: MaintenanceActionsProps) {
   return (
@@ -205,6 +207,14 @@ export function MaintenanceActions({
           { label: 'Fix Match', onSelect: onFixMatch },
           { label: show.content_type ? `Type: ${show.content_type}` : 'Set Type', onSelect: onContentType },
           { label: 'Manage Aliases', onSelect: onAliases },
+          ...(show.media_type === 'movie'
+            ? []
+            : [
+                {
+                  label: show.sync_specials ? 'Disable Specials' : 'Enable Specials',
+                  onSelect: onToggleSpecials,
+                },
+              ]),
           { label: 'Change Images', onSelect: onImages },
         ]}
       />
