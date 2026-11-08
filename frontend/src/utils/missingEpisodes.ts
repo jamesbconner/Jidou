@@ -11,7 +11,9 @@ export interface SeasonGap {
  *
  * An episode counts as a gap when it has already aired (`air_date` is in the
  * past relative to `today`) and has no linked file (`file_tracked` is
- * false). Episodes with no `air_date` (unannounced/TBD) are never gaps.
+ * false). Episodes with no `air_date` (unannounced/TBD) are never gaps, and
+ * season 0 (specials) is never a gap -- it is metadata for matching, not
+ * something the user is waiting on.
  *
  * @param episodes - Episodes for a single show.
  * @param today - ISO date string (YYYY-MM-DD) used as "now"; defaults to the
@@ -26,7 +28,7 @@ export function computeMissingEpisodes(
   const bySeason = new Map<number, { aired: number; missing: EpisodeList[] }>()
 
   for (const ep of episodes) {
-    if (!ep.air_date) continue
+    if (!ep.air_date || ep.season_number === 0) continue
     const entry = bySeason.get(ep.season_number) ?? { aired: 0, missing: [] }
     if (ep.air_date < today) {
       entry.aired += 1

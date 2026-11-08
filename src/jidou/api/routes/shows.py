@@ -48,6 +48,7 @@ from jidou.services.settings_service import (
     get_similar_titles_include_external,
 )
 from jidou.services.show_search import MIN_QUERY_LENGTH, search_local_shows
+from jidou.services.specials import SPECIALS_SEASON
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
@@ -225,6 +226,7 @@ async def list_shows(
         select(func.count(Episode.id))
         .where(
             Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
             Episode.air_date < today,
             Episode.file_tracked.is_(False),
         )
@@ -233,7 +235,11 @@ async def list_shows(
     )
     aired_ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id, Episode.air_date < today)
+        .where(
+            Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
+            Episode.air_date < today,
+        )
         .correlate(Show)
         .scalar_subquery()
     )
@@ -241,6 +247,7 @@ async def list_shows(
         select(func.count(Episode.id))
         .where(
             Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
             Episode.air_date < today,
             Episode.file_tracked.is_(True),
         )
@@ -258,7 +265,7 @@ async def list_shows(
             .filter(Episode.air_date < today, Episode.file_tracked.is_(False))
             .label("missing_count"),
         )
-        .where(Episode.show_id == Show.id, Episode.season_number != 0)
+        .where(Episode.show_id == Show.id, Episode.season_number != SPECIALS_SEASON)
         .correlate(Show)
         .group_by(Episode.season_number)
         .subquery()
@@ -394,7 +401,10 @@ async def get_calendar(
     stmt = (
         select(Episode, Show, active_rss_sq.label("has_active_rss_subscription"))
         .join(Show, Episode.show_id == Show.id)
-        .where(Episode.air_date.between(start, end))
+        .where(
+            Episode.air_date.between(start, end),
+            Episode.season_number != SPECIALS_SEASON,
+        )
         .order_by(Episode.air_date, Show.title)
     )
     rows = (await db_session.execute(stmt)).all()
@@ -483,6 +493,7 @@ async def sync_missing_calendar_shows(
             Episode.air_date.between(start, end),
             Episode.air_date <= today,
             Episode.file_tracked == False,  # noqa: E712
+            Episode.season_number != SPECIALS_SEASON,
         )
     )
     show_ids = list((await db_session.execute(show_ids_stmt)).scalars().all())

@@ -28,6 +28,14 @@ function makeEpisode(overrides: Partial<EpisodeList> = {}): EpisodeList {
 const TODAY = '2026-01-01'
 
 describe('computeMissingEpisodes', () => {
+  test('never reports season 0 specials as missing', () => {
+    const episodes = [
+      makeEpisode({ id: 1, season_number: 0, episode_number: 1, file_tracked: false }),
+      makeEpisode({ id: 2, season_number: 1, episode_number: 1, file_tracked: true }),
+    ]
+    expect(computeMissingEpisodes(episodes, TODAY)).toEqual([])
+  })
+
   test('groups aired, untracked episodes by season', () => {
     const episodes = [
       makeEpisode({ id: 1, season_number: 1, episode_number: 1, file_tracked: false }),
