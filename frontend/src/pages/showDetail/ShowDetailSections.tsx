@@ -4,7 +4,9 @@ import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Menu } from '@/components/ui/Menu'
+import type { MenuItem } from '@/components/ui/Menu'
 import { toHostPath } from '@/utils/paths'
+import { hasSpecialsSeasonName } from '@/utils/specials'
 import type { FileRead, MediaPaths, ShowRead, WatchlistRead } from '@/types/api'
 
 /**
@@ -152,6 +154,23 @@ interface MaintenanceActionsProps {
 }
 
 /**
+ * The Enable/Disable Specials action. A season name mapped to 0 keeps Specials
+ * on regardless of the toggle, so then the item only reports that state
+ * (disabled) instead of offering a switch that would do nothing.
+ */
+function specialsMenuItem(
+  show: ShowRead,
+  pending: boolean,
+  onSelect: () => void,
+): MenuItem {
+  if (pending) return { label: 'Syncing Specials…', onSelect, disabled: true }
+  if (hasSpecialsSeasonName(show)) {
+    return { label: 'Specials on (season name)', onSelect, disabled: true }
+  }
+  return { label: show.sync_specials ? 'Disable Specials' : 'Enable Specials', onSelect }
+}
+
+/**
  * Right-hand column of actions. Remove, RSS and Refresh Metadata stay visible;
  * the less common ones (fix match, type, aliases, images) are folded into a
  * single "Action" menu so the column doesn't grow with every new action.
@@ -214,15 +233,7 @@ export function MaintenanceActions({
           ...(show.media_type === 'movie'
             ? []
             : [
-                {
-                  label: specialsPending
-                    ? 'Syncing Specials…'
-                    : show.sync_specials
-                      ? 'Disable Specials'
-                      : 'Enable Specials',
-                  onSelect: onToggleSpecials,
-                  disabled: specialsPending,
-                },
+                specialsMenuItem(show, specialsPending, onToggleSpecials),
               ]),
           { label: 'Change Images', onSelect: onImages },
         ]}

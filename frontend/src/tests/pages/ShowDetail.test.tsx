@@ -198,6 +198,34 @@ describe('ShowDetail — Specials toggle', () => {
     expect(await screen.findByText('TMDB request failed')).toBeInTheDocument()
   })
 
+  test.each([
+    ['toggle off', false],
+    ['toggle on', true],
+  ])(
+    'a season name mapped to 0 keeps specials on and the action reads as such (%s)',
+    async (_label, syncSpecials) => {
+      mockShowDetail(
+        baseShow({ sync_specials: syncSpecials, season_aliases: { 'omake shorts': 0 } }),
+      )
+      render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+      fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
+
+      const item = await screen.findByRole('menuitem', { name: 'Specials on (season name)' })
+      expect(item).toBeDisabled()
+      expect(screen.queryByRole('menuitem', { name: /^(Enable|Disable) Specials$/ })).toBeNull()
+    },
+  )
+
+  test('a season name for another season does not count as opting in', async () => {
+    mockShowDetail(baseShow({ sync_specials: false, season_aliases: { 'example arc-hen': 2 } }))
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Enable Specials' })).toBeEnabled()
+  })
+
   test('a movie has no specials action', async () => {
     mockShowDetail(baseShow({ media_type: 'movie' }))
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
