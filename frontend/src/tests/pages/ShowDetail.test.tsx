@@ -231,7 +231,7 @@ describe('ShowDetail — Specials toggle', () => {
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
     fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
-    await screen.findByRole('menuitem', { name: 'Manage Aliases' })
+    await screen.findByRole('menuitem', { name: 'Fix Match' })
     expect(screen.queryByRole('menuitem', { name: /Specials/ })).not.toBeInTheDocument()
   })
 })
@@ -535,7 +535,7 @@ describe('ShowDetail — modal state machine', () => {
       })
 
     async function openAliasesAndType(text: string) {
-      await chooseFromMoreMenu('Manage Aliases')
+      fireEvent.click(await screen.findByRole('button', { name: 'Manage Aliases' }))
       const input = await screen.findByPlaceholderText('Add alias…')
       fireEvent.change(input, { target: { value: text } })
       return input
@@ -612,15 +612,15 @@ describe('ShowDetail — modal state machine', () => {
 })
 
 describe('ShowDetail — Action menu and Refresh Metadata', () => {
-  test('keeps Remove, RSS and Refresh Metadata visible and folds the rest into a collapsed Action menu', async () => {
+  test('keeps RSS, Refresh Metadata and Manage Aliases visible and folds the rest into a collapsed Action menu', async () => {
     mockShowDetail(baseShow())
     render(createElement(ShowDetail), { wrapper: makeWrapper() })
 
-    expect(await screen.findByRole('button', { name: 'Remove Show' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Manage Aliases' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add RSS' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh Metadata' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Action/ })).toHaveAttribute('aria-expanded', 'false')
-    for (const name of ['Fix Match', 'Set Type', 'Manage Aliases', 'Change Images']) {
+    for (const name of ['Fix Match', 'Set Type', 'Change Images', 'Remove Show']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name })).not.toBeInTheDocument()
     }
@@ -636,10 +636,19 @@ describe('ShowDetail — Action menu and Refresh Metadata', () => {
     expect(items.map((i) => i.textContent)).toEqual([
       'Fix Match',
       'Set Type',
-      'Manage Aliases',
       'Enable Specials',
       'Change Images',
+      'Remove Show',
     ])
+  })
+
+  test('Remove Show is in the Action menu and asks for confirmation', async () => {
+    mockShowDetail(baseShow())
+    render(createElement(ShowDetail), { wrapper: makeWrapper() })
+
+    await chooseFromMoreMenu('Remove Show')
+
+    expect(await screen.findByText('Remove show?')).toBeInTheDocument()
   })
 
   test('the Set Type item shows the current content type', async () => {

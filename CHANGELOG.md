@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **Show Detail sidebar actions reordered.** Remove Show moved into the **Action** menu (in red, last item) since it is rarely used. Manage Aliases moved out of the menu to its own button below Refresh Metadata.
+
 ## [0.4.17] — 2026-11-08
 
 Specials (season 0) metadata, which should have been available from the start, can now be synced per show.

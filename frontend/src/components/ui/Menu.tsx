@@ -8,6 +8,8 @@ export interface MenuItem {
   label: string
   onSelect: () => void
   disabled?: boolean
+  /** Marks a destructive action; rendered in red. */
+  danger?: boolean
 }
 
 interface Props {
@@ -142,7 +144,10 @@ export function Menu({ label, items, variant = 'secondary', tone, size = 'sm', c
               // the hovered item instead of staying on the one focused on open.
               onMouseEnter={() => itemRefs.current[i]?.focus()}
               className={clsx(
-                'block w-full whitespace-nowrap px-3 py-1.5 text-left text-xs text-gray-700 dark:text-gray-200',
+                'block w-full whitespace-nowrap px-3 py-1.5 text-left text-xs',
+                item.danger
+                  ? 'text-[var(--color-ember-600)] dark:text-[var(--color-ember-400)]'
+                  : 'text-gray-700 dark:text-gray-200',
                 'focus:bg-gray-100 focus:outline-none dark:focus:bg-gray-800',
                 'disabled:cursor-not-allowed disabled:opacity-50',
               )}
