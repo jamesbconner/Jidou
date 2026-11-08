@@ -211,7 +211,7 @@ describe('ShowDetail — Specials toggle', () => {
 
       fireEvent.click(await screen.findByRole('button', { name: /^Action/ }))
 
-      const item = await screen.findByRole('menuitem', { name: 'Specials on (season name)' })
+      const item = await screen.findByRole('menuitem', { name: 'Specials Enabled Manually' })
       expect(item).toBeDisabled()
       expect(screen.queryByRole('menuitem', { name: /^(Enable|Disable) Specials$/ })).toBeNull()
     },

@@ -165,7 +165,7 @@ function specialsMenuItem(
 ): MenuItem {
   if (pending) return { label: 'Syncing Specials…', onSelect, disabled: true }
   if (hasSpecialsSeasonName(show)) {
-    return { label: 'Specials on (season name)', onSelect, disabled: true }
+    return { label: 'Specials Enabled Manually', onSelect, disabled: true }
   }
   return { label: show.sync_specials ? 'Disable Specials' : 'Enable Specials', onSelect }
 }
