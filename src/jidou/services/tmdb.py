@@ -421,17 +421,17 @@ class TMDBService:
 
         Args:
             tmdb_id: TMDB identifier of the TV show.
-            season_number: Season number (1-based).
+            season_number: Season number; 0 is TMDB's Specials season.
             bypass_cache: Force a live request; see :meth:`_request`.
 
         Returns:
             Dictionary containing season metadata and ``episodes`` list.
 
         Raises:
-            ValueError: If *season_number* is not a positive integer.
+            ValueError: If *season_number* is negative.
         """
-        if season_number < 1:
-            raise ValueError(f"season_number must be >= 1, got {season_number}")
+        if season_number < 0:
+            raise ValueError(f"season_number must be >= 0, got {season_number}")
         return await self._request(
             f"/tv/{tmdb_id}/season/{season_number}", bypass_cache=bypass_cache
         )

@@ -357,6 +357,21 @@ export function useUpdateSeasonAliases(showId: number) {
   })
 }
 
+/**
+ * Turn TMDB Specials (season 0) syncing on or off for a show. Enabling syncs
+ * the show's episodes on the server, so the episode data is refreshed too.
+ */
+export function useSetShowSpecials(showId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.put<ShowRead>(`/shows/${showId}/specials`, { enabled }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: showKeys.all })
+    },
+  })
+}
+
 export function useRegenerateShowAliases(showId: number) {
   const qc = useQueryClient()
   return useMutation({

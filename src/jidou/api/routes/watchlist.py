@@ -20,6 +20,7 @@ from jidou.schemas.watchlist_schema import (
     WatchlistUpdate,
 )
 from jidou.services.rss_stub import ensure_rss_stub
+from jidou.services.specials import SPECIALS_SEASON
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,11 @@ async def list_watchlist(
             Episode.air_date,
             Episode.file_tracked,
         )
-        .where(Episode.show_id == WatchlistEntry.show_id, Episode.watched.is_(False))
+        .where(
+            Episode.show_id == WatchlistEntry.show_id,
+            Episode.watched.is_(False),
+            Episode.season_number != SPECIALS_SEASON,
+        )
         .order_by(Episode.season_number.asc(), Episode.episode_number.asc())
         .limit(1)
         .correlate(WatchlistEntry)

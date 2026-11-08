@@ -4,7 +4,9 @@ import { WatchedProgressBar } from '@/components/WatchedProgressBar'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Menu } from '@/components/ui/Menu'
+import type { MenuItem } from '@/components/ui/Menu'
 import { toHostPath } from '@/utils/paths'
+import { hasSpecialsSeasonName } from '@/utils/specials'
 import type { FileRead, MediaPaths, ShowRead, WatchlistRead } from '@/types/api'
 
 /**
@@ -139,13 +141,33 @@ interface MaintenanceActionsProps {
   rssError: Error | null
   refreshPending: boolean
   refreshError: Error | null
+  specialsPending: boolean
+  specialsError: Error | null
   onRemove: () => void
   onRss: () => void
   onRefreshMetadata: () => void
   onFixMatch: () => void
   onContentType: () => void
   onAliases: () => void
+  onToggleSpecials: () => void
   onImages: () => void
+}
+
+/**
+ * The Enable/Disable Specials action. A season name mapped to 0 keeps Specials
+ * on regardless of the toggle, so then the item only reports that state
+ * (disabled) instead of offering a switch that would do nothing.
+ */
+function specialsMenuItem(
+  show: ShowRead,
+  pending: boolean,
+  onSelect: () => void,
+): MenuItem {
+  if (pending) return { label: 'Syncing Specials…', onSelect, disabled: true }
+  if (hasSpecialsSeasonName(show)) {
+    return { label: 'Specials on (season name)', onSelect, disabled: true }
+  }
+  return { label: show.sync_specials ? 'Disable Specials' : 'Enable Specials', onSelect }
 }
 
 /**
@@ -161,12 +183,15 @@ export function MaintenanceActions({
   rssError,
   refreshPending,
   refreshError,
+  specialsPending,
+  specialsError,
   onRemove,
   onRss,
   onRefreshMetadata,
   onFixMatch,
   onContentType,
   onAliases,
+  onToggleSpecials,
   onImages,
 }: MaintenanceActionsProps) {
   return (
@@ -205,6 +230,11 @@ export function MaintenanceActions({
           { label: 'Fix Match', onSelect: onFixMatch },
           { label: show.content_type ? `Type: ${show.content_type}` : 'Set Type', onSelect: onContentType },
           { label: 'Manage Aliases', onSelect: onAliases },
+          ...(show.media_type === 'movie'
+            ? []
+            : [
+                specialsMenuItem(show, specialsPending, onToggleSpecials),
+              ]),
           { label: 'Change Images', onSelect: onImages },
         ]}
       />
@@ -213,6 +243,9 @@ export function MaintenanceActions({
       )}
       {refreshError && (
         <span className="text-xs text-red-600 text-right max-w-[9rem]">{refreshError.message}</span>
+      )}
+      {specialsError && (
+        <span className="text-xs text-red-600 text-right max-w-[9rem]">{specialsError.message}</span>
       )}
     </div>
   )

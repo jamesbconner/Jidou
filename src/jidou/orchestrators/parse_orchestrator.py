@@ -29,6 +29,7 @@ from jidou.services.filename_parser import FilenameParseResult, heuristic_se, pa
 from jidou.services.llm_service import LLMService
 from jidou.services.path_resolution import auto_local_path_for
 from jidou.services.show_lookup import find_show_by_name
+from jidou.services.specials import SPECIALS_SEASON, wants_specials
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,12 @@ def _missing_episode_reason(show: Show, season: int | None, episode: int | None)
         return (
             f"Season not detected, and episode {episode} of {show.title!r} matches neither an "
             "absolute episode number nor a Season 1 episode; resolve it manually"
+        )
+    if season == SPECIALS_SEASON and not wants_specials(show):
+        return (
+            f"Episode S{season:02d}E{episode:02d} of {show.title!r} not found in the "
+            "database; specials are not synced for this show -- enable Specials (or add a "
+            "season name for season 0), then re-run Parse"
         )
     return (
         f"Episode S{season:02d}E{episode:02d} of {show.title!r} not found in the "

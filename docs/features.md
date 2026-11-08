@@ -79,7 +79,7 @@ If the show is found but the file's episode is not in the database yet (typicall
 
 **Manual match:** Use the **Resolve** button on the Files page to pick the correct show manually. Shows already in your library (matched by title, alias, system name, or folder name) are listed first and reuse their existing folder; a TMDB result whose show is already tracked is assigned to that existing show and folder instead of deriving a new folder name from the TMDB title. The file's parsed name is also saved as an alias of the chosen show, so later files with the same name match it automatically.
 
-**Season names (arc titles):** Some releases name a later season by its arc instead of a number, for example `[Group] Example Show - Example Arc-hen - 01 (1080p).mkv` for Season 2. Open the show's **Manage Aliases** modal and add the arc under **Season names** with its season number (`example arc-hen` → 2); those files then match and route to that season. A file named `<show> - <name> - 01` whose name has no season set is left unmatched with a message naming it, rather than being guessed as Season 1.
+**Season names (arc titles):** Some releases name a later season by its arc instead of a number, for example `[Group] Example Show - Example Arc-hen - 01 (1080p).mkv` for Season 2. Open the show's **Manage Aliases** modal and add the arc under **Season names** with its season number (`example arc-hen` → 2); those files then match and route to that season. A file named `<show> - <name> - 01` whose name has no season set is left unmatched with a message naming it, rather than being guessed as Season 1. A season name can also map to season `0`, or use **Action → Enable Specials** on the show's detail page (not shown for movies), to sync TMDB's Specials so `S00Exx` and "Omake Shorts"-style releases match and route to `Season 00`. Specials never count as missing and stay off the calendar and the watchlist's next-up.
 
 ![Files page Resolve modal](screenshots/files-resolve-modal.png)
 
@@ -251,7 +251,7 @@ The Dashboard is an optional page (toggle in Settings; `/dashboard`) showing a p
 
 An optional calendar page (toggle in Settings) showing episodes airing in a date range across your whole library, each marked `tracked`, `missing`, or `upcoming` relative to today. The date range is configurable and persists per-browser: a **range** of 1, 3, 5, or 7 days, and an **anchor** — starting on today, centered on today, or (7-day range only) starting at the beginning of the calendar week, with Sunday or Monday as the week-start day.
 
-**Sync missing:** A show sometimes shows `missing` in the calendar purely because TMDB moved an episode's air date after Jidou already stored the old one — the episode never actually aired. The **Sync missing** button (enabled whenever the visible range has at least one `missing` episode) re-fetches TMDB metadata for every affected show, bypassing the TMDB response cache so a schedule change is picked up immediately (`POST /api/shows/calendar/sync-missing`). Shows with **Ignore Missing Eps** set on Show Detail, or with no active, published RSS subscription, are skipped — neither is ever going to auto-download the episode, so there'd be nothing to correct. A result banner reports how many shows were synced, episodes updated, and (if any) failed.
+**Sync missing:** A show sometimes shows `missing` in the calendar purely because TMDB moved an episode's air date after Jidou already stored the old one — the episode never actually aired. The **Sync missing** button (enabled whenever the visible range has at least one `missing` episode) re-fetches TMDB metadata for every affected show, bypassing the TMDB response cache so a schedule change is picked up immediately (`POST /api/shows/calendar/sync-missing`). Shows with **Ignore Missing Eps** set on Show Detail, or with no active, published RSS subscription, are skipped — neither is ever going to auto-download the episode, so there'd be nothing to correct. A result banner reports how many shows were synced, episodes updated, and (if any) failed. Season 0 (Specials) episodes are never counted as missing and never trigger a sync.
 
 ![Airing calendar page](screenshots/calendar-page.png)
 
@@ -323,7 +323,7 @@ Resolve them from the Data Quality tab by linking each orphan to the correct epi
 
 ### Missing Episodes tab
 
-A library-wide list of episodes with no tracked file, on its own tab (Shows page → **Data**). Filterable by content type, status, genre, language, minimum missing-episode count, and watchlist-only, with a **Clear filters** button; filter state persists independently from the Library tab's own filter bar.
+A library-wide list of episodes with no tracked file, on its own tab (Shows page → **Data**). Filterable by content type, status, genre, language, minimum missing-episode count, and watchlist-only, with a **Clear filters** button; filter state persists independently from the Library tab's own filter bar. Season 0 (Specials) is never listed.
 
 ---
 

@@ -297,6 +297,7 @@ def _show_row(**tmdb_fields: object) -> MagicMock:
     s.vote_count = 0
     s.cached = False
     s.track_missing_episodes = True
+    s.sync_specials = False
     s.created_at = _NOW
     s.updated_at = _NOW
     for key, value in tmdb_fields.items():

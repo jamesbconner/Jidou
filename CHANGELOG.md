@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.17] — 2026-11-08
+
+Specials (season 0) metadata, which should have been available from the start, can now be synced per show.
+
+### Fixed
+- **Specials (season 0) metadata, per show.** TMDB's Specials season was never synced, so `S00Exx` and "Omake Shorts"-style releases could not match. It is now synced for shows you opt in, either with the new **Enable Specials** item in the show's Action menu or by giving the show a season name that maps to season 0. Those releases now match and route to `Season 00` instead of staying unmatched. Specials never count as missing episodes and stay off the calendar and the watchlist's next-up. A `S00Exx` file on a show that hasn't opted in now says how to enable it (`PUT /api/shows/{id}/specials`).
+- **Release year off by one on Jan 1 titles.** The file-resolve dialogs read a title's year in local time, so a title released on January 1st showed the previous year west of UTC.
+
 ### Changed
 - **A file whose episode isn't in the database is no longer routed to the show folder.** When Parse finds the show but not the episode (a new season whose episodes aren't synced yet), it now refreshes that show's episodes from TMDB once per run and retries. If the episode is still missing, the file is left `unmatched` with the show already linked and a message saying what wasn't found, instead of being marked `matched` and moved to the show's root folder where it had to be fixed by hand. Movies are unaffected.
 

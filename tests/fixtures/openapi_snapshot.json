@@ -4909,6 +4909,11 @@
             ],
             "title": "Status"
           },
+          "sync_specials": {
+            "default": false,
+            "title": "Sync Specials",
+            "type": "boolean"
+          },
           "sys_name": {
             "anyOf": [
               {
@@ -5092,6 +5097,22 @@
           }
         },
         "title": "ShowSeasonAliasesUpdate",
+        "type": "object"
+      },
+      "ShowSpecialsUpdate": {
+        "additionalProperties": false,
+        "description": "Payload for turning TMDB Specials (season 0) syncing on or off for a show.",
+        "properties": {
+          "enabled": {
+            "description": "True to sync season 0 episodes for this show",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ShowSpecialsUpdate",
         "type": "object"
       },
       "SnapshotType": {
@@ -12128,6 +12149,75 @@
           }
         },
         "summary": "Get Similar Shows",
+        "tags": [
+          "shows"
+        ]
+      }
+    },
+    "/api/shows/{show_id}/specials": {
+      "put": {
+        "description": "Turn TMDB Specials (season 0) syncing on or off for a show.\n\nEnabling stores the opt-in and syncs the show's episodes right away, so the\nspecials exist before the next Parse. Disabling only stops future syncs:\nseason 0 episodes already stored (and any files matched to them) are kept.\n\nArgs:\n    show_id: Database primary key.\n    payload: ``enabled`` flag.\n    db_session: DB session (injected).\n    tmdb: TMDB service (injected).\n\nReturns:\n    The updated :class:`Show` record.\n\nRaises:\n    HTTPException: 404 if the show is not found; 422 if it is a movie.",
+        "operationId": "set_show_specials_api_shows__show_id__specials_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "in": "path",
+            "name": "show_id",
+            "required": true,
+            "schema": {
+              "title": "Show Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShowSpecialsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShowRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Show Specials",
         "tags": [
           "shows"
         ]

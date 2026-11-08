@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -165,6 +165,11 @@ class Show(TimestampMixin, Base):
     # User opt-out: excludes this show from missing-episode counts/lists when False
     track_missing_episodes: Mapped[bool] = mapped_column(
         Boolean, default=True, info=_source("user")
+    )
+    # User opt-in: sync TMDB season 0 (Specials) episodes for this show. A season
+    # alias that maps to 0 opts in too (see services.specials.wants_specials).
+    sync_specials: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), info=_source("user")
     )
 
     def __repr__(self) -> str:

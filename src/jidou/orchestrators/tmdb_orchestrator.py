@@ -21,6 +21,7 @@ from jidou.services.episode_group_mapping import (
     to_storage_map,
 )
 from jidou.services.episode_lookup import count_show_episodes
+from jidou.services.specials import SPECIALS_SEASON, wants_specials
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
@@ -224,7 +225,8 @@ class TMDBOrchestrator:
     ) -> TMDBSyncResult:
         """Fetch all seasons and episodes for one show and upsert Episode rows.
 
-        Skips season 0 (specials). Marks show.cached = True on completion,
+        Skips season 0 (specials) unless the show opted in (see
+        :func:`~jidou.services.specials.wants_specials`). Marks show.cached = True on completion,
         and refreshes show.last_air_date from the newest already-aired
         episode in the synced set (Shows-page "Recently Aired" sort reads
         this column directly, so it must track routine episode syncs, not
@@ -263,7 +265,13 @@ class TMDBOrchestrator:
             # silently revert the show back to its native 24-episode catalog.
             return await self._refresh_active_group_episodes(show, bypass_cache=bypass_cache)
         show_data = await self.tmdb.get_show_seasons(show.tmdb_id, bypass_cache=bypass_cache)
-        seasons = [s for s in show_data.get("seasons", []) if s.get("season_number", 0) > 0]
+        include_specials = wants_specials(show)
+        seasons = [
+            s
+            for s in show_data.get("seasons", [])
+            if s.get("season_number", 0) > 0
+            or (include_specials and s.get("season_number") == SPECIALS_SEASON)
+        ]
 
         total = len(seasons)
         episodes_upserted = 0
@@ -313,9 +321,12 @@ class TMDBOrchestrator:
         if episodes_upserted + episodes_skipped > 0:
             show.cached = True
 
-        _update_last_air_date(show, episodes_by_key.values())
+        # Specials never move last_air_date and sit outside the absolute /
+        # episode-group numbering, so only regular episodes feed these two.
+        regular = [ep for key, ep in episodes_by_key.items() if key[0] != SPECIALS_SEASON]
+        _update_last_air_date(show, regular)
 
-        await self._apply_episode_group_map(show, episodes_by_key.values())
+        await self._apply_episode_group_map(show, regular)
         await self.session.flush()
 
         logger.info(

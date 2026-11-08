@@ -36,6 +36,7 @@ from jidou.schemas.show_schema import (
     ShowRead,
     ShowSearchResult,
     ShowSeasonAliasesUpdate,
+    ShowSpecialsUpdate,
 )
 from jidou.services.alias_handling import sanitize_alias
 from jidou.services.cache import cache
@@ -48,6 +49,7 @@ from jidou.services.settings_service import (
     get_similar_titles_include_external,
 )
 from jidou.services.show_search import MIN_QUERY_LENGTH, search_local_shows
+from jidou.services.specials import SPECIALS_SEASON
 from jidou.services.tmdb import TMDBService
 from jidou.services.tmdb_mapping import fetch_episode_groups_list
 
@@ -205,13 +207,17 @@ async def list_shows(
     today = today or date.today()
     ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id)
+        .where(Episode.show_id == Show.id, Episode.season_number != SPECIALS_SEASON)
         .correlate(Show)
         .scalar_subquery()
     )
     watched_ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id, Episode.watched.is_(True))
+        .where(
+            Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
+            Episode.watched.is_(True),
+        )
         .correlate(Show)
         .scalar_subquery()
     )
@@ -225,6 +231,7 @@ async def list_shows(
         select(func.count(Episode.id))
         .where(
             Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
             Episode.air_date < today,
             Episode.file_tracked.is_(False),
         )
@@ -233,7 +240,11 @@ async def list_shows(
     )
     aired_ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id, Episode.air_date < today)
+        .where(
+            Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
+            Episode.air_date < today,
+        )
         .correlate(Show)
         .scalar_subquery()
     )
@@ -241,6 +252,7 @@ async def list_shows(
         select(func.count(Episode.id))
         .where(
             Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
             Episode.air_date < today,
             Episode.file_tracked.is_(True),
         )
@@ -258,7 +270,7 @@ async def list_shows(
             .filter(Episode.air_date < today, Episode.file_tracked.is_(False))
             .label("missing_count"),
         )
-        .where(Episode.show_id == Show.id, Episode.season_number != 0)
+        .where(Episode.show_id == Show.id, Episode.season_number != SPECIALS_SEASON)
         .correlate(Show)
         .group_by(Episode.season_number)
         .subquery()
@@ -394,7 +406,10 @@ async def get_calendar(
     stmt = (
         select(Episode, Show, active_rss_sq.label("has_active_rss_subscription"))
         .join(Show, Episode.show_id == Show.id)
-        .where(Episode.air_date.between(start, end))
+        .where(
+            Episode.air_date.between(start, end),
+            Episode.season_number != SPECIALS_SEASON,
+        )
         .order_by(Episode.air_date, Show.title)
     )
     rows = (await db_session.execute(stmt)).all()
@@ -483,6 +498,7 @@ async def sync_missing_calendar_shows(
             Episode.air_date.between(start, end),
             Episode.air_date <= today,
             Episode.file_tracked == False,  # noqa: E712
+            Episode.season_number != SPECIALS_SEASON,
         )
     )
     show_ids = list((await db_session.execute(show_ids_stmt)).scalars().all())
@@ -1077,6 +1093,47 @@ async def sync_episodes(
     )
     result = await db_session.execute(ep_stmt)
     return list(result.scalars().all())
+
+
+@router.put("/{show_id}/specials", response_model=ShowRead)
+async def set_show_specials(
+    show_id: int,
+    payload: ShowSpecialsUpdate,
+    db_session: AsyncSession = Depends(get_session),  # noqa: B008
+    tmdb: TMDBService = Depends(get_tmdb),  # noqa: B008
+) -> Show:
+    """Turn TMDB Specials (season 0) syncing on or off for a show.
+
+    Enabling stores the opt-in and syncs the show's episodes right away, so the
+    specials exist before the next Parse. Disabling only stops future syncs:
+    season 0 episodes already stored (and any files matched to them) are kept.
+
+    Args:
+        show_id: Database primary key.
+        payload: ``enabled`` flag.
+        db_session: DB session (injected).
+        tmdb: TMDB service (injected).
+
+    Returns:
+        The updated :class:`Show` record.
+
+    Raises:
+        HTTPException: 404 if the show is not found; 422 if it is a movie.
+    """
+    from jidou.orchestrators.tmdb_orchestrator import TMDBOrchestrator
+
+    show = await get_show_or_404(db_session, show_id)
+    if show.media_type == "movie":
+        raise HTTPException(status_code=422, detail="Movies have no specials season")
+
+    show.sync_specials = payload.enabled
+    if payload.enabled:
+        # Live fetch: a special TMDB added recently must not be masked by a cached response.
+        await TMDBOrchestrator(db_session, tmdb).sync_show_episodes(show, bypass_cache=True)
+    await db_session.flush()
+    await db_session.refresh(show)
+    logger.info("Set specials sync for show id=%d enabled=%s", show_id, payload.enabled)
+    return show
 
 
 @router.get("/{show_id}/episode-groups", response_model=list[EpisodeGroupSummary])

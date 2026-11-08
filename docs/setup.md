@@ -268,6 +268,7 @@ All migrations up to and including the original `0002`–`0004` set were squashe
 | `e4f5a6b7c8d9` | Add `shows.track_missing_episodes` (per-show opt-out for the calendar's `missing` status and Sync Missing) |
 | `f5a6b7c8d9e0` | Add `shows.active_episode_group_id` (manual TMDB episode-group selection) |
 | `a1b2c3d4e5f6` | Add `missing` to the `filestatus` enum (Scan Local Files path reconciliation) |
+| `b8c9d0e1f2a3` | Add `shows.sync_specials` (per-show opt-in to sync TMDB season 0 Specials) |
 
 ---
 

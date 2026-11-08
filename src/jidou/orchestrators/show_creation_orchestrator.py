@@ -284,6 +284,7 @@ async def get_or_create_show_from_tmdb(
         sys_name=sys_name,
         cached=False,
         track_missing_episodes=True,
+        sync_specials=False,
     )
     # content_type is always set here (given or inferred), so the shared rule
     # always yields a path; an explicit payload path still wins.

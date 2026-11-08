@@ -241,9 +241,18 @@ class TestTMDBService:
     async def test_get_season_details_invalid_season_raises(
         self, tmdb_service: TMDBService
     ) -> None:
-        """get_season_details() raises ValueError for season_number < 1."""
+        """get_season_details() raises ValueError for a negative season_number."""
         with pytest.raises(ValueError, match="season_number"):
+            await tmdb_service.get_season_details(1, season_number=-1)
+
+    @pytest.mark.asyncio
+    async def test_get_season_details_accepts_season_zero(self, tmdb_service: TMDBService) -> None:
+        """Season 0 is TMDB's Specials season and must be fetchable."""
+        with patch.object(
+            tmdb_service, "_request", AsyncMock(return_value={"episodes": []})
+        ) as req:
             await tmdb_service.get_season_details(1, season_number=0)
+        req.assert_awaited_once_with("/tv/1/season/0", bypass_cache=False)
 
     # ------------------------------------------------------------------
     # Images endpoint

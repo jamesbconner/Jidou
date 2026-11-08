@@ -92,6 +92,7 @@ _SHOW_DEFAULTS: dict[str, object] = {
     "vote_count": 0,
     "cached": False,
     "track_missing_episodes": True,
+    "sync_specials": False,
 }
 _SHOW_REQUIRED = frozenset({"tmdb_id", "title"})
 

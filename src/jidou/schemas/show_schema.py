@@ -189,6 +189,12 @@ class ShowSeasonAliasesUpdate(RequestModel):
     season_aliases: dict[SeasonAliasName, SeasonNumber] = Field(default_factory=dict)
 
 
+class ShowSpecialsUpdate(RequestModel):
+    """Payload for turning TMDB Specials (season 0) syncing on or off for a show."""
+
+    enabled: bool = Field(description="True to sync season 0 episodes for this show")
+
+
 class ShowRead(ORMModel):
     """Full show record returned by ``GET /shows/{id}``."""
 
@@ -234,6 +240,7 @@ class ShowRead(ORMModel):
     detail_poster_path: str | None = None
     banner_path: str | None = None
     track_missing_episodes: bool = True
+    sync_specials: bool = False
     created_at: datetime
     updated_at: datetime
 

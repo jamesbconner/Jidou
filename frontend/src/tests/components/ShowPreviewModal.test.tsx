@@ -78,6 +78,7 @@ function baseShow(overrides: Partial<ShowRead> = {}): ShowRead {
     list_poster_path: null,
     detail_poster_path: null,
     track_missing_episodes: true,
+    sync_specials: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,

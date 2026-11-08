@@ -1126,7 +1126,16 @@ def test_build_show_defaults() -> None:
     assert show.vote_count == 0
     assert show.cached is False
     assert show.track_missing_episodes is True
-    defaulted = {"media_type", "vote_count", "cached", "track_missing_episodes", "tmdb_id", "title"}
+    assert show.sync_specials is False
+    defaulted = {
+        "media_type",
+        "vote_count",
+        "cached",
+        "track_missing_episodes",
+        "sync_specials",
+        "tmdb_id",
+        "title",
+    }
     checked = 0
     for attr in inspect(Show).column_attrs:
         if attr.key in {"id", "created_at", "updated_at"} | defaulted:
@@ -1379,6 +1388,7 @@ _LEGACY_SHOW_HANDLED_COLUMNS = frozenset(
         "detail_poster_path",
         "banner_path",
         "track_missing_episodes",
+        "sync_specials",
     ]
 )
 
@@ -1409,7 +1419,7 @@ def test_column_tables_equal_legacy_handled_sets() -> None:
     """The derived column tables restore exactly the columns the old literals listed."""
     from jidou.workers.db_import_tasks import _EPISODE_COLUMNS, _SHOW_COLUMNS
 
-    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 41
+    assert len(_LEGACY_SHOW_HANDLED_COLUMNS) == 42
     assert {c.name for c in _SHOW_COLUMNS} == _LEGACY_SHOW_HANDLED_COLUMNS
     assert len(_SHOW_COLUMNS) == len(_LEGACY_SHOW_HANDLED_COLUMNS)
     assert {c.name for c in _EPISODE_COLUMNS} == _LEGACY_EPISODE_HANDLED_COLUMNS
@@ -1444,6 +1454,7 @@ def test_column_defaults_and_update_exclusions() -> None:
         "vote_count": 0,
         "cached": False,
         "track_missing_episodes": True,
+        "sync_specials": False,
     }
     assert {c.name for c in _SHOW_COLUMNS if c.required} == {"tmdb_id", "title"}
     episode_defaults = {c.name: c.default for c in _EPISODE_COLUMNS if c.default is not None}

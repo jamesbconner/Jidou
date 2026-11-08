@@ -4,6 +4,7 @@ import {
   useUpdateShowPaths,
   useSyncEpisodes,
   useRefreshShowMetadata,
+  useSetShowSpecials,
   useDeleteShow,
   usePatchShow,
   useSetEpisodeWatched,
@@ -52,6 +53,7 @@ export default function ShowDetail() {
   const updatePaths = useUpdateShowPaths(showId)
   const syncEpisodes = useSyncEpisodes()
   const refreshMetadata = useRefreshShowMetadata()
+  const setShowSpecials = useSetShowSpecials(showId)
   const deleteShow = useDeleteShow()
   const beginRematch = useBeginEpisodeRematch()
   const patchShow = usePatchShow()
@@ -80,6 +82,7 @@ export default function ShowDetail() {
     setEpisodesTab('episodes')
     syncEpisodes.reset()
     refreshMetadata.reset()
+    setShowSpecials.reset()
     updatePaths.reset()
     patchShow.reset()
     ensureRssStub.reset()
@@ -235,12 +238,15 @@ export default function ShowDetail() {
       rssError={ensureRssStub.isError ? (ensureRssStub.error as Error) : null}
       refreshPending={refreshMetadata.isPending}
       refreshError={refreshMetadata.isError ? (refreshMetadata.error as Error) : null}
+      specialsPending={setShowSpecials.isPending}
+      specialsError={setShowSpecials.isError ? (setShowSpecials.error as Error) : null}
       onRemove={() => setModal({ kind: 'deleteConfirm' })}
       onRss={handleRssButtonClick}
       onRefreshMetadata={() => refreshMetadata.mutate(showId)}
       onFixMatch={() => setModal({ kind: 'rematch' })}
       onContentType={() => setModal({ kind: 'contentType' })}
       onAliases={() => setModal({ kind: 'aliases' })}
+      onToggleSpecials={() => setShowSpecials.mutate(!show.sync_specials)}
       onImages={() => setModal({ kind: 'image' })}
     />
   )
