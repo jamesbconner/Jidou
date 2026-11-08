@@ -93,15 +93,17 @@ def test_watchlist_next_up_skips_specials(executed: list[str]) -> None:
     assert any(_EXCLUDES_SPECIALS in sql for sql in executed)
 
 
-def test_show_list_missing_aired_and_matched_counts_exclude_specials(
+def test_show_list_episode_and_progress_counts_exclude_specials(
     executed: list[str],
 ) -> None:
-    """The missing, aired and matched episode counts all leave season 0 out.
+    """Every flat episode count -- total, watched, missing, aired, matched -- leaves season 0 out.
 
     The query already carries the filter three times (the per-season subquery
-    and what hangs off it); each of the three flat counts adds one more.
+    and what hangs off it); each of the five flat counts adds one more. The
+    total/watched pair drives the show card's progress bar, which must not drop
+    below complete because of specials.
     """
     response = TestClient(app).get("/api/shows")
 
     assert response.status_code == 200
-    assert executed[0].count(_EXCLUDES_SPECIALS) == 6
+    assert executed[0].count(_EXCLUDES_SPECIALS) == 8

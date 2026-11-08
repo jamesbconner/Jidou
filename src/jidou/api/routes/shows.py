@@ -207,13 +207,17 @@ async def list_shows(
     today = today or date.today()
     ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id)
+        .where(Episode.show_id == Show.id, Episode.season_number != SPECIALS_SEASON)
         .correlate(Show)
         .scalar_subquery()
     )
     watched_ep_count_sq = (
         select(func.count(Episode.id))
-        .where(Episode.show_id == Show.id, Episode.watched.is_(True))
+        .where(
+            Episode.show_id == Show.id,
+            Episode.season_number != SPECIALS_SEASON,
+            Episode.watched.is_(True),
+        )
         .correlate(Show)
         .scalar_subquery()
     )

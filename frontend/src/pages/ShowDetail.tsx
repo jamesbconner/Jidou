@@ -82,6 +82,7 @@ export default function ShowDetail() {
     setEpisodesTab('episodes')
     syncEpisodes.reset()
     refreshMetadata.reset()
+    setShowSpecials.reset()
     updatePaths.reset()
     patchShow.reset()
     ensureRssStub.reset()
@@ -237,6 +238,8 @@ export default function ShowDetail() {
       rssError={ensureRssStub.isError ? (ensureRssStub.error as Error) : null}
       refreshPending={refreshMetadata.isPending}
       refreshError={refreshMetadata.isError ? (refreshMetadata.error as Error) : null}
+      specialsPending={setShowSpecials.isPending}
+      specialsError={setShowSpecials.isError ? (setShowSpecials.error as Error) : null}
       onRemove={() => setModal({ kind: 'deleteConfirm' })}
       onRss={handleRssButtonClick}
       onRefreshMetadata={() => refreshMetadata.mutate(showId)}

@@ -139,6 +139,8 @@ interface MaintenanceActionsProps {
   rssError: Error | null
   refreshPending: boolean
   refreshError: Error | null
+  specialsPending: boolean
+  specialsError: Error | null
   onRemove: () => void
   onRss: () => void
   onRefreshMetadata: () => void
@@ -162,6 +164,8 @@ export function MaintenanceActions({
   rssError,
   refreshPending,
   refreshError,
+  specialsPending,
+  specialsError,
   onRemove,
   onRss,
   onRefreshMetadata,
@@ -211,8 +215,13 @@ export function MaintenanceActions({
             ? []
             : [
                 {
-                  label: show.sync_specials ? 'Disable Specials' : 'Enable Specials',
+                  label: specialsPending
+                    ? 'Syncing Specials…'
+                    : show.sync_specials
+                      ? 'Disable Specials'
+                      : 'Enable Specials',
                   onSelect: onToggleSpecials,
+                  disabled: specialsPending,
                 },
               ]),
           { label: 'Change Images', onSelect: onImages },
@@ -223,6 +232,9 @@ export function MaintenanceActions({
       )}
       {refreshError && (
         <span className="text-xs text-red-600 text-right max-w-[9rem]">{refreshError.message}</span>
+      )}
+      {specialsError && (
+        <span className="text-xs text-red-600 text-right max-w-[9rem]">{specialsError.message}</span>
       )}
     </div>
   )

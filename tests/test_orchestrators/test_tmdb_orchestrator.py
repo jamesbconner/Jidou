@@ -271,6 +271,29 @@ async def test_sync_show_episodes_opted_in_show_without_tmdb_season_zero():
     tmdb.get_season_details.assert_awaited_once()
 
 
+async def test_opted_in_sync_survives_the_real_tmdb_service_season_guard():
+    """Season 0 must get through TMDBService itself, not just a mocked get_season_details.
+
+    Regression: the service rejected season_number < 1, so every opted-in
+    show's sync raised before reaching its regular seasons.
+    """
+    from jidou.services.tmdb import TMDBService
+
+    payloads = {
+        "/tv/12345": {"seasons": [{"season_number": 0}, {"season_number": 1}]},
+        "/tv/12345/season/0": {"episodes": [{"id": 900, "episode_number": 1, "name": "Special"}]},
+        "/tv/12345/season/1": {"episodes": [{"id": 101, "episode_number": 1, "name": "Ep1"}]},
+    }
+    tmdb = TMDBService(api_key="test-key")
+    session = _make_session(existing_episode=None)
+    show = _make_show(sync_specials=True)
+
+    with patch.object(tmdb, "_request", AsyncMock(side_effect=lambda path, **_kw: payloads[path])):
+        result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+    assert result.episodes_upserted == 2
+
+
 async def test_sync_show_episodes_raises_for_a_movie():
     """Movies have no TMDB /tv/{id}/season structure -- sync_show_episodes
     must reject them with a clear error rather than let the caller 404
