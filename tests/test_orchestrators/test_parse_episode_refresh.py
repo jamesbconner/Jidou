@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from jidou.models.downloaded_file import FileStatus
-from jidou.orchestrators.parse_orchestrator import ParseOrchestrator
+from jidou.orchestrators.parse_orchestrator import ParseOrchestrator, _missing_episode_reason
 from tests.test_orchestrators.test_match_orchestrator import (
     _make_file,
     _make_show,
@@ -308,3 +308,65 @@ async def test_dry_run_movie_skips_the_episode_lookup():
 
     resolve.assert_not_awaited()
     assert result.files_matched == 1
+
+
+def _specials_show(*, sync_specials: bool, season_aliases: dict[str, int] | None) -> MagicMock:
+    show = _make_show()
+    show.media_type = "tv"
+    show.sync_specials = sync_specials
+    show.season_aliases = season_aliases
+    return show
+
+
+@pytest.mark.parametrize(
+    ("sync_specials", "season_aliases", "expect_hint"),
+    [
+        (False, None, True),
+        (False, {"example arc-hen": 2}, True),
+        (True, None, False),
+        (False, {"omake shorts": 0}, False),
+    ],
+    ids=["no-opt-in", "unrelated-alias", "toggle-on", "alias-zero"],
+)
+def test_missing_season_zero_reason_points_at_enabling_specials(
+    sync_specials, season_aliases, expect_hint
+):
+    """S00 misses tell a non-opted-in show's user how to get specials synced."""
+    show = _specials_show(sync_specials=sync_specials, season_aliases=season_aliases)
+
+    reason = _missing_episode_reason(show, 0, 1)
+
+    assert "S00E01" in reason
+    assert ("enable Specials" in reason) is expect_hint
+
+
+def test_missing_regular_season_reason_is_unchanged_by_specials_hint():
+    """Only season 0 gets the specials hint."""
+    show = _specials_show(sync_specials=False, season_aliases=None)
+
+    reason = _missing_episode_reason(show, 3, 1)
+
+    assert "S03E01" in reason
+    assert "Specials" not in reason
+
+
+async def test_season_zero_miss_refreshes_then_matches_for_opted_in_show():
+    """An opted-in show's S00 file matches once the refresh brings the special in."""
+    file1 = _make_file(filename="Show - Omake Shorts - 01.mkv")
+    show = _specials_show(sync_specials=False, season_aliases={"omake shorts": 0})
+    refresher = _refresher(added=True)
+    special = _episode(ep_id=77, season=0, number=1)
+
+    result, _ = await _run(
+        [file1],
+        show,
+        [_parsed(season=0, episode=1)],
+        resolve_results=[None, special],
+        refresher=refresher,
+    )
+
+    refresher.refresh_episodes.assert_awaited_once_with(show)
+    assert result.files_matched == 1
+    assert file1.status == FileStatus.MATCHED
+    assert file1.episode_id == 77
+    assert file1.parsed_season == 0
