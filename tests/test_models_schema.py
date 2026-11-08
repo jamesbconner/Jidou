@@ -187,7 +187,17 @@ def test_show_column_provenance_tagging() -> None:
         "detail_poster_path",
         "banner_path",
         "track_missing_episodes",
+        "sync_specials",
     }
+
+
+def test_sync_specials_is_non_null_and_defaults_false() -> None:
+    """sync_specials is a non-null opt-in flag that defaults to off, in Python and in the DB."""
+    column = Show.__table__.c.sync_specials
+    assert column.nullable is False
+    assert column.default is not None and column.default.arg is False
+    assert column.server_default is not None
+    assert str(column.server_default.arg).lower() in {"false", "0"}
 
 
 @pytest.mark.parametrize(

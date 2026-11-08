@@ -87,6 +87,7 @@ def _make_show(
     s.detail_poster_path = None
     s.banner_path = banner_path
     s.track_missing_episodes = track_missing_episodes
+    s.sync_specials = False
     s.created_at = datetime.now(UTC)
     s.updated_at = datetime.now(UTC)
     return s

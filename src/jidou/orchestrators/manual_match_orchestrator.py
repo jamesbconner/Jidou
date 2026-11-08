@@ -193,6 +193,7 @@ class ManualMatchOrchestrator:
             local_path=payload.local_path,
             cached=False,
             track_missing_episodes=True,
+            sync_specials=False,
         )
 
         async def refind() -> Show:

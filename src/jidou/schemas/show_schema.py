@@ -234,6 +234,7 @@ class ShowRead(ORMModel):
     detail_poster_path: str | None = None
     banner_path: str | None = None
     track_missing_episodes: bool = True
+    sync_specials: bool = False
     created_at: datetime
     updated_at: datetime
 
