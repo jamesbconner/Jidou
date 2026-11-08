@@ -104,8 +104,19 @@ def _two_shows_first_fails_second_succeeds():
     return session, tmdb, show1, show2
 
 
-def _make_show(tmdb_id=12345, title="Test Show", cached=False, show_id=1, last_air_date=None):
+def _make_show(
+    tmdb_id=12345,
+    title="Test Show",
+    cached=False,
+    show_id=1,
+    last_air_date=None,
+    sync_specials=False,
+    season_aliases=None,
+):
     show = MagicMock()
+    # Real values, not MagicMock attributes: wants_specials() reads both.
+    show.sync_specials = sync_specials
+    show.season_aliases = season_aliases
     show.id = show_id
     show.tmdb_id = tmdb_id
     show.title = title
@@ -187,6 +198,77 @@ async def test_sync_show_episodes_skips_season_zero():
 
     # get_season_details should only be called for season 1, not season 0
     tmdb.get_season_details.assert_called_once_with(show.tmdb_id, 1, bypass_cache=False)
+
+
+def _season_aware_tmdb(by_season, seasons):
+    """TMDB double returning a different episode list per season number."""
+    tmdb = _make_tmdb(seasons=seasons)
+    tmdb.get_season_details = AsyncMock(
+        side_effect=lambda _tmdb_id, season, **_kw: {"episodes": by_season.get(season, [])}
+    )
+    return tmdb
+
+
+_SPECIALS_SEASONS = [{"season_number": 0}, {"season_number": 1}]
+
+
+@pytest.mark.parametrize(
+    ("sync_specials", "season_aliases"),
+    [(True, None), (False, {"omake shorts": 0})],
+    ids=["toggle", "season-alias-zero"],
+)
+async def test_sync_show_episodes_syncs_season_zero_when_show_wants_specials(
+    sync_specials, season_aliases
+):
+    """An opted-in show (toggle or a season alias mapped to 0) gets its season 0 synced."""
+    session = _make_session(existing_episode=None)
+    show = _make_show(sync_specials=sync_specials, season_aliases=season_aliases)
+    tmdb = _season_aware_tmdb(
+        {
+            0: [{"id": 900, "episode_number": 1, "name": "Special"}],
+            1: [{"id": 101, "episode_number": 1, "name": "Ep1"}],
+        },
+        _SPECIALS_SEASONS,
+    )
+
+    result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+    requested = [call.args[1] for call in tmdb.get_season_details.await_args_list]
+    assert sorted(requested) == [0, 1]
+    assert result.episodes_upserted == 2
+    added_seasons = sorted(call.args[0].season_number for call in session.add.call_args_list)
+    assert added_seasons == [0, 1]
+
+
+async def test_sync_show_episodes_specials_do_not_move_last_air_date():
+    """A special airing after every regular episode must not become show.last_air_date."""
+    session = _make_session(existing_episode=None)
+    show = _make_show(sync_specials=True)
+    tmdb = _season_aware_tmdb(
+        {
+            0: [{"id": 900, "episode_number": 1, "name": "Special", "air_date": "2020-06-01"}],
+            1: [{"id": 101, "episode_number": 1, "name": "Ep1", "air_date": "2020-01-01"}],
+        },
+        _SPECIALS_SEASONS,
+    )
+
+    await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+    assert show.last_air_date == "2020-01-01"
+
+
+async def test_sync_show_episodes_opted_in_show_without_tmdb_season_zero():
+    """Opting in to a show whose TMDB data has no season 0 syncs normally, without error."""
+    session = _make_session(existing_episode=None)
+    show = _make_show(sync_specials=True)
+    tmdb = _season_aware_tmdb(
+        {1: [{"id": 101, "episode_number": 1, "name": "Ep1"}]}, [{"season_number": 1}]
+    )
+
+    result = await TMDBOrchestrator(session, tmdb).sync_show_episodes(show)
+
+    assert result.episodes_upserted == 1
+    tmdb.get_season_details.assert_awaited_once()
 
 
 async def test_sync_show_episodes_raises_for_a_movie():
