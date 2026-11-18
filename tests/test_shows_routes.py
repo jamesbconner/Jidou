@@ -5898,6 +5898,55 @@ def test_link_movie_file_returns_422_when_path_does_not_exist(tmp_path: Path) ->
         app.dependency_overrides.clear()
 
 
+@pytest.mark.parametrize("escape", ["outside_dir", "parent_traversal"])
+def test_link_movie_file_returns_422_when_path_is_outside_show_local_path(
+    tmp_path: Path, escape: str
+) -> None:
+    """Regression (code-scanning py/path-injection): the path must stay under show.local_path.
+
+    The real file exists, so only the containment check can reject it. The
+    DB must not be queried beyond loading the show, and the response must
+    not echo the offending path.
+    """
+    from jidou.database import get_session
+
+    library = tmp_path / "movies"
+    library.mkdir()
+    outside_file = tmp_path / "secret.mkv"
+    outside_file.write_text("data")
+    raw_path = str(outside_file) if escape == "outside_dir" else str(library / ".." / "secret.mkv")
+
+    show = _make_show(id=1, media_type="movie", local_path=str(library))
+    show.content_type = "movie"
+    executed: list[object] = []
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+
+        async def _execute(stmt: object) -> MagicMock:
+            executed.append(stmt)
+            return show_result
+
+        session.execute = _execute
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/link-movie-file",
+            json={"path": raw_path},
+        )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "inside the show's local path" in detail
+        assert "secret.mkv" not in detail
+        assert len(executed) == 1  # only the show lookup; no link/replace side effects
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_link_movie_file_creates_synthetic_file(tmp_path: Path) -> None:
     """On success, creates a synthetic DownloadedFile with episode_id=None."""
     from jidou.database import get_session

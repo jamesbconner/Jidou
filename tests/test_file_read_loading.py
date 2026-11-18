@@ -267,7 +267,14 @@ def test_file_read_routes_include_show_and_episode(case: _Case, tmp_path: Path) 
     disk_path = tmp_path / "episode.mkv"
     disk_path.write_bytes(b"")
     file = _linked_file(str(disk_path) if case.synthetic else None)
-    session = _FakeSession(file=file, results=case.results(file))
+    results = case.results(file)
+    # The file lives under tmp_path, so the show's library root must too:
+    # link-movie-file rejects paths outside show.local_path.
+    for row in results:
+        for obj in row:
+            if isinstance(obj, Show):
+                obj.local_path = str(tmp_path)
+    session = _FakeSession(file=file, results=results)
 
     async def _session() -> AsyncIterator[_FakeSession]:
         yield session

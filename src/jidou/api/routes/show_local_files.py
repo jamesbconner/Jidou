@@ -22,6 +22,7 @@ from jidou.schemas.show_schema import (
 from jidou.services.episode_file_matching import match_entry_to_episode
 from jidou.services.file_reconciliation import reconcile_local_file_existence
 from jidou.services.llm_service import LLMService
+from jidou.services.path_containment import is_within_directory
 from jidou.services.path_parser import path_comparison_key, scan_show_directory
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
 from jidou.services.synthetic_file import create_synthetic_import_file, synthetic_remote_path
@@ -310,6 +311,16 @@ async def link_movie_file(
         raise HTTPException(status_code=422, detail="This endpoint is for movies only")
     if not show.local_path:
         raise HTTPException(status_code=422, detail="Show has no local path configured")
+
+    # The path is client-supplied: confine it to the show's own directory
+    # before touching the filesystem or the DB, so this endpoint can't be
+    # used to probe or register files elsewhere on the host. The detail
+    # deliberately doesn't echo the path.
+    if not is_within_directory(decode_path_bytes(payload.path), show.local_path):
+        raise HTTPException(
+            status_code=422,
+            detail="Path must be inside the show's local path",
+        )
 
     existing_stmt = select(DownloadedFile).where(DownloadedFile.show_id == show_id)
     existing_files = list((await db_session.execute(existing_stmt)).scalars().all())
