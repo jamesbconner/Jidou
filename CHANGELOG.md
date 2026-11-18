@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Security
+- **Link File (episodes) is confined to the show's folder.** `POST /api/shows/{id}/episodes/{episode_id}/link-file` now applies the same rule: a path that resolves outside the show's local path (including `..` traversal and symlinks pointing elsewhere), or a show with no local path configured, gets a 422 before any existing tracking is detached or the filesystem is touched, and the message no longer echoes the path.
 - **Link Movie File is confined to the show's folder.** `POST /api/shows/{id}/link-movie-file` now rejects any path that resolves outside the show's local path (including `..` traversal and symlinks pointing elsewhere) with a 422, before touching the filesystem. Previously it accepted any absolute path and its error message revealed whether arbitrary files existed on the host.
 
 ### Changed
