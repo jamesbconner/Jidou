@@ -3985,7 +3985,7 @@ def test_link_file_with_percent_encoded_non_utf8_path(tmp_path: Path) -> None:
     from jidou.database import get_session
     from jidou.services.path_transport import encode_path_bytes
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path=str(tmp_path))
     ep = _make_episode(id=10, show_id=1)
 
     # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8.
