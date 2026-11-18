@@ -20,6 +20,7 @@ from jidou.schemas.show_schema import (
 )
 from jidou.services.episode_tracking import clear_episode_tracking, mark_episode_tracked
 from jidou.services.episode_watching import clear_episode_watched, mark_episode_watched
+from jidou.services.path_containment import is_within_directory
 from jidou.services.path_transport import decode_path_bytes, decode_path_bytes_for_display
 from jidou.services.synthetic_file import (
     SYNTHETIC_IMPORT_SCHEME,
@@ -562,10 +563,11 @@ async def link_episode_file(
 
     Raises:
         HTTPException: 404 if the show or episode is not found.
-        HTTPException: 422 if the episode is already tracked and *replace* is
-            False, or *path* does not point to an existing file.
+        HTTPException: 422 if the show has no local path configured, *path* is
+            outside it, the episode is already tracked and *replace* is False,
+            or *path* does not point to an existing file.
     """
-    await get_show_or_404(db_session, show_id)
+    show = await get_show_or_404(db_session, show_id)
 
     # Locked so two concurrent link-file calls targeting the same episode
     # (e.g. a bulk "Confirm All Matched" batch) can't both read
@@ -580,6 +582,15 @@ async def link_episode_file(
     ep = (await db_session.execute(ep_stmt)).scalar_one_or_none()
     if ep is None:
         raise HTTPException(status_code=404, detail="Episode not found")
+
+    # payload.path is client-supplied: confine it to the show's own directory
+    # before any side effect (replace detaches existing tracking) or
+    # filesystem access, so this endpoint can't probe or register files
+    # elsewhere on the host. The detail deliberately doesn't echo the path.
+    if not show.local_path:
+        raise HTTPException(status_code=422, detail="Show has no local path configured")
+    if not is_within_directory(decode_path_bytes(payload.path), show.local_path):
+        raise HTTPException(status_code=422, detail="Path must be inside the show's local path")
 
     if ep.file_tracked:
         if not payload.replace:

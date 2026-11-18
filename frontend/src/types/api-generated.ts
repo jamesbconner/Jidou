@@ -1274,8 +1274,9 @@ export interface paths {
          *
          *     Raises:
          *         HTTPException: 404 if the show or episode is not found.
-         *         HTTPException: 422 if the episode is already tracked and *replace* is
-         *             False, or *path* does not point to an existing file.
+         *         HTTPException: 422 if the show has no local path configured, *path* is
+         *             outside it, the episode is already tracked and *replace* is False,
+         *             or *path* does not point to an existing file.
          */
         post: operations["link_episode_file_api_shows__show_id__episodes__episode_id__link_file_post"];
         delete?: never;

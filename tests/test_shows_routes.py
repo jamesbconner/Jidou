@@ -3778,7 +3778,7 @@ def test_link_file_returns_422_when_episode_already_tracked() -> None:
     """Returns 422 when the episode is already tracked by a file or import."""
     from jidou.database import get_session
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path="/media/show")
     ep = _make_tracked_episode(id=10, show_id=1)
 
     async def _session() -> AsyncMock:
@@ -3806,7 +3806,7 @@ def test_link_file_returns_422_when_path_does_not_exist(tmp_path: Path) -> None:
     """Returns 422 when the given path does not point to an existing file."""
     from jidou.database import get_session
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path=str(tmp_path))
     ep = _make_episode(id=10, show_id=1)
     missing_path = str(tmp_path / "does-not-exist.mkv")
 
@@ -3831,11 +3831,87 @@ def test_link_file_returns_422_when_path_does_not_exist(tmp_path: Path) -> None:
         app.dependency_overrides.clear()
 
 
+@pytest.mark.parametrize("escape", ["outside_dir", "parent_traversal"])
+def test_link_file_returns_422_when_path_is_outside_show_local_path(
+    tmp_path: Path, escape: str
+) -> None:
+    """Regression (code-scanning py/path-injection): the path must stay under show.local_path.
+
+    The real file exists and the episode is tracked with replace=true, so only
+    the containment check can reject it. The old tracking must be left
+    untouched, and the response must not echo the offending path.
+    """
+    from jidou.database import get_session
+
+    library = tmp_path / "show"
+    library.mkdir()
+    outside_file = tmp_path / "secret.mkv"
+    outside_file.write_text("data")
+    raw_path = str(outside_file) if escape == "outside_dir" else str(library / ".." / "secret.mkv")
+
+    show = _make_show(id=1, local_path=str(library))
+    ep = _make_tracked_episode(id=10, show_id=1)
+    tracked_before = ep.file_tracked
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": raw_path, "replace": True},
+        )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert "inside the show's local path" in detail
+        assert "secret.mkv" not in detail
+        assert ep.file_tracked == tracked_before  # replace did not detach anything
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_link_file_returns_422_when_show_has_no_local_path(tmp_path: Path) -> None:
+    """Without a configured local path there is nothing to confine the file to."""
+    from jidou.database import get_session
+
+    show = _make_show(id=1)  # local_path=None
+    ep = _make_episode(id=10, show_id=1)
+    real_file = tmp_path / "ep01.mkv"
+    real_file.write_text("data")
+
+    async def _session() -> AsyncMock:
+        session = AsyncMock()
+        show_result = MagicMock()
+        show_result.scalar_one_or_none.return_value = show
+        ep_result = MagicMock()
+        ep_result.scalar_one_or_none.return_value = ep
+        session.execute = AsyncMock(side_effect=[show_result, ep_result])
+        yield session
+
+    app.dependency_overrides[get_session] = _session
+    try:
+        response = TestClient(app).post(
+            "/api/shows/1/episodes/10/link-file",
+            json={"path": str(real_file)},
+        )
+        assert response.status_code == 422
+        assert "no local path" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_link_file_creates_synthetic_file_and_tracks_episode(tmp_path: Path) -> None:
     """On success, marks the episode tracked (source=import) and returns the file."""
     from jidou.database import get_session
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path=str(tmp_path))
     ep = _make_episode(id=10, show_id=1)
     real_file = tmp_path / "ep01.mkv"
     real_file.write_text("data")
@@ -3909,7 +3985,7 @@ def test_link_file_with_percent_encoded_non_utf8_path(tmp_path: Path) -> None:
     from jidou.database import get_session
     from jidou.services.path_transport import encode_path_bytes
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path=str(tmp_path))
     ep = _make_episode(id=10, show_id=1)
 
     # Byte 0xE9 is 'é' in Latin-1/cp1252 but invalid standalone UTF-8.
@@ -3970,7 +4046,7 @@ def test_link_file_replace_detaches_old_backing_file_and_links_new_path(tmp_path
     from jidou.database import get_session
     from jidou.models.downloaded_file import FileStatus
 
-    show = _make_show(id=1)
+    show = _make_show(id=1, local_path=str(tmp_path))
     ep = _make_tracked_episode(id=10, show_id=1)
 
     old_file = MagicMock()
