@@ -10,9 +10,25 @@ importing them.
 
 from __future__ import annotations
 
+import errno
+import socket
+
 _AUTH_NAME_HINTS = ("auth", "permissiondenied", "unauthorized", "forbidden")
 _TIMEOUT_NAME_HINTS = ("timeout", "timedout")
 _CONNECT_NAME_HINTS = ("connect", "disconnect", "unreachable", "dns", "gaierror")
+
+# OSErrors that represent a network-level failure.  Other OSErrors (missing or
+# unreadable key file, permissions) are local problems, not host/port problems,
+# so they fall through to the generic message that points at the server logs.
+_NETWORK_ERRNOS = frozenset({errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN})
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    """Return True if *exc* is a network-level (not local filesystem) failure."""
+    if isinstance(exc, ConnectionError | socket.gaierror | socket.herror):
+        return True
+    return isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS
+
 
 _MSG_AUTH = "Authentication failed (check the configured credentials)"
 _MSG_RATE_LIMIT = "The service is rate limiting requests; try again shortly"
@@ -67,7 +83,7 @@ def describe_connection_error(exc: BaseException) -> str:
         hint in name for name in names for hint in _TIMEOUT_NAME_HINTS
     ):
         return _MSG_TIMEOUT
-    if isinstance(exc, OSError) or any(
+    if _is_network_error(exc) or any(
         hint in name for name in names for hint in _CONNECT_NAME_HINTS
     ):
         return _MSG_CONNECT

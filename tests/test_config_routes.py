@@ -332,14 +332,17 @@ def test_sftp_test_key_auth_with_no_remote_paths_defaults_to_root() -> None:
 def test_sftp_test_failure_returns_safe_error_text() -> None:
     """A listing failure yields ok=False with a generic message, status 200."""
     service = MagicMock()
-    service.list_remote_files = AsyncMock(side_effect=OSError("connection refused"))
+    service.list_remote_files = AsyncMock(side_effect=ConnectionRefusedError("connection refused"))
     with (
         patch("jidou.api.routes.config.settings", _sftp_settings()),
         patch("jidou.services.sftp_service.SFTPService", return_value=service),
     ):
         response = TestClient(app).post("/api/config/test/sftp")
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "error": describe_connection_error(OSError())}
+    assert response.json() == {
+        "ok": False,
+        "error": describe_connection_error(ConnectionRefusedError()),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 """Tests for jidou.services.connection_errors."""
 
+import errno
 import socket
 
 import pytest
@@ -48,6 +49,10 @@ class _ConnectError(Exception):
         (ConnectionRefusedError("refused"), "Could not connect"),
         (socket.gaierror("no such host"), "Could not connect"),
         (_ConnectError("boom"), "Could not connect"),
+        (OSError(errno.EHOSTUNREACH, "no route"), "Could not connect"),
+        (FileNotFoundError("/srv/keys/id_rsa"), "see server logs"),
+        (PermissionError("/srv/keys/id_rsa"), "see server logs"),
+        (OSError("plain"), "see server logs"),
         (RuntimeError("weird"), "see server logs"),
         (_HTTPStatusError(404), "see server logs"),
     ],
