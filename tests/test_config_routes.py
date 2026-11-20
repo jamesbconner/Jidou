@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from jidou.main import app
+from jidou.services.connection_errors import describe_connection_error
 
 
 def test_get_config_returns_200() -> None:
@@ -328,14 +329,63 @@ def test_sftp_test_key_auth_with_no_remote_paths_defaults_to_root() -> None:
     }
 
 
-def test_sftp_test_failure_returns_error_text() -> None:
-    """A listing failure yields ok=False with the exception text, status 200."""
+def test_sftp_test_failure_returns_safe_error_text() -> None:
+    """A listing failure yields ok=False with a generic message, status 200."""
     service = MagicMock()
-    service.list_remote_files = AsyncMock(side_effect=OSError("connection refused"))
+    service.list_remote_files = AsyncMock(side_effect=ConnectionRefusedError("connection refused"))
     with (
         patch("jidou.api.routes.config.settings", _sftp_settings()),
         patch("jidou.services.sftp_service.SFTPService", return_value=service),
     ):
         response = TestClient(app).post("/api/config/test/sftp")
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "error": "connection refused"}
+    assert response.json() == {
+        "ok": False,
+        "error": describe_connection_error(ConnectionRefusedError()),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Connection-test endpoints never echo raw exception text (CWE-209)
+# ---------------------------------------------------------------------------
+
+_SECRET = "secret-host.internal:6379 /srv/private/path"
+
+
+def test_test_tmdb_failure_does_not_leak_exception_text() -> None:
+    """A TMDB failure returns a generic message, not str(exc)."""
+    mock_tmdb = MagicMock()
+    mock_tmdb.get_trending = AsyncMock(side_effect=RuntimeError(_SECRET))
+    with patch("jidou.api.routes.config.settings") as mock_settings:
+        mock_settings.tmdb_api_key = "test-key"
+        with patch("jidou.services.tmdb.TMDBService", return_value=mock_tmdb):
+            body = TestClient(app).post("/api/config/test/tmdb").json()
+    assert body["ok"] is False
+    assert "secret-host" not in body["error"]
+    assert body["error"] == describe_connection_error(RuntimeError())
+
+
+def test_test_llm_failure_does_not_leak_exception_text() -> None:
+    """An LLM failure returns a generic message, not str(exc)."""
+    from jidou.api.dependencies import get_llm_service
+
+    llm = MagicMock()
+    llm.is_available.return_value = True
+    llm.test_connection = AsyncMock(side_effect=RuntimeError(_SECRET))
+    app.dependency_overrides[get_llm_service] = lambda: llm
+    try:
+        body = TestClient(app).post("/api/config/test/llm").json()
+    finally:
+        app.dependency_overrides.pop(get_llm_service, None)
+    assert body["ok"] is False
+    assert "secret-host" not in body["error"]
+
+
+def test_test_redis_failure_does_not_leak_exception_text() -> None:
+    """A Redis failure returns a generic message, not str(exc)."""
+    with patch("jidou.api.routes.config.settings") as mock_settings:
+        mock_settings.redis_url = "redis://bad-host:6379/0"
+        with patch("redis.asyncio.from_url", side_effect=ConnectionRefusedError(_SECRET)):
+            body = TestClient(app).post("/api/config/test/redis").json()
+    assert body["ok"] is False
+    assert "secret-host" not in body["error"]
