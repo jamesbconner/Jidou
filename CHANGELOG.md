@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.4.19] — 2026-11-19
+
+Connection-test endpoints no longer leak exception details.
+
 ### Security
 - **Connection-test endpoints no longer echo raw exception text.** `POST /api/config/test/{tmdb,sftp,llm,redis}` now return a short categorized message (authentication failed, timed out, could not connect, rate limited, server error, or a generic fallback) instead of `str(exc)`, which could expose hostnames, paths or driver internals (CodeQL `py/stack-trace-exposure`, CWE-209). The full exception is still logged server-side.
 
