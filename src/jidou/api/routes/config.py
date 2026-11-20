@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from jidou.api.dependencies import get_llm_service
 from jidou.config import settings
+from jidou.services.connection_errors import describe_connection_error
 from jidou.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ async def test_tmdb() -> dict[str, Any]:
         return {"ok": True}
     except Exception as exc:
         logger.warning("TMDB test failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": describe_connection_error(exc)}
 
 
 @router.post("/test/sftp")
@@ -124,7 +125,7 @@ async def test_sftp() -> dict[str, Any]:
         return {"ok": True, "file_count": len(files)}
     except Exception as exc:
         logger.warning("SFTP test failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": describe_connection_error(exc)}
 
 
 @router.post("/test/llm")
@@ -155,7 +156,7 @@ async def test_llm(
         }
     except Exception as exc:
         logger.warning("LLM test failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": describe_connection_error(exc)}
 
 
 @router.post("/test/redis")
@@ -181,7 +182,7 @@ async def test_redis() -> dict[str, Any]:
             await r.aclose()
     except Exception as exc:
         logger.warning("Redis test failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": describe_connection_error(exc)}
 
 
 # ---------------------------------------------------------------------------
